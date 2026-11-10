@@ -9,7 +9,13 @@ walks the wizard again from the first step.
 
 Cleared, in the trial's D1: every row of the tables listed at the end of this
 help. In `settings`, only the keys listed there, written back to what
-`settings.example.toml` ships. In the vote Worker's KV: every pending vote.
+`settings.example.toml` ships. In the vote Worker's KV: every pending vote. In the
+newsletter Worker's NEWSLETTERS KV, when the trial has one: every stored issue. Whether
+it has one is the wizard state's TRIAL_NEWSLETTER_KV_ID alone. A trial wired before that
+Worker has no id, and the reset leaves the KV out. A config on disk with no id is
+reported in one line, never read or validated, and its KV left alone; an id with no config
+on disk is refused, naming the render command that writes it, because the reset could not
+clear what it is told the trial has.
 
 Kept: `usage_log` (what the trial has spent), `schema_migrations` (the schema steps
 already run), every other `settings` key (the LLM provider and model the owner
@@ -95,6 +101,9 @@ ONBOARDING_KEYS = (
 
 # workers/promote/src/index.js keys each pending vote under this prefix.
 VOTE_PREFIX = "promote:"
+# workers/newsletter/src/index.js keys each received issue under this prefix.
+NEWSLETTER_PREFIX = "nl:"
+NEWSLETTER_KV_KEY = provision_trial.NEWSLETTER_KV_KEY
 
 
 class ResetError(Exception):
@@ -170,6 +179,41 @@ def _json(stdout: str):
     raise ResetError(f"wrangler printed no JSON: {stdout.strip()[:200]!r}")
 
 
+# Each `render` flag, the state key it takes its value from, and the wizard stage that saves it.
+RENDER_FLAGS = (
+    ("--domain", "DOMAIN", 2),
+    ("--account-id", "ACCOUNT_ID", 2),
+    ("--image-digest", "IMAGE_DIGEST", 2),
+    ("--kv-id", "TRIAL_KV_ID", 5),
+    ("--newsletter-kv-id", NEWSLETTER_KV_KEY, 5),
+    ("--d1-id", "TRIAL_D1_ID", 4),
+)
+
+
+def _render_hint(slug: str, state: dict[str, str]) -> str:
+    """The lines that say how to get the config back, each command on a line of its own.
+
+    The `render` command trial-wizard.sh's stage 8 runs, from the state's values. A command with
+    a hole would not run, and `--from 8` stops on a value no earlier stage of that run saved, so
+    with a value missing it names each missing key and the stage that writes it.
+    """
+    missing = [(key, stage) for _, key, stage in RENDER_FLAGS if not state.get(key)]
+    if missing:
+        saved = "\n".join(
+            f"  {key}: bash scripts/trial-wizard.sh {slug} --from {stage}" for key, stage in missing
+        )
+        keys = ", ".join(key for key, _ in missing)
+        return (
+            f"The state lacks {keys}, so the render command cannot be written yet."
+            f" Save each with:\n{saved}"
+        )
+    flags = " ".join(f"{flag} {state[key]}" for flag, key, _ in RENDER_FLAGS)
+    return (
+        "Render the configs from the state's values with:\n"
+        f"  uv run python scripts/provision_trial.py render --slug {slug} {flags}"
+    )
+
+
 class Trial:
     def __init__(self, slug: str, run: Runner) -> None:
         try:
@@ -187,6 +231,31 @@ class Trial:
                     f"refused: {rel} names {got}, but .env.trial-{slug}-wizard has"
                     f" {key}={state.get(key) or '(none)'}: not provably this trial's"
                 )
+        self.newsletter_config = None
+        self.newsletter_binding = ""
+        self.newsletter_note = ""
+        saved = state.get(NEWSLETTER_KV_KEY)
+        if saved:
+            if "newsletter" not in configs:
+                raise ResetError(
+                    f"refused: .env.trial-{slug}-wizard has {NEWSLETTER_KV_KEY}={saved}, but"
+                    f" {provision_trial.newsletter_path(slug)} is not there, so its KV cannot be"
+                    f" cleared. {_render_hint(slug, state)}\n"
+                    "Or deploy the trial, which renders them too:\n"
+                    f"  uv run python scripts/deploy_trial.py --slug {slug}\n"
+                    "Then run this again"
+                )
+            kv = configs["newsletter"]["kv_namespaces"][0]
+            if kv["id"] != saved:
+                raise ResetError(
+                    f"refused: {paths['newsletter']} names {kv['id']}, but"
+                    f" .env.trial-{slug}-wizard has {NEWSLETTER_KV_KEY}={saved}:"
+                    " not provably this trial's"
+                )
+            self.newsletter_config = paths["newsletter"]
+            self.newsletter_binding = kv["binding"]
+        else:
+            self.newsletter_note = provision_trial.newsletter_note(slug)
         self.rss_config = paths["rss"]
         self.promote_config = paths["promote"]
         self.d1 = configs["rss"]["d1_databases"][0]["database_name"]
@@ -211,41 +280,48 @@ class Trial:
     def rows(self, sql: str) -> list[dict]:
         return self.d1_query(sql)[0]["results"]
 
-    def votes(self) -> list[str]:
+    def keys(self, config: str, binding: str, prefix: str) -> list[str]:
         cmd = wrangler(
-            self.promote_config,
-            "kv",
-            "key",
-            "list",
-            "--binding",
-            self.kv_binding,
-            "--prefix",
-            VOTE_PREFIX,
-            "--remote",
+            config, "kv", "key", "list", "--binding", binding, "--prefix", prefix, "--remote"
         )
         return [k["name"] for k in _json(self._run(cmd))]
 
-    def delete_votes(self, keys: list[str]) -> None:
+    def delete_keys(self, config: str, binding: str, keys: list[str]) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            listing = Path(tmp) / "votes.json"
+            listing = Path(tmp) / "keys.json"
             listing.write_text(json.dumps(keys), encoding="utf-8")
             self._run(
                 wrangler(
-                    self.promote_config,
+                    config,
                     "kv",
                     "bulk",
                     "delete",
                     str(listing),
                     "--binding",
-                    self.kv_binding,
+                    binding,
                     "--remote",
                     "--force",
                 )
             )
 
+    def votes(self) -> list[str]:
+        return self.keys(self.promote_config, self.kv_binding, VOTE_PREFIX)
 
-def survey(trial: Trial, say: Callable[[str], None]) -> tuple[list[str], list[str]]:
-    """Print what the write would touch; return the present tables and the pending votes."""
+    def delete_votes(self, keys: list[str]) -> None:
+        self.delete_keys(self.promote_config, self.kv_binding, keys)
+
+    def newsletters(self) -> list[str]:
+        """The stored issues; none for a trial that has no newsletter KV."""
+        if not self.newsletter_config:
+            return []
+        return self.keys(self.newsletter_config, self.newsletter_binding, NEWSLETTER_PREFIX)
+
+    def delete_newsletters(self, keys: list[str]) -> None:
+        self.delete_keys(self.newsletter_config, self.newsletter_binding, keys)
+
+
+def survey(trial: Trial, say: Callable[[str], None]) -> tuple[list[str], list[str], list[str]]:
+    """Print what the write would touch; return the present tables, pending votes and issues."""
     found = {r["name"] for r in trial.rows("SELECT name FROM sqlite_master WHERE type = 'table'")}
     present = [t for t in CLEARED if t in found]
     counts = trial.rows(count_sql(present))[0] if present else {}
@@ -260,9 +336,17 @@ def survey(trial: Trial, say: Callable[[str], None]) -> tuple[list[str], list[st
         say(f"  {key:<28} {stored.get(key, '(unset)')} -> {json.dumps(defaults[key])}")
     votes = trial.votes()
     say(f"KV {trial.kv_binding} ({trial.promote_config}): {len(votes)} pending votes")
+    issues = trial.newsletters()
+    if trial.newsletter_config:
+        say(
+            f"KV {trial.newsletter_binding} ({trial.newsletter_config}):"
+            f" {len(issues)} stored newsletter issues"
+        )
+    if trial.newsletter_note:
+        say(trial.newsletter_note)
     say("Kept: " + "; ".join(f"{t} ({why})" for t, why in KEPT.items()))
     say("Kept: the Workers, their secrets, the Access policy, the Pages project and its digests.")
-    return present, votes
+    return present, votes, issues
 
 
 def _runner(env: dict[str, str]) -> Runner:
@@ -298,30 +382,36 @@ def main(
     args = build_parser().parse_args(argv)
     try:
         trial = Trial(args.slug, run or _runner(wrangler_env(args.slug)))
-        present, votes = survey(trial, say)
+        present, votes, issues = survey(trial, say)
         statements = reset_sql(present, shipped_defaults(), now())
         say("SQL the write sends, in one call:")
         for statement in statements:
             say(f"  {statement};")
         if votes:
             say(f"and a KV bulk delete of the {len(votes)} pending votes.")
+        if issues:
+            say(f"and a KV bulk delete of the {len(issues)} stored newsletter issues.")
         if not args.yes:
             say("Dry run: nothing was written. Run again with --yes to write.")
             return 0
         trial.d1_query("; ".join(statements), write=True)
         if votes:
             trial.delete_votes(votes)
+        if issues:
+            trial.delete_newsletters(issues)
         left = trial.rows(count_sql(present))[0] if present else {}
         still = {t: n for t, n in left.items() if n}
         listed = trial.votes()
+        issues_left = trial.newsletters()
         # WHY a warning, not a failure: both writes succeeded, and a recount can still see
         # rows. KV listing is eventually consistent, so a deleted vote can list for a while,
         # and an rss poll already running can buffer articles between delete and recount.
-        if still or listed:
+        if still or listed or issues_left:
+            kept = f" and {len(issues_left)} newsletter issues" if trial.newsletter_config else ""
             print(
                 f"warning: after the reset, {still or 'no table'} still holds rows and"
-                f" {len(listed)} votes still list in KV. Run the dry run again in a minute:"
-                " what stays then is real.",
+                f" {len(listed)} votes{kept} still list in KV. Run the dry run again in a"
+                " minute: what stays then is real.",
                 file=sys.stderr,
             )
         say(f"Reset {args.slug}: it now waits for onboarding.")

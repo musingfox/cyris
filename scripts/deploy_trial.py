@@ -14,10 +14,13 @@ rendered again with the new digest from the wizard's saved inputs
 (`.env.trial-<slug>-wizard`), whose IMAGE_TAG and IMAGE_DIGEST are then updated,
 so a later wizard run does not render the old image back.
 
-The rss and vote Workers deploy too when their directory changed since the commit
-each was last deployed from, or when --rss or --promote asks; --app-only skips
-both. That commit is kept per Worker in the wizard state (RSS_WORKER_COMMIT,
-PROMOTE_WORKER_COMMIT) and moves only when that Worker deploys, so a skipped or
+The rss, vote and newsletter Workers deploy too when their directory changed since the
+commit each was last deployed from, or when --rss, --promote or --newsletter asks;
+--app-only skips all three. The newsletter Worker belongs only to a trial whose wizard
+state holds TRIAL_NEWSLETTER_KV_ID: its config is rendered again with that id, and a
+trial without one is rendered and deployed as before, with no newsletter Worker. That
+commit is kept per Worker in the wizard state (RSS_WORKER_COMMIT, PROMOTE_WORKER_COMMIT,
+NEWSLETTER_WORKER_COMMIT) and moves only when that Worker deploys, so a skipped or
 failed Worker deploy is offered again next time; before the first run it is the
 commit IMAGE_TAG names, the one the wizard provisioned with.
 
@@ -26,19 +29,33 @@ with the service token in `.env.trial-<slug>.access`, and fails unless it names
 this commit. The wait is
 deploy.yml's: a warm instance keeps answering from the image it started with.
 
+Then it runs `cyris doctor` once against the trial's settings, locally, from
+`.env.trial-<slug>` with `CYRIS_STORE_BACKEND=d1`, and fails naming what doctor
+reports as an error. /api/build only says which image answers: a D1 missing a
+required settings key still serves it while every scheduled run exits at once.
+
 --dry-run resolves the image, renders the config and runs `wrangler deploy
---dry-run` for each Worker it would deploy; it deploys nothing and saves nothing.
+--dry-run` for each Worker it would deploy; it deploys nothing and saves nothing. It makes
+the same checks of `.env.trial-<slug>` and `.env.trial-<slug>.access` as the real run, before
+any deploy.
+
+A newsletter config on disk that the wizard state holds no TRIAL_NEWSLETTER_KV_ID for is
+reported in one line, never read or validated, and left as it is.
 
 Usage:
-  deploy_trial.py --slug S [--rss] [--promote] [--app-only] [--dry-run] [--wait SECONDS]
+  deploy_trial.py --slug S [--rss] [--promote] [--newsletter] [--app-only] [--dry-run]
+                  [--wait SECONDS]
 """
 
 import argparse
+import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 import httpx
 import provision_trial
@@ -53,10 +70,30 @@ ACCESS_HEADERS = {
     "CYRIS_ACCESS_CLIENT_ID": "CF-Access-Client-Id",
     "CYRIS_ACCESS_CLIENT_SECRET": "CF-Access-Client-Secret",
 }
-WORKER_DIRS = {"rss": "workers/rss", "promote": "workers/promote"}
+WORKER_DIRS = {
+    "rss": "workers/rss",
+    "promote": "workers/promote",
+    "newsletter": "workers/newsletter",
+}
+# A trial wired before the newsletter Worker has no KV id for it, and so gets no such Worker.
+NEWSLETTER_KV_KEY = provision_trial.NEWSLETTER_KV_KEY
+# The Workers with a bun lockfile of their own to install before a deploy.
+INSTALLED_WORKERS = ("rss", "newsletter")
 STATE_KEYS = ("DOMAIN", "ACCOUNT_ID", "TRIAL_KV_ID", "TRIAL_D1_ID")
-BASELINE_KEYS = {"rss": "RSS_WORKER_COMMIT", "promote": "PROMOTE_WORKER_COMMIT"}
+BASELINE_KEYS = {
+    "rss": "RSS_WORKER_COMMIT",
+    "promote": "PROMOTE_WORKER_COMMIT",
+    "newsletter": "NEWSLETTER_WORKER_COMMIT",
+}
 UNKNOWN = "unknown"
+DOCTOR_DB_KEY = "CYRIS_STORE_DATABASE_ID"
+DOCTOR_FAIL = "✗"
+# What docker/entrypoint.sh's `run` role exports unless the environment already has it, so
+# doctor judges the settings the scheduled run starts from. The backend is forced, never kept.
+RUN_ROLE_DEFAULTS = {
+    "CYRIS_HTML_OUTPUT_ENABLED": "true",
+    "CYRIS_PROMOTE_PUBLISH_ENABLED": "true",
+}
 
 
 class DeployError(Exception):
@@ -80,6 +117,11 @@ def recorded_digest(message: str, commit: str) -> str | None:
     return found.group(1) if found else None
 
 
+def trial_workers(state: dict[str, str]) -> tuple[str, ...]:
+    """The optional Workers this trial has: the newsletter one only with its KV id saved."""
+    return tuple(w for w in WORKER_DIRS if w != "newsletter" or state.get(NEWSLETTER_KV_KEY))
+
+
 def build_matches(online: str, commit: str) -> bool:
     """Whether /api/build's git_sha names the deployed commit. An empty sha names none."""
     return bool(online) and online == commit
@@ -99,6 +141,20 @@ def workers_to_deploy(
             out[worker] = "the commit it was last deployed from is unknown"
         elif diff:
             out[worker] = f"{WORKER_DIRS[worker]}/ changed"
+    return out
+
+
+def doctor_failures(report: str) -> list[str]:
+    """The failed checks in `cyris doctor`'s report, each with the indented fix under it."""
+    out: list[str] = []
+    failing = False
+    for line in report.splitlines():
+        if line.startswith(DOCTOR_FAIL):
+            failing = True
+        elif not line.startswith(" "):
+            failing = False
+        if failing:
+            out.append(line)
     return out
 
 
@@ -163,7 +219,8 @@ class Deploy:
         it moves with every app deploy, which a skipped or failed Worker deploy does not.
         """
         out: dict[str, str | None] = {}
-        for worker, key in BASELINE_KEYS.items():
+        for worker in trial_workers(state):
+            key = BASELINE_KEYS[worker]
             if key in state:
                 out[worker] = None if state[key] == UNKNOWN else state[key]
             elif tag := state.get("IMAGE_TAG"):
@@ -175,8 +232,8 @@ class Deploy:
 
     def changed(self, baselines: dict[str, str | None], commit: str) -> dict[str, bool | None]:
         out: dict[str, bool | None] = {}
-        for worker, path in WORKER_DIRS.items():
-            before = baselines[worker]
+        for worker, before in baselines.items():
+            path = WORKER_DIRS[worker]
             if not before:
                 out[worker] = None
                 continue
@@ -190,6 +247,9 @@ class Deploy:
             raise DeployError(
                 f".env.trial-{self.slug}-wizard lacks {', '.join(missing)}: run the wizard first"
             )
+        newsletter = (
+            ["--newsletter-kv-id", state[NEWSLETTER_KV_KEY]] if state.get(NEWSLETTER_KV_KEY) else []
+        )
         code = provision_trial.main(
             [
                 "render",
@@ -203,6 +263,7 @@ class Deploy:
                 digest,
                 "--kv-id",
                 state["TRIAL_KV_ID"],
+                *newsletter,
                 "--d1-id",
                 state["TRIAL_D1_ID"],
             ]
@@ -229,6 +290,15 @@ class Deploy:
         self.say("$ " + " ".join(cmd))
         self.sh(cmd)
 
+    def deploy_workers(self, workers: dict[str, str], commit: str | None = None) -> None:
+        """Install and deploy each Worker; with a `commit`, record it as that Worker's baseline."""
+        for worker in workers:
+            if worker in INSTALLED_WORKERS:
+                self.sh(["bun", "install", "--frozen-lockfile", "--cwd", WORKER_DIRS[worker]])
+            self.deploy(worker)
+            if commit:
+                write_state(self.slug, {BASELINE_KEYS[worker]: commit})
+
     def access_headers(self) -> dict[str, str]:
         name = f".env.trial-{self.slug}.access"
         values = provision_trial.env_file(name)
@@ -236,6 +306,74 @@ class Deploy:
         if missing:
             raise DeployError(f"{name} holds no {' or '.join(missing)} to sign in with")
         return {header: values[var] for var, header in ACCESS_HEADERS.items()}
+
+    def doctor_env(self, state: dict[str, str]) -> str:
+        """The trial's `.env`, as the run container reads it, on D1; read before any deploy.
+
+        Doctor applies the schema to the database that file names, so that database must be
+        the one the wizard state holds for this trial. The id is read as cyris reads it, the
+        value stripped, which is why a file naming it twice is refused: cyris would take the
+        first line, `provision_trial.env_file` the last. A dry run reads it too. The file is read
+        once, here.
+        """
+        name = f".env.trial-{self.slug}"
+        path = ROOT / name
+        if not path.exists():
+            raise DeployError(f"{name} not found: doctor needs it to reach the trial's D1")
+        lines = path.read_text(encoding="utf-8").splitlines()
+        held_at = [
+            (number, line.partition("=")[2].strip())
+            for number, line in enumerate(lines, 1)
+            if (stripped := line.strip())
+            and not stripped.startswith("#")
+            and "=" in stripped
+            and stripped.partition("=")[0].strip() == DOCTOR_DB_KEY
+        ]
+        if len(held_at) > 1:
+            numbers = ", ".join(str(number) for number, _ in held_at)
+            raise DeployError(
+                f"{name} has {DOCTOR_DB_KEY} on lines {numbers}: cyris takes the first, the"
+                " scripts here the last, so doctor could apply the schema to a database that is"
+                " not this trial's. Keep one line"
+            )
+        named = held_at[0][1] if held_at else ""
+        if not named or named != state.get("TRIAL_D1_ID"):
+            raise DeployError(
+                f"{name} has {DOCTOR_DB_KEY}={named or '(none)'}, but .env.trial-{self.slug}-wizard"
+                f" has TRIAL_D1_ID={state.get('TRIAL_D1_ID') or '(none)'}: cyris doctor applies the"
+                " schema to the database it names, so it is not run on one that is not this trial's"
+            )
+        held = {line.split("=", 1)[0].strip() for line in lines}
+        kept = [line for line in lines if line.split("=", 1)[0].strip() != "CYRIS_STORE_BACKEND"]
+        defaults = [f"{k}={v}" for k, v in RUN_ROLE_DEFAULTS.items() if k not in held]
+        return "\n".join([*kept, *defaults, "CYRIS_STORE_BACKEND=d1"]) + "\n"
+
+    def doctor(self, dotenv: str) -> None:
+        """Run `cyris doctor` once on the trial's settings; an error in its report fails the deploy.
+
+        cyris reads only the `.env` beside its config file, so both go in one temporary
+        directory. The process starts from an empty environment, as the wizard's own
+        `settings push` does, so nothing the shell exported can stand in for the trial's.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            config, sources = Path(tmp) / "cyris.toml", Path(tmp) / "sources.yaml"
+            config.write_text("", encoding="utf-8")
+            sources.write_text("sources: []\n", encoding="utf-8")
+            (Path(tmp) / ".env").write_text(dotenv, encoding="utf-8")
+            (Path(tmp) / ".env").chmod(0o600)
+            keep = [f"{k}={os.environ[k]}" for k in ("HOME", "PATH") if k in os.environ]
+            cmd = ["env", "-i", *keep, "uv", "run", "cyris", "doctor"]
+            cmd += ["--config", str(config), "--sources", str(sources)]
+            self.say("$ " + " ".join(cmd))
+            done = self._run(cmd)
+        if done.returncode == 0:
+            self.say("cyris doctor: ready to run")
+            return
+        failed = doctor_failures(done.stdout) or [done.stderr.strip() or done.stdout.strip()]
+        raise DeployError(
+            f"cyris doctor reports an error on {self.slug}, though the build matches:\n"
+            + "\n".join(failed)
+        )
 
     def verify(
         self,
@@ -261,14 +399,26 @@ class Deploy:
         raise DeployError(f"{base} does not report the deployed commit {commit}")
 
 
-def _snapshot(slug: str) -> dict[str, bytes]:
-    paths = provision_trial.rendered_paths(slug).values()
-    return {rel: (ROOT / rel).read_bytes() for rel in paths}
+def _snapshot(slug: str) -> dict[str, bytes | None]:
+    """Every config a render may write; None for the newsletter's when it is not rendered yet.
+
+    A newsletter config the state holds no KV id for is not one a render writes, so it is not here.
+    """
+    paths = list(provision_trial.rendered_paths(slug).values())
+    if provision_trial.has_newsletter(slug):
+        paths.append(provision_trial.newsletter_path(slug))
+    return {
+        rel: (ROOT / rel).read_bytes() if (ROOT / rel).exists() else None
+        for rel in dict.fromkeys(paths)
+    }
 
 
-def _restore(snapshot: dict[str, bytes]) -> None:
+def _restore(snapshot: dict[str, bytes | None]) -> None:
     for rel, data in snapshot.items():
-        (ROOT / rel).write_bytes(data)
+        if data is None:
+            (ROOT / rel).unlink(missing_ok=True)
+        else:
+            (ROOT / rel).write_bytes(data)
 
 
 def _runner(env: dict[str, str]) -> Runner:
@@ -287,6 +437,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--slug", required=True, help="the trial's slug, e.g. trial1")
     parser.add_argument("--rss", action="store_true", help="deploy the rss Worker too")
     parser.add_argument("--promote", action="store_true", help="deploy the vote Worker too")
+    parser.add_argument(
+        "--newsletter", action="store_true", help="deploy the newsletter Worker too"
+    )
     parser.add_argument("--app-only", action="store_true", help="deploy the app Worker alone")
     parser.add_argument("--dry-run", action="store_true", help="deploy nothing, save nothing")
     parser.add_argument("--wait", type=float, default=WAIT_SECONDS, help="seconds per attempt")
@@ -301,32 +454,46 @@ def main(
     sleep: Callable[[float], None] = time.sleep,
 ) -> int:
     args = build_parser().parse_args(argv)
-    if args.app_only and (args.rss or args.promote):
-        print("--app-only cannot be combined with --rss or --promote", file=sys.stderr)
+    if args.app_only and (args.rss or args.promote or args.newsletter):
+        print(
+            "--app-only cannot be combined with --rss, --promote or --newsletter", file=sys.stderr
+        )
         return 2
     try:
         provision_trial.load_rendered(args.slug)
         step = Deploy(args, run or _runner(wrangler_env(args.slug)), say)
         commit = step.commit()
         # Read before anything deploys, so a deploy that cannot be checked never starts.
-        headers = {} if args.dry_run else step.access_headers()
+        state = provision_trial.wizard_state(args.slug)
+        if note := provision_trial.newsletter_note(args.slug):
+            say(note)
+        headers = step.access_headers()
+        dotenv = step.doctor_env(state)
         digest = step.digest(commit)
         say(f"{image_tag(commit)}: {commit} -> {digest}")
-        state = provision_trial.wizard_state(args.slug)
         rendered = _snapshot(args.slug)
         app_deployed = False
         try:
+            workers = trial_workers(state)
+            if args.newsletter and "newsletter" not in workers:
+                raise DeployError(
+                    f".env.trial-{args.slug}-wizard has no {NEWSLETTER_KV_KEY}: this trial has"
+                    " no newsletter Worker. Run the wizard from stage 5 to add one"
+                )
             configs = step.render(state, digest)
-            forced = {w for w in WORKER_DIRS if getattr(args, w)}
+            forced = {w for w in workers if getattr(args, w)}
             baselines = step.baselines(state)
             changed = step.changed(baselines, commit)
             extra = workers_to_deploy(changed, forced, args.app_only)
-            for worker in WORKER_DIRS:
+            for worker in workers:
                 why = f"deploy ({extra[worker]})" if worker in extra else "unchanged, skipped"
                 say(f"{worker} Worker: {why}")
             step.sh(["bun", "install", "--frozen-lockfile"])
             step.deploy("app")
             app_deployed = not args.dry_run
+            if args.dry_run:
+                # The configs are put back below, so each Worker's dry run reads its own now.
+                step.deploy_workers(extra)
         finally:
             # The configs on disk keep naming the image the trial runs.
             if not app_deployed:
@@ -336,22 +503,20 @@ def main(
             pinned = {
                 key: baselines[worker] or UNKNOWN
                 for worker, key in BASELINE_KEYS.items()
-                if key not in state
+                if worker in workers and key not in state
             }
             image = {"IMAGE_TAG": image_tag(commit), "IMAGE_DIGEST": digest}
             write_state(args.slug, image | pinned)
-        if "rss" in extra:
-            step.sh(["bun", "install", "--frozen-lockfile", "--cwd", WORKER_DIRS["rss"]])
-        for worker in extra:
-            step.deploy(worker)
-            if not args.dry_run:
-                write_state(args.slug, {BASELINE_KEYS[worker]: commit})
+        if not args.dry_run:
+            step.deploy_workers(extra, commit)
         if args.dry_run:
             say("Dry run: nothing was deployed, and the configs and wizard state are unchanged.")
             return 0
         host = configs["app"]["routes"][0]["pattern"]
         step.verify(commit, f"https://{host}", headers, fetch, sleep)
-        say(f"https://{host} serves {commit}: the trial runs this release.")
+        say(f"https://{host} serves {commit}.")
+        step.doctor(dotenv)
+        say("The trial runs this release and its settings are complete.")
         return 0
     except (DeployError, provision_trial.ProductionNameError, provision_trial.DriftError) as exc:
         print(str(exc), file=sys.stderr)

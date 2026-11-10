@@ -37,6 +37,8 @@ NEWSLETTER = "workers/newsletter/wrangler.toml"
 _LABEL = r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?"
 _DOMAIN = rf"^{_LABEL}(\.{_LABEL})+$"
 SLUG = r"[a-z][a-z0-9]{1,19}"
+# The wizard state key whose presence alone says the trial has a newsletter Worker.
+NEWSLETTER_KV_KEY = "TRIAL_NEWSLETTER_KV_ID"
 
 
 class DriftError(Exception):
@@ -255,13 +257,44 @@ def _names(slug: str, n: dict[str, str]) -> dict[str, str]:
     }
 
 
+def newsletter_path(slug: str) -> str:
+    return f"workers/newsletter/wrangler.trial-{slug}.toml"
+
+
+def has_newsletter(slug: str) -> bool:
+    """Whether the trial has a newsletter Worker: its wizard state holds the KV id, nothing else."""
+    return bool(wizard_state(slug).get(NEWSLETTER_KV_KEY))
+
+
+def newsletter_note(slug: str) -> str:
+    """One line for a newsletter config on disk that the wizard state has no KV id for, else "".
+
+    Such a config is never read or validated and nothing is done to it: a trial wired before
+    the newsletter Worker has no id, and a stray file does not give it one.
+    """
+    if has_newsletter(slug) or not (ROOT / newsletter_path(slug)).exists():
+        return ""
+    return (
+        f"{newsletter_path(slug)} exists but .env.trial-{slug}-wizard has no {NEWSLETTER_KV_KEY}:"
+        " it is left alone, and so is its NEWSLETTERS KV. To give this trial a newsletter Worker,"
+        f" save that KV's id as {NEWSLETTER_KV_KEY} in the wizard state and run this again."
+    )
+
+
 def rendered_paths(slug: str) -> dict[str, str]:
-    """Where `render` writes the app, promote and rss configs, relative to the repo root."""
-    return {
+    """Where `render` writes a trial's configs, relative to the repo root.
+
+    The app, promote and rss configs always; the newsletter config only when the wizard
+    state holds the trial's newsletter KV id and the config has been rendered.
+    """
+    paths = {
         "app": f"wrangler.trial-{slug}.toml",
         "promote": f"workers/promote/wrangler.trial-{slug}.toml",
         "rss": f"workers/rss/wrangler.trial-{slug}.toml",
     }
+    if has_newsletter(slug) and (ROOT / newsletter_path(slug)).exists():
+        paths["newsletter"] = newsletter_path(slug)
+    return paths
 
 
 def production_names() -> set[str]:
@@ -269,11 +302,15 @@ def production_names() -> set[str]:
     n = _template_names()
     d1 = _rss_d1()
     kv = _get(PROMOTE, _load(PROMOTE), "kv_namespaces", 0, "id")
-    return {*n.values(), d1["database_name"], d1["database_id"], kv}
+    newsletter_kv = _get(NEWSLETTER, _load(NEWSLETTER), "kv_namespaces", 0, "id")
+    return {*n.values(), d1["database_name"], d1["database_id"], kv, newsletter_kv}
 
 
 def load_rendered(slug: str) -> dict[str, dict]:
-    """A trial's three rendered configs, parsed, once each names only this trial's resources.
+    """A trial's rendered configs, parsed, once each names only this trial's resources.
+
+    The newsletter config is checked when the wizard state holds the trial's KV id for it, and
+    left out, unread, when it does not.
 
     The scripts that act on a live trial (`reset_trial.py`, `deploy_trial.py`) call
     this before any wrangler command, so a slug that fails the naming rule, a config
@@ -305,15 +342,26 @@ def load_rendered(slug: str) -> dict[str, dict]:
         f"{rendered_paths(slug)['rss']} name": (out["rss"].get("name"), want["rss"]),
         f"{rendered_paths(slug)['rss']} database_name": (d1.get("database_name"), want["d1"]),
     }
+    ids = [
+        (f"{rendered_paths(slug)['rss']} database_id", d1.get("database_id")),
+        (f"{rendered_paths(slug)['promote']} kv_namespaces[0].id", kv.get("id")),
+    ]
+    if "newsletter" in out:
+        rel = rendered_paths(slug)["newsletter"]
+        newsletter_kv = (out["newsletter"].get("kv_namespaces") or [{}])[0]
+        named[f"{rel} name"] = (out["newsletter"].get("name"), want["newsletter"])
+        ids.append((f"{rel} kv_namespaces[0].id", newsletter_kv.get("id")))
+        if newsletter_kv.get("binding") != "NEWSLETTERS":
+            raise ProductionNameError(
+                f"{rel} kv_namespaces[0].binding is {newsletter_kv.get('binding')!r},"
+                " expected 'NEWSLETTERS'"
+            )
     for label, (got, expected) in named.items():
         if got in taken:
             raise ProductionNameError(f"{label} is {got!r}, a production name")
         if got != expected:
             raise ProductionNameError(f"{label} is {got!r}, expected {expected!r}")
-    for label, got in (
-        (f"{rendered_paths(slug)['rss']} database_id", d1.get("database_id")),
-        (f"{rendered_paths(slug)['promote']} kv_namespaces[0].id", kv.get("id")),
-    ):
+    for label, got in ids:
         if not got or got in taken:
             raise ProductionNameError(f"{label} is {got!r}, production's or empty")
     return out
@@ -390,8 +438,7 @@ def cmd_render(args, parser) -> int:
         paths["rss"]: _render_rss(args, n, t),
     }
     if args.newsletter_kv_id:
-        rel = f"workers/newsletter/wrangler.trial-{args.slug}.toml"
-        outputs[rel] = _render_newsletter(args, n, t)
+        outputs[newsletter_path(args.slug)] = _render_newsletter(args, n, t)
     for rel, text in outputs.items():
         (ROOT / rel).write_text(text, encoding="utf-8")
         print(rel)

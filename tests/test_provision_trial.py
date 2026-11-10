@@ -8,6 +8,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+from trial_tree import SLUG, load, make_tree
 
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
@@ -652,3 +653,59 @@ def test_a_root_only_pattern_misses_the_worker_directories(tmp_path: Path) -> No
     repo = _repo_with_gitignore(tmp_path, "/wrangler.trial-*.toml")
 
     assert [_ignored(repo, p) for p in OUTPUTS] == [0, 1, 1, 1]
+
+
+# --- the newsletter config in rendered_paths and load_rendered
+
+TEMPLATE_NEWSLETTER_KV = "eb4ebc842d024684aa4223936ec8e4d1"
+
+
+@pytest.fixture
+def rendered(tmp_path: Path, monkeypatch):
+    def make(*, newsletter: bool):
+        tree = make_tree(tmp_path, newsletter=newsletter)
+        return tree, load(tree, "provision_trial", monkeypatch)
+
+    return make
+
+
+def test_rendered_paths_lists_the_newsletter_config_only_when_the_trial_has_one(rendered) -> None:
+    _, with_one = rendered(newsletter=True)
+
+    assert with_one.rendered_paths(SLUG)["newsletter"] == OUT_NEWSLETTER
+    assert set(with_one.load_rendered(SLUG)) == {"app", "promote", "rss", "newsletter"}
+
+
+def test_a_trial_without_a_newsletter_config_loads_as_before(rendered) -> None:
+    _, old = rendered(newsletter=False)
+
+    assert set(old.rendered_paths(SLUG)) == {"app", "promote", "rss"}
+    assert set(old.load_rendered(SLUG)) == {"app", "promote", "rss"}
+
+
+@pytest.mark.parametrize(
+    "old,new,match",
+    [
+        ('name = "cyris-newsletter-alice"', 'name = "cyris-newsletter"', "a production name"),
+        ('name = "cyris-newsletter-alice"', 'name = "cyris-newsletter-bob"', "expected"),
+        (NL_KV, TEMPLATE_NEWSLETTER_KV, "production's or empty"),
+        ('binding = "NEWSLETTERS"', 'binding = "OTHER"', "binding"),
+    ],
+)
+def test_a_newsletter_config_naming_production_or_drifted_is_refused(
+    rendered, old: str, new: str, match: str
+) -> None:
+    tree, mod = rendered(newsletter=True)
+    path = tree / OUT_NEWSLETTER
+    text = path.read_text(encoding="utf-8")
+    assert text.count(old) == 1
+    path.write_text(text.replace(old, new), encoding="utf-8")
+
+    with pytest.raises(mod.ProductionNameError, match=match):
+        mod.load_rendered(SLUG)
+
+
+def test_production_names_include_the_newsletter_templates_kv_id(rendered) -> None:
+    _, mod = rendered(newsletter=False)
+
+    assert TEMPLATE_NEWSLETTER_KV in mod.production_names()

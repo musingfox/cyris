@@ -83,7 +83,8 @@ case "$*" in
     [[ -n "$out" ]] && printf '%s' "${FAKE_SETTINGS_BODY:-}" > "$out"
     echo "${FAKE_SETTINGS_CODE:-302}" ;;
   *"/newsletters"*)
-    if [[ $bearer == yes ]]; then echo "${FAKE_NEWSLETTERS_CODE:-200}"
+    if [[ -n "${FAKE_NEWSLETTERS_DOWN:-}" ]]; then echo 000   # curl's word for no answer
+    elif [[ $bearer == yes ]]; then echo "${FAKE_NEWSLETTERS_CODE:-200}"
     elif [[ -n "${FAKE_NEWSLETTERS_OPEN:-}" ]]; then echo 200
     else echo 401; fi ;;
   *"pages.dev"*) echo 200 ;;
@@ -110,7 +111,8 @@ case " $* " in
   *" --dry-run "*) ;;
   *" deploy "*)
     case "$*" in
-      *"workers/newsletter/"*) echo "https://n-t1.x.workers.dev" ;;
+      *"workers/newsletter/"*)
+        [[ -n "${FAKE_NEWSLETTER_NO_URL:-}" ]] || echo "https://n-t1.x.workers.dev" ;;
       *"workers/rss/"*) echo "https://r-t1.x.workers.dev" ;;
       *) echo "https://w-t1.x.workers.dev" ;;
     esac ;;
@@ -492,6 +494,70 @@ def test_a_declined_newsletter_deploy_keeps_the_url_and_still_probes(rig) -> Non
     assert "workers/newsletter/wrangler.trial-t1.toml --env-file" not in run.calls
     assert len([ln for ln in run.calls.splitlines() if "/newsletters" in ln]) == 2
     assert "TRIAL_NEWSLETTER_URL=https://n-t1.x.workers.dev" in run.state.splitlines()
+
+
+def test_a_refused_newsletter_deploy_with_a_dead_url_says_the_deploy_was_refused(rig) -> None:
+    r = rig(_stages(13), FAKE_POLL_FEEDS="1", FAKE_NEWSLETTERS_DOWN="1")
+    _seed_rss_token(r)
+
+    run = r.run(stdin=START + "y\n\nn\n\n" + TAIL)
+
+    assert run.code == 1
+    assert "https://n-t1.x.workers.dev/newsletters got no answer" in run.out
+    assert "its deploy was refused here" in run.out
+    assert "answered 000" not in run.out
+
+
+def test_an_unreadable_newsletter_url_says_so_and_keeps_the_saved_one(rig) -> None:
+    r = rig(_stages(13), FAKE_POLL_FEEDS="1", FAKE_NEWSLETTERS_DOWN="1", FAKE_NEWSLETTER_NO_URL="1")
+    _seed_rss_token(r)
+
+    run = r.run(stdin=START + "y\n\ny\nhttps://n-t1.x.workers.dev\n" + TAIL)
+
+    assert run.code == 1
+    assert "its URL could not be read from the deploy output" in run.out
+    assert "answered 000" not in run.out
+    assert "TRIAL_NEWSLETTER_URL=https://n-t1.x.workers.dev" in run.state.splitlines()
+
+
+def test_a_newsletter_url_the_deploy_printed_that_does_not_answer_says_so(rig) -> None:
+    r = rig(_stages(13), FAKE_POLL_FEEDS="1", FAKE_NEWSLETTERS_DOWN="1")
+    _seed_rss_token(r)
+
+    run = r.run(stdin=START + "y\n\ny\n\n" + TAIL)
+
+    assert run.code == 1
+    assert "though its deploy printed this URL: it may not be live yet" in run.out
+    assert "answered 000" not in run.out
+
+
+def test_a_refused_rss_deploy_with_a_dead_url_says_the_deploy_was_refused(rig) -> None:
+    r = rig(_stages(13), FAKE_STATS_CODE="000")
+
+    run = r.run(stdin=_answers("n", RSS_URL))
+
+    assert run.code == 1
+    assert f"{RSS_URL}/stats got no answer: its deploy was refused here" in run.out
+    assert "answered 000" not in run.out
+
+
+def test_a_refused_rss_deploy_answering_404_says_the_deploy_was_refused(rig) -> None:
+    r = rig(_stages(13), FAKE_STATS_CODE="404")
+
+    run = r.run(stdin=_answers("n", RSS_URL))
+
+    assert run.code == 1
+    assert f"{RSS_URL}/stats answered 404: its deploy was refused here" in run.out
+    assert "not 401" not in run.out
+
+
+def test_a_404_from_a_url_the_deploy_printed_still_says_what_it_expected(rig) -> None:
+    r = rig(_stages(13), FAKE_STATS_CODE="404")
+
+    run = r.run(stdin=_answers("y", ""))
+
+    assert run.code == 1
+    assert "https://r-t1.x.workers.dev/stats without the bearer answered 404, not 401" in run.out
 
 
 def test_the_names_fake_keys_match_what_provision_trial_prints() -> None:

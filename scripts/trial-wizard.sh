@@ -351,6 +351,44 @@ has_newsletter() {
   return 1
 }
 
+# worker_url NAME VAR RC LOG settles the URL to probe after a gated deploy and records how it
+# was reached in URL_ORIGIN, which `answered` reads. An unreadable log keeps the URL already
+# saved instead of overwriting it with nothing.
+worker_url() {
+  local name="$1" var="$2" rc="$3" log="$4" found=""
+  URL_ORIGIN="deployed"
+  if (( rc == 0 )); then
+    found=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' "$log" | head -1 || true)
+    if [[ -n "$found" ]]; then
+      printf -v "$var" '%s' "$found"
+      write_env "$var" "$found"
+    else
+      URL_ORIGIN="its URL could not be read from the deploy output in $log"
+    fi
+  else
+    URL_ORIGIN="its deploy was refused here"
+  fi
+  ask_match "$var" "$name Worker URL (Enter keeps the one shown):" '^https://[a-z0-9.-]+\.workers\.dev$'
+  write_env "$var" "${!var}"
+}
+
+# answered URL CODE dies when the probe got no HTTP answer at all (curl prints 000), or a 404
+# from a URL this run's deploy did not print, saying how the URL was reached instead of
+# reporting the code as a wrong answer.
+answered() {
+  local got="got no answer"
+  if [[ "$2" == 404 ]]; then
+    got="answered 404"
+  elif [[ "$2" != 000 ]]; then
+    return 0
+  fi
+  if [[ "$URL_ORIGIN" == deployed ]]; then
+    [[ "$2" == 000 ]] || return 0
+    die "$1 $got, though its deploy printed this URL: it may not be live yet."
+  fi
+  die "$1 $got: $URL_ORIGIN, so the Worker may not exist at that URL."
+}
+
 bearer_header_file() {
   local f
   f=$(mktemp)
@@ -767,13 +805,9 @@ stage_14() {
   gated rss "Deploy the rss Worker with $RSS_CFG?" \
     bunx wrangler deploy --config "$RSS_CFG" --env-file /dev/null --secrets-file "$RSS_ENV" || rc=$?
   [[ $rc -eq 0 || $rc -eq 2 ]] || die "rss Worker deploy failed."
-  if [[ $rc -eq 0 ]]; then
-    TRIAL_RSS_URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' "$LOG_DIR/rss.log" | head -1 || true)
-    write_env TRIAL_RSS_URL "$TRIAL_RSS_URL"
-  fi
-  ask_match TRIAL_RSS_URL "rss Worker URL (Enter keeps the one shown):" '^https://[a-z0-9.-]+\.workers\.dev$'
-  write_env TRIAL_RSS_URL "$TRIAL_RSS_URL"
+  worker_url rss TRIAL_RSS_URL "$rc" "$LOG_DIR/rss.log"
   code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$TRIAL_RSS_URL/stats" || true)
+  answered "$TRIAL_RSS_URL/stats" "$code"
   [[ "$code" == 401 ]] || die "$TRIAL_RSS_URL/stats without the bearer answered $code, not 401."
   printf '  %s✓%s /stats without the bearer → 401\n' "$GREEN" "$RESET"
   poll=$(curl -s -X POST --max-time 120 -H "Authorization: Bearer $TRIAL_WORKER_TOKEN" "$TRIAL_RSS_URL/poll" || true)
@@ -796,18 +830,15 @@ stage_14() {
     gated newsletter "Deploy the newsletter Worker with $NEWSLETTER_CFG?" \
       bunx wrangler deploy --config "$NEWSLETTER_CFG" --env-file /dev/null --secrets-file "$NEWSLETTER_ENV" || rc=$?
     [[ $rc -eq 0 || $rc -eq 2 ]] || die "Newsletter Worker deploy failed."
-    if [[ $rc -eq 0 ]]; then
-      TRIAL_NEWSLETTER_URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' "$LOG_DIR/newsletter.log" | head -1 || true)
-      write_env TRIAL_NEWSLETTER_URL "$TRIAL_NEWSLETTER_URL"
-    fi
-    ask_match TRIAL_NEWSLETTER_URL "Newsletter Worker URL (Enter keeps the one shown):" '^https://[a-z0-9.-]+\.workers\.dev$'
-    write_env TRIAL_NEWSLETTER_URL "$TRIAL_NEWSLETTER_URL"
+    worker_url newsletter TRIAL_NEWSLETTER_URL "$rc" "$LOG_DIR/newsletter.log"
     code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$TRIAL_NEWSLETTER_URL/newsletters" || true)
+    answered "$TRIAL_NEWSLETTER_URL/newsletters" "$code"
     [[ "$code" == 401 ]] || die "$TRIAL_NEWSLETTER_URL/newsletters without the bearer answered $code, not 401."
     printf '  %s✓%s /newsletters without the bearer → 401\n' "$GREEN" "$RESET"
     hdr=$(bearer_header_file)
     code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 -H "@$hdr" "$TRIAL_NEWSLETTER_URL/newsletters" || true)
     rm -f "$hdr"
+    answered "$TRIAL_NEWSLETTER_URL/newsletters" "$code"
     [[ "$code" == 200 ]] || die "$TRIAL_NEWSLETTER_URL/newsletters with the bearer answered $code, not 200: the secret did not land."
     printf '  %s✓%s /newsletters with the bearer → 200\n' "$GREEN" "$RESET"
   fi

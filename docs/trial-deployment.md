@@ -148,7 +148,8 @@ The wizard writes these at the repo root, all gitignored:
 
 A trial started before the newsletter Worker existed re-runs from stage 5, with `--from 5`,
 to create its newsletter KV namespace. Without it, stages 8, 9, 14 and 15 skip the
-newsletter Worker and print that command. Its stage 13 pushes the settings alone, and
+newsletter Worker and print that command, and `deploy_trial.py` and `reset_trial.py` leave it
+out too. Its stage 13 pushes the settings alone, and
 `cyris settings push` never overwrites a row, so the tester's sources and `/settings` edits
 stay as they are. `trial1` was wired by hand before then and is left as it is, with no
 migration path.
