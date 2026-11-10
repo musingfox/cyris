@@ -84,7 +84,6 @@ def _deps(tmp_path: Path, db: RecordingD1, sent: list, log_usage=None) -> Deps:
         llm=_llm(),
         fetch_sources=[_Source([_article()])],
         html_writer=HtmlDigestWriter(tmp_path / "html"),
-        publish=None,
         sync_promotions=None,
         log_usage=log_usage or partial(append_usage_d1, client=db),
         tag_store=D1TagStore(db),

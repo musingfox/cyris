@@ -38,6 +38,7 @@ from cyris.domain.models import (
     UsageStats,
 )
 from cyris.domain.topics import topic_id
+from cyris.service_layer import run_digest as run_digest_module
 from cyris.service_layer.ports import NoulAnswer
 from cyris.service_layer.run_digest import RunOptions, _render_site, run_digest
 from cyris.utils.timezone import now_in_timezone
@@ -89,7 +90,6 @@ def make_deps(
         llm=llm,
         fetch_sources=[source],
         html_writer=HtmlDigestWriter(html_dir),
-        publish=None,
         sync_promotions=None,
         log_usage=lambda content: None,
         send_discord=fake_discord,
@@ -347,7 +347,7 @@ async def test_a_dry_run_shows_the_scoring_tags_on_the_pebble_and_stores_none(
 
 
 async def test_publish_outcome_reaches_discord(
-    tmp_path: Path, caplog: pytest.LogCaptureFixture
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A dead publish must announce itself; silently dropping the link is what
     made the missing 2026-08-18/2026-08-20 digest links look like normal runs."""
@@ -395,6 +395,8 @@ async def test_publish_outcome_reaches_discord(
             path.write_text("<html></html>")
             return path
 
+    monkeypatch.setattr(run_digest_module, "_render_site", lambda *_a, **_k: {})
+
     async def run_with(
         publish_ok: bool,
         run_dir: Path,
@@ -417,7 +419,7 @@ async def test_publish_outcome_reaches_discord(
         deps = replace(
             deps,
             html_writer=StubHtmlWriter(),
-            publish=lambda _slug: publish_ok,
+            publish_site=lambda _pages, _slug: publish_ok,
             send_discord=capture,
             worker_domains=worker_domains,
         )

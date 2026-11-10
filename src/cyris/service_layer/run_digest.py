@@ -914,16 +914,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
                 except Exception as e:
                     logger.error("Failed to write HTML digest: %s", e)
 
-                if (
-                    report.html_path is not None
-                    and deps.publish is not None
-                    and cfg.app.promote.pages_project
-                ):
-                    published = deps.publish(slug)
-
-            if deps.publish_site is not None or (
-                deps.publish is not None and cfg.app.promote.pages_project
-            ):
+            if deps.publish_site is not None:
                 if published:
                     report.slug = slug
                     # Cloudflare Pages serves the extensionless clean URL.

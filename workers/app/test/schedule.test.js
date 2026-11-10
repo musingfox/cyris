@@ -213,8 +213,6 @@ describe("planTick", () => {
 
     it("no D1 to read", async () => {
       const fetchImpl = tickD1();
-      const env = { ...ENV, CYRIS_STORE_BACKEND: "json" };
-      expect(await planTick({ env, fetchImpl, now: () => TAIPEI_9AM })).toEqual({});
       expect(await planTick({ env: {}, fetchImpl, now: () => TAIPEI_9AM })).toEqual({});
       expect(fetchImpl.calls).toHaveLength(0);
     });
@@ -242,7 +240,7 @@ describe("readTimeZone", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     expect(await readTimeZone({ env: ENV, fetchImpl: failing })).toBeNull();
     const unused = d1(() => Response.json(settings(SCHEDULE)));
-    expect(await readTimeZone({ env: { ...ENV, CYRIS_STORE_BACKEND: "json" }, fetchImpl: unused })).toBeNull();
+    expect(await readTimeZone({ env: {}, fetchImpl: unused })).toBeNull();
     expect(unused.calls).toHaveLength(0);
   });
 });

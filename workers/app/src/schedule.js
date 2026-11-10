@@ -47,7 +47,7 @@ async function queryD1({ env, fetchImpl, timeoutMs, sql, params, what }) {
   const account = env.CLOUDFLARE_ACCOUNT_ID;
   const database = env.CYRIS_STORE_DATABASE_ID;
   const token = env.CLOUDFLARE_API_TOKEN;
-  if (env.CYRIS_STORE_BACKEND === "json" || !account || !database || !token) return null;
+  if (!account || !database || !token) return null;
   try {
     const response = await fetchImpl(`${ACCOUNTS_API}/${account}/d1/database/${database}/query`, {
       method: "POST",

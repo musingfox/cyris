@@ -84,7 +84,6 @@ const INCOMPLETE = [
       [`with an empty ${name}`, { ...ENV, [name]: "" }],
     ];
   }),
-  ["on the json backend", { ...ENV, CYRIS_STORE_BACKEND: "json" }],
 ];
 
 // Every failed or unusable answer the reader must survive; the token checks reuse them.

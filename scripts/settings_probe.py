@@ -2388,9 +2388,9 @@ CHECKS: list[Check] = [
         act="""await waitFor(() => visible($("#digest-missing")), "the category notice");""",
         script="""
             const text = $("#digest-missing").textContent;
-            expect(text.startsWith("Missing from cyris.toml: Style."), text);
+            expect(text.startsWith("Not set yet: Style."), text);
         """,
-        sabotage="""$("#digest-missing").textContent = "Not set yet: Style.";""",
+        sabotage="""$("#digest-missing").textContent = "Missing: Style.";""",
     ),
     Check(
         id="missing-none-when-set",
@@ -3306,7 +3306,7 @@ document.addEventListener("click", (event) => {
               await waitFor(() => same(panels(), [tab]), tab);
               const notice = noticeOf(tab);
               ctx.notices[tab] = visible(notice) && notice.classList.contains("err")
-                && notice.textContent.includes("Edit cyris.toml instead.");
+                && notice.textContent.includes("nothing can be saved here.");
             }
             setValue($("#style-prompt"), "Shortest");
         """,
@@ -3329,7 +3329,7 @@ document.addEventListener("click", (event) => {
             setValue($("#e-tags", editor()), "x");
         """,
         script="""
-            const reason = "No writable source table here — edit sources.yaml instead.";
+            const reason = "No writable source table here.";
             expect(!$(".settings-nav a.dirty"), "Sources is marked unsaved");
             expect($("#add-source").disabled, "Add source is enabled");
             const toolbar = $("#sources-notice");

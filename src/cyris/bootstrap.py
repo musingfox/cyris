@@ -327,7 +327,6 @@ class Deps:
     llm: LLMClient | None  # None ⇒ degraded (excerpt-only) mode
     fetch_sources: list[FetchSource]
     html_writer: Any | None  # HtmlDigestWriter when html_output.enabled
-    publish: Callable[[str], bool] | None
     sync_promotions: Callable[[], SyncResult] | None
     log_usage: Callable[..., None]
     tag_store: Any | None = None
@@ -535,7 +534,6 @@ def build_deps(
         llm=build_llm(cfg.app.llm_provider),
         fetch_sources=fetch_sources,
         html_writer=html_writer,
-        publish=None,
         publish_site=publish_site,
         page_serves=page_serves,
         site_filenames=site_filenames,

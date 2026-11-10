@@ -14,7 +14,6 @@ import os
 import re
 import time
 from collections.abc import Callable
-from pathlib import Path
 
 import httpx
 
@@ -141,39 +140,6 @@ def _fetch_live_index(pages_project: str) -> set[str] | None:
         return _parse_archive_anchors(resp.text)
     logger.error("The live archive could not be read at %s", url)
     return None
-
-
-def publish_html_digest(html_dir: Path, pages_project: str, slug: str) -> bool:
-    """Deploy the HTML digest directory to Cloudflare Pages.
-
-    Failures are logged and swallowed — publishing must never block the
-    digest pipeline.
-
-    Args:
-        html_dir: Directory containing the rendered HTML digests.
-        pages_project: Cloudflare Pages project name.
-        slug: Digest slug (``{date}-{period}``) whose page must be live for the
-            deploy to count as successful.
-
-    Returns:
-        True if the digest page is live at its published URL.
-    """
-    if not pages_project:
-        logger.warning("Pages publish enabled but promote.pages_project is empty")
-        return False
-    deadline = _Deadline(PUBLISH_BUDGET_SECONDS)
-    client = _client(pages_project)
-    if client is None:
-        return False
-
-    deployment = _deploy_until_verdict(client, lambda: client.deploy(html_dir), deadline)
-    if deployment is None:
-        return False
-    if not _page_is_live(pages_project, slug, deadline):
-        _report_unlanded(deployment)
-        return False
-    logger.info("Published HTML digest to Pages project %s", pages_project)
-    return True
 
 
 def _project_exists_with_deployments(client: PagesClient, pages_project: str) -> bool:

@@ -139,7 +139,6 @@ async def test_what_an_earlier_hour_stored_reaches_the_digest(
         llm=FakeLLM([]),
         fetch_sources=[FakeSource(at_digest_time)],
         html_writer=HtmlDigestWriter(html_dir),
-        publish=None,
         sync_promotions=None,
         log_usage=lambda content: None,
         send_discord=no_discord,

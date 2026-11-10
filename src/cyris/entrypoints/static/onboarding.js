@@ -706,7 +706,8 @@ function drawProviders(stored) {
   const keyed = PROVIDERS.filter((p) => p.env_var);
   $("o-no-key").hidden = keyed.some((p) => p.configured);
   $("o-no-key").textContent = `No provider has its key here. Set one of ` +
-    `${keyed.map((p) => p.env_var).join(", ")} in .env and restart cyris, or keep None.`;
+    `${keyed.map((p) => p.env_var).join(", ")} in .env, then restart: under compose run ` +
+    `docker compose up -d --force-recreate, under uv start cyris triage-ui again. Or keep None.`;
 }
 
 function choice(group, option, {checked, disabled = false, name, side}) {

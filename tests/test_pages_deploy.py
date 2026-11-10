@@ -91,7 +91,7 @@ def test_only_the_files_the_account_lacks_are_uploaded(tmp_path, monkeypatch):
     client, patched = _routed(handler, tmp_path)
     monkeypatch.setattr(httpx, "Client", patched)
 
-    assert client.deploy(tmp_path).id == "dep-1"
+    assert client.deploy_files(pages_deploy._collect(tmp_path)).id == "dep-1"
     assert [(r.url.path.rsplit("/", 1)[-1], r.headers["Authorization"]) for r in sent] == [
         ("upload-token", "Bearer tok"),
         ("check-missing", "Bearer j"),
@@ -123,7 +123,7 @@ def test_a_one_bucket_deploy_makes_the_requests_its_worst_case_counts(tmp_path, 
     client, patched = _routed(handler, tmp_path)
     monkeypatch.setattr(httpx, "Client", patched)
 
-    client.deploy(tmp_path)
+    client.deploy_files(pages_deploy._collect(tmp_path))
 
     assert len(paths) == pages_deploy.DEPLOY_REQUESTS
     assert pages_deploy.DEPLOY_WORST_CASE_SECONDS == (
@@ -168,7 +168,7 @@ def test_a_deploy_returns_cloudflares_verdict_on_the_deployment(tmp_path, monkey
     client, patched = _routed(handler, tmp_path)
     monkeypatch.setattr(httpx, "Client", patched)
 
-    record = client.deploy(tmp_path)
+    record = client.deploy_files(pages_deploy._collect(tmp_path))
 
     assert len(handler.requests) == NOTHING_MISSING_REQUESTS
     url = "https://f64788e9.proj.pages.dev"
@@ -191,7 +191,7 @@ def test_only_deploy_success_is_landed(tmp_path, monkeypatch, stage, landed, fai
     client, patched = _routed(handler, tmp_path)
     monkeypatch.setattr(httpx, "Client", patched)
 
-    record = client.deploy(tmp_path)
+    record = client.deploy_files(pages_deploy._collect(tmp_path))
 
     assert len(handler.requests) == NOTHING_MISSING_REQUESTS
     assert record.landed is landed
@@ -203,7 +203,7 @@ def test_a_deployment_without_a_stage_is_neither_landed_nor_failed(tmp_path, mon
     client, patched = _routed(handler, tmp_path)
     monkeypatch.setattr(httpx, "Client", patched)
 
-    record = client.deploy(tmp_path)
+    record = client.deploy_files(pages_deploy._collect(tmp_path))
 
     assert len(handler.requests) == NOTHING_MISSING_REQUESTS
     assert (record.stage, record.status) == (None, None)
@@ -217,7 +217,7 @@ def test_a_deployment_result_without_an_id_is_an_error(tmp_path, monkeypatch):
     monkeypatch.setattr(httpx, "Client", patched)
 
     with pytest.raises(PagesDeployError, match="no id"):
-        client.deploy(tmp_path)
+        client.deploy_files(pages_deploy._collect(tmp_path))
 
     assert len(handler.requests) == NOTHING_MISSING_REQUESTS
 
@@ -236,15 +236,15 @@ def test_a_step_that_answers_success_false_is_an_error(tmp_path, monkeypatch):
     monkeypatch.setattr(httpx, "Client", patched)
 
     with pytest.raises(PagesDeployError, match="8000013"):
-        client.deploy(tmp_path)
+        client.deploy_files(pages_deploy._collect(tmp_path))
 
     assert len(seen) == 1
 
 
 def test_an_empty_directory_is_refused_rather_than_wiping_the_site(tmp_path):
     """A deployment is a full snapshot: an empty manifest deletes every page."""
-    with pytest.raises(PagesDeployError, match="no files"):
-        PagesClient("a", "t", "p").deploy(tmp_path)
+    with pytest.raises(PagesDeployError, match="nothing to deploy"):
+        PagesClient("a", "t", "p").deploy_manifest({}, {}, recover=lambda _p: None)
 
 
 def _probe(handler, monkeypatch):
