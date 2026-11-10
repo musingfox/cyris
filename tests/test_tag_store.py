@@ -1,48 +1,9 @@
 import pytest
-from fakes import TEST_SETTINGS, CountingD1, FakeLLM, SqliteD1, pipeline_settings
+from fakes import CountingD1, SqliteD1
 
 from cyris.adapters.store.tags import D1TagStore
-from cyris.domain.models import Article, Lane
-from cyris.service_layer.digest_pipeline import DigestPipeline
 
-pytestmark = pytest.mark.integration
-
-
-def _news(article_id: int, url: str) -> Article:
-    from datetime import UTC, datetime
-
-    return Article(
-        id=article_id,
-        title=f"News {article_id}",
-        url=url,
-        content="News content",
-        published_at=datetime.now(UTC),
-        source_name="Source",
-        source_lane=Lane.SKIM,
-        source_tags=["news"],
-    )
-
-
-async def test_cluster_tags_persist_for_every_member_normalized() -> None:
-    db = SqliteD1()
-    pipeline = DigestPipeline(
-        FakeLLM(
-            '{"clusters": [{"heading": "H", "summary": "S", '
-            '"article_ids": [0, 1], "tags": ["AI Policy", "ai policy"]}]}'
-        ),
-        **pipeline_settings(),
-    )
-
-    result = await pipeline.process(
-        [_news(1, "u1"), _news(2, "u2")], {}, timezone=TEST_SETTINGS["general.timezone"]
-    )
-    D1TagStore(db).save(result.url_to_tags)
-
-    assert db.query("SELECT name FROM tags").rows == [{"name": "ai policy"}]
-    assert db.query("SELECT article_url, tag FROM article_tags ORDER BY article_url").rows == [
-        {"article_url": "u1", "tag": "ai policy"},
-        {"article_url": "u2", "tag": "ai policy"},
-    ]
+pytestmark = pytest.mark.unit
 
 
 def test_save_is_idempotent_normalizes_tags_and_reports_rows_written() -> None:

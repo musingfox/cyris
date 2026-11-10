@@ -5,12 +5,11 @@ already uses those needs no second vendor for the digest itself.
 
 Not yet a drop-in replacement, and `cyris llm-compare` is what shows it. Measured
 2026-08-25 over one 174-article window: gpt-oss-120b writes clean 繁體中文
-summaries at roughly Gemini's quality, but its news *clustering* call fails at
-every setting tried — default reasoning spends the whole 8,192-token budget
-thinking and returns an empty message, `reasoning_effort=low` returns zero
-clusters, and medium at 24,000 tokens raises. Gemini 3.6 Flash produces 13-19
-clusters on the same input. On a corpus that is mostly wire news that is the
-body of the digest, not a detail.
+summaries at roughly Gemini's quality, but the news *clustering* call, retired
+since, failed at every setting tried — default reasoning spent the whole 8,192-token
+budget thinking and returned an empty message, `reasoning_effort=low` returned zero
+clusters, and medium at 24,000 tokens raised. Gemini 3.6 Flash produced 13-19
+clusters on the same input. Whether it assigns topics as well is not measured.
 """
 
 import asyncio

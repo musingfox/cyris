@@ -31,8 +31,8 @@ def score_issue_topics(
         t.id: entity_tags(t.tags) for t in topics.recent_topics(at - timedelta(lifetime_days), at)
     }
     population |= {t.id: entity_tags(t.tags) for t in issue}
-    # Every past issue's stand-in topic falls out of the window in time, so looking up
-    # each voted one would grow with the whole vote history. A vote faded below the
+    # A topic falls out of the window once it stops appearing, so looking up each
+    # voted one would grow with the whole vote history. A vote faded below the
     # recent list's cutoff lends at most that much through a tag, which moves no
     # order a fresher vote sets; its topic is not looked up.
     voted = [i for i, p in prefs.items() if i not in population and abs(p) > RECENT_VOTE_CUTOFF]
@@ -44,10 +44,12 @@ def score_issue_topics(
 def recent_topic_list(
     topics: TopicRepository, at: datetime, *, half_life_days: int, lifetime_days: int
 ) -> list[TopicSummary]:
-    """The topics an article may join: last seen within `lifetime_days`, plus each
-    one the reader voted up whose vote is still above `RECENT_VOTE_CUTOFF`.
+    """The topics last seen within `lifetime_days`, plus each one the reader voted up
+    whose vote is still above `RECENT_VOTE_CUTOFF`.
 
-    For vault card `filter-assigns-topics`, which hands this list to the model.
+    Nothing reads this list: the filter is offered the plain lifetime
+    (`TopicRepository.recent_topics` in `run_digest`), since the rule for extending a
+    topic is not decided (owner, 2026-10-30).
     """
     recent = topics.recent_topics(at - timedelta(lifetime_days), at)
     seen = {t.id for t in recent}

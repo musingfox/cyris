@@ -114,8 +114,8 @@ class DigestItem(BaseModel):
     passed_through: bool = False
     # The reader's area for this item, by name: stamped after the pipeline, never by it.
     area: str | None = None
-    # The tags scoring gave the article this run, shown on its card; only read-lane items
-    # carry them, and an article scored in an earlier run carries none.
+    # Shown on its card or row: on a read-lane item the tags scoring gave the article this
+    # run, none if it was scored in an earlier run; on a headline its topic's tags.
     tags: list[str] = Field(default_factory=list)
     # A pebble's story image, or a news cluster member's picture its sand block may show:
     # its article's feed picture, unless the issue shows that picture is the source's
@@ -261,7 +261,7 @@ def is_degraded_run(usage: UsageStats, *, chooses_no_llm: bool) -> bool:
     The provider is the caller's to say: a key that is missing builds no client, so
     that run's usage looks exactly like provider none's, and only the configuration
     tells the two apart. Zero input tokens is not the test: a configured LLM with
-    nothing to do this run, a fan-only window say, spends none and is healthy.
+    nothing to do this run spends none and is healthy.
     """
     return not chooses_no_llm and usage.fell_back_to_excerpts
 
@@ -384,10 +384,10 @@ class SaveResult(BaseModel):
 
 
 class StoryRecord(BaseModel):
-    """A news cluster's full pre-truncation membership, keyed for one digest window.
+    """A sand block's full membership, keyed for one digest window.
 
-    Deliberately carries no tags: the normalized ones already live on the member
-    articles (`article_tags`), and a second home for raw LLM strings would drift.
+    Deliberately carries no tags: the normalized ones already live on its topic
+    (`topic_tags`), and a second home for raw LLM strings would drift.
     """
 
     id: str  # "{digest_date}-{period}-{urlhash}", content-derived from the member URLs
@@ -440,7 +440,6 @@ class ProcessResult(BaseModel):
     content: DigestContent
     accepted_urls: list[str]
     rejected_urls: list[str]
-    url_to_tags: dict[str, list[str]] = Field(default_factory=dict)
     story_records: list[StoryRecord] = Field(default_factory=list)
     topics: list[TopicRecord] = Field(default_factory=list)
     # Features and news positions the vote preference changed; None when none was given.

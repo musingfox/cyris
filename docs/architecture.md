@@ -43,7 +43,7 @@ flowchart TB
 
     subgraph CORE["Core · service_layer + domain"]
         RUN["run_digest orchestrator"]
-        UC["use cases: fetching · scoring · digest_pipeline<br/>filtering · summarize · cluster_news · vote_similarity · vote_order · tracking"]
+        UC["use cases: fetching · scoring · digest_pipeline<br/>filtering · summarize · vote_similarity · vote_order · tracking"]
         DOM["domain (pure): selection · models · similarity"]
         RUN --> UC
         RUN --> DOM
@@ -377,9 +377,9 @@ Each source carries a **lane**, which decides how much attention it gets:
 
 | Lane | Treatment |
 |---|---|
-| `skim` | Batched headline extraction, aggressively discarded. News-tagged articles are additionally clustered by topic. |
-| `read` | Scored by the LLM, then every one summarized, in one call per tag group; the score orders them. Every one is a pebble on the page (below). |
-| `follow` | Passthrough. Never scored or filtered — followed groups and newsletters go straight through, each a pebble on the page. An item carries an excerpt of its own text, or, with `digest.summarize_follow` on (§5), the read lane's explanation, written in one call per source. |
+| `skim` | Batched headline extraction, aggressively discarded; the filter also gives each article it keeps a topic (below). |
+| `read` | Scored by the LLM, then every one summarized, in one call per tag group; the score orders them. Every one is a pebble on the page (below). The filter asks only for its topic. |
+| `follow` | Passthrough. Never scored or discarded — followed groups and newsletters go straight through, each a pebble on the page. An item carries an excerpt of its own text, or, with `digest.summarize_follow` on (§5), the read lane's explanation, written in one call per source. The filter asks only for its topic, so a follow article reaches the model with that setting off too. |
 
 Between scoring and the pipeline one optional filter runs. **Vote similarity** suppresses candidates
 sitting close to a downvoted article — it runs over *every* candidate, not just scored ones, because
@@ -442,6 +442,35 @@ issue's `DigestContent.tracked_topics` and nothing else: no store of their own, 
 article count, and no article's state changes for being one. A hit the issue does not show in a
 layer stays pending, so the next run in the window can list it again.
 
+**The filter assigns the topics** (`service_layer/filtering.py`, `domain/topics.py`, ADR-0023). Every
+article the run keeps goes through the filter's batches of `BATCH_SIZE`, the skim lane first, then
+`read` and `follow`, each of those marked `KEEP_MARKER`, which the model may not leave out and which
+it answers only with a topic. The batches run in order. Each prompt numbers the topics on offer: the
+ones last seen in the `digest.topic_lifetime_days` before the run's start, which `run_digest` reads
+through `TopicRepository.recent_topics`, at most `MAX_RECENT_TOPICS` of them and the most recently
+seen first (§5), then every topic an earlier batch of this run opened, so a number names the same
+topic in every batch. A recent topic past the cap is not offered, so a story it held opens anew. The model picks a number, or opens a topic by name only
+for a genuinely new story, and gives the topic's tags with their kind. Assignment is the LLM's alone:
+it is handed no embedding candidates and no call merges topics after the last batch, since both lost
+in the feasibility rounds (ADR-0023, *Known weakness*), which `tests/test_topic_assignment_guard.py`
+holds. A topic name is made one line before it is stored or offered, with no control characters,
+its whitespace collapsed and its length capped (`topic_name`, §5), so a stored title cannot put a
+line that reads as an article into a later prompt. A name already on offer, normalized and exactly
+equal, joins that topic. A new topic's id is
+`{date}-{period}-{hash of the normalized name}`, so a rerun that opens the same name keeps the id. An
+answer that names no usable topic takes its headline as the name, and one whose headline is blank as
+well is a topic of its own, named by the article's title; an article with no answer at all
+(no LLM, a failed batch, a `read` or `follow` article the model left out) is a topic of its own, with
+no tags and an id from its URL exactly as `stored_articles` keys it, case included, which no other
+article can join. A batch whose reply fails validation is a failed batch: its placements are made
+only once the whole reply is read, so it keeps none. A skim article the filter rejects has no topic,
+and neither has a `read` article the summarizer left out, which stays pending. A failed read
+of the recent topics costs the run its list, never the run (`recent_topics_error` in `run_summary`).
+A topic's tags go to `topic_tags` (§4) and never to `article_tags`, so `/interest` reads none. The
+prompt's follow-up rule keeps all of a topic: a report on a story that qualifies stays even when it
+adds no new information. The filter's criteria are the ones Clef falls back on, so Clef's text changed
+with it.
+
 The summarize call writes a summary for each group and one for each article. `layer_by_score`
 then lays them out inside `DigestPipeline`: the Top story is a group only when two or more of its
 articles reach `[routing] score_threshold`, and then it carries every article of that group, since
@@ -456,14 +485,16 @@ before 2026-10-29 keeps the count it was saved with, a cluster counting one.
 
 **The page draws three layers** (`layer_by_lane` in `domain/layers.py`, ADR-0023), decided by lane
 and by member count in this issue alone, never by a score or an area: every `read` or `follow`
-article is a pebble, its own card, the Top story's group split into its articles; a news cluster of
-two or more articles is sand, one block whose members stay folded; a cluster of one article, or a
-headline the filter kept, is water, a row. Tracking comes first, then pebbles, sand and water. Each
-item carries exactly one vote group: a pebble's and a water row's vote is for its article, and a
-sand block's is for every member URL, posted once per URL as a cluster's vote was; the vote
-sync turns those posts into one vote on the item's topic (§4 *Topic votes*). A cluster is a stand-in for the topic it will
-become: this issue's `cluster_news` groups, never across issues, and sand's line is its first
-member's excerpt until sand-what-happened writes one.
+article is a pebble, its own card, the Top story's group split into its articles; a topic's `skim`
+articles in this issue are sand at two or more, one block whose members stay folded, and water at
+one, a row, a continuing topic included. `DigestContent.news_clusters` holds the sand and
+`filtered_headlines` the water, under the names the stored issues already use; an issue stored before
+the filter assigned topics may also hold a cluster of one article, which is water too. Tracking comes
+first, then pebbles, sand and water. Each item carries exactly one vote group: a pebble's and a water
+row's vote is for its article, and a sand block's is for every member URL, posted once per URL; the
+vote sync turns those posts into one vote on the item's topic (§4 *Topic votes*), which a pebble shares
+with the sand or water of its topic. Sand's line is its first member's excerpt until
+sand-what-happened writes one.
 
 **The vote order** (`[digest] rank_by_preference`), option I of ADR-0023. When it is on, each item
 is scored as its topic (§4 *Topics*): the topic's own votes, each halving every
@@ -477,31 +508,31 @@ run looks up do not grow with the whole vote history. Embeddings take no part, s
 no vote similarity. Every article URL takes its topic's score, and `order_by_preference`
 (`domain/selection.py`) orders the Features, after their score sort, the news clusters and the kept
 headlines, each list by its entries' best article's score. Equal scores keep the incoming order, so
-an issue with no vote keeps it whole, and the Top story never moves. While topic ids last one issue
-and today's tags are stored as `domain` (§4), a vote moves no published issue: its topic is in no
-later issue and shares no entity tag with one, and the issue it was cast on cannot be reordered by
-it either. A rerun skips the vote sync, so the vote is synced by the next normal run, which publishes
-a newer issue and so makes a publishing rerun of the voted one refused; a rerun also re-clusters,
-so its stand-in ids can differ. Votes take effect once the filter assigns topics whose ids last
-across issues. On the page, water lists
-the one-article clusters first and the kept headlines after them, each part in that order: the two
-come from separate model calls and are ranked apart. The order rejects nothing and stamps no
+an issue with no vote keeps it whole, and the Top story never moves. A vote moves a later issue that
+holds its topic or a topic sharing one of its entity tags; the issue it was cast on cannot be reordered
+by it. A rerun skips the vote sync, so the vote is synced by the next normal run, which publishes a
+newer issue and so makes a publishing rerun of the voted one refused; a rerun also asks the filter
+again, so it can place an article differently. On a stored issue that holds them, water lists the
+one-article clusters first and the kept headlines after them, each part in that order: they came from
+separate model calls and are ranked apart. The order rejects nothing and stamps no
 `triaged_at`, and with no cap it changes only where an item stands, never whether it is shown. Off,
 with no topic store, or when the topic store cannot be read, the issue keeps the score's and the
 model's order; a failed read costs the order, never the run. `run_summary` records which: `preference_rank_applied`, the reason in `preference_rank_skipped`, and
 `preference_rank_moved_features` and `_units`, the Features positions and the cluster and headline
 positions that differ from the order without it.
 
-The recent-topic list (`recent_topic_list` in `service_layer/topic_order.py`) is the topics last seen
-in `digest.topic_lifetime_days`, plus each topic the reader voted up whose net decayed vote is still
-above `RECENT_VOTE_CUTOFF` (0.1, about four half-lives; owner, 2026-10-30). Nothing reads it yet: it
-is what vault card `filter-assigns-topics` hands the model.
+`recent_topic_list` in `service_layer/topic_order.py` is the topics last seen in
+`digest.topic_lifetime_days`, plus each topic the reader voted up whose net decayed vote is still
+above `RECENT_VOTE_CUTOFF` (0.1, about four half-lives; owner, 2026-10-30). Nothing reads it: the
+filter is offered the plain lifetime, since the rule for extending a topic is not decided (owner,
+2026-10-30). A topic that keeps appearing stays on offer all the same, because each issue that holds
+it moves its `last_seen`.
 
 **Who scores them** (`digest.preference_source`, `cosine` or `clef`). `cosine` is the order above;
 the value keeps its name because it is a stored setting, though no cosine takes part since ADR-0023.
 `clef` replaces the topic score with Clef's probability that the reader upvotes the item,
-asked once per kept item, the Features the issue kept and every news article the filter kept or
-the clustering grouped, and no other candidate, so a run makes tens of calls, not one per candidate. Each question carries the article's title, source and
+asked once per kept item, the Features the issue kept and every skim article the filter kept, and
+no other candidate, so a run makes tens of calls, not one per candidate. Each question carries the article's title, source and
 first `digest.scoring_snippet_length` characters (the snippet scoring reads), and the titles, never the text, of its five nearest upvotes and five nearest
 downvotes, which vote similarity supplies. The filter is untouched, and no `triaged_at` is
 stamped. The whole issue falls back to the topic order when Clef cannot score every asked item:
@@ -513,9 +544,9 @@ reason when `clef` was chosen and did not order the issue, and `clef` with the c
 and input tokens it spent. That spend stays out of the LLM `usage`.
 
 Two analytics facts are persisted beside the digest, both fail-soft — a write failure is logged
-and the run continues. Topic tags emitted by scoring and by news clustering land normalized in D1
+and the run continues. The tags scoring emits land normalized in D1
 `tags`/`article_tags` (`D1TagStore`), and each run's story membership — which
-articles the clustering step grouped — replaces its
+articles each sand block holds — replaces its
 (date, period) window in `stories`/`story_members` (`D1StoryStore`). Both stores are direct
 injections. A third fact goes through a Protocol: each non-dry run writes the issue's topics,
 their members and tags through `TopicRepository` (§4), also fail-soft (`topics_error` in
@@ -598,13 +629,13 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 |---|---|---|---|
 | A local install's SQL store (`[store] backend = "sqlite"`) | **one SQLite file** at `[store] sqlite_path`, default `state/cyris.sqlite3` beside `cyris.toml`; under `docker compose`, in the named volume `cyris-state`, mounted at `/app/state` in both services | same | Every row below that names a D1 table is, on such an install, a table of this file: `schema.sql` and `migrations.py` build it on first open by the server, the wizard or a run, and `LocalD1Client` answers the stores as D1 does. `cyris doctor` and `cyris config show` report a file that is not there as not created yet and leave it so; `cyris settings push` never opens it. Not a second home overlaid on D1 (ADR-0003): an install has one of the two. In WAL mode with `synchronous=NORMAL`, so the server and a run write at once. Never inside `agent-vault/`, which compose bind-mounts: a host process and a container on one file corrupt it ([ADR-0025](decisions/0025-a-local-install-keeps-its-state-in-sqlite.md)), and the config refuses that path. That is why the compose home is a named volume and not a bind mount: `docker-compose.yml` mounts `cyris-state` at `/app/state` (the directory of the default path, since the image's working directory is `/app`) in the scheduler and in `ui`, nothing on the host reaches it, and every command of a compose install runs in a container (`docker compose exec cyris cyris ...`). The volume survives `down` and `up -d --force-recreate`; only `down -v` removes it. The compose environment picks `sqlite` for both services when `cyris.toml` names no backend, and a `[store] backend` line in the file still wins. Backup is `VACUUM INTO` through `python -m sqlite3`, because the image has no `sqlite3` tool, and not `cp` of the file, which can lose recent writes ([steps](install-local.md#backing-up)). No row of `feed_health` is written here: no rss Worker polls for a local install |
 | Article store | **D1 `stored_articles`** | same | `content` is written as plain text for every source (newsletter bodies already were; an RSS entry's HTML is converted by `CloudflareRssSource`, or by `RssSource` on the direct-polling path, through `adapters/fetch/html_text.py`). Rows stored before RSS content was converted keep their HTML: `INSERT OR IGNORE` never rewrites them, and a pending row or a rerun turns them back into articles as they are. `url` PRIMARY KEY is the dedup key; a colliding newsletter issue is re-keyed to `newsletter:{id}`. Besides a run's save, the onboarding votes step (§6) stores each card the reader marked and then accepts or rejects it with `triaged_at`, as a `/labels` answer is written; a card left alone gets no row and stays in the buffer for the first run. A teaser's page text (§3.2) is the run's alone and is never written here |
-| Tag vocabulary | **D1 `tags`** | same | Normalized tags emitted by clustering and scoring |
-| Article tags | **D1 `article_tags`** | same | URL-keyed article membership in the tag vocabulary |
-| Stories | **D1 `stories`** | same | Pre-truncation news clusters, keyed `{date}-{period}-{urlhash}` (content-derived from member URLs), replaced per window |
+| Tag vocabulary | **D1 `tags`** | same | Normalized tags emitted by scoring. A topic's tags are never here: they are `topic_tags` |
+| Article tags | **D1 `article_tags`** | same | URL-keyed article membership in the tag vocabulary; what `/interest` reads |
+| Stories | **D1 `stories`** | same | Each issue's sand blocks, keyed `{date}-{period}-{urlhash}` (content-derived from member URLs), replaced per window. Written by every non-dry run; nothing reads it |
 | Story membership | **D1 `story_members`** | same | URL-keyed article membership in each story |
-| Topics | **D1 `topics`** | same | One row per topic: id, name, the first and last time an issue held it (ADR-0023). Written by every non-dry run after the pipeline (`TopicRepository.save_topics`), fail-soft. A stand-in until the filter assigns topics: each item of the page is a topic of this issue only (`domain/topics.py`), so an id never spans two issues. A topic left with no member and no vote is deleted |
-| Topic members | **D1 `topic_members`** | same | Which articles an issue put under a topic, keyed by topic, URL and issue `(digest_date, period)`. A rerun of an issue replaces that issue's rows. Read to turn a voted URL into its topic. Not `stories`/`story_members`, which stay the clustering step's record |
-| Topic tags | **D1 `topic_tags`** | same | A topic's normalized tags with their kind, `entity`, `domain` or `region`: the tags its newest save gave it, so a rerun that tags a topic differently replaces them. Today's tags carry no kind, so the stand-in stores every one as `domain` (`STAND_IN_TAG_KIND`) |
+| Topics | **D1 `topics`** | same | One row per topic: id, name, the first and last time an issue held it (ADR-0023). Written by every non-dry run after the pipeline (`TopicRepository.save_topics`), fail-soft. The filter assigns them (§3.2), so an id spans the issues that hold the topic. A row written before it did, while each page item was a topic of one issue, is offered to the filter like any other until its `last_seen` leaves `digest.topic_lifetime_days`. A topic left with no member and no vote is deleted |
+| Topic members | **D1 `topic_members`** | same | Which articles an issue put under a topic, keyed by topic, URL and issue `(digest_date, period)`. A rerun of an issue replaces that issue's rows. Read to turn a voted URL into its topic. Not `stories`/`story_members`, which record only each issue's sand |
+| Topic tags | **D1 `topic_tags`** | same | A topic's normalized tags with their kind, `entity`, `domain` or `region`: the tags its newest save gave it, then the stored ones those do not repeat, at most `MAX_TOPIC_TAGS`, so a later issue or a rerun that tags a topic differently adds to them, and a save that gives it none keeps them. The stored ones are read back entity tags first, then by tag, so when a save passes the cap the stored tags it drops are the domain and region tags, the alphabetically last first, and a stored entity tag goes only once this save's tags and the stored entity tags alone pass it. Written from what the filter answers, never from `article_tags`. A tag whose kind the model left out or got wrong is stored as `domain`, as every row written before the filter assigned topics is: shown, and carrying no preference |
 | Topic votes | **D1 `topic_votes`** | same | Append-only, keyed by topic and click time: the direction (1 or -1). Written by the vote sync (`sync_promotions`): a voted URL that an issue put under a topic becomes one vote on that topic, a group's per-URL posts collapsing to one row timed by the promote Worker's `ts`. A same-direction vote on the same topic within `ONE_CLICK_WINDOW` (60 s) of a recorded one, with no opposite vote between them, is taken as that click again and not written, since a sync can ACK part of one click's posts before the rest arrive. A sync whose topic-vote write fails still stamps and ACKs its votes, since the stamp is the vote's record and a held ACK would re-stamp the same URLs every run; that sync's topic votes are lost, and `run_summary`'s `topic_votes_failed` says why. A URL no topic holds (an issue published before topics, the raw page) writes no row |
 | Article image URL | **D1 `articles.image_url`** and **`stored_articles.image_url`**, carried on each Stories item and each Topics member in the issue's `DigestContent` | same | The picture a feed entry names for its article, as a URL only: `media:thumbnail`, `media:content` or an image `enclosure`, else the first `<img>` in the entry's content. Parsed by `workers/rss` when it buffers the entry, or by `RssSource` on the direct-polling path with the same order and rules (`tests/test_feed_image_parity.py` holds the two to one URL), and carried with the article to the store, so a rerun shows the image the article had. The image bytes are never fetched or kept: the digest page loads them from the feed's host in the reader's browser, with no referrer (UI spec §4 *story image*). No article page is fetched for an `og:image` (owner, 2026-10-31): a feed's own picture costs no new outbound request. A newsletter issue has no feed, so it has no image. The digest pipeline stamps it on Stories items and on news clusters' members only, leaving out a picture two or more of one source's articles in the issue share (`domain/story_images.py`); a Topics block shows its first member's that is left (`domain/layers.py`), and an issue stored before Topics showed pictures carries none on its members, so a rerender of it shows no Topics picture where a rerun does. Headlines and the mail show none |
 | RSS buffer | **D1 `articles`** | same | Same database, different lifecycle: disposable, 8-day retention counted from buffer entry. Its `content` is the feed's HTML, which the Worker reads the story image from; `CloudflareRssSource` turns it into plain text (trafilatura) on the way out, so what it writes to `stored_articles.content` is text (older rows: see Article store) |
@@ -673,6 +704,9 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Setting | Grade | Today | Target |
 |---|---|---|---|
 | Batch sizes | A | `BATCH_SIZE` in `service_layer/filtering.py` and `service_layer/scoring.py`, and on each embedder in `adapters/embedding.py` | unchanged |
+| A topic's tags: at most 5 | A | `MAX_TOPIC_TAGS` = 5 in `domain/topics.py` | added with the filter's topics — the design's 2-5 (ADR-0023). A topic takes each of its articles' tags, so the cap is held where they meet; the floor of 2 is only the prompt's to ask |
+| Recent topics offered to the filter | A | `MAX_RECENT_TOPICS` = 300 in `domain/topics.py` | added 2026-11-10 — the list goes into every batch, and a week of issues holds hundreds of topics. Measured with `build_filter_prompt` on 20 articles at the example's 500-character snippet: 300 names of 34 characters add 11,879 characters to an 11,577-character prompt, so names of that length at most double a batch, and 12-character Chinese names add 5,279. The bound is the cap, not the doubling: 300 names of `MAX_TOPIC_NAME_LENGTH` = 120 characters add 37,679, about 4.3 times that prompt (49,256 against 11,577). The most recently seen are kept, and the topics a run opens are offered after them uncapped, since a later batch must see them (bounded by the intake cap) |
+| A topic name's length | A | `MAX_TOPIC_NAME_LENGTH` = 120 in `domain/topics.py` | added 2026-11-10 — a name is a few words, but an unplaced article's raw title becomes one, and a feed's title can be a paragraph that every later filter prompt would repeat; 120 characters holds a full headline. A longer name is cut and ends in "…" |
 | Propose titles per source | A | `TITLES_PER_SOURCE` = 5 in `adapters/store/source_titles.py` | unchanged — five headlines show a source's subject; each source's line is paid for in every Propose call. `tests/test_area_source_titles.py` holds the value to this row |
 | Propose title length | A | `TITLE_MAX_CHARS` = 80 in `adapters/store/source_titles.py` | unchanged — a headline fits in 80 characters; a longer title is mostly a dek the model does not need. `tests/test_area_source_titles.py` holds the value to this row |
 | Propose title lookback | A | `TITLE_LOOKBACK_DAYS` = 30 in `adapters/store/source_titles.py` | unchanged — the window `feed_health.py`'s `QUIET_DAYS` uses: a source silent that long is quiet, not described. `tests/test_area_source_titles.py` holds the value to this row |
@@ -693,7 +727,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Onboarding starting values: the value the wizard's Model step shows each tuned grade-D key at while the store lacks it | A | `src/cyris/settings_starting_values.json` | added 2026-11-07 (ADR-0025) — a new reader confirms them with one Next rather than choosing 17 numbers. They are `settings.example.toml`'s, which `tests/test_settings_starting_values.py` holds equal, and they reach a run only once written into the store (see *Where grade D lives*). A key the store holds is never offered, so a trial's first-boot push survives the wizard |
 | `cyris config show` registry: the rows it lists beyond `settings_fields.json` and `B_GRADE_ENV_VARS`, and every label it prints | A | `src/cyris/diagnostics/config_show.json` | done 2026-10-08 — the image ships `src/` only, so `.env.example` cannot be read at runtime; `tests/test_deploy_inputs.py` holds the secret list to it, and each code constant is named as `module:attribute` so the value shown is the one the code runs with |
 | Mail vocabulary: forward/reply subject prefixes, "view in browser" markers | A | `adapters/fetch/keywords.json`, loaded by `keywords.py` | unchanged — data so a new locale is not a code edit; the regex structure around the tokens stays in code |
-| Wire dateline closing words (電, 報導), which the sand line's stand-in excerpt skips | A | `service_layer/datelines.json`, loaded by `degrade.py` | added 2026-10-29 — data so another wire's closing word is not a code edit, as `keywords.json` is; beside `languages.json` because the service layer may not read an adapter's file. The shape stays in code: a bracket pair at the very start of the text, at most `DATELINE_MAX_CHARS` = 40 characters before the closing word (A: an aside in brackets runs longer). Only the sand stand-in strips it (`cluster_news._member`) |
+| Wire dateline closing words (電, 報導), which the sand line's stand-in excerpt skips | A | `service_layer/datelines.json`, loaded by `degrade.py` | added 2026-10-29 — data so another wire's closing word is not a code edit, as `keywords.json` is; beside `languages.json` because the service layer may not read an adapter's file. The shape stays in code: a bracket pair at the very start of the text, at most `DATELINE_MAX_CHARS` = 40 characters before the closing word (A: an aside in brackets runs longer). Only the sand stand-in strips it (`filtering._member`) |
 | Onboarding's feed picker: an ordered topic table (id, label), and name, url, lane, tags, language and topics per entry | A | `src/cyris/onboarding_feeds.json` | catalog added 2026-10-20, read by the onboarding picker ([cold-start-onboarding.md](milestones/cold-start-onboarding.md)) — the image ships `src/` only, so it sits beside `keywords.json` rather than in a `.example` file outside it. Collected by the project, not a reader: each entry is a publisher's own feed (never an RSS hub or a machine aggregator; a human-curated front page counts: Hacker News through hnrss.org, which has no feed of its own, and Techmeme), reads as a `SourceConfig` with `lane: skim` plus the list's own `topics` (one or two of the table's ids: what the feed is about, not its form; `tags` stay the pipeline's), and passed both parsers (`workers/rss/src/parse.js` and feedparser) with an article inside 8 days when `scripts/validate_feed_catalog.py` last ran for real. The container reads it for `GET /api/onboarding/feeds`, which sends the topic table and the entries as written only while `sources` is empty, and the wizard's sources step shows the topics on one screen, then the chosen topics' feeds on the next, and writes each of the reader's picks, less its `topics`, through the existing `POST /api/sources`, so no stored source carries them; after that a deployment's feeds live only in its own `sources` (D1) or `sources.yaml`, same as any other source, so a stale catalog entry costs nothing beyond onboarding. `tests/test_onboarding_feeds.py` holds every entry to the shape, each entry's topics to the table and each topic to at least one entry; `scripts/validate_feed_catalog.py` is a reviewer-run gate on real feeds, not a test, because it asks about the network rather than the code |
 | Onboarding feed check vocabulary: the `<link rel="alternate">` types a home page names its feed with (RSS and Atom), the page Content-Types, and every refusal the reader sees | A | `src/cyris/adapters/fetch/feed_check.json`, loaded by `feed_check.py` | added 2026-10-20 — data so a feed type or a reworded refusal is not a code edit, as `keywords.json` is; the order of the fetches and the attributes read stay in code. `MAX_BYTES` = 5 MiB (counted as it arrives: the check asks for `Accept-Encoding: identity` and refuses an answer encoded anyway, which could inflate past any cap), `MAX_REDIRECTS` = 5 and `CHECK_DEADLINE_SECONDS` = 60 in `feed_check.py` are A as well: the check fetches a reader-typed address from inside the deployment, so the caps bound what one press can make it read and how long the reader waits on it. `CONNECT_TIMEOUT_SECONDS` = 10 is per address, so a host whose IPv6 route silently drops still leaves time for its IPv4 address |
 | Onboarding opening's sample headlines: a title and a catalog feed name per entry | A | `src/cyris/onboarding_headlines.json` | added 2026-11-02 ([ui-language.md](design/ui-language.md) §6 *onboarding*) — a new deployment has no articles, so the opening throws samples written for it, each drawn under a feed `onboarding_feeds.json` lists; it sits beside that file because the image ships `src/` only. `GET /api/onboarding/headlines` serves it whatever `sources` holds, because the opening plays on any visit to `/onboarding` with no hash, and the page never draws a title already on screen, so the pool's size bounds how many headlines the stage holds. Never stored and never fetched as a feed. `tests/test_onboarding_headlines.py` holds every entry to a catalog feed and every title to one entry |
@@ -736,7 +770,7 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Vote order source | D | **D1 `settings`** as `digest.preference_source` (`cosine` or `clef`), written by `/settings` (Digest) | done 2026-10-10 — a reader preference between two judges of their votes. Required, no code default: `cosine` names the topic order since ADR-0023 (§3.2) and `clef` waits on the acceptance round in [the milestone](milestones/clef-preference-order.md) |
 | Summarize follow articles | D | **D1 `settings`** as `digest.summarize_follow`, written by `/settings` (Digest) | done 2026-10-30 — a reader preference: whether a source they follow gets the model's explanation, at one more call per follow source each run, or keeps its own text. Required, no code default, like the vote order switch: `settings.example.toml` sets `false`, which is the passthrough every issue had before it |
 | Vote half-life, topic lifetime | D | **D1 `settings`** as `digest.vote_half_life_days` and `digest.topic_lifetime_days`, written by `/settings` (Digest) | added 2026-10-30, both starting at 7 ([ADR-0023](decisions/0023-votes-go-on-topics-and-the-digest-has-three-layers.md)): how fast a vote fades and how long a topic stays current, the population a shared name is discounted over, are the reader's to tune. Required, no code default |
-| Recent-topic vote cutoff | A | `RECENT_VOTE_CUTOFF` = 0.1 in `domain/topic_rank.py` | added 2026-10-30 — an up-voted topic stays on the recent-topic list while its net vote is worth more than this, about four half-lives (owner, 2026-10-30) |
+| Recent-topic vote cutoff | A | `RECENT_VOTE_CUTOFF` = 0.1 in `domain/topic_rank.py` | added 2026-10-30 — about four half-lives. What reads it: `score_issue_topics` looks up a voted topic outside the issue's population only while its net vote is worth more than this. `recent_topic_list` would keep an up-voted topic on the recent-topic list by the same cutoff, but nothing reads that list: the filter is offered the plain `digest.topic_lifetime_days`, since the rule for extending a topic is not decided (owner, 2026-10-30) |
 | Clef constants: model `@cf/cloudflare/clef-flash`, 5 neighbours per side, 8 calls in flight, a 60-second pass, 20-second request timeout | **A** | `adapters/clef.py` and `service_layer/vote_order.py`, listed by `cyris config show` | done 2026-10-10 — the model is the one measured; 5 neighbours and title-only votes are what scored best in the development round. Eight in flight stays under Workers AI's rate limit (a 429 that persists through two retries fails the pass), and the minute keeps the pass inside the container's sleep-after budget |
 | The Top story score threshold `routing.score_threshold`, the intake cap `digest.max_articles_per_digest`, the three snippet lengths sent to the model, output language, style prompt | D | **D1 `settings`**, written by `/settings` (Digest and Pipeline) | done 2026-09-19 |
 | LLM reasoning effort | D | **D1 `settings`** as `llm_provider.reasoning_effort` (`default`, `low`, `medium` or `high`), written by `/settings` (Pipeline) | optional, [ADR-0018](decisions/0018-reasoning-effort-is-an-optional-grade-d-key.md): an absent row means `default`, which sends what each provider sent before (per provider in *Provider defaults*). Workers AI is fixed at `low` whatever is stored. Gemini 2.5 takes a thinking budget in place of a level (budgets in `reasoning_effort_defaults.json`). Save probes the stored provider and model at the chosen level and refuses a level the model rejects; a model switch probes at the stored level |
@@ -772,13 +806,10 @@ it is that number.
 
 **`workers_ai` defaults to `@cf/openai/gpt-oss-120b`, not `llama-3.3-70b`.** The main reason
 is output cost: gpt-oss is about 3x cheaper on output (68,182 against 204,805 neurons per M
-output tokens). The context window is the other reason, and it still applies to
-`cluster_news`, which sends every news article of a window in one prompt
-(`cluster_news()` in `service_layer/cluster_news.py`): llama's 24k context leaves no headroom
-on a busy window, so clustering fails, every news article falls through to the filter
-unclustered, and the digest loses its news clusters. gpt-oss has 128k. The skim lane no longer
-grows with the window, because its prompt is bounded by `BATCH_SIZE` in
-`service_layer/filtering.py`.
+output tokens). The context window was the other reason, while one call clustered a whole window's
+news: llama's 24k context left no headroom on a busy window, and gpt-oss has 128k. The filter's prompt
+no longer grows with the window, because `BATCH_SIZE` in `service_layer/filtering.py` bounds its
+articles, and its list of recent topics is capped at `MAX_RECENT_TOPICS` (§5 above).
 
 **`ai_gateway` defaults to `google/gemini-3.8-flash`.** It is the model production runs through
 `gemini`, under the name the gateway catalog gives it, so switching providers changes the path and

@@ -129,9 +129,12 @@ class D1TopicStore:
         ids = [r["id"] for r in rows]
         for i in range(0, len(ids), _URLS_PER_STATEMENT):
             batch = ids[i : i + _URLS_PER_STATEMENT]
+            # Entity tags first: they alone carry preference, so a save's cut at
+            # MAX_TOPIC_TAGS drops a stored domain or region tag before them.
             sql = (
                 "SELECT topic_id, tag, kind FROM topic_tags "
-                f"WHERE topic_id IN ({', '.join('?' * len(batch))}) ORDER BY tag"
+                f"WHERE topic_id IN ({', '.join('?' * len(batch))}) "
+                "ORDER BY CASE kind WHEN 'entity' THEN 0 ELSE 1 END, tag"
             )
             for r in self._db.query(sql, batch).rows:
                 tags.setdefault(r["topic_id"], []).append(TopicTag(tag=r["tag"], kind=r["kind"]))

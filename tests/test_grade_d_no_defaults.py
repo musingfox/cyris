@@ -172,7 +172,6 @@ def test_the_example_config_builds_every_settings_table():
 def _grade_d_parameters():
     from cyris.adapters.fetch import article_page
     from cyris.service_layer import (
-        cluster_news,
         digest_pipeline,
         filtering,
         prompts,
@@ -192,8 +191,6 @@ def _grade_d_parameters():
         (filtering.filter_articles, "style_prompt"),
         (summarize.summarize_articles, "snippet_length"),
         (summarize.summarize_articles, "style_prompt"),
-        (cluster_news.cluster_news, "snippet_length"),
-        (cluster_news.cluster_news, "style_prompt"),
         (scoring.score_articles_batch, "snippet_length"),
         (scoring.score_in_batches, "snippet_length"),
         (vote_similarity.judge_by_votes, "max_seeds"),
@@ -202,11 +199,9 @@ def _grade_d_parameters():
         (vote_order.VoteOrder.__init__, "snippet_length"),
         (prompts.build_filter_prompt, "snippet_length"),
         (prompts.build_summarize_prompt, "snippet_length"),
-        (prompts.build_news_cluster_prompt, "snippet_length"),
         (prompts.build_scoring_prompt, "snippet_length"),
         (prompts.build_filter_system_prompt, "style_prompt"),
         (prompts.build_summarize_system_prompt, "style_prompt"),
-        (prompts.build_news_cluster_system_prompt, "style_prompt"),
         (article_page.lengthen_articles, "summarize_snippet_length"),
     ]
 

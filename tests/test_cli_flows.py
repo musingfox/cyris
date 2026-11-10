@@ -148,18 +148,21 @@ class TestRunPipelineE2E:
             pages = respx.get(url__regex=r"https://(reuters|stratechery)\.com/.+").mock(
                 return_value=httpx.Response(404)
             )
-            # Mock Claude API for news clustering
-            cluster_response = _make_claude_response(
+            # Mock Claude API for the filter: both news articles are one new topic
+            filter_response = _make_claude_response(
                 json.dumps(
                     {
-                        "clusters": [
+                        "selected": [
                             {
-                                "heading": "Breaking News Cluster",
-                                "summary": "Two related breaking news stories",
-                                "article_ids": ["0", "1"],
+                                "id": str(i),
+                                "title": "Breaking News",
+                                "source": "Reuters",
+                                "topic_id": None,
+                                "topic_name": "Breaking News Topic",
+                                "tags": [{"tag": "news", "kind": "domain"}],
                             }
+                            for i in (0, 1)
                         ],
-                        "unclustered_ids": [],
                     }
                 )
             )
@@ -191,12 +194,11 @@ class TestRunPipelineE2E:
             )
 
             # All LLM calls go through the single AnthropicClient adapter;
-            # pipeline order is score -> cluster -> summarize (filter pool
-            # is empty here since all skim-lane articles are news).
+            # pipeline order is score -> filter -> summarize.
             with patch("cyris.adapters.anthropic_client.anthropic.AsyncAnthropic") as mock_llm_cls:
                 mock_llm_client = AsyncMock()
                 mock_llm_client.messages.create = AsyncMock(
-                    side_effect=[score_response, cluster_response, summarize_response]
+                    side_effect=[score_response, filter_response, summarize_response]
                 )
                 mock_llm_cls.return_value = mock_llm_client
 

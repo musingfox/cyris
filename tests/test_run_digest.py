@@ -747,6 +747,11 @@ async def test_scoring_tag_write_failure_does_not_stop_the_run(tmp_path: Path) -
     assert stored[0].score == 81
 
 
+def _one_story(position: int) -> dict:
+    """A filter entry keeping the article at `position` under one new topic."""
+    return {"id": position, "title": "H", "source": "Wire", "topic_name": "One story"}
+
+
 async def test_story_store_failure_does_not_stop_the_run(tmp_path: Path) -> None:
     articles = [
         Article(
@@ -761,13 +766,8 @@ async def test_story_store_failure_does_not_stop_the_run(tmp_path: Path) -> None
         )
         for i in (1, 2)
     ]
-    # News skips scoring; the single call is the cluster response, and the
-    # emptied filter pool never reaches the LLM.
-    llm = FakeLLM(
-        json.dumps(
-            {"clusters": [{"heading": "H", "summary": "S", "article_ids": [0, 1], "tags": []}]}
-        )
-    )
+    # News skips scoring; the single call is the filter's.
+    llm = FakeLLM(json.dumps({"selected": [_one_story(0), _one_story(1)]}))
     deps, _ = make_deps(tmp_path, llm, FakeSource(articles))
 
     class ExplodingStoryStore:
@@ -788,7 +788,7 @@ async def test_story_store_failure_does_not_stop_the_run(tmp_path: Path) -> None
     assert report.html_path is not None and report.html_path.exists()
 
 
-async def test_a_run_saves_its_topics_and_a_cluster_is_one_topic(tmp_path: Path) -> None:
+async def test_a_run_saves_its_topics_and_one_new_story_is_one_topic(tmp_path: Path) -> None:
     articles = [
         Article(
             id=i,
@@ -802,11 +802,7 @@ async def test_a_run_saves_its_topics_and_a_cluster_is_one_topic(tmp_path: Path)
         )
         for i in (1, 2)
     ]
-    llm = FakeLLM(
-        json.dumps(
-            {"clusters": [{"heading": "H", "summary": "S", "article_ids": [0, 1], "tags": []}]}
-        )
-    )
+    llm = FakeLLM(json.dumps({"selected": [_one_story(0), _one_story(1)]}))
     deps, _ = make_deps(tmp_path, llm, FakeSource(articles))
     deps = replace(deps, topic_store=D1TopicStore(SqliteD1()))
 
@@ -1795,7 +1791,7 @@ async def test_a_provider_none_run_ignores_a_leftover_model(tmp_path: Path) -> N
     assert degraded == [False]
 
 
-def _quiet_window_article() -> Article:
+def _follow_only_article() -> Article:
     article = _notify_article()
     article.source_name = "FanSource"
     article.source_lane = Lane.FOLLOW
@@ -1818,15 +1814,15 @@ class _ScoringFails(FakeLLM):
         (None, "gemini", _notify_article, True, False),
         (FakeLLM(error=RuntimeError("quota")), "gemini", _notify_article, True, False),
         (_ScoringFails(), "gemini", _notify_article, True, True),
-        (FakeLLM(), "gemini", _quiet_window_article, False, False),
+        (FakeLLM(), "gemini", _follow_only_article, False, True),
         (None, "none", _notify_article, False, False),
     ],
-    ids=["missing-key", "call-failed", "scoring-failed", "quiet-window", "provider-none"],
+    ids=["missing-key", "call-failed", "scoring-failed", "follow-only", "provider-none"],
 )
 async def test_every_channel_agrees_on_whether_a_run_fell_back(
     tmp_path: Path, llm, provider: str, article, degraded: bool, spent: bool
 ) -> None:
-    """A quiet window spends no tokens with a healthy client; only a fallback degrades a run."""
+    """Only a fallback degrades a run; a healthy client's spend says nothing either way."""
     discord: list = []
     mailed: list = []
 
@@ -2958,7 +2954,7 @@ _CLEF_ANSWERS = {"Leans disliked": 0.5, "Leans liked": 0.1, "Clef pick": 0.9}
 
 # The issue's date is named, so the test knows the stand-in topic ids the run will mint.
 _RANKED_RUN = RunOptions(date="2026-10-30")
-_LIKED_TOPIC = topic_id("2026-10-30", "morning", [_LEANS_LIKED])
+_LIKED_TOPIC = topic_id("2026-10-30", "morning", "Leans liked")
 
 
 def _ranking_deps(

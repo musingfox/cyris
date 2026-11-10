@@ -5,6 +5,7 @@ from datetime import datetime
 import pytest
 
 from cyris.domain.models import Article, Lane
+from cyris.domain.topics import TopicBook
 from cyris.service_layer.degrade import (
     excerpt,
     excerpt_sections_from_articles,
@@ -99,6 +100,7 @@ async def test_filter_degrades_without_llm():
     items = await filter_articles(
         [_article(1), _article(2)],
         None,
+        topics=TopicBook([], date="2026-10-30", period="morning"),
         filter_snippet_length=500,
         output_language="zh-Hant",
         style_prompt="",

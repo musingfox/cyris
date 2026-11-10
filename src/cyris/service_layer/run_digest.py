@@ -15,6 +15,7 @@ from cyris.domain.models import (
     NO_LLM_MODEL,
     ArticleState,
     StoredArticle,
+    TopicSummary,
     UsageStats,
     is_degraded_run,
 )
@@ -706,6 +707,18 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             logger.error("Reading article pages failed, the run keeps feed text: %s", e)
             summary["article_pages_error"] = str(e)
 
+    # The plain lifetime: the rule for extending a topic is not decided (owner, 2026-10-30).
+    recent_topics: list[TopicSummary] = []
+    if deps.topic_store is not None:
+        try:
+            at = datetime.fromisoformat(summary["started_at"])
+            since = at - timedelta(days=cfg.app.digest.topic_lifetime_days)
+            recent_topics = deps.topic_store.recent_topics(since, at)
+        except Exception as e:
+            # A failed read costs this issue its continuing topics, not the issue.
+            logger.warning("Topic store unreadable, every topic this run opens is new: %s", e)
+            summary["recent_topics_error"] = str(e)
+
     # Process all articles through digest pipeline
     digest_pipeline = DigestPipeline(
         deps.llm,
@@ -726,6 +739,7 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         article_scores=article_scores,
         article_tags=scoring_tags,
         preference=order,
+        recent_topics=recent_topics,
     )
     content = result.content
     summary["preference_rank_applied"] = result.preference_moves is not None
@@ -737,13 +751,8 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     summary.update(order.receipt.as_summary())
     # A view, not a verdict: no hit changes its article's state or the issue's counts.
     content.tracked_topics = tracked_sections
-    if not options.dry_run and deps.tag_store is not None and result.url_to_tags:
-        try:
-            deps.tag_store.save(result.url_to_tags)
-        except Exception as e:
-            logger.warning("Failed to persist cluster tags: %s", e)
-    # Deliberately no empty-records guard: a re-run that clustered nothing must
-    # clear the window's rows, not leave a previous run's stories looking current.
+    # Deliberately no empty-records guard: a re-run with no sand must clear the
+    # window's rows, not leave a previous run's stories looking current.
     if not options.dry_run and deps.story_store is not None:
         try:
             deps.story_store.save(content.date, content.period, result.story_records)

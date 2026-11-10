@@ -3,9 +3,9 @@
 import unicodedata
 from collections.abc import Iterable
 
-# The one tag the pipeline routes on: it sends an article to cluster_news instead
-# of the scorer. Not reader vocabulary — `cluster_news` is named for it — so it is
-# a constant rather than a keywords.json entry, but it must be stated once.
+# The one tag the pipeline routes on: it keeps an article from the scorer, so the
+# filter alone judges it. Not reader vocabulary, so it is a constant rather than a
+# keywords.json entry, but it must be stated once.
 NEWS_TAG = "news"
 
 

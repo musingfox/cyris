@@ -2,7 +2,7 @@
 
 import hashlib
 import logging
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 
 from cyris.domain.models import (
     NO_LLM_MODEL,
@@ -14,6 +14,7 @@ from cyris.domain.models import (
     SourceConfig,
     StoryRecord,
     TopicRecord,
+    TopicSummary,
     UsageStats,
 )
 from cyris.domain.selection import (
@@ -23,9 +24,8 @@ from cyris.domain.selection import (
     preference_moves,
 )
 from cyris.domain.story_images import stamp_story_images, stamp_topic_images
-from cyris.domain.topics import stand_in_topics
-from cyris.service_layer.cluster_news import cluster_news, filter_news
-from cyris.service_layer.filtering import filter_articles
+from cyris.domain.topics import TopicBook
+from cyris.service_layer.filtering import filter_articles, sections_by_topic
 from cyris.service_layer.ports import LLMClient
 from cyris.service_layer.schedule import Period
 from cyris.service_layer.summarize import (
@@ -98,6 +98,7 @@ class DigestPipeline:
         article_tags: Mapping[str, list[str]] | None = None,
         preference: PreferenceSource | None = None,
         date: str | None = None,
+        recent_topics: Sequence[TopicSummary] = (),
     ) -> ProcessResult:
         """Process articles through lane-based pipeline.
 
@@ -115,6 +116,7 @@ class DigestPipeline:
                 issue's topics, to order the Features, the news clusters and the
                 headlines; None keeps the order of the score and the model.
             date: The issue's date, YYYY-MM-DD; None means today in `timezone`.
+            recent_topics: The earlier topics an article of this issue may join.
 
         Returns:
             ProcessResult with content and URL classification.
@@ -154,43 +156,21 @@ class DigestPipeline:
             fell_back_to_excerpts=self._llm is None,
         )
 
-        # Split skim lane into news and non-news
-        news_articles, non_news_articles = filter_news(skim_lane)
-
-        logger.info(
-            "Skim lane split: %d news articles, %d non-news articles",
-            len(news_articles),
-            len(non_news_articles),
-        )
-
-        # Cluster news articles
-        news_clusters = []
-        unclustered_news = []
-        if news_articles:
-            news_clusters, unclustered_news = await cluster_news(
-                news_articles,
-                self._llm,
-                usage=usage,
-                article_scores=article_scores,
-                # The cluster step is the skim lane's first pass: what it leaves
-                # unclustered goes on to the filter below, read at the same length.
-                snippet_length=self.filter_snippet_length,
-                output_language=self.output_language,
-                style_prompt=self.style_prompt,
-            )
-
-        # Merge unclustered news back into general filter pool
-        filter_pool = non_news_articles + unclustered_news
-
+        topics = TopicBook(recent_topics, date=today, period=period)
+        # Every lane, since every article needs a topic; only the skim lane can be left out.
         filtered = await filter_articles(
-            filter_pool,
+            [*skim_lane, *read_lane, *follow_lane],
             self._llm,
             usage=usage,
             article_scores=article_scores,
+            topics=topics,
             filter_snippet_length=self.filter_snippet_length,
             output_language=self.output_language,
             style_prompt=self.style_prompt,
         )
+        news_clusters, headlines = sections_by_topic(filtered, topics, skim_lane, article_scores)
+        for article in (*read_lane, *follow_lane):
+            topics.ensure(article.url, article.title)
 
         summaries = await summarize_articles(
             read_lane,
@@ -237,14 +217,6 @@ class DigestPipeline:
                 accepted_filter_urls.update(item.urls)
         rejected_urls = list(filter_urls - accepted_filter_urls)
 
-        url_to_tags = {
-            url: section.tags
-            for section in news_clusters
-            for item in section.items
-            for url in item.urls
-            if section.tags
-        }
-
         # The section takes the same id the record persists — computed once, so the
         # rendered data-story-id and the D1 row can never drift apart.
         story_records = []
@@ -268,12 +240,13 @@ class DigestPipeline:
             usage=usage,
             news_clusters=news_clusters,
             thematic_summaries=summaries,
-            filtered_headlines=filtered,
+            filtered_headlines=headlines,
             fan_sections=follow_sections,
             output_language=self.output_language,
         )
 
         laid_out = layer_by_score(content, featured_threshold=self.featured_threshold)
+        issue_topics = topics.records(digest_urls(laid_out))
         scores = None
         if preference is not None:
             by_url = {a.url: a for a in articles}
@@ -288,9 +261,7 @@ class DigestPipeline:
                 )
                 for url in entry.urls
             )
-            scores = await preference(
-                [by_url[u] for u in kept_urls if u in by_url], stand_in_topics(laid_out)
-            )
+            scores = await preference([by_url[u] for u in kept_urls if u in by_url], issue_topics)
         content = order_by_preference(laid_out, scores)
         moves = None if scores is None else preference_moves(laid_out, content)
         # Stories show a picture, on the sections `layer_by_lane` makes pebbles of, and
@@ -314,8 +285,7 @@ class DigestPipeline:
             content=content,
             accepted_urls=accepted_urls,
             rejected_urls=rejected_urls,
-            url_to_tags=url_to_tags,
             story_records=story_records,
-            topics=stand_in_topics(content),
+            topics=issue_topics,
             preference_moves=moves,
         )
