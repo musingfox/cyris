@@ -312,6 +312,84 @@ class TestScoreArticlesBatch:
         (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
         assert f"{len(reply.get('scores') or [])} entries" in record.getMessage()
 
+    @pytest.mark.parametrize(
+        ("stored_id", "echoed"),
+        [(1, "1"), ("1", 1), (1, " 1 "), ("abc-1", " abc-1"), (1, 1.0)],
+        ids=[
+            "int stored, string echoed",
+            "string stored, int echoed",
+            "padded",
+            "padded string",
+            "int stored, float echoed",
+        ],
+    )
+    async def test_a_reply_id_matches_whatever_type_or_padding_it_echoes(
+        self, sample_articles, stored_id, echoed
+    ):
+        from cyris.service_layer.scoring import score_articles_batch
+
+        article = sample_articles[0].model_copy(update={"original_id": stored_id})
+        llm = FakeLLM(json.dumps({"scores": [{"id": echoed, "score": 80, "language": "en"}]}))
+
+        scores, _, _, _ = await score_articles_batch(
+            [article], llm, snippet_length=1000, area_names=[]
+        )
+
+        assert scores == {"http://a.com": (80.0, "en")}
+
+    async def test_the_fallback_language_follows_the_same_id_match(self, sample_articles):
+        from cyris.service_layer.scoring import score_articles_batch
+
+        article = sample_articles[1]
+        llm = FakeLLM(json.dumps({"scores": [{"id": "2", "score": 70}]}))
+
+        scores, _, _, _ = await score_articles_batch(
+            [article], llm, snippet_length=1000, area_names=[]
+        )
+
+        assert scores == {"http://b.com": (70.0, "zh")}
+
+    async def test_a_zero_match_warning_names_the_ids_sent_and_the_first_five_received(
+        self, sample_articles, caplog
+    ):
+        from cyris.service_layer.scoring import score_articles_batch
+
+        reply = {"scores": [{"id": f"x{n}", "score": 50} for n in range(8)]}
+        llm = FakeLLM(json.dumps(reply))
+
+        await score_articles_batch(sample_articles, llm, snippet_length=1000, area_names=[])
+
+        (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
+        message = record.getMessage()
+        assert "the reply had 8 entries" in message
+        assert "ids sent: 2 of type int, first five [1, 2]" in message
+        assert "ids received, first five: ['x0', 'x1', 'x2', 'x3', 'x4']" in message
+        assert "x5" not in message
+
+    async def test_a_zero_match_warning_shows_the_type_of_a_received_id(
+        self, sample_articles, caplog
+    ):
+        from cyris.service_layer.scoring import score_articles_batch
+
+        llm = FakeLLM(json.dumps({"scores": [{"id": 9, "score": 50}]}))
+
+        await score_articles_batch(sample_articles, llm, snippet_length=1000, area_names=[])
+
+        (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
+        assert "ids received, first five: [9]" in record.getMessage()
+
+    async def test_a_zero_match_warning_carries_no_article_text(self, sample_articles, caplog):
+        from cyris.service_layer.scoring import score_articles_batch
+
+        llm = FakeLLM(json.dumps({"scores": [{"id": 9, "score": 50}]}))
+
+        await score_articles_batch(sample_articles, llm, snippet_length=1000, area_names=[])
+
+        (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
+        for article in sample_articles:
+            assert article.title not in record.getMessage()
+            assert article.content not in record.getMessage()
+
     async def test_a_batch_scoring_some_does_not_warn(self, sample_articles, caplog):
         from cyris.service_layer.scoring import score_articles_batch
 
