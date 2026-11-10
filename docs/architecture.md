@@ -643,7 +643,14 @@ ids and progress in `.env.trial-<slug>-wizard` at the repo root, beside the tria
 those secrets files are the only copy, since Cloudflare cannot read a secret back. Only
 `scripts/deploy_trial.py` changes that file after the wizard: it records the image it staged
 there, so a later wizard run renders that image and not the first one, and the commit each of the
-rss and vote Workers was last deployed from, so the next staging knows whether to redeploy them. A
+rss and vote Workers was last deployed from, so the next staging knows whether to redeploy them.
+`deploy_trial.py` runs `cyris doctor` on the trial's D1 settings once `/api/build` names the deployed commit, because a D1
+missing a required key serves that commit while every run exits at once. It reads `.env.trial-<slug>` once, before any
+deploy and in a `--dry-run` as in a real run, to build the `.env` doctor runs on; a dry run also reads
+`.env.trial-<slug>.access` as a real run does, and refuses a missing service token. Doctor applies the schema to the
+database that file names, so the script first checks that it names the state's `TRIAL_D1_ID`, reading the value as
+cyris does (stripped, the first line winning), and stops before any deploy when it does not, or when the file holds
+`CYRIS_STORE_DATABASE_ID` on more than one line. A
 trial's reader content can also come from production: `scripts/seed_trial.py save` copies
 production's rows of the tables `scripts/reset_trial.py` clears into `~/cyris-trial-seeds/`,
 outside the repo, and `restore` writes them into a trial's D1, never its `settings` or

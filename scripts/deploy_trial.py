@@ -26,20 +26,29 @@ with the service token in `.env.trial-<slug>.access`, and fails unless it names
 this commit. The wait is
 deploy.yml's: a warm instance keeps answering from the image it started with.
 
+Then it runs `cyris doctor` once against the trial's settings, locally, from
+`.env.trial-<slug>` with `CYRIS_STORE_BACKEND=d1`, and fails naming what doctor
+reports as an error. /api/build only says which image answers: a D1 missing a
+required settings key still serves it while every scheduled run exits at once.
+
 --dry-run resolves the image, renders the config and runs `wrangler deploy
---dry-run` for each Worker it would deploy; it deploys nothing and saves nothing. It reads
-`.env.trial-<slug>.access` first, as the real run does, so it refuses what the real run refuses.
+--dry-run` for each Worker it would deploy; it deploys nothing and saves nothing. It makes
+the same checks of `.env.trial-<slug>` and `.env.trial-<slug>.access` as the real run, before
+any deploy.
 
 Usage:
   deploy_trial.py --slug S [--rss] [--promote] [--app-only] [--dry-run] [--wait SECONDS]
 """
 
 import argparse
+import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 import httpx
 import provision_trial
@@ -58,6 +67,14 @@ WORKER_DIRS = {"rss": "workers/rss", "promote": "workers/promote"}
 STATE_KEYS = ("DOMAIN", "ACCOUNT_ID", "TRIAL_KV_ID", "TRIAL_D1_ID")
 BASELINE_KEYS = {"rss": "RSS_WORKER_COMMIT", "promote": "PROMOTE_WORKER_COMMIT"}
 UNKNOWN = "unknown"
+DOCTOR_DB_KEY = "CYRIS_STORE_DATABASE_ID"
+DOCTOR_FAIL = "✗"
+# What docker/entrypoint.sh's `run` role exports unless the environment already has it, so
+# doctor judges the settings the scheduled run starts from. The backend is forced, never kept.
+RUN_ROLE_DEFAULTS = {
+    "CYRIS_HTML_OUTPUT_ENABLED": "true",
+    "CYRIS_PROMOTE_PUBLISH_ENABLED": "true",
+}
 
 
 class DeployError(Exception):
@@ -100,6 +117,20 @@ def workers_to_deploy(
             out[worker] = "the commit it was last deployed from is unknown"
         elif diff:
             out[worker] = f"{WORKER_DIRS[worker]}/ changed"
+    return out
+
+
+def doctor_failures(report: str) -> list[str]:
+    """The failed checks in `cyris doctor`'s report, each with the indented fix under it."""
+    out: list[str] = []
+    failing = False
+    for line in report.splitlines():
+        if line.startswith(DOCTOR_FAIL):
+            failing = True
+        elif not line.startswith(" "):
+            failing = False
+        if failing:
+            out.append(line)
     return out
 
 
@@ -238,6 +269,74 @@ class Deploy:
             raise DeployError(f"{name} holds no {' or '.join(missing)} to sign in with")
         return {header: values[var] for var, header in ACCESS_HEADERS.items()}
 
+    def doctor_env(self, state: dict[str, str]) -> str:
+        """The trial's `.env`, as the run container reads it, on D1; read before any deploy.
+
+        Doctor applies the schema to the database that file names, so that database must be
+        the one the wizard state holds for this trial. The id is read as cyris reads it, the
+        value stripped, which is why a file naming it twice is refused: cyris would take the
+        first line, `provision_trial.env_file` the last. A dry run reads it too. The file is read
+        once, here.
+        """
+        name = f".env.trial-{self.slug}"
+        path = ROOT / name
+        if not path.exists():
+            raise DeployError(f"{name} not found: doctor needs it to reach the trial's D1")
+        lines = path.read_text(encoding="utf-8").splitlines()
+        held_at = [
+            (number, line.partition("=")[2].strip())
+            for number, line in enumerate(lines, 1)
+            if (stripped := line.strip())
+            and not stripped.startswith("#")
+            and "=" in stripped
+            and stripped.partition("=")[0].strip() == DOCTOR_DB_KEY
+        ]
+        if len(held_at) > 1:
+            numbers = ", ".join(str(number) for number, _ in held_at)
+            raise DeployError(
+                f"{name} has {DOCTOR_DB_KEY} on lines {numbers}: cyris takes the first, the"
+                " scripts here the last, so doctor could apply the schema to a database that is"
+                " not this trial's. Keep one line"
+            )
+        named = held_at[0][1] if held_at else ""
+        if not named or named != state.get("TRIAL_D1_ID"):
+            raise DeployError(
+                f"{name} has {DOCTOR_DB_KEY}={named or '(none)'}, but .env.trial-{self.slug}-wizard"
+                f" has TRIAL_D1_ID={state.get('TRIAL_D1_ID') or '(none)'}: cyris doctor applies the"
+                " schema to the database it names, so it is not run on one that is not this trial's"
+            )
+        held = {line.split("=", 1)[0].strip() for line in lines}
+        kept = [line for line in lines if line.split("=", 1)[0].strip() != "CYRIS_STORE_BACKEND"]
+        defaults = [f"{k}={v}" for k, v in RUN_ROLE_DEFAULTS.items() if k not in held]
+        return "\n".join([*kept, *defaults, "CYRIS_STORE_BACKEND=d1"]) + "\n"
+
+    def doctor(self, dotenv: str) -> None:
+        """Run `cyris doctor` once on the trial's settings; an error in its report fails the deploy.
+
+        cyris reads only the `.env` beside its config file, so both go in one temporary
+        directory. The process starts from an empty environment, as the wizard's own
+        `settings push` does, so nothing the shell exported can stand in for the trial's.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            config, sources = Path(tmp) / "cyris.toml", Path(tmp) / "sources.yaml"
+            config.write_text("", encoding="utf-8")
+            sources.write_text("sources: []\n", encoding="utf-8")
+            (Path(tmp) / ".env").write_text(dotenv, encoding="utf-8")
+            (Path(tmp) / ".env").chmod(0o600)
+            keep = [f"{k}={os.environ[k]}" for k in ("HOME", "PATH") if k in os.environ]
+            cmd = ["env", "-i", *keep, "uv", "run", "cyris", "doctor"]
+            cmd += ["--config", str(config), "--sources", str(sources)]
+            self.say("$ " + " ".join(cmd))
+            done = self._run(cmd)
+        if done.returncode == 0:
+            self.say("cyris doctor: ready to run")
+            return
+        failed = doctor_failures(done.stdout) or [done.stderr.strip() or done.stdout.strip()]
+        raise DeployError(
+            f"cyris doctor reports an error on {self.slug}, though the build matches:\n"
+            + "\n".join(failed)
+        )
+
     def verify(
         self,
         commit: str,
@@ -310,10 +409,11 @@ def main(
         step = Deploy(args, run or _runner(wrangler_env(args.slug)), say)
         commit = step.commit()
         # Read before anything deploys, so a deploy that cannot be checked never starts.
+        state = provision_trial.wizard_state(args.slug)
         headers = step.access_headers()
+        dotenv = step.doctor_env(state)
         digest = step.digest(commit)
         say(f"{image_tag(commit)}: {commit} -> {digest}")
-        state = provision_trial.wizard_state(args.slug)
         rendered = _snapshot(args.slug)
         app_deployed = False
         try:
@@ -352,7 +452,9 @@ def main(
             return 0
         host = configs["app"]["routes"][0]["pattern"]
         step.verify(commit, f"https://{host}", headers, fetch, sleep)
-        say(f"https://{host} serves {commit}: the trial runs this release.")
+        say(f"https://{host} serves {commit}.")
+        step.doctor(dotenv)
+        say("The trial runs this release and its settings are complete.")
         return 0
     except (DeployError, provision_trial.ProductionNameError, provision_trial.DriftError) as exc:
         print(str(exc), file=sys.stderr)

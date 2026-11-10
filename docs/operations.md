@@ -94,7 +94,8 @@ before it. This project's trial is `trial1`.
 1. Merge to `main`. The release runs, and its deploy job deploys production.
 2. From the checkout that provisioned the trial, with that commit checked out, run
    `scripts/deploy_trial.py`. It deploys the image the release recorded, and fails
-   unless the trial reports that commit. To check onboarding from its first step,
+   unless the trial reports that commit and `cyris doctor`, run locally on the trial's
+   `.env.trial-<slug>` against its D1, reports no error. To check onboarding from its first step,
    clear the trial with `scripts/reset_trial.py` first. To check it from real content,
    restore a seed of production's with `scripts/seed_trial.py` first. Each script
    describes itself under `--help`.

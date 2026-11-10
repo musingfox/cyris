@@ -10,7 +10,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from trial_tree import DIGEST, SLUG, load, make_tree
+from trial_tree import D1, DIGEST, SLUG, load, make_tree
 
 pytestmark = pytest.mark.unit
 
@@ -62,6 +62,7 @@ def tree(tmp_path: Path) -> Path:
     (t / f".env.trial-{SLUG}.access").write_text(
         "CYRIS_ACCESS_CLIENT_ID=cid\nCYRIS_ACCESS_CLIENT_SECRET=sek-SECRET\n", encoding="utf-8"
     )
+    (t / f".env.trial-{SLUG}").write_text(f"CYRIS_STORE_DATABASE_ID={D1}\n", encoding="utf-8")
     return t
 
 
@@ -114,6 +115,27 @@ def test_an_optional_worker_deploys_when_changed_unknown_or_asked(deploy) -> Non
     assert set(pick({"rss": None, "promote": None}, set(), False)) == {"rss", "promote"}
     assert set(pick({"rss": False, "promote": False}, {"promote"}, False)) == {"promote"}
     assert pick({"rss": True, "promote": None}, set(), True) == {}
+
+
+REPORT = """\
+✓ config file — read
+✗ settings — missing x
+  push x with `cyris settings push`
+! llm — slow
+  retry later
+✗ pages — unreachable
+✓ sources — 3
+
+2 problem(s) would break a run."""
+
+
+def test_doctor_failures_keeps_each_failed_check_with_its_fix_and_nothing_else(deploy) -> None:
+    assert deploy.doctor_failures(REPORT) == [
+        "✗ settings — missing x",
+        "  push x with `cyris settings push`",
+        "✗ pages — unreachable",
+    ]
+    assert deploy.doctor_failures("✓ a — fine\n\nReady to run.") == []
 
 
 # --- the run
