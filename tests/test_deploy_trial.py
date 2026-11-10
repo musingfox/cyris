@@ -329,6 +329,34 @@ def test_no_service_token_stops_before_any_deploy(deploy, tree: Path, capsys) ->
     assert runner.deploys() == []
 
 
+@pytest.mark.parametrize("access", ["", "CYRIS_ACCESS_CLIENT_ID=cid\n"], ids=["empty", "no-secret"])
+def test_a_dry_run_refuses_a_service_token_file_the_real_run_refuses(
+    deploy, tree: Path, capsys, access: str
+) -> None:
+    (tree / f".env.trial-{SLUG}.access").write_text(access)
+    real, dry = FakeRunner(), FakeRunner()
+
+    assert _main(deploy, real)[0] == 1
+    real_err = capsys.readouterr().err
+    code, *_ = _main(deploy, dry, "--dry-run")
+
+    assert code == 1
+    assert capsys.readouterr().err == real_err
+    assert ".access holds no CYRIS_ACCESS_CLIENT_" in real_err
+    assert dry.deploys() == []
+
+
+def test_a_dry_run_with_no_service_token_file_is_refused(deploy, tree: Path, capsys) -> None:
+    (tree / f".env.trial-{SLUG}.access").unlink()
+    runner = FakeRunner()
+
+    code, *_ = _main(deploy, runner, "--dry-run")
+
+    assert code == 1
+    assert f".env.trial-{SLUG}.access holds no" in capsys.readouterr().err
+    assert runner.deploys() == []
+
+
 def test_the_build_is_asked_through_access_with_no_login(deploy) -> None:
     seen: list[httpx.Request] = []
 

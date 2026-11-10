@@ -27,7 +27,8 @@ this commit. The wait is
 deploy.yml's: a warm instance keeps answering from the image it started with.
 
 --dry-run resolves the image, renders the config and runs `wrangler deploy
---dry-run` for each Worker it would deploy; it deploys nothing and saves nothing.
+--dry-run` for each Worker it would deploy; it deploys nothing and saves nothing. It reads
+`.env.trial-<slug>.access` first, as the real run does, so it refuses what the real run refuses.
 
 Usage:
   deploy_trial.py --slug S [--rss] [--promote] [--app-only] [--dry-run] [--wait SECONDS]
@@ -309,7 +310,7 @@ def main(
         step = Deploy(args, run or _runner(wrangler_env(args.slug)), say)
         commit = step.commit()
         # Read before anything deploys, so a deploy that cannot be checked never starts.
-        headers = {} if args.dry_run else step.access_headers()
+        headers = step.access_headers()
         digest = step.digest(commit)
         say(f"{image_tag(commit)}: {commit} -> {digest}")
         state = provision_trial.wizard_state(args.slug)
