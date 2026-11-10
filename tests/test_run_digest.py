@@ -1649,6 +1649,87 @@ async def test_an_empty_window_leaves_a_d1_row(tmp_path: Path) -> None:
     assert row == {"status": "no_articles", "build_sha": "sha1"}
 
 
+async def test_the_process_usage_reaches_the_stored_summary(tmp_path: Path) -> None:
+    from cyris.adapters.store.runs import D1RunLog
+
+    db = SqliteD1()
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps = replace(
+        deps,
+        record_run=D1RunLog(db, "sha1").record,
+        process_usage=lambda: {"cpu_seconds": 1.25, "peak_rss_bytes": 123456789},
+    )
+
+    await run_digest(deps, RunOptions())
+
+    [row] = db.query("SELECT summary FROM digest_runs").rows
+    stored = json.loads(row["summary"])
+    assert stored["cpu_seconds"] == 1.25
+    assert stored["peak_rss_bytes"] == 123456789
+
+
+async def test_no_process_usage_callable_leaves_the_summary_without_its_keys(
+    tmp_path: Path, caplog
+) -> None:
+    from cyris.adapters.store.runs import D1RunLog
+
+    db = SqliteD1()
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    assert deps.process_usage is None
+    deps = replace(deps, record_run=D1RunLog(db, "sha1").record)
+
+    await run_digest(deps, RunOptions())
+
+    [row] = db.query("SELECT summary FROM digest_runs").rows
+    stored = json.loads(row["summary"])
+    assert "cpu_seconds" not in stored
+    assert "peak_rss_bytes" not in stored
+    assert [r.getMessage() for r in caplog.records if r.levelname == "ERROR"] == []
+
+
+def test_build_deps_wires_the_process_usage_read(tmp_path: Path) -> None:
+    from cyris import bootstrap
+
+    cfg = make_config(agent_vault=AgentVaultConfig(path=tmp_path / "vault"))
+
+    usage = bootstrap.build_deps(cfg).process_usage
+
+    assert usage is not None
+    assert set(usage()) == {"cpu_seconds", "peak_rss_bytes"}
+
+
+def test_build_deps_wires_no_process_usage_read_without_the_resource_module(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from cyris import bootstrap
+    from cyris.adapters import process_usage
+
+    monkeypatch.setattr(process_usage, "resource", None)
+    cfg = make_config(agent_vault=AgentVaultConfig(path=tmp_path / "vault"))
+
+    assert bootstrap.build_deps(cfg).process_usage is None
+
+
+async def test_a_failing_process_usage_read_leaves_the_run_and_its_row(
+    tmp_path: Path, caplog
+) -> None:
+    from cyris.adapters.store.runs import D1RunLog
+
+    def boom() -> dict:
+        raise OSError("no rusage")
+
+    db = SqliteD1()
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
+    deps = replace(deps, record_run=D1RunLog(db, "sha1").record, process_usage=boom)
+
+    report = await run_digest(deps, RunOptions())
+
+    assert report.status == "no_articles"
+    [row] = db.query("SELECT summary FROM digest_runs").rows
+    assert "cpu_seconds" not in json.loads(row["summary"])
+    assert "Failed to read the process's resource use: no rusage" in caplog.text
+
+
 def _down(_summary: dict) -> None:
     from cyris.adapters.store.d1 import D1Error
 

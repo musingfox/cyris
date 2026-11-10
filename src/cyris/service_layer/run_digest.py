@@ -288,6 +288,11 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
         raise
     finally:
         summary["wall_seconds"] = round(time.monotonic() - started, 2)
+        if deps.process_usage is not None:
+            try:
+                summary.update(deps.process_usage())
+            except Exception as e:  # noqa: BLE001 - a failed read must not replace the run's result
+                logger.error("Failed to read the process's resource use: %s", e)
         if failure is not None:
             # What the failure alert says, kept with the run: the onboarding's
             # first issue tells the reader why the run it started failed.
