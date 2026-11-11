@@ -1,13 +1,14 @@
 """Receipts that the reader-facing pages follow docs/design/ui-language.md."""
 
 import functools
+import json
 import re
 from collections.abc import AsyncIterator
 from html.parser import HTMLParser
 from pathlib import Path
 
 import pytest
-from aiohttp.test_utils import TestClient, TestServer
+from aiohttp.test_utils import TestClient, TestServer, make_mocked_request
 from css_rules import (
     COMPONENT_SELECTORS,
     PROTOTYPE,
@@ -1546,7 +1547,9 @@ def _website_tokens(selector: str) -> dict[str, str]:
 
 
 def test_the_websites_dark_tokens_are_the_page_tokens() -> None:
-    assert _website_tokens(":root") == {k: canonical_colour(v) for k, v in tokens().items()}
+    page = {k: canonical_colour(v) for k, v in tokens().items()}
+    # The logo mark's two tokens are the landing page's alone (ui-language.md §2).
+    assert _website_tokens(":root") == page | {"iris": "#c6ff3d", "iris-plate": "#07070a"}
 
 
 def test_the_websites_light_tokens_are_the_one_light_palette() -> None:
@@ -1627,6 +1630,18 @@ def _font_px(declarations: set[str] | list[str], viewport: int) -> float:
     return min(max(float(low), float(vw) * viewport / 100), float(high))
 
 
+class _SecondLevelHeadings(HTMLParser):
+    """Each <h2>'s class, None for an <h2> with no class."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.classes: list[str | None] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "h2":
+            self.classes.append(dict(attrs).get("class"))
+
+
 @pytest.mark.parametrize("lang", ["en", "zh-Hant"])
 def test_the_landing_h1_is_larger_than_every_h2(lang: str) -> None:
     rules = parse_style_block(WEBSITE.read_text())
@@ -1635,14 +1650,145 @@ def test_the_landing_h1_is_larger_than_every_h2(lang: str) -> None:
         override = rules.get(ZH + key) if lang == "zh-Hant" else None
         return _font_px(override or rules[key], viewport)
 
+    # The page's every h2, by the rule that sizes it, so an h2 added later has to be named here.
+    headings = _SecondLevelHeadings()
+    headings.feed(WEBSITE.read_text())
+    assert headings.classes == ["eyebrow", "say"]
     for viewport in (320, 360, 390, 720, 960, 1200, 1440, 1920):
         h1 = size(".hero h1", viewport)
-        for h2 in (".section-heading", ".how-heading h2"):
+        for h2 in (".eyebrow", "#editions h2"):
             assert h1 > size(h2, viewport), f"{lang} at {viewport}px: h1 {h1} vs {h2}"
-    assert size(".hero h1", 1920) == (119 if lang == "en" else 102)
+    assert size(".hero h1", 1920) == 36
     hero = rules[".hero h1"]
-    assert "letter-spacing: -.04em" in hero
-    assert [d for d in hero if d.startswith("font:") and ")/.92 " in d]
+    assert "letter-spacing: -.01em" in hero
+    assert [d for d in hero if d.startswith("font:") and ")/1.2 " in d]
+
+
+def _reduced_motion_name(script: str) -> str | None:
+    query = re.search(r"const (\w+) = matchMedia\('\(prefers-reduced-motion: reduce\)'\)", script)
+    return query[1] if query else None
+
+
+def _js_block(script: str, start: int) -> str:
+    """The text from `start` through the brace closing the first block after it."""
+    depth = 0
+    for i in range(script.index("{", start), len(script)):
+        depth += {"{": 1, "}": -1}.get(script[i], 0)
+        if not depth:
+            return script[start : i + 1]
+    return script[start:]
+
+
+def _frames_ignoring_reduced_motion(script: str) -> list[str]:
+    """Name each animation frame a loop asks for without asking about reduced motion.
+
+    A frame is allowed inside `if (!NAME.matches)`, after `if (NAME.matches)` in its own
+    function, or as its function calling itself again, since an allowed frame started it.
+    A frame with an arrow callback is not a loop, so the scroll handler's is not named.
+    """
+    name = _reduced_motion_name(script)
+    opening = script.find(f"if (!{name}.matches) {{")
+    rest = script
+    if opening >= 0:
+        rest = script[:opening] + script[opening + len(_js_block(script, opening)) :]
+    named = []
+    for frame in re.finditer(r"requestAnimationFrame\((\w+)\)", rest):
+        functions = [
+            f
+            for f in re.finditer(r"function (\w+)\(", rest[: frame.start()])
+            if f.start() + len(_js_block(rest, f.start())) > frame.start()
+        ]
+        function = functions[-1] if functions else None
+        if function and function[1] == frame[1]:
+            continue
+        if function and f"if ({name}.matches)" in rest[function.start() : frame.start()]:
+            continue
+        named.append(frame[0])
+    return named
+
+
+def test_a_frame_loop_that_ignores_reduced_motion_is_reported() -> None:
+    query = "const R = matchMedia('(prefers-reduced-motion: reduce)');\n"
+    loop = "function run() { requestAnimationFrame(run); }\n"
+    start = "requestAnimationFrame(run)"
+    assert _frames_ignoring_reduced_motion(query + loop + f"function aim() {{ {start}; }}") == [
+        start
+    ]
+    assert _frames_ignoring_reduced_motion(query + f"{start};") == [start]
+    assert _frames_ignoring_reduced_motion(loop + f"if (!R.matches) {{ {start}; }}") == [start]
+    guarded = f"function aim() {{ if (R.matches) {{ return; }} {start}; }}"
+    assert _frames_ignoring_reduced_motion(query + loop + guarded) == []
+    assert _frames_ignoring_reduced_motion(query + f"if (!R.matches) {{ {start}; }}") == []
+    assert _frames_ignoring_reduced_motion(query + "requestAnimationFrame(() => go());") == []
+
+
+def test_the_landing_page_stops_motion_on_request() -> None:
+    page = WEBSITE.read_text()
+    assert parse_style_block(page)[REDUCED_MOTION] == STILL
+
+    # Script drives the opening and the drawing, and no stylesheet rule reaches either.
+    script = re.search(r"<script>(.*)</script>", page, re.DOTALL)[1]
+    assert _frames_ignoring_reduced_motion(script) == []
+    name = _reduced_motion_name(script)
+    # The drawing shows where the story leaves it, and turning the preference on mid-page
+    # stops both the opening and the drawing.
+    assert f"{name}.matches ? 6 :" in script
+    assert script.count(f"{name}.addEventListener('change'") == 2
+
+
+def _edition_cards() -> dict[str, str]:
+    page = WEBSITE.read_text()
+    local, cloud, hosted = re.findall(r'<a class="edition.*?</a>', page, re.DOTALL)
+    return {"local": local, "cloud": cloud, "hosted": hosted}
+
+
+# Words a limit cannot be stated without, not its sentence. `Worker` alone, because
+# `Workers` is the Cloudflare plan the card also names.
+@pytest.mark.parametrize(
+    ("card", "english", "chinese"),
+    [
+        (
+            "local",
+            [r"\bvot", r"\bnewsletter", r"\bworker\b", r"\bdomain\b"],
+            ["投票", "電子報", r"Worker(?!s)", "網域"],
+        ),
+        (
+            "cloud",
+            [r"\bvot", r"\bworker\b", r"\bsign|\blog"],
+            ["投票", r"Worker(?!s)", "登入"],
+        ),
+    ],
+)
+def test_an_edition_card_names_its_limits_in_both_languages(
+    card: str, english: list[str], chinese: list[str]
+) -> None:
+    body = re.search(r'<p data-zh="([^"]*)">(.*?)</p>', _edition_cards()[card], re.DOTALL)
+    assert [word for word in english if not re.search(word, body[2], re.IGNORECASE)] == []
+    assert [word for word in chinese if not re.search(word, body[1])] == []
+
+
+async def test_the_local_server_still_takes_no_vote_as_its_card_says() -> None:
+    app = TriageServer()._app
+    app.freeze()
+    request = make_mocked_request("GET", "/api/vote", headers={"Host": "127.0.0.1"}, app=app)
+    probe = await app._handle(request)
+    assert json.loads(probe.text)["votes"] is False
+
+
+def test_the_landing_page_does_not_name_the_sources_example() -> None:
+    assert "sources.example.yaml" not in WEBSITE.read_text()
+
+
+def test_every_landing_description_leads_with_the_owners_phrase() -> None:
+    page = WEBSITE.read_text()
+    head = re.findall(r'description" content="([^"]*)"', page)
+    script = re.findall(r"[dD]escription: '([^']*)'", page)
+    english, chinese = script[:3], script[3:]
+    assert len(head) == len(english) == len(chinese) == 3
+    assert len({*head, *english}) == 1
+    assert len(set(chinese)) == 1
+    assert head[0].startswith("First things first")
+    assert chinese[0].startswith("要事第一")
 
 
 def test_an_unavailable_choice_dims_everything_but_its_state() -> None:
