@@ -1,0 +1,127 @@
+    <script>
+    // The topic dialog (UI spec section 4, topic dialog; section 6, digest): a sand card's
+    // heading button, or a click on the card's blank space, opens that card's <dialog>. It
+    // zooms out of the card on open and back into it on close, and on touch a fresh pull
+    // past its bottom closes it. Settled on a throwaway page (owner, 2026-11-12). Without
+    // script the heading button's `command` opens the dialog where the browser has it.
+    (() => {
+        // The spec's numbers (section 2, literal exceptions): the zoom's length and curve, the
+        // share of it the dialog fades in over, and the fresh upward touch pull that closes it.
+        const ZOOM = {duration: 650, easing: 'cubic-bezier(.2, .8, .2, 1)', fill: 'forwards'};
+        const FADE_UNTIL = 0.4, PULL = 160;
+        const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+        let dialog = null, card = null, opener = null, anims = [], closing = false;
+
+        // The dialog's frames from the card's box to its own, scaled on each axis from its top
+        // left corner. The card is behind a modal, so it holds still while they run.
+        const zoom = (forward) => {
+            const c = card.getBoundingClientRect(), d = dialog.getBoundingClientRect();
+            const atCard = `translate(${c.left - d.left}px, ${c.top - d.top}px) scale(${c.width / d.width}, ${c.height / d.height})`;
+            const frames = [{transform: atCard, opacity: 0}, {opacity: 1, offset: FADE_UNTIL}, {transform: 'none', opacity: 1}];
+            const back = [...frames].reverse().map((f) => ('offset' in f ? {...f, offset: 1 - f.offset} : f));
+            return [
+                dialog.animate(forward ? frames : back, ZOOM),
+                dialog.animate({opacity: forward ? [0, 1] : [1, 0]}, {...ZOOM, pseudoElement: '::backdrop'}),
+            ];
+        };
+
+        const open = (from) => {
+            card = from;
+            opener = card.querySelector('.topic-open');
+            dialog = document.getElementById(opener.getAttribute('commandfor'));
+            closing = false;
+            dialog.showModal();
+            dialog.scrollTop = 0;
+            dialog.querySelector('.topic-dialog-close').focus();
+            if (!reduced.matches) anims = zoom(true);
+        };
+
+        // Every way out comes here: it zooms back into the card, then closes. A request while
+        // closing is ignored; one during the opening turns the opening around where it is.
+        const requestClose = () => {
+            if (!dialog?.open || closing) return;
+            closing = true;
+            if (reduced.matches) return dialog.close();
+            const running = anims.filter((a) => a.playState === 'running');
+            if (running.length) running.forEach((a) => a.reverse());
+            else { anims.forEach((a) => a.cancel()); anims = zoom(false); }
+            const these = anims, closingDialog = dialog;
+            Promise.all(these.map((a) => a.finished)).then(() => { if (anims === these && closingDialog.open) closingDialog.close(); }, () => {});
+        };
+
+        document.addEventListener('click', (e) => {
+            const from = e.target.closest('.news-cluster');
+            if (!from || !from.querySelector('.topic-open')) return;
+            // A vote, a link or any other control keeps its own job.
+            const control = e.target.closest('a, button, summary, input, select, textarea, label, .vote-group');
+            if (control && !control.classList.contains('topic-open')) return;
+            // Selecting text on the card is not a request to open it.
+            if (!control && String(getSelection()).length) return;
+            // The button's own command would open the dialog with no zoom.
+            e.preventDefault();
+            open(from);
+        });
+
+        // Touch pull past the bottom (spec section 4, Layers, Pull): only a touch that starts
+        // with the dialog already scrolled to its bottom counts, so the gesture that reaches
+        // the bottom never closes it, and leaving the bottom ends the pull. Lifting the finger
+        // resets it. The wheel never closes the dialog: only touches are read here.
+        let pullFrom = null;
+        const atBottom = () => dialog.scrollTop + dialog.clientHeight >= dialog.scrollHeight - 1;
+        const hint = () => dialog.querySelector('.topic-dialog-pull-inner');
+        const endPull = () => {
+            pullFrom = null;
+            if (!dialog) return;
+            hint().hidden = true;
+            hint().querySelector('b').style.width = '0';
+        };
+
+        for (const each of document.querySelectorAll('.topic-dialog')) {
+            const t = document.createElement('template');
+            t.innerHTML = '<div class="topic-dialog-pull" aria-hidden="true"><div class="topic-dialog-pull-inner" hidden lang="en"><span class="label">Keep pulling to close</span><i><b></b></i></div></div>';
+            each.append(t.content);
+            const close = each.querySelector('.topic-dialog-close');
+            close.addEventListener('click', (e) => { e.preventDefault(); requestClose(); });
+            // A click that both began and ended outside the dialog's box landed on the backdrop;
+            // one that only ended there was a selection dragged out of it.
+            let downOutside = false;
+            const outside = (e) => {
+                if (e.target !== each) return false;
+                const r = each.getBoundingClientRect();
+                return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+            };
+            each.addEventListener('pointerdown', (e) => { downOutside = outside(e); });
+            each.addEventListener('click', (e) => { if (downOutside && outside(e)) requestClose(); downOutside = false; });
+            // Esc: hold the close for the zoom. A browser may refuse the hold (Chromium does for a
+            // second Esc with no activation between); it then closes at once, which `close` handles.
+            each.addEventListener('cancel', (e) => {
+                if (!e.cancelable) return;
+                e.preventDefault();
+                requestClose();
+            });
+            each.addEventListener('close', () => {
+                anims.forEach((a) => a.cancel());
+                anims = [];
+                endPull();
+                closing = false;
+                // Focus goes back to the card's heading button by hand: browsers restore it differently.
+                opener?.focus();
+            });
+            each.addEventListener('touchstart', (e) => {
+                endPull();
+                if (!closing && e.touches.length === 1 && atBottom()) pullFrom = e.touches[0].clientY;
+            }, {passive: true});
+            each.addEventListener('touchmove', (e) => {
+                if (pullFrom === null) return;
+                if (!atBottom()) return endPull();
+                const pulled = Math.max(0, pullFrom - e.touches[0].clientY);
+                hint().hidden = !pulled;
+                if (!pulled) return;
+                if (e.cancelable) e.preventDefault();
+                hint().querySelector('b').style.width = `${Math.min(1, pulled / PULL) * 100}%`;
+                if (pulled >= PULL) { endPull(); requestClose(); }
+            }, {passive: false});
+            for (const type of ['touchend', 'touchcancel']) each.addEventListener(type, endPull, {passive: true});
+        }
+    })();
+    </script>

@@ -46,6 +46,9 @@
     // A group's vote is remembered under its first url; this is the one place that says so.
     const voteKey = (group) => groupUrls(group)[0];
     const votedOn = (group) => votes[voteKey(group)];
+    // A topic shows its vote twice, on its card and in its dialog (UI spec section 4, topic
+    // dialog): every group over the same urls is one vote, so all of them move together.
+    const twinsOf = (group) => [...document.querySelectorAll('.vote-group')].filter((g) => g.dataset.urls === group.dataset.urls);
 
     for (const group of document.querySelectorAll('.vote-group')) {
         const vote = votedOn(group);
@@ -68,7 +71,7 @@
     // The one vote path: null only when every url took the vote, and only then is it
     // remembered and painted; otherwise the reason, for the caller to show. It never rejects.
     async function castVote(group, vote) {
-        clearFailure(group);
+        twinsOf(group).forEach(clearFailure);
         const urls = groupUrls(group);
         try {
             const results = await Promise.all(urls.map((u) => fetch('/api/vote', {
@@ -86,7 +89,7 @@
         votes[voteKey(group)] = vote;
         // The server already took the vote; a full quota must not show it as failed.
         try { localStorage.setItem(VOTES_KEY, JSON.stringify(votes)); } catch {}
-        paint(group, vote, true);
+        twinsOf(group).forEach((g) => paint(g, vote, true));
         return null;
     }
 
@@ -118,14 +121,17 @@
         const btn = e.target.closest('.promote-btn');
         if (!btn) return;
         const group = btn.closest('.vote-group');
-        const buttons = [...group.querySelectorAll('.promote-btn')];
+        const twins = twinsOf(group);
+        const buttons = twins.flatMap((g) => [...g.querySelectorAll('.promote-btn')]);
         const focused = document.activeElement === btn;
         buttons.forEach((b) => { b.disabled = true; });
         try {
             const failure = await castVote(group, btn.dataset.vote);
             if (failure) {
-                btn.classList.add('error');
-                showFailure(group, failure);
+                for (const g of twins) {
+                    g.querySelector(`[data-vote="${btn.dataset.vote}"]`).classList.add('error');
+                    showFailure(g, failure);
+                }
             }
         } finally {
             buttons.forEach((b) => { b.disabled = false; });
