@@ -163,7 +163,7 @@ async def test_a_batched_scoring_stage_reports_what_it_spent():
         model = "@cf/test"
 
         async def complete(self, prompt, **kwargs):
-            scores = [{"id": str(i), "score": 50} for i in range(60)]
+            scores = [{"id": str(i), "score": 50} for i in range(20)]
             return LLMResponse(
                 text=json.dumps({"scores": scores}), input_tokens=100, output_tokens=20, neurons=4.0
             )

@@ -736,12 +736,11 @@ def test_each_llm_call_names_its_kind_and_the_articles_it_was_given(receipts) ->
         body = json_body(call)
         assert body["generationConfig"]["responseMimeType"] == "application/json"
         if call["llm"]["kind"] == "scoring":
-            # Scoring names each article by its stored id, not by position.
-            pairs = sorted((title, article_id) for article_id, _, title in call["llm"]["articles"])
-            assert pairs == sorted(
-                (TITLE[k], receipts.articles[URL[k]]["original_id"]) for k in SCORES
-            )
-            assert ("Agents learn to read receipts", "e2e-a1") in pairs
+            # Scoring names each article by its 0-based position in the call, as the
+            # other prompts do, not by its stored original_id.
+            assert ids == [str(i) for i in range(len(ids))]
+            titles = [title for _, _, title in call["llm"]["articles"]]
+            assert sorted(titles) == sorted(TITLE[k] for k in SCORES)
             assert "temperature" not in body["generationConfig"]
         else:
             assert ids == [str(i) for i in range(len(ids))]

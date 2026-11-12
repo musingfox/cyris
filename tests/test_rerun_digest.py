@@ -39,7 +39,8 @@ def _article(i: int, *, title: str | None = None) -> Article:
 
 def _scores(articles: list[Article], **extra) -> str:
     entries = [
-        {"id": a.id, "score": 80, "language": "en", "tags": ["s"], **extra} for a in articles
+        {"id": position, "score": 80, "language": "en", "tags": ["s"], **extra}
+        for position, _ in enumerate(articles)
     ]
     return json.dumps({"scores": entries})
 

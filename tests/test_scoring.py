@@ -89,7 +89,7 @@ class TestBuildScoringPrompt:
             ),
         ]
         prompt = build_scoring_prompt(articles, snippet_length=1000)
-        assert "[1] Title A" in prompt
+        assert "[0] Title A" in prompt
         assert "Source: Source A" in prompt
         assert "Content: Content A" in prompt
 
@@ -176,8 +176,8 @@ class TestScoreArticlesBatch:
             json.dumps(
                 {
                     "scores": [
-                        {"id": 1, "score": 85, "language": "en"},
-                        {"id": 2, "score": 72, "language": "zh"},
+                        {"id": 0, "score": 85, "language": "en"},
+                        {"id": 1, "score": 72, "language": "zh"},
                     ]
                 }
             )
@@ -210,8 +210,8 @@ class TestScoreArticlesBatch:
             json.dumps(
                 {
                     "scores": [
-                        {"id": 1, "score": 80},  # no language field
-                        {"id": 2, "score": 70},
+                        {"id": 0, "score": 80},  # no language field
+                        {"id": 1, "score": 70},
                     ]
                 }
             )
@@ -233,7 +233,7 @@ class TestScoreArticlesBatch:
                 {
                     "scores": [
                         {
-                            "id": 1,
+                            "id": 0,
                             "score": 80,
                             "language": "en",
                             "tags": ["Rust"],
@@ -257,8 +257,8 @@ class TestScoreArticlesBatch:
             json.dumps(
                 {
                     "scores": [
-                        {"id": 1, "score": 80, "language": "en", "tags": ["AI", 42]},
-                        {"id": 2, "score": 70, "language": "en", "tags": "Rust"},
+                        {"id": 0, "score": 80, "language": "en", "tags": ["AI", 42]},
+                        {"id": 1, "score": 70, "language": "en", "tags": "Rust"},
                     ]
                 }
             )
@@ -275,7 +275,7 @@ class TestScoreArticlesBatch:
     async def test_batch_scoring_omits_missing_tags(self, sample_articles):
         from cyris.service_layer.scoring import score_articles_batch
 
-        llm = FakeLLM(json.dumps({"scores": [{"id": 1, "score": 80, "language": "en"}]}))
+        llm = FakeLLM(json.dumps({"scores": [{"id": 0, "score": 80, "language": "en"}]}))
 
         scores, tags, _, _ = await score_articles_batch(
             sample_articles, llm, snippet_length=1000, area_names=[]
@@ -287,7 +287,7 @@ class TestScoreArticlesBatch:
     async def test_custom_snippet_length_in_batch(self, sample_articles):
         from cyris.service_layer.scoring import score_articles_batch
 
-        llm = FakeLLM(json.dumps({"scores": [{"id": 1, "score": 75, "language": "en"}]}))
+        llm = FakeLLM(json.dumps({"scores": [{"id": 0, "score": 75, "language": "en"}]}))
 
         await score_articles_batch([sample_articles[0]], llm, snippet_length=500, area_names=[])
 
@@ -313,35 +313,71 @@ class TestScoreArticlesBatch:
         assert f"{len(reply.get('scores') or [])} entries" in record.getMessage()
 
     @pytest.mark.parametrize(
-        ("stored_id", "echoed"),
-        [(1, "1"), ("1", 1), (1, " 1 "), ("abc-1", " abc-1"), (1, 1.0)],
-        ids=[
-            "int stored, string echoed",
-            "string stored, int echoed",
-            "padded",
-            "padded string",
-            "int stored, float echoed",
-        ],
+        "echoed",
+        [lambda n: n, lambda n: str(n), lambda n: f" {n} "],
+        ids=["int", "digit string", "padded digit string"],
     )
-    async def test_a_reply_id_matches_whatever_type_or_padding_it_echoes(
-        self, sample_articles, stored_id, echoed
+    async def test_every_article_is_scored_by_the_position_echoed(self, caplog, echoed):
+        from cyris.service_layer.scoring import score_articles_batch
+
+        articles = [
+            _article(f"http://{n}.com").model_copy(update={"original_id": f"tag:x,2026:/{n}"})
+            for n in range(14)
+        ]
+        reply = {"scores": [{"id": echoed(n), "score": n, "language": "en"} for n in range(14)]}
+        llm = FakeLLM(json.dumps(reply))
+
+        scores, _, _, _ = await score_articles_batch(
+            articles, llm, snippet_length=1000, area_names=[]
+        )
+
+        assert scores == {f"http://{n}.com": (float(n), "en") for n in range(14)}
+        assert [r for r in caplog.records if r.levelname == "WARNING"] == []
+
+    async def test_the_prompt_labels_each_article_by_position(self, sample_articles):
+        from cyris.service_layer.scoring import score_articles_batch
+
+        llm = FakeLLM(json.dumps({"scores": []}))
+
+        await score_articles_batch(sample_articles, llm, snippet_length=1000, area_names=[])
+
+        prompt = llm.calls[0]["prompt"]
+        assert "[0] AI Research Paper" in prompt
+        assert "[1] 雲端運算趨勢分析" in prompt
+
+    @pytest.mark.parametrize(
+        "echoed", ["tag:daringfireball.net,2026:/linked//6.43718", 7, -1, True]
+    )
+    async def test_an_echoed_feed_id_or_stray_index_is_reported_unmatched(
+        self, sample_articles, caplog, echoed
     ):
         from cyris.service_layer.scoring import score_articles_batch
 
-        article = sample_articles[0].model_copy(update={"original_id": stored_id})
-        llm = FakeLLM(json.dumps({"scores": [{"id": echoed, "score": 80, "language": "en"}]}))
+        sample_articles[1] = sample_articles[1].model_copy(
+            update={"original_id": "tag:daringfireball.net,2026:/linked//6.43718"}
+        )
+        reply = {"scores": [{"id": 0, "score": 80}, {"id": echoed, "score": 70}]}
+        llm = FakeLLM(json.dumps(reply))
 
         scores, _, _, _ = await score_articles_batch(
-            [article], llm, snippet_length=1000, area_names=[]
+            sample_articles, llm, snippet_length=1000, area_names=[]
         )
 
-        assert scores == {"http://a.com": (80.0, "en")}
+        assert list(scores) == ["http://a.com"]
+        (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
+        message = record.getMessage()
+        assert "the reply had 2 entries, 1 matched a sent id" in message
+        assert (
+            "ids sent but not scored, first five ['tag:daringfireball.net,2026:/linked//6.43718']"
+            in message
+        )
+        assert f"ids received that matched none, first five: [{echoed!r}]" in message
 
     async def test_the_fallback_language_follows_the_same_id_match(self, sample_articles):
         from cyris.service_layer.scoring import score_articles_batch
 
         article = sample_articles[1]
-        llm = FakeLLM(json.dumps({"scores": [{"id": "2", "score": 70}]}))
+        llm = FakeLLM(json.dumps({"scores": [{"id": "0", "score": 70}]}))
 
         scores, _, _, _ = await score_articles_batch(
             [article], llm, snippet_length=1000, area_names=[]
@@ -393,7 +429,7 @@ class TestScoreArticlesBatch:
     async def test_a_batch_scoring_all_does_not_warn(self, sample_articles, caplog):
         from cyris.service_layer.scoring import score_articles_batch
 
-        reply = {"scores": [{"id": 1, "score": 80}, {"id": 2, "score": 70}]}
+        reply = {"scores": [{"id": 0, "score": 80}, {"id": 1, "score": 70}]}
         llm = FakeLLM(json.dumps(reply))
 
         await score_articles_batch(sample_articles, llm, snippet_length=1000, area_names=[])
@@ -403,7 +439,7 @@ class TestScoreArticlesBatch:
     async def test_a_reply_short_of_entries_warns_with_its_counts(self, sample_articles, caplog):
         from cyris.service_layer.scoring import score_articles_batch
 
-        llm = FakeLLM(json.dumps({"scores": [{"id": 1, "score": 80, "language": "en"}]}))
+        llm = FakeLLM(json.dumps({"scores": [{"id": 0, "score": 80, "language": "en"}]}))
 
         scores, _, _, _ = await score_articles_batch(
             sample_articles, llm, snippet_length=1000, area_names=[]
@@ -421,8 +457,8 @@ class TestScoreArticlesBatch:
     ):
         from cyris.service_layer.scoring import score_articles_batch
 
-        # Every article has an entry, but one echoes the prompt's "[2]" brackets.
-        reply = {"scores": [{"id": 1, "score": 80}, {"id": "[2]", "score": 70}]}
+        # Every article has an entry, but one echoes the prompt's "[1]" brackets.
+        reply = {"scores": [{"id": 0, "score": 80}, {"id": "[1]", "score": 70}]}
         llm = FakeLLM(json.dumps(reply))
 
         await score_articles_batch(sample_articles, llm, snippet_length=1000, area_names=[])
@@ -431,7 +467,7 @@ class TestScoreArticlesBatch:
         message = record.getMessage()
         assert "the reply had 2 entries, 1 matched a sent id" in message
         assert "ids sent but not scored, first five [2]" in message
-        assert "ids received that matched none, first five: ['[2]']" in message
+        assert "ids received that matched none, first five: ['[1]']" in message
 
     async def test_a_partial_match_warning_lists_only_the_first_five_ids(self, caplog):
         from cyris.service_layer.scoring import score_articles_batch
@@ -440,7 +476,7 @@ class TestScoreArticlesBatch:
             _article(f"http://{n}.com").model_copy(update={"original_id": f"s{n}"})
             for n in range(8)
         ]
-        reply = {"scores": [{"id": "s0", "score": 50}]}
+        reply = {"scores": [{"id": 0, "score": 50}]}
         reply["scores"] += [{"id": f"r{n}", "score": 50} for n in range(8)]
         llm = FakeLLM(json.dumps(reply))
 
@@ -647,7 +683,9 @@ class TestBatchGuard:
         ]
 
         def response(ids: range) -> str:
-            return json.dumps({"scores": [{"id": n, "score": 7, "tags": ["ai"]} for n in ids]})
+            return json.dumps(
+                {"scores": [{"id": n, "score": 7, "tags": ["ai"]} for n in range(len(ids))]}
+            )
 
         class SecondBatchExplodes(FakeLLM):
             async def complete(self, prompt, **kwargs):
@@ -765,7 +803,7 @@ or the appropriate ISO 639-1 code for other languages.
 For each article, also assign concise topic tags.
 
 Respond in JSON:
-{"scores": [{"id": <article_id>, "score": <0-100>, "language": "<lang_code>", \
+{"scores": [{"id": <number in brackets>, "score": <0-100>, "language": "<lang_code>", \
 "tags": ["<topic tag>", ...]}]}
 """
 
@@ -835,7 +873,7 @@ class TestScoringAreaParse:
         from cyris.service_layer.scoring import AreaPick
 
         result, _, _, picks = await self._run(
-            two_articles[:1], [{"id": 1, "score": 7, "area": "tech"}], ["Tech"]
+            two_articles[:1], [{"id": 0, "score": 7, "area": "tech"}], ["Tech"]
         )
 
         assert picks["http://a.com"] == AreaPick("Tech", None)
@@ -846,7 +884,7 @@ class TestScoringAreaParse:
 
         result, _, _, picks = await self._run(
             two_articles[:1],
-            [{"id": 1, "score": 5, "area": "Astrology", "suggest_area": "Space"}],
+            [{"id": 0, "score": 5, "area": "Astrology", "suggest_area": "Space"}],
             ["Tech"],
         )
 
@@ -859,8 +897,8 @@ class TestScoringAreaParse:
         result, _, _, picks = await self._run(
             two_articles,
             [
-                {"id": 1, "score": 9, "area": 42},
-                {"id": 2, "score": 6, "area": "Tech"},
+                {"id": 0, "score": 9, "area": 42},
+                {"id": 1, "score": 6, "area": "Tech"},
             ],
             ["Tech"],
         )
@@ -875,7 +913,7 @@ class TestScoringAreaParse:
 
         _, _, _, picks = await self._run(
             two_articles,
-            [{"id": 1, "score": 1, "area": "Tech"}, {"id": 2, "score": 2, "area": "Food"}],
+            [{"id": 0, "score": 1, "area": "Tech"}, {"id": 1, "score": 2, "area": "Food"}],
             [],
         )
 

@@ -190,7 +190,7 @@ class TestRunPipelineE2E:
 
             # Mock Claude API for scoring (article 103 is the only non-news scorable)
             score_response = _make_claude_response(
-                json.dumps({"scores": [{"id": "103", "score": 85, "language": "en"}]})
+                json.dumps({"scores": [{"id": 0, "score": 85, "language": "en"}]})
             )
 
             # All LLM calls go through the single AnthropicClient adapter;

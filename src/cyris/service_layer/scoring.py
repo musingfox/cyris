@@ -8,6 +8,7 @@ from cyris.domain.areas import fold_name
 from cyris.domain.language import detect_language
 from cyris.domain.models import Lane, StoredArticle, UsageStats
 from cyris.domain.tags import NEWS_TAG, normalize_tags
+from cyris.service_layer.parse import echoed_position
 from cyris.service_layer.ports import LLMClient, complete_json
 from cyris.service_layer.prompts import build_scoring_prompt, build_scoring_system_prompt
 
@@ -36,17 +37,6 @@ def _parse_pick(entry: dict, area_names: Sequence[str]) -> AreaPick:
     raw_suggest = entry.get("suggest_area")
     suggest = raw_suggest.strip() if isinstance(raw_suggest, str) else ""
     return AreaPick(area, suggest or None)
-
-
-def _id_key(article_id: object) -> str:
-    """An id as the prompt showed it: bare text, so `7`, `"7"` and `" 7 "` are one id.
-
-    The prompt prints `original_id` without its type, so a reply may echo either. A
-    whole-number float, which JSON's `7.0` parses to, is the id `7`, as `7.0 == 7` was.
-    """
-    if isinstance(article_id, float) and article_id.is_integer():
-        return str(int(article_id))
-    return str(article_id).strip()
 
 
 def _first_ids(ids: Sequence[object]) -> str:
@@ -101,11 +91,6 @@ async def score_articles_batch(
     if not articles:
         return {}, {}, usage, {}
 
-    id_to_url = {_id_key(a.original_id): a.url for a in articles}
-    id_to_fallback_lang = {
-        _id_key(a.original_id): detect_language(a.title, a.content) for a in articles
-    }
-
     system_prompt = build_scoring_system_prompt(area_names)
     user_prompt = build_scoring_prompt(articles, snippet_length=snippet_length)
 
@@ -117,11 +102,12 @@ async def score_articles_batch(
     entries = data.get("scores") or []
     matched = 0
     for entry in entries:
-        article_key = _id_key(entry["id"])
-        score = float(entry["score"])
-        language = entry.get("language") or id_to_fallback_lang.get(article_key, "en")
-        url = id_to_url.get(article_key)
-        if url:
+        position = echoed_position(entry.get("id"), len(articles))
+        if position is not None:
+            article = articles[position]
+            url = article.url
+            score = float(entry["score"])
+            language = entry.get("language") or detect_language(article.title, article.content)
             matched += 1
             result[url] = (score, language)
             # Never trust the reply's shape: a null, a bare string, or a list
@@ -139,7 +125,7 @@ async def score_articles_batch(
         # The entry count tells a reply with no scores from one whose ids match none;
         # the ids sent and received say why they matched none.
         sent = [a.original_id for a in articles]
-        received = [entry["id"] for entry in entries[:_LOGGED_IDS]]
+        received = [entry.get("id") for entry in entries[:_LOGGED_IDS]]
         logger.warning(
             "Scored none of %d articles: the reply had %d entries; "
             "ids sent: %d of type %s, first five %s; ids received, first five: %s",
@@ -154,7 +140,11 @@ async def score_articles_batch(
         # A reply short of entries and a reply whose ids miss read alike in the count
         # above; the entry and match counts, and the ids on each side, tell them apart.
         unscored = [a.original_id for a in articles if a.url not in result]
-        unmatched = [entry["id"] for entry in entries if _id_key(entry["id"]) not in id_to_url]
+        unmatched = [
+            entry.get("id")
+            for entry in entries
+            if echoed_position(entry.get("id"), len(articles)) is None
+        ]
         logger.warning(
             "Scored %d of %d articles: the reply had %d entries, %d matched a sent id; "
             "ids sent but not scored, first five %s; ids received that matched none, "

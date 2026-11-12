@@ -291,7 +291,7 @@ def test_articles_score_persists_tags_when_d1_available(
         now=now,
     )
     llm = FakeLLM(
-        json.dumps({"scores": [{"id": 1, "score": 80, "language": "en", "tags": ["AI Policy"]}]})
+        json.dumps({"scores": [{"id": 0, "score": 80, "language": "en", "tags": ["AI Policy"]}]})
     )
     monkeypatch.setattr(bootstrap, "build_d1_client", lambda cfg: db)
     monkeypatch.setattr(bootstrap, "build_llm", lambda cfg: llm)

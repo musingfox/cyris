@@ -33,7 +33,12 @@ def _article(i: int, *, hours: int = 1, lane: Lane = Lane.READ) -> Article:
 
 def _scores(articles: list[Article]) -> str:
     return json.dumps(
-        {"scores": [{"id": a.id, "score": 10, "language": "en", "tags": ["s"]} for a in articles]}
+        {
+            "scores": [
+                {"id": position, "score": 10, "language": "en", "tags": ["s"]}
+                for position, _ in enumerate(articles)
+            ]
+        }
     )
 
 
