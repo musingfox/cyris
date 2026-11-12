@@ -703,7 +703,7 @@ async def test_interest_reads_scorings_tags_and_no_topic_tag(tmp_path) -> None:
     # One reply for every step, in each step's shape: under the clustering this replaces,
     # the same topic tag took the path into `article_tags`.
     reply = {
-        "scores": [{"id": 2, "score": 80, "language": "en", "tags": ["Rust"]}],
+        "scores": [{"id": 0, "score": 80, "language": "en", "tags": ["Rust"]}],
         "clusters": [{"heading": "H", "summary": "S", "article_ids": [0], "tags": ["Policy"]}],
         "selected": [
             _skim_entry(topic_name=STRIKE, tags=[{"tag": "Policy", "kind": "domain"}]),

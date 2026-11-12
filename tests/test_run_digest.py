@@ -111,7 +111,7 @@ async def test_run_digest_happy_path(tmp_path: Path) -> None:
     # Call order: score batch, then summarize (no news, empty filter pool)
     llm = FakeLLM(
         [
-            json.dumps({"scores": [{"id": 1, "score": 85, "language": "en"}]}),
+            json.dumps({"scores": [{"id": 0, "score": 85, "language": "en"}]}),
             json.dumps(
                 {
                     "sections": [
@@ -228,9 +228,9 @@ async def test_the_run_lays_out_the_page_from_the_configured_settings(
             json.dumps(
                 {
                     "scores": [
-                        {"id": 1, "score": 90, "language": "en"},
-                        {"id": 2, "score": 85, "language": "en"},
-                        {"id": 3, "score": 80, "language": "en"},
+                        {"id": 0, "score": 90, "language": "en"},
+                        {"id": 1, "score": 85, "language": "en"},
+                        {"id": 2, "score": 80, "language": "en"},
                     ]
                 }
             ),
@@ -282,7 +282,7 @@ async def test_run_digest_dry_run_renders_without_writing(tmp_path: Path) -> Non
     )
     llm = FakeLLM(
         [
-            json.dumps({"scores": [{"id": 2, "score": 60, "language": "en"}]}),
+            json.dumps({"scores": [{"id": 0, "score": 60, "language": "en"}]}),
             json.dumps({"sections": []}),
         ]
     )
@@ -312,7 +312,7 @@ async def test_a_dry_run_shows_the_scoring_tags_on_the_pebble_and_stores_none(
         source_lane=Lane.READ,
         source_tags=["tech"],
     )
-    scores = [{"id": 3, "score": 80, "language": "en", "tags": ["Chips", "Export Rules"]}]
+    scores = [{"id": 0, "score": 80, "language": "en", "tags": ["Chips", "Export Rules"]}]
     section = {
         "heading": "Trade",
         "summary": "Chips.",
@@ -355,7 +355,7 @@ async def test_publish_outcome_reaches_discord(
     def _llm() -> FakeLLM:
         return FakeLLM(
             [
-                json.dumps({"scores": [{"id": 3, "score": 85, "language": "en"}]}),
+                json.dumps({"scores": [{"id": 0, "score": 85, "language": "en"}]}),
                 json.dumps(
                     {
                         "sections": [
@@ -472,7 +472,7 @@ async def _read_online_link(tmp_path: Path, base_url: str, *, writes: bool = Tru
     """The Read online link of one run with nothing publishing, and its page on disk."""
     llm = FakeLLM(
         [
-            json.dumps({"scores": [{"id": 3, "score": 85, "language": "en"}]}),
+            json.dumps({"scores": [{"id": 0, "score": 85, "language": "en"}]}),
             json.dumps(
                 {
                     "sections": [
@@ -701,9 +701,7 @@ async def test_scoring_tag_write_failure_does_not_stop_the_run(tmp_path: Path) -
         )
         for i in range(1, 22)
     ]
-    first_scores = [
-        {"id": i, "score": 80, "language": "en", "tags": ["First"]} for i in range(1, 21)
-    ]
+    first_scores = [{"id": i, "score": 80, "language": "en", "tags": ["First"]} for i in range(20)]
     llm = FakeLLM(
         [
             json.dumps({"scores": first_scores}),
@@ -711,7 +709,7 @@ async def test_scoring_tag_write_failure_does_not_stop_the_run(tmp_path: Path) -
                 {
                     "scores": [
                         {
-                            "id": 21,
+                            "id": 0,
                             "score": 81,
                             "language": "en",
                             "tags": ["Second"],
@@ -834,7 +832,7 @@ def _fresh_and_earlier_deps(tmp_path: Path) -> Deps:
     )
     llm = FakeLLM(
         [
-            json.dumps({"scores": [{"id": 1, "score": 85, "language": "en"}]}),
+            json.dumps({"scores": [{"id": 0, "score": 85, "language": "en"}]}),
             json.dumps(
                 {
                     "sections": [
@@ -1182,7 +1180,7 @@ async def test_a_run_that_raises_still_says_so(tmp_path: Path, caplog) -> None:
 def _notify_llm(**kwargs) -> FakeLLM:
     return FakeLLM(
         [
-            json.dumps({"scores": [{"id": 7, "score": 85, "language": "en"}]}),
+            json.dumps({"scores": [{"id": 0, "score": 85, "language": "en"}]}),
             json.dumps(
                 {
                     "sections": [
@@ -3701,7 +3699,7 @@ async def test_a_teaser_is_summarized_from_its_page_but_scored_and_stored_as_its
     )
     llm = FakeLLM(
         [
-            json.dumps({"scores": [{"id": 1, "score": 85, "language": "en"}]}),
+            json.dumps({"scores": [{"id": 0, "score": 85, "language": "en"}]}),
             json.dumps({"sections": []}),
         ]
     )

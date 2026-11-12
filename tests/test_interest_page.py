@@ -128,7 +128,7 @@ def _llm() -> FakeLLM:
     }
     return FakeLLM(
         [
-            json.dumps({"scores": [{"id": 1, "score": 85, "language": "en"}]}),
+            json.dumps({"scores": [{"id": 0, "score": 85, "language": "en"}]}),
             json.dumps({"sections": [section]}),
         ]
     )

@@ -57,7 +57,7 @@ def _scoring_reply(suggest: str | None) -> str:
             "tags": ["space"],
             **({"suggest_area": suggest} if suggest else {}),
         }
-        for i in (1, 2, 3)
+        for i in (0, 1, 2)
     ]
     return json.dumps({"scores": entries})
 
@@ -184,7 +184,7 @@ def test_an_articles_score_suggestion_is_proposed_with_no_issue(
         now=now,
     )
     reply = json.dumps(
-        {"scores": [{"id": 1, "score": 60, "language": "en", "suggest_area": "Space"}]}
+        {"scores": [{"id": 0, "score": 60, "language": "en", "suggest_area": "Space"}]}
     )
     monkeypatch.setattr("cyris.bootstrap.build_d1_client", lambda cfg: db)
     monkeypatch.setattr("cyris.bootstrap.build_store", lambda cfg, d1=None: store)
@@ -246,9 +246,9 @@ async def test_every_saved_item_carries_its_area(tmp_path: Path) -> None:
     reply = json.dumps(
         {
             "scores": [
-                {"id": 1, "score": 80, "language": "en", "tags": ["s"], "area": "Tech"},
-                {"id": 2, "score": 70, "language": "en", "tags": ["s"]},
-                {"id": 3, "score": 60, "language": "en", "tags": ["s"], "area": 7},
+                {"id": 0, "score": 80, "language": "en", "tags": ["s"], "area": "Tech"},
+                {"id": 1, "score": 70, "language": "en", "tags": ["s"]},
+                {"id": 2, "score": 60, "language": "en", "tags": ["s"], "area": 7},
             ]
         }
     )
@@ -266,7 +266,7 @@ async def test_every_saved_item_carries_its_area(tmp_path: Path) -> None:
 
 async def test_a_run_with_no_areas_stamps_no_area(tmp_path: Path) -> None:
     reply = json.dumps(
-        {"scores": [{"id": i, "score": 50, "language": "en", "tags": ["s"]} for i in (1, 2, 3)]}
+        {"scores": [{"id": i, "score": 50, "language": "en", "tags": ["s"]} for i in (0, 1, 2)]}
     )
 
     _, summaries, content = await _run_saved(tmp_path, reply, sources={}, areas=())
@@ -282,7 +282,7 @@ async def test_a_source_naming_a_missing_area_stamps_none_and_the_run_completes(
     from cyris.domain.models import SourceConfig
 
     reply = json.dumps(
-        {"scores": [{"id": i, "score": 50, "language": "en", "tags": ["s"]} for i in (1, 2, 3)]}
+        {"scores": [{"id": i, "score": 50, "language": "en", "tags": ["s"]} for i in (0, 1, 2)]}
     )
     report, _, content = await _run_saved(
         tmp_path,
@@ -300,7 +300,7 @@ async def test_a_source_naming_a_missing_area_stamps_none_and_the_run_completes(
 
 async def test_the_saved_issue_records_the_active_areas_in_position_order(tmp_path: Path) -> None:
     reply = json.dumps(
-        {"scores": [{"id": i, "score": 50, "language": "en", "tags": ["s"]} for i in (1, 2, 3)]}
+        {"scores": [{"id": i, "score": 50, "language": "en", "tags": ["s"]} for i in (0, 1, 2)]}
     )
     tech = _active(1, "Tech").model_copy(update={"position": 1})
     health = _active(2, "Health").model_copy(update={"position": 0})
@@ -318,7 +318,7 @@ async def test_the_saved_issue_records_the_active_areas_in_position_order(tmp_pa
 
 async def test_a_dismissed_area_stays_out_of_the_saved_order(tmp_path: Path) -> None:
     reply = json.dumps(
-        {"scores": [{"id": i, "score": 50, "language": "en", "tags": ["s"]} for i in (1, 2, 3)]}
+        {"scores": [{"id": i, "score": 50, "language": "en", "tags": ["s"]} for i in (0, 1, 2)]}
     )
     old = _active(2, "Old").model_copy(update={"status": "dismissed"})
 
@@ -335,7 +335,7 @@ async def test_a_dismissed_area_stays_out_of_the_saved_order(tmp_path: Path) -> 
 
 async def test_a_run_with_no_areas_saves_an_empty_area_order(tmp_path: Path) -> None:
     reply = json.dumps(
-        {"scores": [{"id": i, "score": 50, "language": "en", "tags": ["s"]} for i in (1, 2, 3)]}
+        {"scores": [{"id": i, "score": 50, "language": "en", "tags": ["s"]} for i in (0, 1, 2)]}
     )
 
     _, _, content = await _run_saved(tmp_path, reply, sources={}, areas=())
@@ -345,7 +345,7 @@ async def test_a_run_with_no_areas_saves_an_empty_area_order(tmp_path: Path) -> 
 
 async def test_a_failed_stamp_saves_no_area_order_and_no_area(tmp_path: Path, monkeypatch) -> None:
     reply = json.dumps(
-        {"scores": [{"id": i, "score": 50, "language": "en", "tags": ["s"]} for i in (1, 2, 3)]}
+        {"scores": [{"id": i, "score": 50, "language": "en", "tags": ["s"]} for i in (0, 1, 2)]}
     )
 
     def fail(*args, **kwargs):
@@ -382,8 +382,8 @@ async def _run_radar(tmp_path: Path, articles: list[Article], *, areas=(), filte
     """Run a digest over `articles` plus `filtered` (skim-lane), all scored into Tech."""
     everything = [*articles, *filtered]
     scores = [
-        {"id": a.id, "score": 10, "language": "en", "tags": ["s"], "area": "Tech"}
-        for a in everything
+        {"id": position, "score": 10, "language": "en", "tags": ["s"], "area": "Tech"}
+        for position, _ in enumerate(everything)
     ]
     summary = {
         "sections": [

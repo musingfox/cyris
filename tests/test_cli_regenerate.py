@@ -101,7 +101,7 @@ def _rerun_deps(tmp_path: Path, db: RecordingD1, cfg, replies, *, publish_site=N
 
 
 def _scores() -> str:
-    return json.dumps({"scores": [{"id": 1, "score": 85, "language": "en"}]})
+    return json.dumps({"scores": [{"id": 0, "score": 85, "language": "en"}]})
 
 
 def _sections() -> str:

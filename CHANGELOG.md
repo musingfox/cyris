@@ -179,6 +179,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Scoring no longer drops articles whose feed id is long. The prompt now names
+  each article by its position in the batch, as filtering already did, and the
+  reply is matched back by position. Before, Claude Haiku shortened Daring
+  Fireball's `tag:` ids when echoing them, so 10 of 14 articles in one run got
+  no score.
 - A scoring batch that scores only some of its articles now logs a warning,
   where before only a batch that scored none did. The warning names the articles
   sent, the entries the reply held, how many matched a sent id, and the first few

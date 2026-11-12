@@ -266,7 +266,7 @@ or the appropriate ISO 639-1 code for other languages.
 For each article, also assign concise topic tags.
 
 Respond in JSON:
-{"scores": [{"id": <article_id>, "score": <0-100>, "language": "<lang_code>", \
+{"scores": [{"id": <number in brackets>, "score": <0-100>, "language": "<lang_code>", \
 "tags": ["<topic tag>", ...]}]}
 """
 
@@ -296,15 +296,15 @@ def build_scoring_prompt(articles: list, *, snippet_length: int) -> str:
         snippet_length: Maximum length of content snippet to include.
 
     Returns:
-        Formatted prompt with article IDs, titles, and content snippets.
+        Formatted prompt with article positions, titles, and content snippets.
     """
     if not articles:
         return ""
 
     lines = ["Score the following articles:\n"]
-    for article in articles:
+    for i, article in enumerate(articles):
         content_snippet = article.content[:snippet_length] if article.content else ""
-        lines.append(f"[{article.original_id}] {article.title}")
+        lines.append(f"[{i}] {article.title}")
         lines.append(f"    Source: {article.source_name}")
         if content_snippet:
             lines.append(f"    Content: {content_snippet}")
