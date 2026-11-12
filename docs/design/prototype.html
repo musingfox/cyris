@@ -301,13 +301,18 @@ details.more summary::after { content: ""; position: absolute; inset: calc(-1 * 
 .src-list { display: block; padding-top: var(--s-1); }
 .src-member { display: block; }
 /* Hover focus: with a fine pointer, the item under it comes forward and the rest of its layer
-   recedes (owner, 2026-11-02). The condition is on the container, so crossing a gap does not flicker. */
+   recedes (owner, 2026-11-02). The rest recede only while an item is hovered; letting go waits 120ms so crossing a gap does not flicker.
+   Values: owner, 2026-11-12. */
 @media (hover: hover) and (pointer: fine) {
-  .featured-item, .news-cluster, .headline-item { transition: filter 250ms ease-out, opacity 250ms ease-out, transform 250ms cubic-bezier(.2, .8, .2, 1.2), box-shadow 200ms ease-out, background-color var(--t-fast), border-color var(--t-fast); }
-  .featured-grid:hover > .featured-item:not(:hover), .sand-grid:hover > .news-cluster:not(:hover), .headlines-compact:hover > .headline-item:not(:hover) { filter: blur(1.5px) grayscale(.3); opacity: .6; transform: scale(.985); }
-  .featured-item:hover, .news-cluster:hover, .headline-item:hover { position: relative; z-index: 2; transform: translateY(-3px) scale(1.01); background: var(--surface); box-shadow: 0 0 18px 2px color-mix(in srgb, var(--accent) 12%, transparent), 0 0 44px 6px color-mix(in srgb, var(--accent) 7%, transparent), 0 0 96px 16px color-mix(in srgb, var(--accent) 4%, transparent), 0 14px 32px -16px rgba(0,0,0,.55); }
+  :root { --hover-focus-blur: .6px; --hover-focus-grayscale: .12; --hover-focus-opacity: .8; --hover-focus-scale: .99; --hover-focus-release: 120ms; }
+  .featured-item, .news-cluster, .headline-item { transition: filter 250ms ease-out var(--hover-focus-release), opacity 250ms ease-out var(--hover-focus-release), transform 250ms cubic-bezier(.2, .8, .2, 1.2) var(--hover-focus-release), box-shadow 200ms ease-out, background-color var(--t-fast), border-color var(--t-fast); }
+  .featured-item:hover, .news-cluster:hover, .headline-item:hover { position: relative; z-index: 2; transition-delay: 0s; transform: translateY(-3px) scale(1.01); background: var(--surface); box-shadow: 0 0 18px 2px color-mix(in srgb, var(--accent) 12%, transparent), 0 0 44px 6px color-mix(in srgb, var(--accent) 7%, transparent), 0 0 96px 16px color-mix(in srgb, var(--accent) 4%, transparent), 0 14px 32px -16px rgba(0,0,0,.55); }
   /* A headline row grows in place: lifted, it would cover the row above. */
   .headline-item:hover { transform: scale(1.015); }
+}
+/* Reduced motion does not recede the rest at all (owner, 2026-11-12): the global rule cancels the release delay. */
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .featured-grid:has(> .featured-item:hover) > .featured-item:not(:hover), .sand-grid:has(> .news-cluster:hover) > .news-cluster:not(:hover), .headlines-compact:has(> .headline-item:hover) > .headline-item:not(:hover) { filter: blur(var(--hover-focus-blur)) grayscale(var(--hover-focus-grayscale)); opacity: var(--hover-focus-opacity); transform: scale(var(--hover-focus-scale)); transition-delay: 0s; }
 }
 @media (prefers-reduced-motion: reduce) {
   .featured-item, .news-cluster, .headline-item { transform: none !important; }

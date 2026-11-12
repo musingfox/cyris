@@ -221,17 +221,32 @@ RAW_CARD_MOTION = frozenset(
 HOVER_FOCUS = "@media (hover: hover) and (pointer: fine)"
 HOVER_FOCUS_ITEMS = ".featured-item, .news-cluster, .headline-item"
 HOVER_FOCUS_HOVERED = ".featured-item:hover, .news-cluster:hover, .headline-item:hover"
+# The receding rule sits in its own block: reduced motion cancels the release delay, so under
+# it nothing recedes (owner, 2026-11-12).
+REDUCE = "@media (prefers-reduced-motion: reduce)"
+HOVER_FOCUS_RECEDE = f"{HOVER_FOCUS} and (prefers-reduced-motion: no-preference)"
 HOVER_FOCUS_RECEDING = (
-    ".featured-grid:hover > .featured-item:not(:hover), "
-    ".sand-grid:hover > .news-cluster:not(:hover), "
-    ".headlines-compact:hover > .headline-item:not(:hover)"
+    ".featured-grid:has(> .featured-item:hover) > .featured-item:not(:hover), "
+    ".sand-grid:has(> .news-cluster:hover) > .news-cluster:not(:hover), "
+    ".headlines-compact:has(> .headline-item:hover) > .headline-item:not(:hover)"
 )
 HOVER_FOCUS_TRANSITION = (
-    "transition: filter 250ms ease-out, opacity 250ms ease-out, "
-    "transform 250ms cubic-bezier(.2, .8, .2, 1.2), box-shadow 200ms ease-out, "
+    "transition: filter 250ms ease-out var(--hover-focus-release), "
+    "opacity 250ms ease-out var(--hover-focus-release), "
+    "transform 250ms cubic-bezier(.2, .8, .2, 1.2) var(--hover-focus-release), "
+    "box-shadow 200ms ease-out, "
     "background-color var(--t-fast), border-color var(--t-fast)"
 )
-DIGEST_HOVER_MOTION = frozenset({(f"{HOVER_FOCUS} | {HOVER_FOCUS_ITEMS}", HOVER_FOCUS_TRANSITION)})
+# The release delay is the other timing the hover focus writes: the receding and hovered states
+# cancel it so only letting go waits (section 2's exception, owner 2026-11-11).
+HOVER_FOCUS_NO_DELAY = "transition-delay: 0s"
+DIGEST_HOVER_MOTION = frozenset(
+    {
+        (f"{HOVER_FOCUS} | {HOVER_FOCUS_ITEMS}", HOVER_FOCUS_TRANSITION),
+        (f"{HOVER_FOCUS_RECEDE} | {HOVER_FOCUS_RECEDING}", HOVER_FOCUS_NO_DELAY),
+        (f"{HOVER_FOCUS} | {HOVER_FOCUS_HOVERED}", HOVER_FOCUS_NO_DELAY),
+    }
+)
 HOVER_FOCUS_GLOW = (
     "box-shadow: 0 0 18px 2px color-mix(in srgb, var(--accent) 12%, transparent), "
     "0 0 44px 6px color-mix(in srgb, var(--accent) 7%, transparent), "
@@ -253,6 +268,18 @@ def test_the_hover_focus_transition_is_off_spec_outside_its_exemption() -> None:
     assert off_spec_transitions(css, DIGEST_HOVER_MOTION) == []
     bare = f"{HOVER_FOCUS_ITEMS} {{ {HOVER_FOCUS_TRANSITION} }}"
     assert len(off_spec_transitions(bare, DIGEST_HOVER_MOTION)) == 1
+    # The cancelled delay is exempt only on the two hover-focus rules, and only as 0s.
+    for media, selector in (
+        (HOVER_FOCUS_RECEDE, HOVER_FOCUS_RECEDING),
+        (HOVER_FOCUS, HOVER_FOCUS_HOVERED),
+    ):
+        rule = f"{media} {{ {selector} {{ {HOVER_FOCUS_NO_DELAY} }} }}"
+        assert len(off_spec_transitions(rule)) == 1
+        assert off_spec_transitions(rule, DIGEST_HOVER_MOTION) == []
+    stray = f"{HOVER_FOCUS} {{ .card {{ {HOVER_FOCUS_NO_DELAY} }} }}"
+    assert len(off_spec_transitions(stray, DIGEST_HOVER_MOTION)) == 1
+    slower = f"{HOVER_FOCUS} {{ {HOVER_FOCUS_HOVERED} {{ transition-delay: 2s }} }}"
+    assert len(off_spec_transitions(slower, DIGEST_HOVER_MOTION)) == 1
 
 
 CARD_MOTION = ".card{transition:border-color var(--t-fast), transform var(--t-fast)}"
@@ -280,7 +307,7 @@ def test_the_card_exemption_covers_no_other_transition(css: str) -> None:
 
 # The digest's hover focus is the one hover that moves (spec section 4, Interaction).
 HOVER_FOCUS_MOVES = {
-    f"{HOVER_FOCUS} | {HOVER_FOCUS_RECEDING}",
+    f"{HOVER_FOCUS_RECEDE} | {HOVER_FOCUS_RECEDING}",
     f"{HOVER_FOCUS} | {HOVER_FOCUS_HOVERED}",
     f"{HOVER_FOCUS} | .headline-item:hover",
 }
@@ -299,14 +326,16 @@ def test_no_hover_moves_anything_but_the_digest_hover_focus(page: int) -> None:
 
 def test_the_hover_focus_recedes_the_rest_of_a_layer_and_lifts_the_item_under_the_pointer() -> None:
     digest = _parsed("digest")
-    assert digest[f"{HOVER_FOCUS} | {HOVER_FOCUS_RECEDING}"] == {
-        "filter: blur(1.5px) grayscale(.3)",
-        "opacity: .6",
-        "transform: scale(.985)",
+    assert digest[f"{HOVER_FOCUS_RECEDE} | {HOVER_FOCUS_RECEDING}"] == {
+        "filter: blur(var(--hover-focus-blur)) grayscale(var(--hover-focus-grayscale))",
+        "opacity: var(--hover-focus-opacity)",
+        "transform: scale(var(--hover-focus-scale))",
+        "transition-delay: 0s",
     }
     assert digest[f"{HOVER_FOCUS} | {HOVER_FOCUS_HOVERED}"] == {
         "position: relative",
         "z-index: 2",
+        "transition-delay: 0s",
         "transform: translateY(-3px) scale(1.01)",
         "background: var(--surface)",
         HOVER_FOCUS_GLOW,
@@ -314,7 +343,19 @@ def test_the_hover_focus_recedes_the_rest_of_a_layer_and_lifts_the_item_under_th
     # A headline row grows in place: lifted, it would cover the row above.
     assert digest[f"{HOVER_FOCUS} | .headline-item:hover"] == {"transform: scale(1.015)"}
     assert digest[f"{HOVER_FOCUS} | {HOVER_FOCUS_ITEMS}"] == {HOVER_FOCUS_TRANSITION}
-    # Reduced motion keeps the blur and the dimming and drops every transform.
+    # No rule blurs on a bare container hover: a pointer in a gap changes nothing.
+    assert not [k for k in digest if ":hover >" in k and ":not(:hover)" in k]
+    # Reduced motion recedes nothing: the receding rule is only ever in a no-preference block,
+    # so no block that applies under reduce blurs, dims, scales or grays an item.
+    receding = [k for k in digest if ":not(:hover)" in k]
+    assert receding == [f"{HOVER_FOCUS_RECEDE} | {HOVER_FOCUS_RECEDING}"]
+    assert not [
+        k for k in digest if "(prefers-reduced-motion: reduce)" in k and ":not(:hover)" in k
+    ]
+    for key, declarations in digest.items():
+        if key.startswith(REDUCE):
+            assert not [d for d in declarations if d.split(":")[0] in ("filter", "opacity")]
+    # Reduced motion drops every transform.
     assert digest[f"@media (prefers-reduced-motion: reduce) | {HOVER_FOCUS_ITEMS}"] == {
         "transform: none !important"
     }

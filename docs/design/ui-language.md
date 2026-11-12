@@ -114,7 +114,9 @@ Below is the complete token set. `_tokens.css.j2` and `static/style.css` must ma
   translucent background `rgba(7,7,10,.88)`, the primary button's hover background `#d4ff66`, the dots'
   `border-radius: 50%`, and the digest hover focus's drop shadow `rgba(0,0,0,.55)` with its timings,
   250ms `ease-out` for blur and opacity, 250ms `cubic-bezier(.2, .8, .2, 1.2)` for the lift and 200ms
-  `ease-out` for the glow (§4 *Interaction*; owner, 2026-11-02). The shadow is black because it has
+  `ease-out` for the glow (§4 *Interaction*; owner, 2026-11-02), and the 120ms release delay
+  before the receding items un-blur (`--hover-focus-release`, §4 *Hover focus*; owner,
+  2026-11-12). The shadow is black because it has
   to be darker than `--bg`, the deepest token, to show under an item lifted off it; the timings are
   the values the owner settled on for this one effect, and nothing else on the site takes them, so
   they are not tokens. A new exception must be written into this bullet.
@@ -264,20 +266,27 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 - **Hover focus:** on the digest, and only under `@media (hover: hover) and (pointer: fine)`, a reader
   pointing at a pebble, a sand card or a water row sees it come forward and the rest of its layer
   recede (owner, 2026-11-02, settled on a throwaway copy of the 2026-11-01 evening issue over five
-  rounds). The condition is on the container, `.featured-grid:hover > .featured-item:not(:hover)`
-  and its sand and water twins, so a pointer crossing the gap between two items changes nothing.
-  The other items take `filter: blur(1.5px) grayscale(.3)`, opacity .6 and `scale(.985)`. The one
+  rounds). The condition is that a direct child is hovered, `.featured-grid:has(> .featured-item:hover) > .featured-item:not(:hover)`
+  and its sand and water twins, so a pointer in a gap blurs nothing, and letting go waits 120ms
+  (`transition-delay`) so crossing a gap never flashes the layer sharp. The other items take
+  `filter: blur(.6px) grayscale(.12)`, opacity .8 and `scale(.99)`, held as `--hover-focus-*`
+  custom properties (owner, 2026-11-12, after asking on 2026-11-11 for blur only on a card, and
+  lighter). The one
   pointed at takes `position: relative` and `z-index: 2`, `translateY(-3px) scale(1.01)` (a water row
   `scale(1.015)` alone, since a lifted row would cover the one above), a `--surface` background and a
   scattered glow: `box-shadow` of `0 0 18px 2px`, `0 0 44px 6px` and `0 0 96px 16px` in `--accent` at
   12%, 7% and 4% (`color-mix(in srgb, var(--accent) N%, transparent)`), wider and fainter outwards,
   over a `0 14px 32px -16px` drop shadow; it has no `--accent` border line. Blur and opacity move
   over 250ms `ease-out`, the transform over 250ms `cubic-bezier(.2, .8, .2, 1.2)`, the shadow over
-  200ms `ease-out`, and background and border over `--t-fast`. Keyboard focus has no hover focus yet;
+  200ms `ease-out`, and background and border over `--t-fast`. The 120ms release delay applies to
+  the filter, opacity and transform transitions only. Under `prefers-reduced-motion: reduce` the
+  rest of the layer does not recede at all (owner, 2026-11-12): no blur, dimming, scale or
+  grayscale, because the global rule below cancels the release delay and crossing a gap would flash
+  every item sharp. The item pointed at keeps its own styling. Keyboard focus has no hover focus yet;
   it keeps the ring and the story image's colour (§4 *story image*).
 - **Reduced motion:** `@media (prefers-reduced-motion: reduce)` cancels transitions, animations and smooth
-  scroll globally. The hover focus drops every transform under it and keeps its blur, dimming and
-  glow, which then change at once.
+  scroll globally. The hover focus drops every transform under it, recedes nothing (see *Hover
+  focus*) and keeps the hovered item's glow, which then changes at once.
 - **Layers:** the digest shows one layer at a time (§6 *digest*), and a reader crosses into the next
   one only on purpose. These are the rules, settled on throwaway pages on 2026-10-30 and 2026-10-31
   (vault `pm/cyris/docs/digest-pebble-sand-water/layers-2026-10-30/`, versions `b4-keys` and

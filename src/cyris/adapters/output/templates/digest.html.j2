@@ -366,24 +366,31 @@
 
         /* === HOVER FOCUS === */
         /* With a fine pointer, the item under it comes forward and the rest of its layer
-           recedes (owner, 2026-11-02; spec section 4, Interaction). The condition is on the
-           container, so crossing the gap between two items does not flicker. Its timings are
-           section 2's literal exceptions. */
+           recedes (owner, 2026-11-02; spec section 4, Interaction). The rest recede only while an
+           item is hovered, so the gaps blur nothing (owner, 2026-11-11). Crossing a gap does not
+           flicker because letting go waits --hover-focus-release: the next item is hovered
+           before the wait ends and the transition never turns back. The values are the owner's
+           (2026-11-12) and live here only. Timings are section 2's literal exceptions. */
         @media (hover: hover) and (pointer: fine) {
-            .featured-item, .news-cluster, .headline-item {
-                transition: filter 250ms ease-out, opacity 250ms ease-out,
-                    transform 250ms cubic-bezier(.2, .8, .2, 1.2), box-shadow 200ms ease-out,
-                    background-color var(--t-fast), border-color var(--t-fast);
+            :root {
+                --hover-focus-blur: .6px;
+                --hover-focus-grayscale: .12;
+                --hover-focus-opacity: .8;
+                --hover-focus-scale: .99;
+                --hover-focus-release: 120ms;
             }
-            .featured-grid:hover > .featured-item:not(:hover), .sand-grid:hover > .news-cluster:not(:hover), .headlines-compact:hover > .headline-item:not(:hover) {
-                filter: blur(1.5px) grayscale(.3);
-                opacity: .6;
-                transform: scale(.985);
+            .featured-item, .news-cluster, .headline-item {
+                transition: filter 250ms ease-out var(--hover-focus-release),
+                    opacity 250ms ease-out var(--hover-focus-release),
+                    transform 250ms cubic-bezier(.2, .8, .2, 1.2) var(--hover-focus-release),
+                    box-shadow 200ms ease-out, background-color var(--t-fast),
+                    border-color var(--t-fast);
             }
             /* A scattered accent glow, wider and fainter outwards, with no accent edge. */
             .featured-item:hover, .news-cluster:hover, .headline-item:hover {
                 position: relative;
                 z-index: 2;
+                transition-delay: 0s;
                 transform: translateY(-3px) scale(1.01);
                 background: var(--surface);
                 box-shadow: 0 0 18px 2px color-mix(in srgb, var(--accent) 12%, transparent),
@@ -393,6 +400,17 @@
             }
             /* A headline row grows in place: lifted, it would cover the row above. */
             .headline-item:hover { transform: scale(1.015); }
+        }
+        /* Reduced motion does not recede the rest at all (owner, 2026-11-12): the global rule
+           cancels every transition, so the release delay would go with it and crossing a gap
+           would flash every item sharp. */
+        @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+            .featured-grid:has(> .featured-item:hover) > .featured-item:not(:hover), .sand-grid:has(> .news-cluster:hover) > .news-cluster:not(:hover), .headlines-compact:has(> .headline-item:hover) > .headline-item:not(:hover) {
+                filter: blur(var(--hover-focus-blur)) grayscale(var(--hover-focus-grayscale));
+                opacity: var(--hover-focus-opacity);
+                transform: scale(var(--hover-focus-scale));
+                transition-delay: 0s;
+            }
         }
         @media (prefers-reduced-motion: reduce) {
             .featured-item, .news-cluster, .headline-item { transform: none !important; }
