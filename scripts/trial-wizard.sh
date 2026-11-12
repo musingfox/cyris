@@ -774,7 +774,7 @@ stage_13() {
   TRIAL_DIR=$(mktemp -d)
   grep -E '^(CLOUDFLARE_ACCOUNT_ID|CLOUDFLARE_API_TOKEN|CYRIS_STORE_DATABASE_ID|CYRIS_PROMOTE_PAGES_PROJECT)=' "$APP_ENV" > "$TRIAL_DIR/.env"
   sed -e '/^\[llm_provider\]/,/^\[digest\]/s/^provider = .*/provider = "gemini"/' \
-      -e '/^\[llm_provider\]/,/^\[digest\]/s/^model = .*/model = "gemini-2.5-flash"/' \
+      -e '/^\[llm_provider\]/,/^\[digest\]/s/^model = .*/model = "gemini-3.5-flash-lite"/' \
       -e "s/^max_articles_per_digest = .*/max_articles_per_digest = $MAX_ARTICLES/" \
       -e "s/^output_language = .*/output_language = \"$OUTPUT_LANGUAGE\"/" \
       settings.example.toml > "$TRIAL_DIR/settings.toml"

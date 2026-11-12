@@ -811,8 +811,8 @@ def llm_compare(
     Arm one is always the provider in cyris.toml. Each --arm adds another, as
     `provider:model` (an omitted model means that provider's default):
 
-        cyris llm-compare --arm anthropic:claude-haiku-4-5
-        cyris llm-compare --arm anthropic:claude-haiku-4-5 --arm openai:gpt-5.6-luna
+        cyris llm-compare --arm anthropic:claude-haiku-5-5
+        cyris llm-compare --arm anthropic:claude-haiku-5-5 --arm openai:gpt-6-luna
 
     Read-only: no state updates, no usage_log row, no publish, no Discord, and no
     file of its own. Every arm's digest goes to stdout under its own heading and

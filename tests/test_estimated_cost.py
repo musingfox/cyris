@@ -23,6 +23,9 @@ def test_a_priced_model_uses_its_own_rate_card():
     assert _usage("gemini-3.6-flash").estimated_cost == 0.75 + 3.75
     assert _usage("gemini-3.8-flash").estimated_cost == 0.75 + 3.75
     assert _usage("gpt-5.6-luna").estimated_cost == 0.20 + 1.20
+    assert _usage("gemini-3.5-flash-lite").estimated_cost == 0.30 + 2.50
+    assert _usage("gpt-6-luna").estimated_cost == 0.10 + 0.50
+    assert _usage("claude-haiku-5-5").estimated_cost == 0.10 + 0.50
     assert _usage("claude-haiku-4-5").estimated_cost == 1.00 + 5.00
 
 

@@ -29,8 +29,8 @@ def test_an_omitted_model_means_the_provider_default(monkeypatch):
 
     label, llm = _build_arm("anthropic", "default")
 
-    assert llm.model == "claude-sonnet-4-6"
-    assert label == "anthropic:claude-sonnet-4-6"  # the label names what actually ran
+    assert llm.model == "claude-haiku-5-5"
+    assert label == "anthropic:claude-haiku-5-5"  # the label names what actually ran
 
 
 def test_a_workers_ai_arm_picks_up_the_cloudflare_environment(monkeypatch):

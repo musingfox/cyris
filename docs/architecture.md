@@ -850,10 +850,30 @@ news: llama's 24k context left no headroom on a busy window, and gpt-oss has 128
 no longer grows with the window, because `BATCH_SIZE` in `service_layer/filtering.py` bounds its
 articles, and its list of recent topics is capped at `MAX_RECENT_TOPICS` (§5 above).
 
-**`ai_gateway` defaults to `google/gemini-3.8-flash`.** It is the model production runs through
-`gemini`, under the name the gateway catalog gives it, so switching providers changes the path and
-not the model. It was in the catalog when measured on 2026-09-21: the gateway answered 402 for a
-missing key, where a model it lacks answers 404.
+**`anthropic` defaults to `claude-haiku-5-5`, `gemini` to `gemini-3.5-flash-lite` and `openai` to
+`gpt-6-luna` (2026-11-12).** Each is
+the provider's cheapest current tier, which is what summarising and classifying news takes: the
+Anthropic models page describes Haiku 5.5 as "For high-volume, latency-sensitive tasks such as
+classification, extraction, and routing" ($0.10 in, $0.50 out per MTok for prompts up to 100k
+tokens, retirement not sooner than 2027-10-07), and production already runs it. The OpenAI models page
+calls Luna "Our most efficient model for focused, high-volume tasks" ($0.10 and $0.50), and its
+deprecations page lists no retirement for it. They replace `claude-sonnet-4-6` and `gpt-5.6-luna`,
+whose price rows stay so an old usage row still prices. These two defaults were chosen from the docs,
+not from the Lm evaluation (`milestones/digest-by-topic-and-area.md`), which has not run; its MVP
+found `gpt-6-luna` writing paragraphs too fragmented (about one paragraph per unit); the milestone's
+:73 lists it as an option on condition that the prompt sets a target size. The Gemini
+pages (ai.google.dev redirects to aistudio.google.com) say `gemini-2.5-flash` shuts down on
+2026-12-01 with `gemini-3.5-flash-lite` as its replacement, which has no shutdown date, and describe
+the latter as "Our fastest, most cost-effective 3.5 model for high-throughput execution" at $0.30 in
+and $2.50 out per MTok on the paid tier. `gemini-3.1-flash-lite` was passed over: it shuts down on
+2027-05-07, inside six months. `workers_ai` and `ai_gateway` were not refreshed on that date (the
+gateway's model page names no models; its `google/gemini-3.8-flash` is listed with no shutdown).
+
+**`ai_gateway` defaults to `google/gemini-3.8-flash`.** It was the model production ran through
+`gemini`, under the name the gateway catalog gives it, so switching providers changed the path and
+not the model; `gemini` has since moved to a Flash-Lite default, so the two now differ. It was in
+the catalog when measured on 2026-09-21: the gateway answered 402 for a missing key, where a model
+it lacks answers 404.
 
 **`openai` defaults to `low` reasoning effort, the other providers to none.** Every cyris call is
 extract-and-summarise rather than a problem to solve, so reasoning is overhead. On Workers AI,
