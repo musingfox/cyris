@@ -27,6 +27,7 @@ import time
 import httpx
 
 from cyris.domain.similarity import normalize
+from cyris.service_layer.ports import EmbeddingRejectedError
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,78 @@ WORKERS_AI_ROOT = "https://api.cloudflare.com/client/v4/accounts"
 
 MAX_RETRIES = 5
 TIMEOUT_SECONDS = 180
+
+# A 4xx that is the API being slow or busy, not a request it refuses: retried or left
+# transient, never `EmbeddingRejectedError`.
+TRANSIENT_CLIENT_ERRORS = frozenset({408, 429})
+# Enough of the API's own reason ("API key not valid") to read whole, short enough
+# for a notification.
+DETAIL_CHARS = 300
+# A secret shorter than this is not a real key (Gemini keys run 39 characters, Cloudflare
+# tokens 40), and replacing it would corrupt ordinary words: "k" is in "key". Such a value
+# is a placeholder or a misconfiguration, so it is left unscrubbed.
+MIN_SCRUBBED_SECRET_CHARS = 8
+
+
+def provider_message(response: httpx.Response) -> str:
+    """The provider's own words from an error body: Gemini's `error`, Cloudflare's `errors`.
+
+    Shared with `cyris doctor`'s embedding probe, so the reader sees one text for one refusal.
+    Untrimmed on purpose: the caller scrubs its secret first and trims after (`bounded_detail`),
+    since a trim here could cut a quoted key in half and leave its prefix past the scrub.
+    """
+    try:
+        body = response.json()
+    except ValueError:
+        return response.text
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict) and error.get("message"):
+            return str(error["message"])
+        if isinstance(error, str) and error:
+            return error
+        errors = body.get("errors")
+        if isinstance(errors, list) and errors and isinstance(errors[0], dict):
+            return str(errors[0].get("message", errors[0]))
+    return response.text
+
+
+def scrub_secrets(text: str, *secrets: str) -> str:
+    """`text` with each of `secrets` replaced by `[redacted]`.
+
+    A secret shorter than `MIN_SCRUBBED_SECRET_CHARS`, or empty, is skipped: it is no real
+    key, and replacing it would mangle ordinary words.
+    """
+    for secret in secrets:
+        if len(secret) >= MIN_SCRUBBED_SECRET_CHARS:
+            text = text.replace(secret, "[redacted]")
+    return text
+
+
+def bounded_detail(text: str, *secrets: str) -> str:
+    """Scrub `secrets` from `text`, then collapse whitespace and trim to `DETAIL_CHARS`.
+
+    The order is the point: trimmed first, a key straddling the limit would lose its tail
+    to the cut and keep a prefix no scrub can match.
+    """
+    return " ".join(scrub_secrets(text, *secrets).split())[:DETAIL_CHARS]
+
+
+def _raise_for_status(response: httpx.Response, *secrets: str) -> None:
+    """`response.raise_for_status()`, except a refusing 4xx raises `EmbeddingRejectedError`.
+
+    The detail is the provider's own message, never the URL: `HTTPStatusError`'s message
+    embeds it, and a Workers AI URL carries the account id. Each of `secrets` is scrubbed
+    from it, since a provider is free to quote the rejected key back and the detail goes to
+    notifications and the run summary. Scrubbed before it is trimmed, so a key cut in half
+    by the trim cannot survive. A secret shorter than `MIN_SCRUBBED_SECRET_CHARS`, or empty,
+    is not scrubbed: it is no real key, and replacing it would mangle ordinary words.
+    """
+    status = response.status_code
+    if 400 <= status < 500 and status not in TRANSIENT_CLIENT_ERRORS:
+        detail = bounded_detail(provider_message(response), *secrets)
+        raise EmbeddingRejectedError(status, detail or response.reason_phrase)
+    response.raise_for_status()
 
 
 class _Usage:
@@ -122,7 +195,7 @@ class GeminiEmbedder:
                 logger.warning("Embedding rate-limited, retrying in %ds", wait)
                 await asyncio.sleep(wait)
                 continue
-            response.raise_for_status()
+            _raise_for_status(response, self._api_key)
             return [e["values"] for e in response.json()["embeddings"]]
         raise RuntimeError(f"Embedding API rate-limited after {MAX_RETRIES} retries")
 
@@ -188,7 +261,7 @@ class WorkersAIEmbedder:
                 logger.warning("Workers AI rate-limited, retrying in %ds", wait)
                 await asyncio.sleep(wait)
                 continue
-            response.raise_for_status()
+            _raise_for_status(response, self._token)
             body = response.json()
             if not body.get("success"):
                 raise RuntimeError(f"Workers AI refused the request: {body.get('errors')}")

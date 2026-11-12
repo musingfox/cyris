@@ -226,6 +226,24 @@ class Embedder(Protocol):
         ...
 
 
+class EmbeddingRejectedError(Exception):
+    """The embedding API refused the request with an HTTP 4xx that retrying cannot fix.
+
+    A key that is invalid, revoked or out of scope answers 401/403 on every run until a
+    person changes it, so `vote_similarity` tells the reader's channels instead of only
+    recording it. 408 and 429 are not this: they are the API being slow or busy, and an
+    adapter raises its own transient error for them. Anything that is not a 4xx (5xx,
+    timeouts, connection errors) is not this either, and keeps being recorded only.
+
+    `status_code` is what the grading reads; `detail` is the text a human sees.
+    """
+
+    def __init__(self, status_code: int, detail: str) -> None:
+        super().__init__(f"{status_code} {detail}".strip())
+        self.status_code = status_code
+        self.detail = detail
+
+
 async def complete_json(
     llm: LLMClient,
     prompt: str,

@@ -68,10 +68,43 @@ async def test_a_refusal_carries_the_providers_words_and_not_the_key(requests) -
 
     assert len(requests) == 1
     assert check.status == "fail"
-    assert check.detail.startswith("typo-model refused: 400 ")
-    assert "model not found" in check.detail
-    assert "sentinel-key-123" not in check.detail
+    assert check.detail == "typo-model refused: 400 model not found"
     assert "embedding model name" in check.fix
+
+
+async def test_an_invalid_gemini_key_reads_as_the_providers_message_not_the_raw_body(
+    requests,
+) -> None:
+    requests.answer(
+        lambda r: httpx.Response(
+            400,
+            json={
+                "error": {
+                    "code": 400,
+                    "message": "API key not valid. Please pass a valid API key.",
+                    "status": "INVALID_ARGUMENT",
+                }
+            },
+        )
+    )
+
+    check = await probe_embedder("gemini", "m")
+
+    assert check.status == "fail"
+    assert check.detail == "m refused: 400 API key not valid. Please pass a valid API key."
+
+
+async def test_a_refusal_that_quotes_the_key_back_is_redacted(requests) -> None:
+    requests.answer(
+        lambda r: httpx.Response(
+            401, json={"error": {"message": "key sentinel-key-123 is not valid"}}
+        )
+    )
+
+    check = await probe_embedder("gemini", "m")
+
+    assert check.detail == "m refused: 401 key [redacted] is not valid"
+    assert "sentinel-key-123" not in check.detail
 
 
 async def test_a_missing_token_fails_without_a_request(requests, monkeypatch) -> None:
@@ -125,3 +158,28 @@ def test_the_probe_builds_its_embedder_the_way_a_run_does() -> None:
     source = inspect.getsource(doctor)
     assert "GeminiEmbedder(" not in source
     assert "WorkersAIEmbedder(" not in source
+
+
+async def test_a_key_straddling_the_trim_in_a_5xx_body_leaves_no_prefix_behind(
+    requests, monkeypatch
+) -> None:
+    key = "AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY"  # 39 characters, a fake
+    monkeypatch.setenv("GEMINI_API_KEY", key)
+    requests.answer(lambda r: httpx.Response(503, text="x" * 290 + key))
+
+    check = await probe_embedder("gemini", "m")
+
+    assert check.status == "fail"
+    assert "[redacted]" in check.detail
+    assert key[:10] not in check.detail
+
+
+async def test_a_placeholder_key_is_not_redacted_out_of_ordinary_words(
+    requests, monkeypatch
+) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    requests.answer(lambda r: httpx.Response(503, json={"error": {"message": "API key not valid"}}))
+
+    check = await probe_embedder("gemini", "m")
+
+    assert check.detail == "m refused: 503 API key not valid"
