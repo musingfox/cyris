@@ -6,6 +6,8 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from functools import cache
+from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
@@ -25,6 +27,7 @@ from cyris.domain.triage import RejectReason
 from cyris.service_layer.area_stamp import stamp_areas
 from cyris.service_layer.digest_pipeline import DigestPipeline
 from cyris.service_layer.fetching import fetch_all_articles
+from cyris.service_layer.ports import EmbeddingRejectedError
 from cyris.service_layer.schedule import PERIOD_ORDER, Period, is_latest_issue
 from cyris.service_layer.scoring import AreaPick, score_in_batches, select_scorable
 from cyris.service_layer.topic_order import recent_topic_list
@@ -344,15 +347,30 @@ async def _send_failure_alert(
     """
     if options.dry_run:
         return
+    messages = alert_messages()
     if failure is not None:
-        headline = "Digest run failed"
+        headline = messages["run_failed"]["headline"]
         text = failure_alert_text(failure)
     else:
         failed = summary.get("failed_sources") or []
         if summary.get("fetched") != 0 or not failed:
             return
-        headline = "Digest run fetched nothing"
-        text = "Failed sources: " + ", ".join(failed)
+        headline = messages["fetched_nothing"]["headline"]
+        text = messages["fetched_nothing"]["text"].format(sources=", ".join(failed))
+    await _send_run_alert(deps, options, started_at, headline, text)
+
+
+@cache
+def alert_messages() -> dict[str, dict[str, str]]:
+    """The wording of every alert (`alert_messages.json`), without its comment."""
+    raw = (files(__package__) / "alert_messages.json").read_text(encoding="utf-8")
+    return {k: v for k, v in json.loads(raw).items() if not k.startswith("_")}
+
+
+async def _send_run_alert(
+    deps: "Deps", options: RunOptions, started_at: datetime, headline: str, text: str
+) -> None:
+    """`headline` and `text` to each configured channel, the subject naming the run."""
     tz = deps.cfg.app.general.timezone
     subject = (
         f"{headline}: {options.period}, {started_at.astimezone(ZoneInfo(tz)):%Y-%m-%d %H:%M} {tz}"
@@ -360,6 +378,30 @@ async def _send_failure_alert(
     await send_alert(
         deps.cfg.app.notify, deps.send_discord_alert, deps.send_email_alert, subject, text
     )
+
+
+async def _warn_vote_similarity_rejected(
+    deps: "Deps", options: RunOptions, started_at: datetime, rejection: EmbeddingRejectedError
+) -> None:
+    """A separate warning that vote similarity could not run, beside the normal digest.
+
+    The run is not degraded and the digest is not touched: this only tells the reader
+    why their votes did nothing. Never raises, since a lost warning must not fail a run
+    that is publishing.
+    """
+    if options.dry_run:
+        return
+    try:
+        message = alert_messages()["vote_similarity_rejected"]
+        await _send_run_alert(
+            deps,
+            options,
+            started_at,
+            message["headline"],
+            message["text"].format(status=rejection.status_code, detail=rejection.detail),
+        )
+    except Exception as e:
+        logger.error("Failed to send the vote similarity warning: %s", e)
 
 
 async def send_alert(notify, send_discord_alert, send_email_alert, subject: str, text: str) -> None:
@@ -614,6 +656,10 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         if not similarity.ran:
             summary["vote_similarity_skipped"] = similarity.skipped_reason
             logger.info("Vote similarity skipped: %s", similarity.skipped_reason)
+        if similarity.rejection is not None:
+            await _warn_vote_similarity_rejected(
+                deps, options, datetime.fromisoformat(summary["started_at"]), similarity.rejection
+            )
 
     # Read after judging, and whether or not judging ran: a hold set by an earlier
     # run stands on its own clock, not on this run's embeddings.

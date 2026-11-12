@@ -7,8 +7,9 @@ import httpx
 import pytest
 from typer.testing import CliRunner
 
-from cyris.adapters.embedding import GeminiEmbedder, WorkersAIEmbedder
+from cyris.adapters.embedding import DETAIL_CHARS, GeminiEmbedder, WorkersAIEmbedder
 from cyris.entrypoints.cli import app
+from cyris.service_layer.ports import EmbeddingRejectedError
 
 pytestmark = pytest.mark.integration
 
@@ -38,9 +39,11 @@ def stub(handler) -> httpx.MockTransport:
 def patched_client(monkeypatch):
     """Route the adapters' httpx client at a handler the test controls."""
 
-    def install(handler):
-        real = httpx.AsyncClient
+    # Captured once: a second `install` in one test must replace the handler, not wrap the
+    # first factory, whose transport would then win.
+    real = httpx.AsyncClient
 
+    def install(handler):
         def factory(*args, **kwargs):
             return real(*args, **{**kwargs, "transport": stub(handler)})
 
@@ -328,3 +331,120 @@ def test_vote_sim_refuses_a_threshold_option(tmp_path: Path, monkeypatch) -> Non
     result = runner.invoke(app, ["vote-sim", "--threshold", "0.5", "--sources", str(sources)])
 
     assert result.exit_code == 2
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 404])
+async def test_a_refusing_4xx_raises_the_typed_error_without_the_url(patched_client, status):
+    """The grading reads `status_code`, never the message, and the message has no URL."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(status, text='{"error": "API key not valid"}')
+
+    patched_client(handler)
+    for embedder in (GeminiEmbedder("k"), WorkersAIEmbedder("tok", "acct-secret-id")):
+        with pytest.raises(EmbeddingRejectedError) as raised:
+            await embedder.embed(["anything"])
+        assert raised.value.status_code == status
+        assert raised.value.detail == "API key not valid"
+        assert "acct-secret-id" not in str(raised.value)
+        assert "https://" not in str(raised.value)
+
+
+@pytest.mark.parametrize("status", [500, 503])
+async def test_a_5xx_stays_the_plain_http_error(patched_client, status):
+    patched_client(lambda request: httpx.Response(status))
+
+    for embedder in (GeminiEmbedder("k"), WorkersAIEmbedder("tok", "acct")):
+        with pytest.raises(httpx.HTTPStatusError):
+            await embedder.embed(["anything"])
+
+
+async def test_a_429_is_retried_and_never_the_typed_rejection(patched_client, backoff_sleeps):
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request)
+        return httpx.Response(429)
+
+    patched_client(handler)
+    for embedder in (GeminiEmbedder("k"), WorkersAIEmbedder("tok", "acct")):
+        with pytest.raises(RuntimeError, match="rate-limited"):
+            await embedder.embed(["anything"])
+
+    assert len(calls) == 10
+
+
+async def test_a_refusal_that_quotes_the_key_back_has_it_scrubbed(patched_client):
+    """The detail reaches Discord, mail and the run summary, so the adapter scrubs it."""
+    for embedder, secret in (
+        (GeminiEmbedder("sentinel-gemini-key"), "sentinel-gemini-key"),
+        (WorkersAIEmbedder("sentinel-cf-token", "acct"), "sentinel-cf-token"),
+    ):
+        patched_client(
+            lambda request, secret=secret: httpx.Response(
+                401, json={"error": {"message": f"bad credential {secret}"}}
+            )
+        )
+        with pytest.raises(EmbeddingRejectedError) as raised:
+            await embedder.embed(["anything"])
+        assert secret not in raised.value.detail
+        assert secret not in str(raised.value)
+        assert raised.value.detail == "bad credential [redacted]"
+
+
+async def test_the_detail_is_the_providers_message_for_either_error_shape(patched_client):
+    gemini = {"error": {"code": 400, "message": "API key not valid. Please pass a valid API key."}}
+    cloudflare = {"success": False, "errors": [{"code": 10000, "message": "Authentication error"}]}
+    for embedder, body, status, message in (
+        (GeminiEmbedder("k"), gemini, 400, "API key not valid. Please pass a valid API key."),
+        (WorkersAIEmbedder("tok", "acct"), cloudflare, 403, "Authentication error"),
+    ):
+        patched_client(lambda request, body=body, status=status: httpx.Response(status, json=body))
+        with pytest.raises(EmbeddingRejectedError) as raised:
+            await embedder.embed(["anything"])
+        assert raised.value.status_code == status
+        assert raised.value.detail == message
+
+
+@pytest.mark.parametrize("secret", ["", "k", "short"])
+async def test_a_secret_too_short_to_be_a_key_is_never_scrubbed(patched_client, secret):
+    """Replacing "k" would turn "key" into "[redacted]ey"; an empty secret matches everywhere."""
+    patched_client(
+        lambda request: httpx.Response(
+            401, json={"error": {"message": "API key not valid. Please pass a valid API key."}}
+        )
+    )
+
+    with pytest.raises(EmbeddingRejectedError) as raised:
+        await GeminiEmbedder(secret).embed(["anything"])
+
+    assert raised.value.detail == "API key not valid. Please pass a valid API key."
+
+
+_REAL_LENGTH_KEY = "AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY"  # 39 characters, a fake
+
+
+def _body_with_the_key_straddling_the_trim(shape: str, key: str) -> httpx.Response:
+    """A 401 whose text carries `key` starting 10 characters before `DETAIL_CHARS`."""
+    start = DETAIL_CHARS - 10
+    if shape == "non-json":
+        return httpx.Response(401, text="x" * start + key)
+    opening = '{"detail": "'
+    return httpx.Response(401, text=opening + "x" * (start - len(opening)) + key + '"}')
+
+
+@pytest.mark.parametrize("shape", ["non-json", "json-without-error"])
+async def test_a_key_straddling_the_trim_leaves_no_prefix_behind(patched_client, shape):
+    """Trimmed before the scrub, a key cut at character 300 would keep its first ten."""
+    assert len(_REAL_LENGTH_KEY) == 39
+    patched_client(lambda request: _body_with_the_key_straddling_the_trim(shape, _REAL_LENGTH_KEY))
+    for embedder in (
+        GeminiEmbedder(_REAL_LENGTH_KEY),
+        WorkersAIEmbedder(_REAL_LENGTH_KEY, "acct"),
+    ):
+        with pytest.raises(EmbeddingRejectedError) as raised:
+            await embedder.embed(["anything"])
+        assert "[redacted]" in raised.value.detail
+        assert len(raised.value.detail) <= DETAIL_CHARS
+        for size in range(10, len(_REAL_LENGTH_KEY) + 1):
+            assert _REAL_LENGTH_KEY[:size] not in str(raised.value)

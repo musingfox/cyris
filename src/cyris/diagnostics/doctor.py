@@ -26,8 +26,10 @@ from typing import Literal, get_args
 
 import httpx
 
+from cyris.adapters.embedding import bounded_detail, provider_message, scrub_secrets
 from cyris.config import B_GRADE_ENV_VARS, GRADE_D_KEYS, Config, can_create, exists
 from cyris.domain.models import Lane
+from cyris.service_layer.ports import EmbeddingRejectedError
 
 Status = Literal["ok", "warn", "fail", "skip"]
 
@@ -306,21 +308,6 @@ EMBEDDING_PROBE_TEXT = "cyris embedding probe"
 EMBEDDING_PROBE_TIMEOUT_SECONDS = 15
 
 
-def _provider_message(response: httpx.Response) -> str:
-    """The provider's own words from an error body: Gemini's `error`, Cloudflare's `errors`."""
-    try:
-        body = response.json()
-    except ValueError:
-        return response.text[:300]
-    if isinstance(body, dict):
-        if isinstance(body.get("error"), dict) and body["error"].get("message"):
-            return str(body["error"]["message"])
-        errors = body.get("errors")
-        if isinstance(errors, list) and errors and isinstance(errors[0], dict):
-            return str(errors[0].get("message", errors[0]))
-    return response.text[:300]
-
-
 async def probe_embedder(provider: Literal["workers_ai", "gemini"], model: str) -> Check:
     """Ask the embedding provider whether this model answers, with one real call.
 
@@ -358,16 +345,21 @@ async def probe_embedder(provider: Literal["workers_ai", "gemini"], model: str) 
             "The provider may be rate-limiting this key. Wait a minute and save again, "
             "or save with vote similarity off."
         )
+    except EmbeddingRejectedError as e:
+        # The adapter already took the provider's own message out of the body, and
+        # scrubbed the key from it.
+        detail = f"{model} refused: {e.status_code} {e.detail}"
     except httpx.HTTPStatusError as e:
         # The body first: the status line alone says nothing about which model.
-        detail = f"{model} refused: {e.response.status_code} {_provider_message(e.response)}"
+        message = bounded_detail(provider_message(e.response), key)
+        detail = f"{model} refused: {e.response.status_code} {message}"
     except Exception as e:  # noqa: BLE001 - the provider's own words are the answer
-        detail = f"{model} refused: {str(e)[:300] or type(e).__name__}"
+        detail = f"{model} refused: {bounded_detail(str(e), key) or type(e).__name__}"
     else:
         return Check(
             "embedding probe", "ok", f"{provider} · {model} answered ({len(vector)} dimensions)"
         )
-    return Check("embedding probe", "fail", detail.replace(key, "[redacted]"), fix)
+    return Check("embedding probe", "fail", scrub_secrets(detail, key), fix)
 
 
 DISCORD_PROBE_TIMEOUT_SECONDS = 10

@@ -13,7 +13,12 @@ from dataclasses import dataclass, field
 
 from cyris.domain.models import ArticleState, StoredArticle
 from cyris.domain.similarity import SimilarityVerdict, judge, nearest_k
-from cyris.service_layer.ports import ArticleRepository, Embedder, TopicRepository
+from cyris.service_layer.ports import (
+    ArticleRepository,
+    Embedder,
+    EmbeddingRejectedError,
+    TopicRepository,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +44,10 @@ class VoteSimilarityReport:
     # Why the seeds were not counted one per topic, when the topic store could not
     # name them: each voted URL was then its own seed, as before topics.
     topic_dedup_skipped: str = ""
+    # Set when the embedding API refused the request with a 4xx no retry fixes (a bad
+    # key): the run warns the reader's channels. Any other failure only sets
+    # `skipped_reason`.
+    rejection: EmbeddingRejectedError | None = None
 
     def nearest_titles(self, url: str, k: int) -> tuple[list[str], list[str]]:
         """Titles of the `k` upvotes and `k` downvotes closest to a judged candidate."""
@@ -164,7 +173,9 @@ async def judge_by_votes(
     except Exception as e:
         logger.warning("Vote similarity unavailable, digest continues unfiltered: %s", e)
         return VoteSimilarityReport(
-            skipped_reason=f"embedding failed: {e}", topic_dedup_skipped=dedup_skipped
+            skipped_reason=f"embedding failed: {e}",
+            topic_dedup_skipped=dedup_skipped,
+            rejection=e if isinstance(e, EmbeddingRejectedError) else None,
         )
 
     # Paired before the empty vectors drop out, so each URL stays with its own vector.
