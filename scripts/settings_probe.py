@@ -979,6 +979,31 @@ Intl.DateTimeFormat.prototype.resolvedOptions = function () {{
 }}"""
 
 
+# A browser that will not say its own zone: `browserZone()` reads "" from it.
+NO_ZONE = """{
+const realOptions = Intl.DateTimeFormat.prototype.resolvedOptions;
+Intl.DateTimeFormat.prototype.resolvedOptions = function () {
+  return {...realOptions.call(this), timeZone: ""};
+};
+}"""
+
+
+def rewrite_state(mutation: str) -> str:
+    """A preload that changes the page's `GET /api/settings` answer, as `data`, before use."""
+    return f"""
+{{
+const realFetch = window.fetch;
+window.fetch = async (input, init) => {{
+  const res = await realFetch(input, init);
+  if (!String(input).endsWith("/api/settings") || (init && init.method)) return res;
+  const data = await res.json();
+  {mutation}
+  return new Response(JSON.stringify(data), {{status: res.status, headers: res.headers}});
+}};
+}}
+"""
+
+
 def _unset(*keys: str) -> Callable[[Fixture], None]:
     """A setup: the settings home holds every key but `keys`; none at all when empty."""
 
@@ -2630,17 +2655,84 @@ CHECKS: list[Check] = [
             expect(!$("#style-prompt").hasAttribute("aria-invalid"), "Style is still marked");
         """,
         # The answer before this fix: nothing is known to take an empty value.
-        sabotage_preload="""
-const realFetch = window.fetch;
-window.fetch = async (input, init) => {
-  const res = await realFetch(input, init);
-  if (!String(input).endsWith("/api/settings") || (init && init.method)) return res;
-  const data = await res.json();
-  data.may_be_empty = [];
-  return new Response(JSON.stringify(data), {status: res.status, headers: res.headers});
-};
-""",
+        sabotage_preload=rewrite_state("data.sent_as_shown = [];"),
         receipt=_calls([{"digest.style_prompt": ""}]),
+    ),
+    Check(
+        id="first-boot-select-sends-starting-value",
+        fixture="writable",
+        path="/settings#digest",
+        setup=_unset("digest.summarize_follow"),
+        act="""
+            await settingsLoaded();
+            ctx.enabled = !saveOf("digest").disabled;
+            ctx.shown = $("#summarize-follow").selectedOptions[0]?.textContent;
+            saveOf("digest").click();
+            await waitFor(() => settled(noticeOf("digest")) && saveOf("digest").disabled,
+              "the save");
+        """,
+        script="""
+            expect(ctx.enabled, "Save was disabled with Summarize follow missing");
+            expect(ctx.shown === "Off", `shown before the save: ${ctx.shown}`);
+            expect(!$("#summarize-follow").hasAttribute("aria-invalid"), "still marked");
+        """,
+        # The answer before this fix: the save is not offered the select.
+        sabotage_preload=rewrite_state(
+            "data.sent_as_shown = "
+            'data.sent_as_shown.filter((k) => k !== "digest.summarize_follow");'
+        ),
+        receipt=_calls([{"digest.summarize_follow": False}]),
+    ),
+    Check(
+        id="first-boot-select-shows-and-sends-its-starting-value",
+        fixture="writable",
+        path="/settings#digest",
+        setup=_unset("digest.rank_by_preference"),
+        act="""
+            await settingsLoaded();
+            ctx.value = $("#rank-by-preference").value;
+            ctx.shown = $("#rank-by-preference").selectedOptions[0]?.textContent;
+            ctx.enabled = !saveOf("digest").disabled;
+            saveOf("digest").click();
+            await waitFor(() => settled(noticeOf("digest")) && saveOf("digest").disabled,
+              "the save");
+        """,
+        script="""
+            expect(ctx.value === "true", `value before the save: ${ctx.value}`);
+            expect(ctx.shown === "On", `shown before the save: ${ctx.shown}`);
+            expect(ctx.enabled, "Save was disabled with Vote order missing");
+            expect(!$('#rank-by-preference option[value=""]'), "Not set is still an option");
+        """,
+        # The answer before this fix: the page knows no starting value, so it shows Not set.
+        sabotage_preload=rewrite_state('delete data.starting["digest.rank_by_preference"];'),
+        receipt=_calls([{"digest.rank_by_preference": True}]),
+    ),
+    Check(
+        id="first-boot-select-without-starting-value-is-not-sent",
+        fixture="writable",
+        path="/settings#digest",
+        setup=_unset("general.timezone"),
+        preload=NO_ZONE,
+        act="""
+            await settingsLoaded();
+            const field = $("#timezone");
+            ctx.value = field.value;
+            ctx.shown = field.selectedOptions[0]?.textContent;
+            setValue($("#style-prompt"), "Short");
+            saveOf("digest").click();
+            await waitFor(() => settled(noticeOf("digest")) && saveOf("digest").disabled,
+              "the save");
+        """,
+        script="""
+            expect(ctx.value === "", `value before the save: ${ctx.value}`);
+            expect(ctx.shown === "Not set", `shown before the save: ${ctx.shown}`);
+            expect($("#timezone").hasAttribute("aria-invalid"), "Timezone is no longer marked");
+            const notice = $("#digest-missing").textContent;
+            expect(notice.includes("Timezone"), `notice: ${notice}`);
+        """,
+        # The answer before this fix: a save is offered the timezone it cannot answer.
+        sabotage_preload=rewrite_state('data.sent_as_shown.push("general.timezone");'),
+        receipt=_calls([{"digest.style_prompt": "Short"}]),
     ),
     Check(
         id="digest-posts-new-fields",
@@ -2724,14 +2816,15 @@ window.fetch = async (input, init) => {
         act="await settingsLoaded();",
         script="""
             const select = $("#type-scale");
-            expect(select.value === "", `value: ${select.value}`);
+            expect(select.value === "1", `value: ${select.value}`);
             const shown = select.selectedOptions[0]?.textContent;
-            expect(shown === "Not set", `shown: ${shown}`);
+            expect(shown === "Default", `shown: ${shown}`);
+            expect(!$('option[value=""]', select), "Not set is an option");
             expect(select.getAttribute("aria-invalid") === "true", "the field is not marked");
             const notice = $("#digest-missing").textContent;
             expect(notice.includes("Type size"), `notice: ${notice}`);
         """,
-        sabotage="""$('#type-scale option[value=""]').remove();""",
+        sabotage="""$("#type-scale").prepend(new Option("Not set", "", true, true));""",
     ),
     Check(
         id="type-scale-unset-clears-on-save",

@@ -82,12 +82,12 @@ let FIELDS = {};
 // The settings saved through /api/settings/values, by the id of their control.
 let PLAIN = {};
 const keysSavedBy = (route) => Object.keys(FIELDS).filter((key) => FIELDS[key].route === route);
-// A missing setting whose answer may be empty, such as Style or Email to, is
-// already answered by its empty field: on a first boot nothing has changed, yet
-// it can be saved as it stands. Not the webhook, whose off is its own action, nor
-// a model, which is saved with its provider.
+// A missing setting the page already answers, an empty field such as Style or Email
+// to, or a select showing its starting value, such as Summarize follow articles: on a
+// first boot nothing has changed, yet it can be saved as it stands. Not the webhook, whose
+// off is its own action, nor a model, which is saved with its provider.
 const SENT_AS_SHOWN = ["plain", "email"];
-const unsavedIn = (form) => state.may_be_empty.filter((key) => state.missing.includes(key)
+const unsavedIn = (form) => state.sent_as_shown.filter((key) => state.missing.includes(key)
   && SENT_AS_SHOWN.includes(FIELDS[key].route) && form.contains($(FIELDS[key].controls[0])));
 
 // A control's own placeholder, which a missing value covers with "Not set".
@@ -222,10 +222,14 @@ function render() {
   if (e) $("evening").value = parseInt(e, 10);
   fillLanguages($("output-language"), state.languages, values["digest.output_language"]);
   fillTimezones($("timezone"), values["general.timezone"]);
-  // A select would otherwise show its first option for a missing value.
+  // A select would otherwise show its first option for a missing value. A missing
+  // one shows its starting value, which a save stores; with no starting value it
+  // says "Not set" and is not sent.
   for (const [id, key] of Object.entries(PLAIN)) {
     if (values[key] != null) $(id).value = values[key];
-    else if ($(id).tagName === "SELECT") $(id).prepend(new Option("Not set", "", true, true));
+    else if ($(id).tagName !== "SELECT") continue;
+    else if (key in state.starting) $(id).value = String(state.starting[key]);
+    else $(id).prepend(new Option("Not set", "", true, true));
   }
   if (values["notify.discord_webhook_url"]) {
     $("discord-webhook").value = values["notify.discord_webhook_url"];

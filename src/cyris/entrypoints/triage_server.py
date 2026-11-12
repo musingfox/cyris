@@ -19,7 +19,7 @@ from pydantic import ValidationError
 from cyris.adapters.output import html_digest
 from cyris.adapters.store.d1 import MAX_BOUND_PARAMS
 from cyris.adapters.store.feed_health import FeedHealth
-from cyris.config import SETTINGS_FIELDS, DigestConfig
+from cyris.config import SETTINGS_FIELDS, STARTING_VALUES, DigestConfig
 from cyris.diagnostics.doctor import LLM_PROBE_TIMEOUT_SECONDS, probe_discord, probe_embedder
 from cyris.domain.areas import Area, AreaCatalog, is_unplaced_label, meets_birth_threshold
 from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, SourceConfig, TrackedTopic
@@ -71,6 +71,15 @@ def _accepts_empty(key: str) -> bool:
     except ValueError:
         return False
     return True
+
+
+def _shows_starting_select(key: str) -> bool:
+    """A required select that has a starting value: the page shows it while the key is absent.
+
+    An optional select, or one with no starting value, shows "Not set" and is not sent.
+    """
+    field = SETTINGS_FIELDS[key]
+    return bool(field.get("select")) and not field.get("optional") and key in STARTING_VALUES
 
 
 def _refused(error: str, field: str) -> web.Response:
@@ -492,7 +501,7 @@ class TriageServer:
             default_models,
             embedding_defaults,
         )
-        from cyris.config import GRADE_D_KEYS, STARTING_VALUES, LLMProviderConfig
+        from cyris.config import GRADE_D_KEYS, LLMProviderConfig
         from cyris.service_layer.prompts import _language_names
 
         values = {key: self._values.get(key) for key in GRADE_D_KEYS}
@@ -533,7 +542,13 @@ class TriageServer:
                 "values": values,
                 "fields": SETTINGS_FIELDS,
                 "missing": sorted(key for key in GRADE_D_KEYS if key not in self._values),
-                "may_be_empty": [key for key in GRADE_D_KEYS if _accepts_empty(key)],
+                # The keys a save sends as the page shows them while the home lacks them:
+                # an empty field's answer, and a select's starting value.
+                "sent_as_shown": [
+                    key
+                    for key in GRADE_D_KEYS
+                    if _accepts_empty(key) or _shows_starting_select(key)
+                ],
                 # What the wizard pre-fills for each key it may write, only while the home
                 # lacks it: a stored key is never offered, so the wizard cannot write over it.
                 "starting": {

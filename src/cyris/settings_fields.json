@@ -62,7 +62,8 @@
     "controls": [
       "timezone"
     ],
-    "route": "plain"
+    "route": "plain",
+    "select": true
   },
   "digest.output_language": {
     "tab": "digest",
@@ -70,7 +71,8 @@
     "controls": [
       "output-language"
     ],
-    "route": "plain"
+    "route": "plain",
+    "select": true
   },
   "digest.style_prompt": {
     "tab": "digest",
@@ -87,7 +89,8 @@
       "type-scale"
     ],
     "route": "plain",
-    "live": true
+    "live": true,
+    "select": true
   },
   "digest.rank_by_preference": {
     "tab": "digest",
@@ -95,7 +98,8 @@
     "controls": [
       "rank-by-preference"
     ],
-    "route": "plain"
+    "route": "plain",
+    "select": true
   },
   "digest.preference_source": {
     "tab": "digest",
@@ -103,7 +107,8 @@
     "controls": [
       "preference-source"
     ],
-    "route": "plain"
+    "route": "plain",
+    "select": true
   },
   "digest.summarize_follow": {
     "tab": "digest",
@@ -111,7 +116,8 @@
     "controls": [
       "summarize-follow"
     ],
-    "route": "plain"
+    "route": "plain",
+    "select": true
   },
   "digest.vote_half_life_days": {
     "tab": "digest",
@@ -184,7 +190,8 @@
       "reasoning-effort"
     ],
     "route": "plain",
-    "optional": true
+    "optional": true,
+    "select": true
   },
   "notify.discord_webhook_url": {
     "tab": "notifications",

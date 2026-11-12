@@ -22,6 +22,29 @@ def test_every_field_control_is_on_the_page(key: str) -> None:
         assert f'id="{control}"' in page, f"{key}: no #{control}"
 
 
+def test_a_field_is_flagged_select_exactly_when_its_plain_control_is_a_select() -> None:
+    page = render_settings_page()
+    for key, field in SETTINGS_FIELDS.items():
+        if field["route"] != "plain":
+            continue
+        is_select = re.search(rf'<select[^>]*id="{field["controls"][0]}"', page) is not None
+        assert bool(field.get("select")) == is_select, key
+
+
+def test_the_page_saves_a_missing_select_as_shown_without_a_per_field_list() -> None:
+    js = SETTINGS_JS.read_text()
+    assert "state.sent_as_shown.filter" in js
+    assert 'input.id === "summarize-follow"' in js  # value conversion only
+    assert "state.may_be_empty" not in js
+
+
+def test_the_page_shows_a_missing_select_its_starting_value_else_not_set() -> None:
+    js = SETTINGS_JS.read_text()
+    assert "key in state.starting" in js
+    assert "String(state.starting[key])" in js
+    assert 'new Option("Not set", "", true, true)' in js
+
+
 def test_the_vote_order_judge_is_a_select_in_the_digest_form() -> None:
     page = render_settings_page()
     form = re.search(r'<form[^>]*id="digest-form".*?</form>', page, re.S)
@@ -57,6 +80,7 @@ def test_reasoning_effort_is_an_optional_plain_pipeline_field() -> None:
         "controls": ["reasoning-effort"],
         "route": "plain",
         "optional": True,
+        "select": True,
     }
     assert key in PLAIN_KEYS
 
