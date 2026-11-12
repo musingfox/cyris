@@ -29,7 +29,19 @@ def test_openai_routes_to_its_client_and_defaults_to_luna():
     llm = build_llm(LLMProviderConfig(provider="openai", model="", api_key="k"))
 
     assert isinstance(llm, OpenAIClient)
-    assert llm.model == "gpt-5.6-luna"
+    assert llm.model == "gpt-6-luna"
+
+
+def test_a_config_naming_only_the_provider_runs_the_default_in_provider_defaults_json():
+    """The file, not a name copied into a test, says what each provider defaults to."""
+    from importlib.resources import files
+
+    wanted = json.loads((files("cyris") / "provider_defaults.json").read_text(encoding="utf-8"))
+    for provider, model in wanted["llm_models"].items():
+        llm = build_llm(LLMProviderConfig(provider=provider, model="", api_key="k", account_id="a"))
+
+        assert llm is not None, provider
+        assert llm.model == model, provider
 
 
 def test_workers_ai_defaults_to_gpt_oss():
@@ -121,7 +133,7 @@ _LEVEL = {
         ("openai", "default", "low"),
         ("openai", "high", "high"),
         ("gemini", "default", None),
-        ("gemini", "low", {"thinkingBudget": 1024}),
+        ("gemini", "low", {"thinkingLevel": "LOW"}),  # the default model is gemini 3.x
         ("ai_gateway", "default", None),
         ("ai_gateway", "medium", {"thinkingLevel": "MEDIUM"}),
         ("anthropic", "default", None),
@@ -149,7 +161,8 @@ async def test_built_client_sends_the_level_the_setting_names(provider, effort, 
     ("provider", "model", "effort", "sent"),
     [
         ("gemini", "gemini-2.5-flash", "low", {"thinkingBudget": 1024}),
-        ("gemini", "", "high", {"thinkingBudget": 24576}),
+        ("gemini", "gemini-2.5-flash", "high", {"thinkingBudget": 24576}),
+        ("gemini", "", "high", {"thinkingLevel": "HIGH"}),  # the default model is gemini 3.x
         ("ai_gateway", "google/gemini-2.5-flash", "medium", {"thinkingBudget": 8192}),
         ("gemini", "gemini-3.8-flash", "low", {"thinkingLevel": "LOW"}),
         ("gemini", "gemini-2.5-flash", "default", None),

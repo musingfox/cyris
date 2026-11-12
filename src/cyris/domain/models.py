@@ -176,18 +176,22 @@ class NewsParagraph(BaseModel):
 
 
 # USD per million tokens, (input, output), keyed by the exact model id the
-# adapter reports. Read off each vendor's own pricing page on 2026-08-25.
+# adapter reports. Read off each vendor's own pricing page on 2026-08-25; claude-haiku-5-5,
+# gpt-6-luna and gemini-3.5-flash-lite on 2026-11-12.
 # Only models this repo actually runs are here on purpose: a miss returns None,
 # which is the one behaviour that cannot repeat the bug this table replaced.
 # Workers AI is deliberately absent — it bills in neurons rather than tokens,
 # and `LLMResponse.neurons` is the receipt for that, summed onto `UsageStats`.
 _PRICES_PER_MTOK: dict[str, tuple[float, float]] = {
+    "claude-haiku-5-5": (0.10, 0.50),  # prompts up to 100k tokens; 0.50/2.50 above that
     "claude-sonnet-4-6": (3.00, 15.00),
     "claude-haiku-4-5": (1.00, 5.00),
     "gemini-3.8-flash": (0.75, 3.75),  # promotional, read 2026-09-17; 1.50/7.50 from 2027-01-01
     "gemini-3.7-flash": (0.75, 3.75),  # promotional; 1.50/7.50 from 2027-01-01
     "gemini-3.6-flash": (0.75, 3.75),  # same, and same expiry
+    "gemini-3.5-flash-lite": (0.30, 2.50),  # paid tier, read 2026-11-12
     "gemini-2.5-flash": (0.30, 2.50),
+    "gpt-6-luna": (0.10, 0.50),  # prompts over 272K tokens bill at 2x input and 1.5x output
     "gpt-5.6-luna": (0.20, 1.20),
     "gpt-5.6-terra": (2.00, 12.00),
 }

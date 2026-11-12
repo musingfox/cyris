@@ -41,7 +41,7 @@ class TestLoadConfig:
         cfg = _load_example()
 
         assert cfg.app.general.timezone == "Asia/Taipei"
-        assert cfg.app.llm_provider.model == "claude-sonnet-4-6"
+        assert cfg.app.llm_provider.model == "claude-haiku-5-5"
         assert cfg.app.llm_provider.api_key == "test-anthropic-key"
         assert cfg.app.digest.preference_source == "cosine"
 
