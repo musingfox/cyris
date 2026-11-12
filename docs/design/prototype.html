@@ -293,13 +293,29 @@ details.more summary::after { content: ""; position: absolute; inset: calc(-1 * 
 .headline-item .text a:hover { color: var(--accent); }
 .headline-item .summary { font-size: calc(14px * var(--type-scale)); line-height: 1.65; margin-top: var(--s-2); overflow-wrap: anywhere; }
 .headline-item .tags { margin-top: var(--s-3); }
-.src-fold { display: inline-block; }
-.src-fold > summary { cursor: pointer; list-style: none; color: var(--text-dim); text-decoration: underline dotted; text-underline-offset: 3px; }
-.src-fold > summary::-webkit-details-marker { display: none; }
-.src-fold > summary::after { content: " ▾"; }
-.src-fold[open] > summary::after { content: " ▴"; }
-.src-list { display: block; padding-top: var(--s-1); }
-.src-member { display: block; }
+/* Topic dialog (§4 topic dialog; owner, 2026-11-12): a sand card opens its members in a modal
+   that zooms out of the card. 72% is §2's literal exception for its backdrop. */
+.news-cluster { cursor: pointer; }
+.topic-open { font: inherit; letter-spacing: inherit; color: inherit; text-align: start; background: none; border: 0; padding: 0; cursor: pointer; transition: color var(--t-fast); }
+.topic-open:hover { color: var(--accent); }
+.topic-dialog { margin: auto; width: calc(100% - 2 * var(--s-6)); max-width: var(--measure-wide); max-height: calc(100dvh - 2 * var(--s-12)); overflow-y: auto; overscroll-behavior: contain; background: var(--bg-elev); color: var(--text); border: 1px solid var(--border-strong); border-radius: 0; padding: 0; transform-origin: 0 0; }
+.topic-dialog::backdrop { background: color-mix(in srgb, var(--bg) 72%, transparent); }
+html:has(.topic-dialog[open]) { overflow: hidden; }
+.topic-dialog-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: flex-start; gap: var(--s-4); padding: var(--s-4) var(--s-6); background: var(--bg-elev); border-bottom: 1px solid var(--border); }
+.topic-dialog-title { flex: 1; min-width: 0; font-size: calc(24px * var(--type-scale)); font-weight: 600; line-height: 1.3; letter-spacing: -0.015em; }
+.topic-dialog-close { flex: none; }
+.topic-dialog-body { padding: var(--s-5) var(--s-6) var(--s-6); }
+.topic-dialog-line { font-size: calc(18px * var(--type-scale)); line-height: 1.65; color: var(--text-dim); margin-bottom: var(--s-4); }
+.topic-members { list-style: none; margin-top: var(--s-4); }
+.topic-member { padding: var(--s-4) 0; border-top: 1px solid var(--border); }
+.topic-member .label { margin-top: var(--s-1); }
+.topic-member-excerpt { margin-top: var(--s-2); font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); overflow-wrap: anywhere; }
+.topic-dialog-pull { position: sticky; bottom: 0; height: 0; }
+.topic-dialog-pull-inner { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-6); background: var(--bg-elev); border-top: 1px solid var(--border); }
+.topic-dialog-pull-inner[hidden] { display: none; }
+.topic-dialog-pull-inner i { flex: 1; height: 1px; background: var(--border-strong); }
+.topic-dialog-pull-inner b { display: block; width: 0; height: 100%; background: var(--accent); }
+@media (max-width: 720px) { .topic-dialog { width: 100%; max-width: none; height: 100%; max-height: none; border: 0; } }
 /* Hover focus: with a fine pointer, the item under it comes forward and the rest of its layer
    recedes (owner, 2026-11-02). The rest recede only while an item is hovered; letting go waits 120ms so crossing a gap does not flicker.
    Values: owner, 2026-11-12. */
@@ -752,32 +768,72 @@ table.src td.areas-pos-cell { width: 1%; }
       <div class="sand-grid">
       <div class="news-cluster" lang="zh-Hant">
         <img class="story-image" src="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%201200%20630'%3E%3Crect%20width='1200'%20height='630'%20fill='%231f2a3a'/%3E%3Cg%20fill='%23f2c14e'%3E%3Ccircle%20cx='600'%20cy='315'%20r='150'%20fill='none'%20stroke='%23f2c14e'%20stroke-width='16'/%3E%3Ccircle%20cx='600'%20cy='165'%20r='14'/%3E%3Ccircle%20cx='750'%20cy='315'%20r='14'/%3E%3Ccircle%20cx='600'%20cy='465'%20r='14'/%3E%3Ccircle%20cx='450'%20cy='315'%20r='14'/%3E%3C/g%3E%3Crect%20x='520'%20y='280'%20width='160'%20height='70'%20fill='%236c8ebf'/%3E%3C/svg%3E" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">
-        <h3 class="item-title lg">歐盟 AI 法案第二階段生效</h3>
+        <h3 class="item-title lg"><button type="button" class="topic-open" aria-haspopup="dialog" commandfor="topic-1-dialog" command="show-modal">歐盟 AI 法案第二階段生效</button></h3>
         <p class="summary">通用模型提供者要交出訓練資料摘要與著作權政策，違規罰款上限為全球營收的百分之三。</p>
         <div class="tags"><span class="pill" lang="">EU</span><span class="pill" lang="">AI</span></div>
         <div class="meta">
-          <details class="src-fold"><summary lang="en">3 articles</summary><span class="src-list" lang=""><span class="src-member"><a href="#digest">EU AI Act obligations for general-purpose models take effect</a> <span class="source-tag">Reuters</span></span><span class="src-member"><a href="#digest">What the AI Act's second phase asks of model makers</a> <span class="source-tag">The Verge</span></span><span class="src-member"><a href="#digest">Commission publishes the training-data summary template</a> <span class="source-tag">Euractiv</span></span></span></details>
           <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
         </div>
       </div>
       <div class="news-cluster" lang="zh-Hant">
-        <h3 class="item-title lg">Bun 1.3 內建 Postgres 驅動</h3>
+        <h3 class="item-title lg"><button type="button" class="topic-open" aria-haspopup="dialog" commandfor="topic-2-dialog" command="show-modal">Bun 1.3 內建 Postgres 驅動</button></h3>
         <p class="summary">連線池與 prepared statement 改由 runtime 管理。</p>
         <div class="tags"><span class="pill" lang="">Bun</span></div>
         <div class="meta">
-          <details class="src-fold"><summary lang="en">2 articles</summary><span class="src-list" lang=""><span class="src-member"><a href="#digest">Bun 1.3</a> <span class="source-tag">Bun Blog</span></span><span class="src-member"><a href="#digest">Bun ships a built-in Postgres client</a> <span class="source-tag">The Register</span></span></span></details>
           <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
         </div>
       </div>
       <div class="news-cluster" lang="zh-Hant">
-        <h3 class="item-title lg">颱風外圍環流影響北部降雨</h3>
+        <h3 class="item-title lg"><button type="button" class="topic-open" aria-haspopup="dialog" commandfor="topic-3-dialog" command="show-modal">颱風外圍環流影響北部降雨</button></h3>
         <p class="summary">氣象署對北北基發布豪雨特報，部分山區累積雨量可能超過三百毫米。</p>
         <div class="meta">
-          <details class="src-fold"><summary lang="en">2 articles</summary><span class="src-list" lang=""><span class="src-member"><a href="#digest">颱風外圍環流 北北基豪雨特報</a> <span class="source-tag">中央社</span></span><span class="src-member"><a href="#digest">山區累積雨量恐破三百毫米</a> <span class="source-tag">公視新聞網</span></span></span></details>
           <span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
         </div>
       </div>
       </div>
+      <dialog class="topic-dialog" id="topic-1-dialog" aria-labelledby="topic-1-dialog-title" lang="zh-Hant">
+        <div class="topic-dialog-head">
+          <h2 class="topic-dialog-title" id="topic-1-dialog-title">歐盟 AI 法案第二階段生效</h2>
+          <button type="button" class="btn secondary sm topic-dialog-close" commandfor="topic-1-dialog" command="close" lang="en">Close</button>
+        </div>
+        <div class="topic-dialog-body">
+          <p class="topic-dialog-line">通用模型提供者要交出訓練資料摘要與著作權政策，違規罰款上限為全球營收的百分之三。</p>
+          <div class="meta"><span lang="en">3 articles</span><span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span></div>
+          <ol class="topic-members" lang="">
+          <li class="topic-member"><h3 class="item-title"><a href="#digest">EU AI Act obligations for general-purpose models take effect</a></h3><p class="label">Reuters</p><p class="topic-member-excerpt">Providers of general-purpose models must now publish a summary of their training data.</p></li>
+          <li class="topic-member"><h3 class="item-title"><a href="#digest">What the AI Act's second phase asks of model makers</a></h3><p class="label">The Verge</p><p class="topic-member-excerpt">A copyright policy, a training-data summary and, for the largest models, risk tests.</p></li>
+          <li class="topic-member"><h3 class="item-title"><a href="#digest">Commission publishes the training-data summary template</a></h3><p class="label">Euractiv</p></li>
+          </ol>
+        </div>
+      </dialog>
+      <dialog class="topic-dialog" id="topic-2-dialog" aria-labelledby="topic-2-dialog-title" lang="zh-Hant">
+        <div class="topic-dialog-head">
+          <h2 class="topic-dialog-title" id="topic-2-dialog-title">Bun 1.3 內建 Postgres 驅動</h2>
+          <button type="button" class="btn secondary sm topic-dialog-close" commandfor="topic-2-dialog" command="close" lang="en">Close</button>
+        </div>
+        <div class="topic-dialog-body">
+          <p class="topic-dialog-line">連線池與 prepared statement 改由 runtime 管理。</p>
+          <div class="meta"><span lang="en">2 articles</span><span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span></div>
+          <ol class="topic-members" lang="">
+          <li class="topic-member"><h3 class="item-title"><a href="#digest">Bun 1.3</a></h3><p class="label">Bun Blog</p><p class="topic-member-excerpt">Bun 1.3 ships a built-in Postgres client, with pooling handled by the runtime.</p></li>
+          <li class="topic-member"><h3 class="item-title"><a href="#digest">Bun ships a built-in Postgres client</a></h3><p class="label">The Register</p><p class="topic-member-excerpt">The JavaScript runtime now speaks Postgres without a driver package.</p></li>
+          </ol>
+        </div>
+      </dialog>
+      <dialog class="topic-dialog" id="topic-3-dialog" aria-labelledby="topic-3-dialog-title" lang="zh-Hant">
+        <div class="topic-dialog-head">
+          <h2 class="topic-dialog-title" id="topic-3-dialog-title">颱風外圍環流影響北部降雨</h2>
+          <button type="button" class="btn secondary sm topic-dialog-close" commandfor="topic-3-dialog" command="close" lang="en">Close</button>
+        </div>
+        <div class="topic-dialog-body">
+          <p class="topic-dialog-line">氣象署對北北基發布豪雨特報，部分山區累積雨量可能超過三百毫米。</p>
+          <div class="meta"><span lang="en">2 articles</span><span class="votes gated" lang="en"><button class="btn secondary sm" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn secondary sm" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span></div>
+          <ol class="topic-members" lang="">
+          <li class="topic-member"><h3 class="item-title"><a href="#digest">颱風外圍環流 北北基豪雨特報</a></h3><p class="label">中央社</p><p class="topic-member-excerpt">氣象署表示，颱風外圍環流與東北季風共伴，北北基今明兩天有豪雨。</p></li>
+          <li class="topic-member"><h3 class="item-title"><a href="#digest">山區累積雨量恐破三百毫米</a></h3><p class="label">公視新聞網</p><p class="topic-member-excerpt">山區累積雨量可能超過三百毫米，民眾應避免前往山區與河邊。</p></li>
+          </ol>
+        </div>
+      </dialog>
     </section>
 
     <section class="section">
@@ -2114,6 +2170,8 @@ addEventListener("hashchange", route);
   let cur = 0, pull = 0, pullDir = 0, pushed = 0, armed = 0, idle, armedIdle, swallow = false;
   let lastWheel = 0, streamDir = 0, streamAtEdge = false, touchY = 0, touchTop = false, touchBottom = false;
   let lastKeyDir = 0, lastKeyAt = 0, modality = "pointer", landY = null, landAt = 0;
+  // A topic dialog open over the layer holds it still (§4 topic dialog).
+  const modal = () => !!document.querySelector("dialog[open]");
   const atTop = () => scrollY <= 0;
   const atBottom = () => scrollY >= root.scrollHeight - innerHeight - 1;
   const atEdge = (dir) => (dir > 0 ? atBottom() : atTop()) && !!layers[cur + dir];
@@ -2190,7 +2248,7 @@ addEventListener("hashchange", route);
     render();
   };
   addEventListener("wheel", (e) => {
-    if (view.hidden || e.ctrlKey || !e.deltaY) return;
+    if (view.hidden || e.ctrlKey || !e.deltaY || modal()) return;
     const dir = Math.sign(e.deltaY), now = performance.now();
     if (now - lastWheel >= FRESH_GAP_MS || dir !== streamDir) { streamDir = dir; streamAtEdge = atEdge(dir); swallow = false; }
     lastWheel = now;
@@ -2204,9 +2262,9 @@ addEventListener("hashchange", route);
     tug(dir, Math.abs(e.deltaY) * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1));
     if (cur !== was) streamAtEdge = false;
   }, {passive: false});
-  addEventListener("touchstart", (e) => { swallow = false; touchY = e.touches[0].clientY; touchTop = atTop(); touchBottom = atBottom(); }, {passive: true});
+  addEventListener("touchstart", (e) => { if (modal()) return; swallow = false; touchY = e.touches[0].clientY; touchTop = atTop(); touchBottom = atBottom(); }, {passive: true});
   addEventListener("touchmove", (e) => {
-    if (view.hidden) return;
+    if (view.hidden || modal()) return;
     const dy = touchY - e.touches[0].clientY, dir = Math.sign(dy);
     touchY = e.touches[0].clientY;
     if (swallow) { if (e.cancelable) e.preventDefault(); return; }
@@ -2227,7 +2285,7 @@ addEventListener("hashchange", route);
   addEventListener("hashchange", render);
   addEventListener("keydown", (e) => {
     modality = "key"; landY = null;
-    if (view.hidden || e.ctrlKey || e.metaKey || e.altKey || e.target.closest("input, textarea, select, [contenteditable]")) return;
+    if (view.hidden || modal() || e.ctrlKey || e.metaKey || e.altKey || e.target.closest("input, textarea, select, [contenteditable]")) return;
     if (e.key === "n" || e.key === "N") {
       if (!layers[cur + 1] || !matchMedia("(hover: hover) and (pointer: fine)").matches) return;
       e.preventDefault();
@@ -2251,6 +2309,72 @@ addEventListener("hashchange", route);
   show(0, null, null, false);
   // route() below shows the view after this runs.
   requestAnimationFrame(render);
+})();
+// The topic dialog (§4 topic dialog): a sand card's heading button, or its blank space, opens
+// the card's dialog, which zooms out of the card over 650ms and back into it on close; a fresh
+// 160px touch pull past its bottom closes it. Under reduced motion nothing animates.
+(() => {
+  const ZOOM = {duration: 650, easing: "cubic-bezier(.2, .8, .2, 1)", fill: "forwards"}, FADE_UNTIL = 0.4, PULL = 160;
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)");
+  let dialog = null, card = null, opener = null, anims = [], closing = false, pullFrom = null;
+  const zoom = (forward) => {
+    const c = card.getBoundingClientRect(), d = dialog.getBoundingClientRect();
+    const atCard = `translate(${c.left - d.left}px, ${c.top - d.top}px) scale(${c.width / d.width}, ${c.height / d.height})`;
+    const frames = [{transform: atCard, opacity: 0}, {opacity: 1, offset: FADE_UNTIL}, {transform: "none", opacity: 1}];
+    const back = [...frames].reverse().map((f) => ("offset" in f ? {...f, offset: 1 - f.offset} : f));
+    return [dialog.animate(forward ? frames : back, ZOOM), dialog.animate({opacity: forward ? [0, 1] : [1, 0]}, {...ZOOM, pseudoElement: "::backdrop"})];
+  };
+  const open = (from) => {
+    card = from; opener = $(".topic-open", card); dialog = document.getElementById(opener.getAttribute("commandfor")); closing = false;
+    dialog.showModal(); dialog.scrollTop = 0; $(".topic-dialog-close", dialog).focus();
+    if (!reduced.matches) anims = zoom(true);
+  };
+  const requestClose = () => {
+    if (!dialog?.open || closing) return;
+    closing = true;
+    if (reduced.matches) return dialog.close();
+    const running = anims.filter((a) => a.playState === "running");
+    if (running.length) running.forEach((a) => a.reverse());
+    else { anims.forEach((a) => a.cancel()); anims = zoom(false); }
+    const these = anims, closingDialog = dialog;
+    Promise.all(these.map((a) => a.finished)).then(() => { if (anims === these && closingDialog.open) closingDialog.close(); }, () => {});
+  };
+  document.addEventListener("click", (e) => {
+    const from = e.target.closest(".news-cluster");
+    if (!from || !$(".topic-open", from)) return;
+    const control = e.target.closest("a, button, summary, input, select, textarea, label, .votes");
+    if (control && !control.classList.contains("topic-open")) return;
+    if (!control && String(getSelection()).length) return;
+    e.preventDefault();
+    open(from);
+  });
+  const atBottom = () => dialog.scrollTop + dialog.clientHeight >= dialog.scrollHeight - 1;
+  const hint = () => $(".topic-dialog-pull-inner", dialog);
+  const endPull = () => { pullFrom = null; if (dialog) { hint().hidden = true; $("b", hint()).style.width = "0"; } };
+  for (const each of $$(".topic-dialog")) {
+    const t = document.createElement("template");
+    t.innerHTML = '<div class="topic-dialog-pull" aria-hidden="true"><div class="topic-dialog-pull-inner" hidden lang="en"><span class="label">Keep pulling to close</span><i><b></b></i></div></div>';
+    each.append(t.content);
+    $(".topic-dialog-close", each).addEventListener("click", (e) => { e.preventDefault(); requestClose(); });
+    let downOutside = false;
+    const outside = (e) => { if (e.target !== each) return false; const r = each.getBoundingClientRect(); return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom; };
+    each.addEventListener("pointerdown", (e) => { downOutside = outside(e); });
+    each.addEventListener("click", (e) => { if (downOutside && outside(e)) requestClose(); downOutside = false; });
+    each.addEventListener("cancel", (e) => { if (!e.cancelable) return; e.preventDefault(); requestClose(); });
+    each.addEventListener("close", () => { anims.forEach((a) => a.cancel()); anims = []; endPull(); closing = false; opener?.focus(); });
+    each.addEventListener("touchstart", (e) => { endPull(); if (!closing && e.touches.length === 1 && atBottom()) pullFrom = e.touches[0].clientY; }, {passive: true});
+    each.addEventListener("touchmove", (e) => {
+      if (pullFrom === null) return;
+      if (!atBottom()) return endPull();
+      const pulled = Math.max(0, pullFrom - e.touches[0].clientY);
+      hint().hidden = !pulled;
+      if (!pulled) return;
+      if (e.cancelable) e.preventDefault();
+      $("b", hint()).style.width = `${Math.min(1, pulled / PULL) * 100}%`;
+      if (pulled >= PULL) { endPull(); requestClose(); }
+    }, {passive: false});
+    for (const type of ["touchend", "touchcancel"]) each.addEventListener(type, endPull, {passive: true});
+  }
 })();
 route();
 

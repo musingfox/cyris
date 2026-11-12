@@ -931,13 +931,13 @@ def test_a_queued_newsletter_reaches_the_digest_through_the_email_parser(receipt
 
 def check_rewritten_ids_match(r: Receipts) -> None:
     page = r.page()
-    # The topic of two is one sand block: one vote on both members, its fold their links.
+    # The topic of two is one sand block: one vote on both members, its dialog their links.
     (sand,) = page.find_all("div", "news-cluster")
     assert sand.one("h3").text() == CLUSTER["heading"]
     vote = sand.one("span", "vote-group")
     assert json.loads(vote.attrs["data-urls"]) == [URL["n1"], URL["n2"]]
     assert vote.attrs["data-story-id"].startswith(f"{r.date}-morning-")
-    assert sand.one("details", "src-fold").hrefs() == [URL["n1"], URL["n2"]]
+    assert page.one("dialog", "topic-dialog").hrefs() == [URL["n1"], URL["n2"]]
     # Each pick the filter kept is one water row, in the model's order, voted on alone.
     rows = page.find_all("div", "headline-item")
     assert [row.hrefs() for row in rows] == [[URL[k]] for k in WATER]

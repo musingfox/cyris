@@ -428,23 +428,106 @@
         }
         {% include "_promote.css.j2" %}
 
-        /* Folded cluster sources. inline-block keeps the vote buttons on the same row. */
-        .src-fold { display: inline-block; }
-        .src-fold > summary {
+        /* === TOPIC DIALOG === */
+        /* A sand card opens its topic's members in a modal (spec section 4, topic dialog;
+           owner, 2026-11-12). The heading's button keeps the heading's look; a click on the
+           card's blank space opens the same dialog, so the card shows it can be pressed. */
+        .news-cluster { cursor: pointer; }
+        .topic-open {
+            font: inherit;
+            letter-spacing: inherit;
+            color: inherit;
+            text-align: start;
+            background: none;
+            border: 0;
+            padding: 0;
             cursor: pointer;
-            list-style: none;
-            color: var(--text-dim);
-            text-decoration: underline dotted;
-            text-underline-offset: 3px;
+            transition: color var(--t-fast);
         }
-        .src-fold > summary::-webkit-details-marker { display: none; }
-        .src-fold > summary::after { content: ' ▾'; }
-        .src-fold[open] > summary::after { content: ' ▴'; }
-        .src-list { display: block; padding-top: var(--s-1); }
-        .src-member { display: block; }
+        .topic-open:hover { color: var(--accent); }
+
+        /* A panel: square, no shadow, an edge that holds against the dimmed page. It
+           scrolls itself while the page under it is locked. */
+        .topic-dialog {
+            margin: auto;
+            width: calc(100% - 2 * var(--s-6));
+            max-width: var(--measure-wide);
+            max-height: calc(100dvh - 2 * var(--s-12));
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            background: var(--bg-elev);
+            color: var(--text);
+            border: 1px solid var(--border-strong);
+            border-radius: 0;
+            padding: 0;
+            transform-origin: 0 0;
+        }
+        /* 72% is section 2's literal exception for this backdrop. */
+        .topic-dialog::backdrop { background: color-mix(in srgb, var(--bg) 72%, transparent); }
+        html:has(.topic-dialog[open]) { overflow: hidden; }
+        .topic-dialog-head {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            display: flex;
+            align-items: flex-start;
+            gap: var(--s-4);
+            padding: var(--s-4) var(--s-6);
+            background: var(--bg-elev);
+            border-bottom: 1px solid var(--border);
+        }
+        /* The heading role (spec section 3): the dialog is a panel and this is its title. */
+        .topic-dialog-title {
+            flex: 1;
+            min-width: 0;
+            font-size: calc(24px * var(--type-scale));
+            font-weight: 600;
+            line-height: 1.3;
+            letter-spacing: -0.015em;
+        }
+        .topic-dialog-close { flex: none; }
+        .topic-dialog-body { padding: var(--s-5) var(--s-6) var(--s-6); }
+        .topic-dialog-line {
+            font-size: calc(18px * var(--type-scale));
+            line-height: 1.65;
+            color: var(--text-dim);
+            margin-bottom: var(--s-4);
+        }
+        .topic-members { list-style: none; margin-top: var(--s-4); }
+        .topic-member { padding: var(--s-4) 0; border-top: 1px solid var(--border); }
+        .topic-member .label { margin-top: var(--s-1); }
+        .topic-member-excerpt {
+            margin-top: var(--s-2);
+            font-size: calc(14px * var(--type-scale));
+            line-height: 1.5;
+            color: var(--text-dim);
+            overflow-wrap: anywhere;
+        }
+        /* The touch pull past the bottom, drawn as the layer edge's (spec section 4): a
+           zero-height sticky row on the dialog's bottom edge, so it changes no layout. */
+        .topic-dialog-pull { position: sticky; bottom: 0; height: 0; }
+        .topic-dialog-pull-inner {
+            position: absolute;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            display: flex;
+            align-items: center;
+            gap: var(--s-3);
+            padding: var(--s-3) var(--s-6);
+            background: var(--bg-elev);
+            border-top: 1px solid var(--border);
+        }
+        .topic-dialog-pull-inner[hidden] { display: none; }
+        .topic-dialog-pull-inner i { flex: 1; height: 1px; background: var(--border-strong); }
+        .topic-dialog-pull-inner b { display: block; width: 0; height: 100%; background: var(--accent); }
+        /* The one breakpoint (spec section 2): on a phone the dialog is the whole screen. */
+        @media (max-width: 720px) {
+            .topic-dialog { width: 100%; max-width: none; height: 100%; max-height: none; border: 0; }
+        }
 
         /* An item's tags take their own row, so however many there are the votes stay
-           on the meta row beside the fold or the source. */
+           on the meta row beside the source. */
         .tags { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-2); }
 
         /* === LAYERS === */
@@ -556,8 +639,9 @@
             </section>
             {%- endif %}
 
-            {#- Sand: one block per topic of two or more articles, with one vote over all of
-                them. Its articles and their sources stay folded until the reader opens them. -#}
+            {#- Sand: one card per topic of two or more articles, with one vote over all of
+                them. Its articles and their sources are in its dialog, which the card opens;
+                the dialog repeats the card's vote, so either one votes on the same topic. -#}
             {%- if layers.sand %}
 
             <section class="section">
@@ -566,16 +650,39 @@
                 {% for sand in layers.sand %}
                 <div class="news-cluster" id="topic-{{ loop.index }}" lang="{{ content_lang }}">
                     {% if sand.image_url %}<img class="story-image" src="{{ sand.image_url }}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">{% endif %}
-                    <h3 class="item-title lg">{{ sand.heading }}</h3>
+                    <h3 class="item-title lg"><button type="button" class="topic-open" aria-haspopup="dialog" commandfor="topic-{{ loop.index }}-dialog" command="show-modal">{{ sand.heading }}</button></h3>
                     {% if sand.line %}<p class="summary"{% if sand.line_untranslated %} lang=""{% endif %}>{{ sand.line }}</p>{% endif %}
                     {{ tag_pills(sand.tags) }}
                     <div class="meta">
-                        <details class="src-fold"><summary lang="en">{{ sand.members | length | plural('article') }}</summary><span class="src-list" lang="">{% for member in sand.members %}<span class="src-member">{{ title_link(member) }}{% if member.sources %} <span class="source-tag">{{ member.sources | join(' · ') }}</span>{% endif %}</span>{% endfor %}</span></details>
                         {{ promote_btn(sand.vote, sand.story_id) }}
                     </div>
                 </div>
                 {% endfor %}
                 </div>
+                {% for sand in layers.sand %}
+                <dialog class="topic-dialog" id="topic-{{ loop.index }}-dialog" aria-labelledby="topic-{{ loop.index }}-dialog-title" lang="{{ content_lang }}">
+                    <div class="topic-dialog-head">
+                        <h2 class="topic-dialog-title" id="topic-{{ loop.index }}-dialog-title">{{ sand.heading }}</h2>
+                        <button type="button" class="btn secondary sm topic-dialog-close" commandfor="topic-{{ loop.index }}-dialog" command="close" lang="en">Close</button>
+                    </div>
+                    <div class="topic-dialog-body">
+                        {% if sand.line %}<p class="topic-dialog-line"{% if sand.line_untranslated %} lang=""{% endif %}>{{ sand.line }}</p>{% endif %}
+                        <div class="meta">
+                            <span lang="en">{{ sand.members | length | plural('article') }}</span>
+                            {{ promote_btn(sand.vote, sand.story_id) }}
+                        </div>
+                        <ol class="topic-members" lang="">
+                            {% for member in sand.members %}
+                            <li class="topic-member">
+                                <h3 class="item-title">{{ title_link(member) }}</h3>
+                                {% if member.sources %}<p class="label">{{ member.sources | join(' · ') }}</p>{% endif %}
+                                {% if member.summary %}<p class="topic-member-excerpt">{{ member.summary }}</p>{% endif %}
+                            </li>
+                            {% endfor %}
+                        </ol>
+                    </div>
+                </dialog>
+                {% endfor %}
             </section>
             {%- endif %}
 
@@ -603,6 +710,7 @@
     </div>
     {% include "_promote_script.html.j2" %}
     {% include "_layers_script.html.j2" %}
+    {% include "_topic_dialog_script.html.j2" %}
     {% include "_probe_script.html.j2" %}
 </body>
 </html>

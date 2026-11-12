@@ -1141,8 +1141,10 @@ class _Placement(HTMLParser):
         around = set().union(*self._open)
         if "vote-group" in classes:
             self.found.append(("vote-group", around))
-        if tag == "details" and "src-fold" in classes:
-            self.found.append(("src-fold", around))
+        if tag == "dialog" and "topic-dialog" in classes:
+            self.found.append(("topic-dialog", around))
+        if "topic-open" in classes:
+            self.found.append(("topic-open", around))
         if tag not in _VOID_TAGS:
             self._open.append(classes)
 
@@ -1173,10 +1175,12 @@ def test_the_digest_probe_wire_has_a_long_summary_a_short_one_and_none():
     assert summaries[0] in digest_probe.render_page()
 
 
-def test_the_digest_probe_page_folds_each_topic_and_no_headline():
-    folded = _placed_in(digest_probe.render_page(), "src-fold")
-    assert "news-cluster" in folded
-    assert "headline-item" not in folded
+def test_the_digest_probe_page_opens_each_topic_from_its_card_and_no_headline():
+    page = digest_probe.render_page()
+    assert "news-cluster" in _placed_in(page, "topic-open")
+    assert "headline-item" not in _placed_in(page, "topic-open")
+    # The dialogs sit beside the cards, so hovering one never hovers its card.
+    assert not {"news-cluster", "headline-item"} & _placed_in(page, "topic-dialog")
 
 
 async def test_the_digest_probe_fixture_serves_an_archive_with_small_buttons():

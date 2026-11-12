@@ -66,6 +66,9 @@
         let cur = 0, pull = 0, pullDir = 0, pushed = 0, armed = 0, idle, armedIdle, swallow = false;
         let lastWheel = 0, streamDir = 0, streamAtEdge = false, touchY = 0, touchTop = false, touchBottom = false;
         let lastKeyDir = 0, lastKeyAt = 0, modality = 'pointer', landY = null, landAt = 0;
+        // A topic dialog open over the layer holds it still: its keys, wheel and touches are
+        // the dialog's, which scrolls itself while the page is locked (spec section 4, topic dialog).
+        const modal = () => !!document.querySelector('dialog[open]');
         const atTop = () => scrollY <= 0;
         const atBottom = () => scrollY >= root.scrollHeight - innerHeight - 1;
         const atEdge = (dir) => (dir > 0 ? atBottom() : atTop()) && !!layers[cur + dir];
@@ -164,7 +167,7 @@
             render();
         };
         addEventListener('wheel', (e) => {
-            if (e.ctrlKey || !e.deltaY) return;
+            if (e.ctrlKey || !e.deltaY || modal()) return;
             const dir = Math.sign(e.deltaY), now = performance.now();
             if (now - lastWheel >= FRESH_GAP_MS || dir !== streamDir) { streamDir = dir; streamAtEdge = atEdge(dir); swallow = false; }
             lastWheel = now;
@@ -178,8 +181,9 @@
             tug(dir, Math.abs(e.deltaY) * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1));
             if (cur !== was) streamAtEdge = false;
         }, {passive: false});
-        addEventListener('touchstart', (e) => { swallow = false; touchY = e.touches[0].clientY; touchTop = atTop(); touchBottom = atBottom(); }, {passive: true});
+        addEventListener('touchstart', (e) => { if (modal()) return; swallow = false; touchY = e.touches[0].clientY; touchTop = atTop(); touchBottom = atBottom(); }, {passive: true});
         addEventListener('touchmove', (e) => {
+            if (modal()) return;
             const dy = touchY - e.touches[0].clientY, dir = Math.sign(dy);
             touchY = e.touches[0].clientY;
             if (swallow) { if (e.cancelable) e.preventDefault(); return; }
@@ -199,7 +203,7 @@
         addEventListener('hashchange', () => { toHash(); render(); });
         addEventListener('keydown', (e) => {
             modality = 'key'; landY = null;
-            if (e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input, textarea, select, [contenteditable]')) return;
+            if (modal() || e.ctrlKey || e.metaKey || e.altKey || e.target.closest('input, textarea, select, [contenteditable]')) return;
             if (e.key === 'n' || e.key === 'N') {
                 if (e.repeat || !layers[cur + 1]) return;
                 e.preventDefault();

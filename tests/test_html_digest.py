@@ -230,7 +230,8 @@ def test_clusters_are_headed_at_h3_and_radar_items_are_rows():
 def test_every_body_title_carries_the_title_class_and_block_titles_the_large_one():
     digest = receipt_fixtures()[1]
     main = digest[digest.index("<main>") : digest.index("</main>")]
-    h3s = re.findall(r"<h3\b[^>]*>", main)
+    dialogs = re.findall(r"<dialog\b.*?</dialog>", main, flags=re.DOTALL)
+    h3s = re.findall(r"<h3\b[^>]*>", re.sub(r"<dialog\b.*?</dialog>", "", main, flags=re.DOTALL))
     h4s = re.findall(r"<h4\b[^>]*>", main)
     # In page order: the tracked topic, the five pebble cards (two features, the thematic
     # one, the radar item and the followed one) and the sand block. Water rows carry none.
@@ -239,6 +240,9 @@ def test_every_body_title_carries_the_title_class_and_block_titles_the_large_one
         *['<h3 class="item-title lg" lang="">'] * 5,
         '<h3 class="item-title lg">',
     ]
+    # The sand block's dialog titles each of its two members at the title role's 18px.
+    (dialog,) = dialogs
+    assert re.findall(r"<h3\b[^>]*>", dialog) == ['<h3 class="item-title">'] * 2
     # The tracked hit.
     assert h4s == ['<h4 class="item-title">']
 
@@ -2158,7 +2162,8 @@ def test_every_vote_group_says_its_titles_are_english(tmp_path):
     html = HtmlDigestWriter(tmp_path).render(_every_section("ja"))
     groups = re.findall(r'<span class="vote-group"[^>]*>', html)
 
-    assert len(groups) == 6
+    # One per item, and the sand card's repeated in its dialog.
+    assert len(groups) == 7
     assert all(' lang="en"' in group for group in groups)
 
 
@@ -2309,7 +2314,9 @@ def test_a_cluster_keeps_its_story_id_and_every_url_is_shown_and_voted_once(tmp_
     html = HtmlDigestWriter(tmp_path).render(content)
 
     assert 'data-story-id="story-health"' in html
-    votes = re.findall(r"data-urls='([^']*)'", html)
+    # The topic dialog repeats its card's vote; every other url is voted on once.
+    cards = re.sub(r"<dialog\b.*?</dialog>", "", html, flags=re.DOTALL)
+    votes = re.findall(r"data-urls='([^']*)'", cards)
     for url in digest_urls(content):
         assert url in html, url
         assert sum(url in vote for vote in votes) == 1, url
@@ -2568,7 +2575,8 @@ def test_every_pebble_sand_and_water_item_has_exactly_one_vote_group() -> None:
     assert (len(pebbles), len(sand), len(water)) == (2, 1, 2)
     for item in (*pebbles, *sand, *water):
         assert len(_by_class(item, "vote-group")) == 1, item.text_content()
-    assert len(_by_class(root, "vote-group")) == 5
+    # The sand card's vote is repeated in its dialog, for the same topic.
+    assert len(_by_class(root, "vote-group")) == 6
 
 
 STORY_IMAGE = "https://pebble.example.test/read.jpg"
@@ -2698,9 +2706,9 @@ def test_a_sand_vote_is_cast_for_every_member_url_under_its_story_id() -> None:
         f"https://{host}/{n}" for n, host in zip("abc", _WIRE_HOSTS, strict=True)
     ]
     assert group.attrs["data-story-id"] == "2026-10-29-morning-abc"
-    # The fold holds the articles, and no vote of its own.
-    (fold,) = sand.find_all(lambda n: n.tag == "details")
-    assert _by_class(fold, "vote-group") == []
+    # The dialog's vote is the card's: the same topic, over the same urls.
+    (repeated,) = _by_class(_dialog_of(root, sand), "vote-group")
+    assert repeated.attrs == group.attrs
 
 
 def test_a_one_article_topic_is_a_row_that_keeps_its_story_id() -> None:
@@ -2712,16 +2720,89 @@ def test_a_one_article_topic_is_a_row_that_keeps_its_story_id() -> None:
     assert "data-story-id" not in _by_class(headline, "vote-group")[0].attrs
 
 
-def test_the_sand_fold_lists_each_member_title_as_its_link_with_its_source() -> None:
+def _dialog_of(root: _Node, card: _Node) -> _Node:
+    """The topic dialog a sand card's heading button opens, by its `commandfor`."""
+    (button,) = _by_class(card, "topic-open")
+    (dialog,) = root.find_all(lambda n: n.attrs.get("id") == button.attrs["commandfor"])
+    return dialog
+
+
+def test_the_topic_dialog_lists_each_member_title_link_source_and_excerpt() -> None:
     _, root = _three_layer_dom()
 
-    (fold,) = _by_class(root, "src-fold")
-    assert fold.find_all(lambda n: n.tag == "summary")[0].text_content() == "3 articles"
-    links = [(a.text_content(), a.attrs["href"]) for a in fold.find_all(lambda n: n.tag == "a")]
+    (sand,) = _by_class(root, "news-cluster")
+    dialog = _dialog_of(root, sand)
+    rows = _by_class(dialog, "topic-member")
+    links = [
+        (a.text_content(), a.attrs["href"])
+        for row in rows
+        for a in row.find_all(lambda n: n.tag == "a")
+    ]
     assert links == [
         (f"Report {n}", f"https://{host}/{n}") for n, host in zip("abc", _WIRE_HOSTS, strict=True)
     ]
-    assert [s.text_content() for s in _by_class(fold, "source-tag")] == list(_WIRE_SOURCES[:3])
+    assert [_by_class(row, "label")[0].text_content() for row in rows] == list(_WIRE_SOURCES[:3])
+    assert [_by_class(row, "topic-member-excerpt")[0].text_content() for row in rows] == [
+        f"Excerpt {n}" for n in "abc"
+    ]
+    # The members are the sources' own text (spec section 1, principle 7).
+    (members,) = _by_class(dialog, "topic-members")
+    assert members.attrs["lang"] == ""
+
+
+def test_the_topic_dialog_shows_the_cards_heading_line_and_count() -> None:
+    _, root = _three_layer_dom()
+
+    (sand,) = _by_class(root, "news-cluster")
+    dialog = _dialog_of(root, sand)
+    assert dialog.tag == "dialog"
+    assert "topic-dialog" in dialog.classes
+    (title,) = _by_class(dialog, "topic-dialog-title")
+    assert dialog.attrs["aria-labelledby"] == title.attrs["id"]
+    assert title.text_content() == "Three reports of one event"
+    (line,) = _by_class(dialog, "topic-dialog-line")
+    assert (line.text_content(), line.attrs["lang"]) == ("Excerpt a", "")
+    (meta,) = _by_class(dialog, "meta")
+    assert meta.children[0].text_content() == "3 articles"
+    assert meta.children[0].attrs["lang"] == "en"
+    (close,) = _by_class(dialog, "topic-dialog-close")
+    assert close.text_content() == "Close"
+    # Without script the browser's own command closes it, where the browser has one.
+    assert (close.attrs["commandfor"], close.attrs["command"]) == (dialog.attrs["id"], "close")
+
+
+def test_the_sand_heading_is_a_button_that_opens_its_dialog() -> None:
+    _, root = _three_layer_dom()
+
+    (sand,) = _by_class(root, "news-cluster")
+    (h3,) = sand.find_all(lambda n: n.tag == "h3")
+    (button,) = h3.children
+    assert button.tag == "button"
+    assert button.attrs["type"] == "button"
+    assert "topic-open" in button.classes
+    assert button.text_content() == "Three reports of one event"
+    assert (button.attrs["aria-haspopup"], button.attrs["command"]) == ("dialog", "show-modal")
+    assert _dialog_of(root, sand).attrs["id"] == "topic-1-dialog"
+
+
+def test_a_sand_card_has_no_fold_and_its_meta_row_holds_only_the_vote() -> None:
+    html, root = _three_layer_dom()
+
+    (sand,) = _by_class(root, "news-cluster")
+    assert sand.find_all(lambda n: n.tag in ("details", "summary")) == []
+    assert "src-fold" not in html
+    (meta,) = _by_class(sand, "meta")
+    assert [child.classes for child in meta.children] == [{"vote-group"}]
+    assert "articles" not in sand.text_content()
+
+
+def test_a_member_with_no_stored_excerpt_has_no_excerpt_line() -> None:
+    issue = _three_layer_issue()
+    issue.news_clusters[0].members[1].summary = ""
+    root = _Dom(HtmlDigestWriter(Path("/tmp/html-test")).render(issue)).root
+
+    rows = _by_class(root, "topic-member")
+    assert [len(_by_class(row, "topic-member-excerpt")) for row in rows] == [1, 0, 1]
 
 
 def test_the_sand_line_is_its_first_members_excerpt_and_says_it_is_untranslated() -> None:
@@ -2733,10 +2814,10 @@ def test_the_sand_line_is_its_first_members_excerpt_and_says_it_is_untranslated(
     assert "The model's cluster summary." not in html
 
 
-def test_no_source_name_or_host_shows_outside_the_sand_fold_but_a_pebbles_source() -> None:
+def test_no_source_name_or_host_shows_outside_the_topic_dialog_but_a_pebbles_source() -> None:
     html, _ = _three_layer_dom()
     main = _body(html)
-    outside = re.sub(r"<details.*?</details>", "", main, flags=re.DOTALL)
+    outside = re.sub(r"<dialog\b.*?</dialog>", "", main, flags=re.DOTALL)
     # Hosts are allowed inside an href or a vote's data, never as text.
     text = re.sub(r"<[^>]*>", " ", outside)
 
@@ -2793,8 +2874,10 @@ def test_a_legacy_cluster_stored_without_members_renders_as_sand_and_votes_on_it
     assert "Health cluster" in sand.text_content()
     assert "Cluster summary." in sand.text_content()
     assert _vote_urls(sand) == [["https://a.test/health", "https://b.test/health"]]
-    (fold,) = sand.find_all(lambda n: n.tag == "details")
-    assert [a.text_content() for a in fold.find_all(lambda n: n.tag == "a")] == ["A", "B"]
+    dialog = _dialog_of(root, sand)
+    assert [a.text_content() for a in dialog.find_all(lambda n: n.tag == "a")] == ["A", "B"]
+    # A member built from a link has no excerpt of its own.
+    assert _by_class(dialog, "topic-member-excerpt") == []
 
 
 def test_the_page_names_no_area(tmp_path):

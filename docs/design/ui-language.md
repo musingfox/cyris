@@ -1,7 +1,7 @@
 ---
 status: accepted
 accepted: 2026-09-17
-updated: 2026-11-06
+updated: 2026-11-12
 ---
 
 # cyris UI design spec
@@ -44,14 +44,14 @@ page added later.
 7. **The chrome is English; content names its own language.** A screen reader picks its voice from
    `lang` (WCAG 3.1.1, 3.1.2). Every page's `<html lang>` is `en`, the language of its labels. A block of
    digest text, which the model writes in `[digest] output_language`, carries that tag as its `lang`, and
-   an English control inside it (a vote group, a sources fold) carries `lang="en"`. An article's own
+   an English control inside it (a vote group, a topic dialog's count and `Close`) carries `lang="en"`. An article's own
    title inside such a block, which is a pebble's title, is the source's text and carries `lang=""`;
    a topic's heading, the summaries and the headline rows' titles, which the model writes in the
    output language, keep its tag. The archive
    headline card's title follows its lead, so a group's heading keeps the tag and a single article's
    title carries `lang=""`. Text passed through
    untranslated, which is the low-score read rows' pebbles, the follow lane's pebbles while
-   `digest.summarize_follow` is off, Tracking, a sand block's member list and every raw row,
+   `digest.summarize_follow` is off, Tracking, a topic dialog's member list and every raw row,
    carries `lang=""`, HTML's unknown
    language: no reliable tag for it exists. So does a pebble, sand line or headline row that holds the
    article's own title and excerpt because no usable LLM wrote it or the model wrote no summary for
@@ -119,7 +119,12 @@ Below is the complete token set. `_tokens.css.j2` and `static/style.css` must ma
   2026-11-12). The shadow is black because it has
   to be darker than `--bg`, the deepest token, to show under an item lifted off it; the timings are
   the values the owner settled on for this one effect, and nothing else on the site takes them, so
-  they are not tokens. A new exception must be written into this bullet.
+  they are not tokens. The topic dialog (§4) has the same kind of exception for its zoom: 650ms
+  with `cubic-bezier(.2, .8, .2, 1)` both ways, the dialog fading in over the first 40% of it, a
+  backdrop of `--bg` at 72% (`color-mix(in srgb, var(--bg) 72%, transparent)`), and the 160px of
+  touch pull that closes it, the layer pull's length (owner, 2026-11-12). The zoom's numbers live in
+  the dialog's script, which runs it, and the backdrop's in its rule. A new exception must be
+  written into this bullet.
 - **`--iris: #c6ff3d` is the logo mark's colour, on the landing page only.** The landing page declares it
   in its `:root` with `--iris-plate: #07070a` (§2 *Light palette*), and light replaces neither, so the
   mark is the same colour in both themes. They stay out of the set above because the app's pages keep
@@ -225,7 +230,7 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 | **segmented control** | 1px `--border-strong` outline, `--r-control`, 1px dividers between cells; each cell is 44px high, `--s-4` left and right, label role, `--text-dim`. Selected: `--surface-2` background, `--accent` text, 2px `--accent` underline. Links use `aria-current="page"`, toggle buttons use `aria-pressed` |
 | **button** | Height 44px, `--s-5` left and right, label role, `--r-control`. **primary**: `--accent` background, `--bg` text. **secondary**: `--surface-2` background, `--border-strong` border, `--text-dim` text, text turns `--text` on hover. **danger**: transparent background, `--warn` text and border, `--warn-tint` background on hover. The small size is 34px high, `--s-2` left and right, letter spacing 0.06em, and still takes taps over 44 × 44 (**tap area**). Pressed (`:active`) lowers opacity to .7 on top of whatever hover state the button already shows, and changes nothing else; .7 stays clear of disabled's .4, so a pressed button never reads as disabled. Disabled is always opacity .4, and a disabled button does not change on hover or press |
 | **vote button** | The ↑ and ↓ of a vote group (§4 *Interaction*, *Votes*), on the digest and raw pages: a small secondary button restyled to sit quietly beside the label-role meta text, because a filled, outlined 34px button drew the eye away from the item it votes on (2026-10-29). A `--s-6` square, its glyph centred with no padding, in `--text-dim` with no background and a transparent border. Hover, on a button neither voted nor failed, gives it the `--border-strong` border, a `--surface-2` background and `--text`; focus is the global `:focus-visible` outline; press and disabled are the button's. Voted (`.done`) shows an `--accent` glyph and border, failed (`.error`) a `--warn` glyph and border on `--warn-tint`, so a cast vote is the one that keeps a border at rest. It still takes taps over 44 × 44 (**tap area**) |
-| **tap area** | Every tap target takes taps over at least 44 × 44px, at every width, and a tap lands on exactly one target. A target drawn smaller keeps its drawn size and gets the rest from a transparent `::after`, `position: absolute`, `inset: min(0px, calc((100% - 44px) / 2))`, centred on it: the small button, the site bar's links, and the brand link, which is the 12px mark alone at phone width. Hit areas never cover each other or another target's drawn box, with one exception: the archive's `Digest` link takes taps over its whole headline card or row, and the `All articles` button sits on top of that area because it is positioned and follows `Digest` in the markup. The ↑ and ↓ votes keep their `--s-1` gap and split it at its midpoint, each taking the rest of its 44px outward, and the vote group sits `--s-2` further from what comes before it, so that outward part clears its neighbour: the arrow glyphs fall back to whatever monospace the reader has, so a gap wide enough for two centred areas would hold only for one font's width. The digest's ↗ original link is a 44px-wide box with its glyph centred, because a centred area would reach 18px over the source names and votes on either side. A settings fold's summary takes `--s-1` above it, half the field gap so the control above keeps its taps, and the rest below. A settings tab is itself at least 44px high, because its tab bar scrolls at phone width and clips anything drawn outside it. A sand block's `N articles` fold is exempt: a 44px area would cover the source links it unfolds. Text links inside a title or a line of text are exempt, as WCAG 2.5.8 exempts inline targets. The page probes' `tap-*` checks measure every target here at 375px, and the digest probe's `archive-*` checks test the `Digest` exception at 375 and 1440px |
+| **tap area** | Every tap target takes taps over at least 44 × 44px, at every width, and a tap lands on exactly one target. A target drawn smaller keeps its drawn size and gets the rest from a transparent `::after`, `position: absolute`, `inset: min(0px, calc((100% - 44px) / 2))`, centred on it: the small button, the site bar's links, and the brand link, which is the 12px mark alone at phone width. Hit areas never cover each other or another target's drawn box, with one exception: the archive's `Digest` link takes taps over its whole headline card or row, and the `All articles` button sits on top of that area because it is positioned and follows `Digest` in the markup. The ↑ and ↓ votes keep their `--s-1` gap and split it at its midpoint, each taking the rest of its 44px outward, and the vote group sits `--s-2` further from what comes before it, so that outward part clears its neighbour: the arrow glyphs fall back to whatever monospace the reader has, so a gap wide enough for two centred areas would hold only for one font's width. The digest's ↗ original link is a 44px-wide box with its glyph centred, because a centred area would reach 18px over the source names and votes on either side. A settings fold's summary takes `--s-1` above it, half the field gap so the control above keeps its taps, and the rest below. A settings tab is itself at least 44px high, because its tab bar scrolls at phone width and clips anything drawn outside it. Text links inside a title or a line of text are exempt, as WCAG 2.5.8 exempts inline targets, and so is a sand card's heading button, which is its heading's text: a tap on any blank part of the card opens the same dialog (**topic dialog**). The page probes' `tap-*` checks measure every target here at 375px, and the digest probe's `archive-*` checks test the `Digest` exception at 375 and 1440px |
 | **input / select** | Height 48px, `--s-4` left and right, `--bg-elev` background, 1px `--border-strong` border, `--r-control`, Geist 16px. On focus the border turns `--accent`, even on a field that failed validation; on failed validation the border turns `--warn`, with a notice below. Disabled is opacity .4, as a disabled button is |
 | **multi-line input** | `<textarea class="input">`, reusing the input's background, border, radius, font size, and its focus and failed-validation rules; its height comes from `rows`, with `--s-3` padding top and bottom, and it resizes vertically only |
 | **field** | From top to bottom: the field name in the label role, the control, and help in the small role, spaced `--s-2`. Help is always in view and is one or two short sentences: it keeps the facts a reader decides by and leaves the background to the docs, so it is never folded away. A field whose setting does nothing until another holds a value has a **dependency**: while it is unmet, the control is disabled, and one line in the small role below the help says what it waits for, such as `Clef needs vote similarity on, under Model.` That line is the control's description (`aria-describedby`, beside any refusal notice), since a disabled control leaves the tab order and a screen reader would otherwise never hear why. The page reads the dependency from the values it holds, the other field's unsaved value included, and the line goes and the control returns the moment that field changes, with no reload. A dependency of one option, such as Clef's on vote similarity or on its token, disables that option alone and leaves the rest of the select in reach. A required setting is never locked out of being stored: a disabled control with no stored value shows the value a run takes while the dependency is unmet, such as `Off`, and its category's `Save` stores it, as a detected timezone is stored (§6 *settings*). It replaced help folded under `More` on 2026-10-20: readers took `More` for finer settings and found an explanation |
@@ -236,6 +241,7 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 | **toggle tile** | Several options that can be chosen together, each a short name the reader picks at a glance rather than reads down a list: onboarding's topics. One press chooses a tile and the next unchooses it. A `role="group"` named by a line in the label role holds one `<button type="button" class="tile">` per option, carrying `aria-pressed`, in a grid of `repeat(auto-fill, minmax(min(100%, 160px), 1fr))` with `--s-2` gaps. A tile is at least `--s-16` high, with `--s-3` top and bottom, `--s-4` on the left and `--s-8` on the right; `--bg-elev` background, 1px `--border-strong` border, `--r-control`, its text left-aligned: the name in the title role at 18px, then a count or state in the label role. A `--s-3` square mark sits `--s-3` in from its top right corner, a 1px `--border-strong` outline while the tile is not pressed and filled `--accent` while it is, so the state never rests on colour alone. Pressed: `--accent` border, `--accent-tint` background, the label in `--accent`. Hover turns an unpressed tile `--surface`; pressing lowers it to opacity .7, as a button's `:active` does. It is a native button, so Tab reaches it and Enter or Space presses it, and it is its own tap target, over 44 × 44 at every width. It replaced a checklist for topics on 2026-10-20: two checklists one above the other read as one long list with no order between them |
 | **headline card** | Only for the archive's latest issue. `--surface` background, 1px `--border-strong` border, square corners, `--s-6` padding. From top to bottom: an `--accent` `Latest` label with the date (data) and the period (label); the title of the issue's first story, which is its group heading when that story is a group (title role); the article count (data); the titles of the two topics with the most members (small, joined by ` · `); and two small secondary buttons, `Digest` and `All articles`. A tap anywhere on the card outside `All articles` opens the digest, because `Digest` takes taps over the whole card (**tap area**); hovering or pressing the card hovers or presses the `Digest` button. A field with no data is left out, with no placeholder text |
 | **panel** | `--bg-elev` background, 1px `--border` border, square corners. An optional head row: `--surface` background, a bottom line, `--s-3` top and bottom and `--s-5` left and right, the title on the left and a count or action on the right. Adjacent panels are spaced `--s-5` |
+| **topic dialog** | A sand card's members, opened from the card (§6 *digest*; owner, 2026-11-12, settled on a throwaway copy of the 2026-11-12 morning issue, vault `pm/cyris/docs/digest-pebble-sand-water/topic-dialog-2026-11-12/`). A native `<dialog>` opened with `showModal()`, one per card, after the cards in their section so hovering it never hovers a card. It is a panel: square, no shadow, `--bg-elev`, a 1px `--border-strong` edge, at most `--measure-wide` wide and the window's height less `--s-12` above and below, past which it scrolls itself; the page under it does not scroll. Its backdrop is `--bg` at 72%, with no blur. A sticky head, `--s-4` by `--s-6` with a `--border` line below, holds the topic's heading in the heading role (§3), an `h2`, and a small secondary `Close` button. The body, `--s-5` above and `--s-6` at the sides and below, holds the card's line in the body role, then a meta row of `N articles` and the topic's vote group, then every member of this issue's sand block as a list carrying `lang=""` (§1): each row is `--s-4` top and bottom with a `--border` line above it, its title link in the title role at 18px (an `h3`), its source names in the label role `--s-1` below, and the member's own stored excerpt in the small role and `--text-dim`, `--s-2` below that and breaking an unbroken run as a Headlines summary does. A member with no stored excerpt, as an older issue's are, shows no excerpt line. It holds nothing else: no pebble, no earlier issue, nothing fetched. Below 720px it is the whole screen with no edge. The app's pages are dark only (§2 *Light palette*), so it has no light form. **Opening:** the card's heading text is a `<button type="button">` inside its `h3`, with `aria-haspopup="dialog"`, so Tab reaches it and Enter or Space opens it; it keeps the heading's look and turns `--accent` on hover, as a title link does. A click on any blank part of the card opens it too; a click on a vote, a link or another control does its own job, and a click that ends a text selection does nothing. Opening puts focus on `Close`. The button also carries `commandfor` and `command="show-modal"`, and `Close` `command="close"`, so a browser that has invoker commands opens and closes it without script; the script cancels those commands and runs its own, with the zoom. **Closing:** Esc, `Close`, a click that begins and ends on the backdrop, or the touch pull below. Every close zooms back into the card, then closes, and focus goes back to the card's heading button. **Zoom:** opening animates the dialog's `transform` from the clicked card's box to its own, a translate and a scale on each axis from `transform-origin: 0 0`, while its opacity goes from 0 to 1 over the first 40% and the backdrop fades with it; closing plays the same frames back into the same card, then calls `close()`. It runs 650ms both ways on `cubic-bezier(.2, .8, .2, 1)`, the hover lift's curve without its overshoot, in the Web Animations API (§2 exception; §4 *Transitions*). Esc reaches it through `cancel`, whose `preventDefault()` holds the close for the zoom; a browser that will not hold it (Chromium, for a second Esc with no activation between) closes at once. A close asked for during the opening reverses it where it is; one asked for while closing is ignored; `close` cancels whatever animation is left. Under `prefers-reduced-motion: reduce` nothing animates: it opens and closes at once. **Touch pull:** as a layer's (§4 *Interaction*, *Layers*, *Pull*), only a touch that starts with the dialog already scrolled to its bottom counts, so the gesture that scrolls it there never closes it; 160px of upward pull closes it, and leaving the bottom or lifting the finger resets it. While pulling, a zero-height sticky row on the dialog's bottom edge shows `Keep pulling to close` in the label role beside a 1px `--border-strong` line that fills `--accent` with the pull, as the layer edge's does. The wheel never closes it. **Votes:** its vote group is the card's, the same `data-story-id` and URLs, and the two move together (§4 *Interaction*, *Votes*). While it is open the layer switcher stands still (§4 *Interaction*, *Layers*). Without script, in a browser without invoker commands, the button does nothing and the members are not reachable from the page; the mail lists them open (§6 *email*). It replaced the card's `N articles` fold (`<details class="src-fold">`) on 2026-11-12 |
 | **list row / table row** | The class name is `.list-row` (`.row` is taken by the digest stats card). `--s-3` top and bottom, `--s-5` left and right, rows divided by a bottom line, `--surface` on hover. Table headers use the label role on `--surface`. A table sits in its own `overflow-x: auto` container |
 | **pill** | Geist Mono 12px, `2px 10px`, 1px `--border-strong` border, `--surface-2` background, `--r-tag`. The score variant has `--accent` text, an `--accent-dim` border and an `--accent-tint` background, and only a score takes it: a source's lane is a plain pill, because no lane is the positive one (§1) |
 | **state text** | Geist Mono 11px, uppercase, letter spacing 0.1em. accepted is `--accent`; pending is `--text-dim`; rejected is `--text-dim` |
@@ -257,9 +263,13 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
   `transform` (the opening's logo, tagline and arrow, the arrow's nudge, the illustrations' scale), move
   the diagram's squares by script and draw on a canvas, with the `opacity`, `filter`, `color`,
   `border-color` and SVG stroke motion that goes with them, on their own timings (owner, 2026-11-06). The
-  digest and settings rules do not change, and neither does the reduced motion rule below. Transform is
+  digest and settings rules do not change, and neither does the reduced motion rule below. The digest's
+  topic dialog is a third exception (owner, 2026-11-12): its zoom out of a sand card and back moves the
+  dialog's `transform` (a translate and a non-uniform scale) and `opacity`, and its `::backdrop`'s
+  `opacity`, by script through the Web Animations API, on its own timings (§2), and under reduced motion
+  it does not run at all (§4 *topic dialog*). Transform is
   used only for the triage card's drag and fly-out, on raw and on labels, for the
-  digest's hover focus, and for the landing page's opening, scroll arrow and editions illustrations.
+  digest's hover focus and topic dialog, and for the landing page's opening, scroll arrow and editions illustrations.
 - **Hover** neither moves nor scales, except in the digest's hover focus (owner, 2026-11-02). The
   pressed state only lowers opacity, to the button's .7 (§4). A disabled button neither hovers nor
   presses.
@@ -313,12 +323,18 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
     it first, on load and on a hash change; every pebble, sand block and headline carries an `id`
     for it) and every key inside a layer work as on any page. Find-in-page cannot reach a hidden
     layer; that is accepted, since one layer at a time is the point.
+  - *Held by a dialog.* While a topic dialog is open (§4 *topic dialog*) its keys, wheel and touches
+    are the dialog's: none of them pulls, arms or switches a layer, and `N` does nothing. The page
+    under it does not scroll; the dialog scrolls itself.
 - **Votes:** each small ↑ / ↓ vote button is named `More like this` / `Less like this` and carries
   `aria-pressed`, true on the vote this browser cast. While a vote is in flight both buttons of its group
   are disabled, and the request gives up after a fixed timeout; once it settles, focus goes back to the
   button that was pressed, or to the `Triage` switch when the deck has no card left. A vote that does not land puts an error notice right below the row holding its
   buttons, saying why, and a lapsed sign-in says to sign in again; the next vote on that group clears it.
-  The triage deck's notice gives the same reason.
+  The triage deck's notice gives the same reason. A topic's vote shows twice, on its sand card and in
+  its dialog (§4 *topic dialog*), as two groups over the same URLs: they are one vote, so a vote in
+  either disables both while it is in flight and paints both once it settles, and a refused one marks
+  and notes both. Focus after it settles follows the rule above, in whichever group was pressed.
 
 ## 5. Navigation
 
@@ -400,12 +416,14 @@ has read a whole thing rather than the top of a long scroll. The masthead and Tr
 first layer shown; the footer, and anything else after the last layer, belongs to the last. A reader crosses to the next layer by a deliberate pull or key, or by the layer
 dock's `Skip`, and goes back the same way (§4 *Interaction*, *Layers*; §4 *layer dock*, *layer edge*).
 A switch hides the layer left. Without script every layer shows, stacked, exactly as the markup
-orders them, with no dock and no edge; the mail and Discord are not affected.
+orders them, with no dock and no edge, and a sand card's dialog opens only where the browser has
+invoker commands (§4 *topic dialog*); the mail and Discord are not affected.
 
-- **Heading levels follow the structure.** `h1` is the issue title; `h2` is the section markers; `h3` is
-  a pebble's title, a sand block's heading and a tracked topic's name; `h4` is a Tracking hit. `h3` and
+- **Heading levels follow the structure.** `h1` is the issue title; `h2` is the section markers and a
+  topic dialog's heading; `h3` is a pebble's title, a sand block's heading, a tracked topic's name and
+  a member's title in a topic dialog; `h4` is a Tracking hit. `h3` and
   `h4` are both the title role (§3), with the class `.item-title`: `h3` adds `.lg` for 19px, and `h4`
-  uses 18px. A water row has no heading element.
+  and a dialog member's `h3` use 18px. A water row has no heading element.
 - **Tracking lists each tracked topic that has a hit this issue, as links only.** A topic is a
   `.thematic-block`: its name as the `h3`, then each hit as an `.article-item` whose `h4` is the
   article's own title link, nearest first, with no summary, no meta row and no vote. A topic with no
@@ -424,14 +442,16 @@ orders them, with no dock and no edge; the mail and Discord are not affected.
   the follow lane.
 - **A sand block is one topic of two or more articles.** `.news-cluster`, a card: its story image
   (§4) when a member has one, the topic's heading, one line saying what happened, its tags, then a
-  meta row holding the fold and the votes. The card is a flex column on `--bg-elev` with a 1px
+  meta row holding the votes alone. The heading is a button, and the card opens its topic dialog
+  (§4), which lists every member with its source and excerpt. The card is a flex column on `--bg-elev` with a 1px
   `--border`, which turns `--border-strong` on hover, and `--s-6` padding; the heading takes `--s-3`
   below it, the line `--s-4`, and the tags none above and `--s-4` below. The meta row takes
   `margin-top: auto`, so it sits on the card's bottom edge whatever the card holds above it. Until
   2026-11-02 a block was text with a 2px `--border-strong` rule on its left that turned `--accent` on
-  hover; the owner found two columns of them read as a wall of text (owner, 2026-11-02). The fold is a
-  `<details class="src-fold">` whose summary is `N articles` and which unfolds each member's title
-  link with its source name. The line is a stand-in until the sand-what-happened ticket: the first
+  hover; the owner found two columns of them read as a wall of text (owner, 2026-11-02). Until
+  2026-11-12 the meta row also held a `<details class="src-fold">` whose summary was `N articles` and
+  which unfolded each member's title link with its source name; the topic dialog replaced it, and the
+  count moved into the dialog (owner, 2026-11-12). The line is a stand-in until the sand-what-happened ticket: the first
   member's excerpt of up to 80 characters, taken after a wire dateline in brackets at the very
   start of its text, such as `（中央社首爾29日綜合外電報導）`, which would otherwise spend most of
   the line. A dateline carries a day of the month (`29日`), so a short bracket such as `（台電）`
@@ -461,13 +481,15 @@ orders them, with no dock and no edge; the mail and Discord are not affected.
   and water's are their topic's, as the filter gave them.
 - **The meta row.** `.meta` is flex, wrapping, spaced `--s-3`, and its font is the label role. A
   pebble's holds its source name, the original link and the vote group, in that order. A sand block's
-  holds the fold and the vote group, and is the one meta row with a rule of its own, `margin-top:
-  auto`, which places it and sets nothing else of its look. A water row has no meta row; its vote group ends the row. Sand
-  and water show no source, host or score outside the fold, and the fold is the only place a sand
-  member's source is named. No item shows a score pill.
+  holds the vote group alone, and is the one meta row with a rule of its own, `margin-top:
+  auto`, which places it and sets nothing else of its look; its topic dialog's holds `N articles` and
+  the same vote group. A water row has no meta row; its vote group ends the row. Sand
+  and water show no source, host or score outside the topic dialog, and the dialog is the only place a
+  sand member's source is named. No item shows a score pill.
 - **Every item has exactly one vote group.** A pebble's and a water row's vote is for its article; a
   sand block's one vote is for every member's URL, and its group carries the topic's story id as
-  `data-story-id`. The vote group
+  `data-story-id`. A sand block's topic dialog repeats that group, the same story id and URLs, and the
+  two are one vote (§4 *Interaction*, *Votes*). The vote group
   stays hidden until the `/api/vote` probe answers authorized, so a reader who cannot vote never sees
   a button that would fail.
 - **Stories are one article per row** at every width: `.featured-grid` is a single column, its lines
@@ -835,7 +857,7 @@ by value, from `_tokens.css.j2` and the §2 light palette (`adapters/output/emai
   mail client may block a remote image, and one it loads tells the image's host who opened the
   mail. The mail shows every layer at once, as the page does without script. A sand block is its
   heading, its line, with no story image for the same reason, then each member's title link with its source name, listed open because a mail
-  client cannot be trusted with `<details>`; that list is the only place outside a pebble where a
+  client runs no script and cannot be trusted with `<details>` or `<dialog>`; that list is the only place outside a pebble where a
   source is named. No item shows a score pill, as on the page. A legacy news paragraph takes the layers its units take on the page. The
   plain-text part holds the same blocks, each item a `- title — link` line with its text indented
   below it.
