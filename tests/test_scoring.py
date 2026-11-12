@@ -801,7 +801,7 @@ class TestScoringAreaPrompt:
         digest = hashlib.sha256(
             build_filter_system_prompt("en", style_prompt="Plain.").encode()
         ).hexdigest()
-        assert digest == "4661f5300da4d957727a3c6a95d29f51cfbe53d9b07b1ccfcce188bcd3ebcb33"
+        assert digest == "354603ac82724fee7f4a882aa216c45d983e51357eae83ffbbacc49bd1b84780"
 
 
 # --- Area pick parsing (ScoringAreaParse) ---

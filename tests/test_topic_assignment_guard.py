@@ -2,9 +2,10 @@
 
 Topic assignment is the LLM's alone, over a recent-topics list. Handing it embedding
 candidates dropped pairwise precision to 0.34-0.69, and an end-of-issue call to merge
-synonymous topics returned nothing in 8 of 9 calls. Recall is `topic-assignment-eval`'s to
-improve, which may also put the owner's granularity examples in the prompt: until then a
-change that brings any of these back fails here, and has to answer those numbers.
+synonymous topics returned nothing in 8 of 9 calls. `topic-assignment-eval` (2026-11-12)
+rejected the owner's granularity examples, which did worse than the plain prompt, and adopted
+a prompt that has the model name each article's subject first: a change that brings any of
+these back fails here, and has to answer those numbers.
 """
 
 import ast

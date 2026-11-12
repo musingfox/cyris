@@ -469,7 +469,10 @@ offer: the recent list, which `run_digest` reads through `recent_topic_list` (be
 `MAX_RECENT_TOPICS` of them and the last to leave the list first (§5), then every topic an earlier
 batch of this run opened, so a number names the same topic in every batch. A recent topic past the
 cap is not offered, so a story it held opens anew. The model picks a number, or opens a topic by
-name only for a genuinely new story, and gives the topic's tags with their kind. Assignment is the
+name only for a genuinely new story, and gives the topic's tags with their kind. The prompt has the
+model name each article's subject first, in a `subject` field that is not stored and that
+`filtering.py` never reads; the owner's eval chose it over the plain prompt and over granularity
+examples (vault ticket `topic-assignment-eval`, 2026-11-12). Assignment is the
 LLM's alone: it is handed no embedding candidates and no call merges topics after the last batch,
 since both lost in the feasibility rounds (ADR-0023, *Known weakness*), which
 `tests/test_topic_assignment_guard.py` holds. A topic name is made one line before it is stored or
