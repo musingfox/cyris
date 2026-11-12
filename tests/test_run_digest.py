@@ -39,7 +39,7 @@ from cyris.domain.models import (
 )
 from cyris.domain.topics import topic_id
 from cyris.service_layer import run_digest as run_digest_module
-from cyris.service_layer.ports import NoulAnswer
+from cyris.service_layer.ports import EmbeddingRejectedError, NoulAnswer
 from cyris.service_layer.run_digest import RunOptions, _render_site, run_digest
 from cyris.utils.timezone import now_in_timezone
 
@@ -2977,6 +2977,173 @@ async def test_a_skipped_similarity_pass_records_nothing(tmp_path: Path) -> None
     assert summary["vote_similarity_skipped"] == "no human-voted articles yet"
     assert "vote_similarity_judged" not in summary
     assert calls == []
+
+
+class _FailingEmbedder(_TitleEmbedder):
+    def __init__(self, failure: Exception) -> None:
+        super().__init__()
+        self._failure = failure
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        raise self._failure
+
+
+_SIMILARITY_WARNING_SUBJECT = re.compile(
+    r"^Vote similarity did not run: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$"
+)
+
+
+async def _similarity_failure_run(
+    tmp_path: Path, failure: Exception | None = None, *, embedder=None, **fakes
+):
+    discord_calls, mail_calls, discord, mail = _recording_alert_fakes()
+    deps, contents, recorded = _voting_deps(tmp_path, lambda *args: None)
+    deps = _with_alert_channels(
+        replace(deps, embedder=embedder or _FailingEmbedder(failure)),
+        fakes.get("discord", discord),
+        fakes.get("mail", mail),
+    )
+
+    report = await run_digest(deps, RunOptions())
+
+    return report, contents, recorded, discord_calls, mail_calls
+
+
+async def test_a_rejected_embedding_key_warns_each_channel_and_the_digest_still_publishes(
+    tmp_path: Path,
+) -> None:
+    rejection = EmbeddingRejectedError(401, "Unauthorized: API key not valid")
+
+    report, contents, recorded, discord_calls, mail_calls = await _similarity_failure_run(
+        tmp_path, rejection
+    )
+
+    assert report.status == "ok"
+    assert len(contents) == 1
+    [(webhook, subject, text)] = discord_calls
+    assert webhook == _ALERT_WEBHOOK
+    assert _SIMILARITY_WARNING_SUBJECT.match(subject)
+    assert "did not run" in text
+    assert "HTTP 401 Unauthorized: API key not valid" in text
+    assert mail_calls == [("me@example.org", "d@example.org", subject, text)]
+    [summary] = recorded
+    assert summary["status"] == "ok"
+    assert summary["vote_similarity_skipped"].startswith("embedding failed: 401")
+
+
+@respx.mock
+async def test_a_rejected_key_the_provider_quotes_back_reaches_no_warning_and_no_summary(
+    tmp_path: Path,
+) -> None:
+    from cyris.adapters.embedding import GEMINI_API_ROOT, GEMINI_MODEL, GeminiEmbedder
+
+    key = "sentinel-gemini-key-9f3"
+    route = respx.post(f"{GEMINI_API_ROOT}/{GEMINI_MODEL}:batchEmbedContents").mock(
+        return_value=httpx.Response(
+            401, json={"error": {"code": 401, "message": f"The key {key} is not valid"}}
+        )
+    )
+
+    report, contents, recorded, discord_calls, mail_calls = await _similarity_failure_run(
+        tmp_path, embedder=GeminiEmbedder(key)
+    )
+
+    assert route.call_count == 1
+    assert report.status == "ok"
+    assert len(contents) == 1
+    [(_, _, text)] = discord_calls
+    assert "HTTP 401 The key [redacted] is not valid" in text
+    assert key not in text
+    assert key not in mail_calls[0][3]
+    [summary] = recorded
+    assert (
+        summary["vote_similarity_skipped"]
+        == "embedding failed: 401 The key [redacted] is not valid"
+    )
+    assert key not in json.dumps(summary, default=str)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        RuntimeError("Embedding API rate-limited after 5 retries"),
+        httpx.HTTPStatusError(
+            "Server error '503 Service Unavailable'",
+            request=httpx.Request("POST", "https://embed.test"),
+            response=httpx.Response(503),
+        ),
+        httpx.ReadTimeout("timed out"),
+        httpx.ConnectError("connection refused"),
+    ],
+    ids=["rate-limited", "5xx", "timeout", "connection"],
+)
+async def test_a_transient_embedding_failure_is_recorded_and_warns_nobody(
+    tmp_path: Path, failure: Exception
+) -> None:
+    report, contents, recorded, discord_calls, mail_calls = await _similarity_failure_run(
+        tmp_path, failure
+    )
+
+    assert report.status == "ok"
+    assert len(contents) == 1
+    assert discord_calls == []
+    assert mail_calls == []
+    [summary] = recorded
+    assert summary["vote_similarity_skipped"].startswith("embedding failed")
+
+
+async def test_a_dry_run_with_a_rejected_key_sends_no_warning(tmp_path: Path) -> None:
+    discord_calls, mail_calls, discord, mail = _recording_alert_fakes()
+    deps, _, _ = _voting_deps(tmp_path, lambda *args: None)
+    deps = _with_alert_channels(
+        replace(deps, embedder=_FailingEmbedder(EmbeddingRejectedError(403, "Forbidden"))),
+        discord,
+        mail,
+    )
+
+    await run_digest(deps, RunOptions(dry_run=True))
+
+    assert discord_calls == []
+    assert mail_calls == []
+
+
+async def test_a_warning_that_cannot_be_composed_is_logged_and_the_run_stays_ok(
+    tmp_path: Path, caplog, monkeypatch
+) -> None:
+    def broken() -> dict:
+        raise OSError("wording unreadable")
+
+    monkeypatch.setattr(run_digest_module, "alert_messages", broken)
+
+    report, contents, _, discord_calls, _ = await _similarity_failure_run(
+        tmp_path, EmbeddingRejectedError(401, "Unauthorized")
+    )
+
+    assert report.status == "ok"
+    assert len(contents) == 1
+    assert discord_calls == []
+    assert "wording unreadable" in caplog.text
+
+
+async def test_a_warning_that_cannot_be_sent_is_logged_and_the_run_stays_ok(
+    tmp_path: Path, caplog
+) -> None:
+    mail_calls: list = []
+
+    async def discord(*_args):
+        raise OSError("discord down")
+
+    async def mail(*args):
+        mail_calls.append(args)
+
+    report, contents, _, _, _ = await _similarity_failure_run(
+        tmp_path, EmbeddingRejectedError(401, "Unauthorized"), discord=discord, mail=mail
+    )
+
+    assert report.status == "ok"
+    assert len(contents) == 1
+    assert len(mail_calls) == 1
+    assert "discord down" in caplog.text
 
 
 async def test_every_run_summary_carries_its_start_time(tmp_path: Path) -> None:

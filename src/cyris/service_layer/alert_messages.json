@@ -1,0 +1,14 @@
+{
+  "_comment": "The wording of each alert a run sends to the reader's channels. `headline` opens the subject, which run_digest finishes with the period and the minute the run started. `text` is the body; where it has {status} or {detail}, the run fills them. English, like every user-facing string here.",
+  "run_failed": {
+    "headline": "Digest run failed"
+  },
+  "fetched_nothing": {
+    "headline": "Digest run fetched nothing",
+    "text": "Failed sources: {sources}"
+  },
+  "vote_similarity_rejected": {
+    "headline": "Vote similarity did not run",
+    "text": "Vote similarity did not run this period, so reader votes had no effect on this digest. The digest was published unfiltered. The embedding API refused the request: HTTP {status} {detail}. This repeats every run until the embedding key or its permissions are fixed."
+  }
+}

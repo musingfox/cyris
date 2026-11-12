@@ -6,6 +6,7 @@ import pytest
 
 from cyris.domain.models import ArticleState, Lane, StoredArticle
 from cyris.domain.similarity import normalize
+from cyris.service_layer.ports import EmbeddingRejectedError
 from cyris.service_layer.vote_similarity import VoteSimilarityReport, judge_by_votes
 
 pytestmark = pytest.mark.unit
@@ -93,6 +94,30 @@ async def test_embedding_failure_lets_the_digest_through():
     assert not report.ran
     assert report.suppressed_urls == []
     assert "embedding failed" in report.skipped_reason
+
+
+async def test_a_refusing_4xx_is_carried_on_the_report_and_a_transient_error_is_not():
+    store = FakeStore([article("d", "Lottery", ArticleState.REJECTED, triaged=True)])
+
+    def failing(failure: Exception):
+        class Broken:
+            async def embed(self, texts):
+                raise failure
+
+        return Broken()
+
+    rejected = EmbeddingRejectedError(401, "Unauthorized")
+    refused = await judge_by_votes(
+        store, failing(rejected), [article("c1", "Lottery")], max_seeds=200
+    )
+    busy = await judge_by_votes(
+        store, failing(RuntimeError("503")), [article("c1", "Lottery")], max_seeds=200
+    )
+
+    assert not refused.ran
+    assert refused.rejection is rejected
+    assert not busy.ran
+    assert busy.rejection is None
 
 
 async def test_a_short_embedding_answer_lets_the_digest_through():
