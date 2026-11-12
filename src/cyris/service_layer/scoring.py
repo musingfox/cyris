@@ -115,12 +115,14 @@ async def score_articles_batch(
     url_to_tags: dict[str, list[str]] = {}
     picks: dict[str, AreaPick] = {}
     entries = data.get("scores") or []
+    matched = 0
     for entry in entries:
         article_key = _id_key(entry["id"])
         score = float(entry["score"])
         language = entry.get("language") or id_to_fallback_lang.get(article_key, "en")
         url = id_to_url.get(article_key)
         if url:
+            matched += 1
             result[url] = (score, language)
             # Never trust the reply's shape: a null, a bare string, or a list
             # with non-strings costs this entry its tags, never the batch.
@@ -147,6 +149,22 @@ async def score_articles_batch(
             "/".join(sorted({type(i).__name__ for i in sent})),
             _first_ids(sent),
             _first_ids(received),
+        )
+    elif len(result) < len(articles):
+        # A reply short of entries and a reply whose ids miss read alike in the count
+        # above; the entry and match counts, and the ids on each side, tell them apart.
+        unscored = [a.original_id for a in articles if a.url not in result]
+        unmatched = [entry["id"] for entry in entries if _id_key(entry["id"]) not in id_to_url]
+        logger.warning(
+            "Scored %d of %d articles: the reply had %d entries, %d matched a sent id; "
+            "ids sent but not scored, first five %s; ids received that matched none, "
+            "first five: %s",
+            len(result),
+            len(articles),
+            len(entries),
+            matched,
+            _first_ids(unscored),
+            _first_ids(unmatched),
         )
     return result, url_to_tags, usage, picks
 
