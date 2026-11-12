@@ -547,7 +547,7 @@ the Worker's `PROTECTED` only matches a path exactly equal to `/settings` (`work
 | hash | Category | Contents |
 |---|---|---|
 | `#model` | Model | LLM provider (a choice list, showing on the right whether the key is ready, with a last option `None — plain excerpts` meaning no LLM is called and only original excerpts are shown), model, a real call to verify before saving; embedding provider and model, the vote similarity switch, the number of votes compared against |
-| `#digest` | Digest | The two publishing periods, the time zone (a select, below), the output language (a select, below), the style prompt (multi-line input), the font size (a select: Smaller 0.875 / Default 1 / Larger 1.125; shows `Not set` when unset), the vote order (a select: Off / On), and who judges it (a select: Your topic votes / Clef), whose Clef option depends on vote similarity being on and on a Workers AI token, which `GET /api/settings` reports as `clef_ready` (§4 *field*), whether follow articles are summarized (a select: Off / On), then the vote half-life and the topic lifetime (number inputs, in days) |
+| `#digest` | Digest | The two publishing periods, the time zone (a select, below), the output language (a select, below), the style prompt (multi-line input), the font size (a select: Smaller 0.875 / Default 1 / Larger 1.125; while unset it shows its starting value, Default), the vote order (a select: Off / On), and who judges it (a select: Your topic votes / Clef), whose Clef option depends on vote similarity being on and on a Workers AI token, which `GET /api/settings` reports as `clef_ready` (§4 *field*), whether follow articles are summarized (a select: Off / On), then the vote half-life and the topic lifetime (number inputs, in days) |
 | `#pipeline` | Pipeline | The hours to look back, the article limit per pass, the score threshold for grouping the Top story, how many characters each of the three steps reads, the reasoning effort (a select: Default / Low / Medium / High) |
 | `#notifications` | Notifications | Discord webhook, with a stored value shown masked; a danger `Turn off` uses the destructive confirm, and after it the field is cleared and `Notifications are off.` is shown; then Email to and Email from, shown in full, where an empty Email to means no mail and Save sends a test message before storing the pair |
 | `#sources` | Sources | A type filter (All / RSS / Newsletter) and `Add source`; table columns are name, type, lane, feed or sender, and tags; an RSS source that `cyris doctor` would warn about (the feed health thresholds in `docs/architecture.md` §5) shows one line under its name, in the small role coloured `--warn` because a failing feed is an error (§1), saying why, such as `3 failures in a row · HTTP 503` or `no article in 30 days`, and a healthy one shows nothing; clicking a row, or pressing Enter or Space on it, expands it for editing in place, with focus on the Name field, and `Cancel` puts focus back on the row, or on `Add source` for a new one; a save or retire that fails puts focus back on its button, and a retire that lands puts it on `Add source`; the form shows only the fields that type needs; its `Area` select holds `None` and the active areas, a stored area that is not active or whose list has not loaded shows as `Area N (not active)` or `Area N (list not loaded)` so that a save keeps it, and the select is disabled until the area list loads; `Suggest` selects the area the model suggests, marked by a `Suggested` tag beside the select until the reader changes or saves, or says `No suggestion` beside it when there is none; while no area is active `Suggest` is disabled with the title `Confirm an area first`, and while it asks, `Suggest` reads `Suggesting…` and the select is disabled; `Retire` uses the destructive confirm, and retires the last source like any other: a table with none is a deployment waiting for onboarding |
@@ -598,7 +598,15 @@ the Worker's `PROTECTED` only matches a path exactly equal to `/settings` (`work
   (`Intl.DateTimeFormat().resolvedOptions().timeZone`), with one small line below its help,
   `Detected from this browser, and not saved yet`, until it is changed or saved: it differs from what
   is stored, so the category's `Save` is live and stores it as shown, and the missing-value marks
-  stay until it does. Only with no browser zone either does the field show `Not set`.
+  stay until it does. Only with no browser zone either does the field show `Not set`, and then a save
+  does not send it.
+- **A select whose setting is missing shows its starting value.** A required select whose key has a
+  value in `settings_starting_values.json` (the vote order switch, who judges it, whether follow
+  articles are summarized, the font size) opens on that value, and the category's `Save` stores it
+  as shown even when nothing was touched. A required select with no starting value (Output language;
+  Timezone when the browser gives no zone) shows `Not set` and is not sent, so a save never stores
+  its first option. An optional select (Reasoning effort) and the vote similarity switch keep
+  showing `Not set` while unset.
 
 ### onboarding
 

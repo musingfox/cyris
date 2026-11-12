@@ -241,11 +241,50 @@ class TestEveryKeyReported:
         await client.close()
 
         assert {"digest.style_prompt", "notify.email_to", "notify.email_from"} <= set(
-            data["may_be_empty"]
+            data["sent_as_shown"]
         )
         assert {"general.timezone", "digest.max_articles_per_digest"}.isdisjoint(
-            data["may_be_empty"]
+            data["sent_as_shown"]
         )
+
+    async def test_every_missing_select_with_a_starting_value_is_sent_as_shown(self, settings):
+        # The page's save sends the keys named here while the home lacks them, so a
+        # missing select that shows its starting value, summarize_follow and
+        # rank_by_preference among them, is stored by a save with no edit. This is the
+        # layer that decides which keys are offered; scripts/settings_probe.py drives
+        # settings.js to check the page sends them.
+        client = await _client(settings, {})
+
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert {
+            "digest.summarize_follow",
+            "digest.rank_by_preference",
+            "digest.preference_source",
+            "digest.type_scale",
+        } <= set(data["sent_as_shown"])
+        # No starting value, or optional: the page shows "Not set" and a save leaves it out.
+        assert {
+            "digest.output_language",
+            "general.timezone",
+            "llm_provider.reasoning_effort",
+        }.isdisjoint(data["sent_as_shown"])
+        assert set(data["sent_as_shown"]) <= set(data["missing"])
+        assert set(data["starting"]) >= {
+            key for key in data["sent_as_shown"] if data["fields"][key].get("select")
+        }
+
+    async def test_a_stored_select_is_still_listed_but_not_missing(self, settings):
+        values = {k: v for k, v in TEST_SETTINGS.items() if k != "digest.summarize_follow"}
+        client = await _client(settings, values)
+
+        data = await (await client.get("/api/settings")).json()
+        await client.close()
+
+        assert data["missing"] == ["digest.summarize_follow"]
+        assert "digest.rank_by_preference" in data["sent_as_shown"]
+        assert "digest.rank_by_preference" not in data["missing"]
 
     async def test_an_empty_home_is_offered_every_starting_value(self, settings):
         client = await _client(settings, {})

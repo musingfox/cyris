@@ -114,6 +114,7 @@ LOCAL_B_GRADE_ENV_VARS: dict[str, str] = {
 # One registry is the settings set, the D1 whitelist and the page's fields, so a
 # key cannot be required without a writer or writable without a reader. An
 # `"optional": true` entry is the exception to required: see OPTIONAL_SETTINGS.
+# `"select": true` marks a plain field whose control is a <select>.
 SETTINGS_FIELDS: dict[str, dict[str, Any]] = json.loads(
     (files("cyris") / "settings_fields.json").read_text(encoding="utf-8")
 )
