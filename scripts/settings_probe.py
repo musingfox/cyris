@@ -3495,11 +3495,16 @@ document.addEventListener("click", (event) => {
             const states = $$(".choice > .label");
             expect(states.some((s) => s.textContent === "CLOUDFLARE_EMBEDDING_API_TOKEN missing"),
               "the long state is not in the fixture");
+            // `.choices` clips nothing and is a grid item, so a row wider than its column
+            // stretches the box and the state stays inside it. The box is therefore held
+            // to the tab, whose width the page's column fixes, and the state to both.
             const cut = states.filter((state) => {
               const r = state.getBoundingClientRect();
-              const box = state.closest(".choices").getBoundingClientRect();
+              const list = state.closest(".choices").getBoundingClientRect();
+              const tab = state.closest("form.tab").getBoundingClientRect();
+              const left = Math.max(list.left, tab.left), right = Math.min(list.right, tab.right);
               return state.scrollWidth > state.clientWidth
-                || r.left < box.left || r.right > box.right + 0.5;
+                || r.left < left || r.right > right + 0.5;
             }).map((state) => state.textContent);
             expect(cut.length === 0, `cut off: ${cut.join("; ")}`);
         """,
