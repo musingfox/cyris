@@ -179,6 +179,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- A scoring batch that scores only some of its articles now logs a warning,
+  where before only a batch that scored none did. The warning names the articles
+  sent, the entries the reply held, how many matched a sent id, and the first few
+  ids on each side that did not match, so a short reply reads apart from one whose
+  ids miss. Which articles get a score is unchanged.
 - A feed title written inside CDATA, such as `Highly &amp; Readwise`, no longer
   shows `&amp;` or `&#8217;` on the page. Its entities are decoded when the
   article is fetched, on both the RSS Worker path and direct polling.

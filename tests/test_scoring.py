@@ -390,14 +390,69 @@ class TestScoreArticlesBatch:
             assert article.title not in record.getMessage()
             assert article.content not in record.getMessage()
 
-    async def test_a_batch_scoring_some_does_not_warn(self, sample_articles, caplog):
+    async def test_a_batch_scoring_all_does_not_warn(self, sample_articles, caplog):
         from cyris.service_layer.scoring import score_articles_batch
 
-        llm = FakeLLM(json.dumps({"scores": [{"id": 1, "score": 80, "language": "en"}]}))
+        reply = {"scores": [{"id": 1, "score": 80}, {"id": 2, "score": 70}]}
+        llm = FakeLLM(json.dumps(reply))
 
         await score_articles_batch(sample_articles, llm, snippet_length=1000, area_names=[])
 
         assert [r for r in caplog.records if r.levelname == "WARNING"] == []
+
+    async def test_a_reply_short_of_entries_warns_with_its_counts(self, sample_articles, caplog):
+        from cyris.service_layer.scoring import score_articles_batch
+
+        llm = FakeLLM(json.dumps({"scores": [{"id": 1, "score": 80, "language": "en"}]}))
+
+        scores, _, _, _ = await score_articles_batch(
+            sample_articles, llm, snippet_length=1000, area_names=[]
+        )
+
+        assert scores == {"http://a.com": (80.0, "en")}  # the matched entry is still kept
+        (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
+        message = record.getMessage()
+        assert "Scored 1 of 2 articles: the reply had 1 entries, 1 matched a sent id" in message
+        assert "ids sent but not scored, first five [2]" in message
+        assert "ids received that matched none, first five: []" in message
+
+    async def test_a_partial_match_reports_a_mismatched_id_not_a_missing_entry(
+        self, sample_articles, caplog
+    ):
+        from cyris.service_layer.scoring import score_articles_batch
+
+        # Every article has an entry, but one echoes the prompt's "[2]" brackets.
+        reply = {"scores": [{"id": 1, "score": 80}, {"id": "[2]", "score": 70}]}
+        llm = FakeLLM(json.dumps(reply))
+
+        await score_articles_batch(sample_articles, llm, snippet_length=1000, area_names=[])
+
+        (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
+        message = record.getMessage()
+        assert "the reply had 2 entries, 1 matched a sent id" in message
+        assert "ids sent but not scored, first five [2]" in message
+        assert "ids received that matched none, first five: ['[2]']" in message
+
+    async def test_a_partial_match_warning_lists_only_the_first_five_ids(self, caplog):
+        from cyris.service_layer.scoring import score_articles_batch
+
+        articles = [
+            _article(f"http://{n}.com").model_copy(update={"original_id": f"s{n}"})
+            for n in range(8)
+        ]
+        reply = {"scores": [{"id": "s0", "score": 50}]}
+        reply["scores"] += [{"id": f"r{n}", "score": 50} for n in range(8)]
+        llm = FakeLLM(json.dumps(reply))
+
+        await score_articles_batch(articles, llm, snippet_length=1000, area_names=[])
+
+        (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
+        message = record.getMessage()
+        assert "Scored 1 of 8 articles: the reply had 9 entries, 1 matched a sent id" in message
+        assert "first five ['s1', 's2', 's3', 's4', 's5']" in message
+        assert "first five: ['r0', 'r1', 'r2', 'r3', 'r4']" in message
+        assert "'s6'" not in message
+        assert "'r5'" not in message
 
 
 # --- Store update_scores tests ---
