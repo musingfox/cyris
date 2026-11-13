@@ -1582,6 +1582,7 @@ on main after the change lands, citing the hash it landed as.
 | 2026-11-12 | `3e2e0ba3`..`a6c4dcfb` | A vote-similarity failure is graded (§3.2): the embedding adapter raises `ports.EmbeddingRejectedError` for a 4xx retrying cannot fix, with the provider's message scrubbed of the key, and `run_digest` then sends a separate `Vote similarity did not run` warning every run while the digest still publishes unfiltered; a transient error is only recorded. Alert wording moves to `service_layer/alert_messages.json`, grade A (§5). |
 | 2026-11-12 | `96d3b277` | §5 provider defaults: `anthropic` is `claude-haiku-5-5`, `gemini` is `gemini-3.5-flash-lite` and `openai` is `gpt-6-luna`, each the provider's cheapest current tier, chosen from the providers' docs rather than the Lm evaluation; `workers_ai` and `ai_gateway` are unchanged. |
 | 2026-11-12 | `c0ceef13` | §3.2: the filter prompt has the model name each article's subject before it places the article in a topic; the `subject` field is not stored, and the vault's `topic-assignment-eval` chose it over the old prompt and over granularity examples. |
+| 2026-11-13 | `8a699e76`..`d024a27e` | §3.2: the filter and summarize prompts share opening and output-language rules (subject first, no page notes, names in the article's spelling, everything else in the output language), and the summarize call also returns a translated headline per article that the pebble card shows, display only, with the source's title as the fallback. |
 
 ## 8. Where the core never changes
 
