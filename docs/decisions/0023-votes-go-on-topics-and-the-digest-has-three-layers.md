@@ -10,6 +10,10 @@ decision-makers: ""
 > (2026-11-10). The sentence "A topic ends when it has had no new article for `L` days" holds
 > only for a topic with no upvote: an upvote slows its leaving the recent list, never past three
 > times `L` after its last article. The rest of this ADR still stands.
+>
+> Amended (owner, 2026-11-12): a sand block no longer folds its sources. A click on the card opens
+> its members, with their source names, in a topic dialog (`docs/design/ui-language.md` §4
+> *topic dialog*; landed as `0f8d14c5`). The card itself still names no source.
 
 ## Context and Problem Statement
 
