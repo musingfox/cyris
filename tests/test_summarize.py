@@ -1,14 +1,20 @@
 """Tests for read-lane processor."""
 
 import json
-from datetime import UTC
+from datetime import UTC, datetime
 
 import pytest
 from fakes import FakeLLM
 
-from cyris.domain.models import Lane, UsageStats
+from cyris.domain.models import Article, Lane, UsageStats
 from cyris.service_layer.degrade import excerpt
-from cyris.service_layer.summarize import _group_by_tags, summarize_articles
+from cyris.service_layer.summarize import (
+    Explanation,
+    _group_by_tags,
+    build_follow_sections,
+    explain_follow_articles,
+    summarize_articles,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -209,8 +215,9 @@ class TestSummarizeArticles:
         assert sections[0].summary is None
 
     async def test_summarize_metadata_comes_from_local_article(self):
-        """Title/source/url come from the store article, never the LLM echo —
-        URL-string ids (newsletters) must not lose their links."""
+        """Source/url come from the store article, never the LLM echo, and so does the
+        title when the reply gives none — URL-string ids (newsletters) must not lose their
+        links."""
         from datetime import datetime
 
         from cyris.domain.models import Article
@@ -447,3 +454,156 @@ class TestDigestItemsCarryRefUrls:
             [],
             [],
         ]
+
+
+_ABSENT = object()
+
+
+def _reply(titles: object, *, summaries: object = None) -> str:
+    """A summarize reply for one group of one article, id 0, with `titles` as given."""
+    section = {
+        "heading": "H",
+        "summary": "Group summary",
+        "summaries": {"0": "Explained."} if summaries is None else summaries,
+        "article_ids": [0],
+    }
+    if titles is not _ABSENT:
+        section["titles"] = titles
+    return json.dumps({"sections": [section]})
+
+
+# Every way a reply can fail to give article 0 a usable title.
+NO_TITLE = pytest.mark.parametrize(
+    "titles",
+    [_ABSENT, None, "AI 監管", ["AI 監管"], {}, {"1": "AI 監管"}, {"0": ""}, {"0": "  "}, {"0": 7}],
+    ids=[
+        "absent",
+        "null",
+        "not-a-map",
+        "list",
+        "empty",
+        "other-id",
+        "empty-string",
+        "blank",
+        "not-text",
+    ],
+)
+
+
+class TestTranslatedTitles:
+    """The card shows the headline the same call translated; without one, the article's own."""
+
+    async def test_the_card_shows_the_translated_title(self, sample_summarize_articles):
+        article = sample_summarize_articles[0]
+        llm = FakeLLM(_reply({"0": " 每週科技趨勢：AI 監管動能 "}))
+
+        (section,) = await summarize_articles(
+            [article], llm, snippet_length=1000, output_language="zh-Hant", style_prompt=""
+        )
+
+        item = section.items[0]
+        assert item.title == "每週科技趨勢：AI 監管動能"
+        assert (item.urls, item.sources) == ([article.url], [article.source_name])
+        assert item.passed_through is False
+        assert len(llm.calls) == 1
+
+    @NO_TITLE
+    async def test_without_a_usable_title_the_card_keeps_the_original(
+        self, sample_summarize_articles, titles
+    ):
+        article = sample_summarize_articles[0]
+
+        (section,) = await summarize_articles(
+            [article],
+            FakeLLM(_reply(titles)),
+            snippet_length=1000,
+            output_language="zh-Hant",
+            style_prompt="",
+        )
+
+        assert section.items[0].title == article.title
+        assert section.items[0].summary == "Explained."
+
+    async def test_a_translated_title_stays_over_an_excerpt_summary(
+        self, sample_summarize_articles
+    ):
+        article = sample_summarize_articles[0]
+
+        (section,) = await summarize_articles(
+            [article],
+            FakeLLM(_reply({"0": "AI 監管動能"}, summaries={})),
+            snippet_length=1000,
+            output_language="zh-Hant",
+            style_prompt="",
+        )
+
+        item = section.items[0]
+        assert (item.title, item.summary) == ("AI 監管動能", excerpt(article.content))
+        assert item.passed_through is True
+
+
+FOLLOWED_URL = "https://example.com/followed"
+
+
+def _follow() -> Article:
+    return Article(
+        id=1,
+        title="Followed post",
+        url=FOLLOWED_URL,
+        content="Body.",
+        published_at=datetime(2026, 11, 11, tzinfo=UTC),
+        source_name="A newsletter",
+        source_lane=Lane.FOLLOW,
+    )
+
+
+class TestFollowTitles:
+    """The follow lane's explanation comes from the same reply, and its title with it."""
+
+    async def test_the_explanation_carries_the_translated_title(self):
+        article = _follow()
+
+        explanations = await explain_follow_articles(
+            [article],
+            FakeLLM(_reply({"0": "追蹤的文章"})),
+            snippet_length=1000,
+            output_language="zh-Hant",
+            style_prompt="",
+        )
+
+        assert explanations == {article.url: Explanation("Explained.", "追蹤的文章")}
+
+    @NO_TITLE
+    async def test_without_a_usable_title_the_explanation_has_none(self, titles):
+        article = _follow()
+
+        explanations = await explain_follow_articles(
+            [article],
+            FakeLLM(_reply(titles)),
+            snippet_length=1000,
+            output_language="zh-Hant",
+            style_prompt="",
+        )
+
+        assert explanations == {article.url: Explanation("Explained.", None)}
+
+    @pytest.mark.parametrize(
+        ("explanations", "title", "summary"),
+        [
+            ({FOLLOWED_URL: Explanation("Said.", "追蹤")}, "追蹤", "Said."),
+            (
+                {FOLLOWED_URL: Explanation("Said.", None)},
+                "Followed post",
+                "Said.",
+            ),
+            (None, "Followed post", "Body."),
+        ],
+        ids=["translated", "no-title", "not-explained"],
+    )
+    def test_the_card_shows_the_title_it_was_given(self, explanations, title, summary):
+        (section,) = build_follow_sections([_follow()], explanations)
+
+        item = section.items[0]
+        assert (item.title, item.summary) == (title, summary)
+        assert item.urls == [FOLLOWED_URL]
+        assert section.heading == "A newsletter"

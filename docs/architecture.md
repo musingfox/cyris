@@ -378,8 +378,8 @@ Each source carries a **lane**, which decides how much attention it gets:
 | Lane | Treatment |
 |---|---|
 | `skim` | Batched headline extraction, aggressively discarded; the filter also gives each article it keeps a topic (below). |
-| `read` | Scored by the LLM, then every one summarized, in one call per tag group; the score orders them. Every one is a pebble on the page (below). The filter asks only for its topic. |
-| `follow` | Passthrough. Never scored or discarded — followed groups and newsletters go straight through, each a pebble on the page. An item carries an excerpt of its own text, or, with `digest.summarize_follow` on (§5), the read lane's explanation, written in one call per source. The filter asks only for its topic, so a follow article reaches the model with that setting off too. |
+| `read` | Scored by the LLM, then every one summarized, in one call per tag group; the score orders them. The same call translates each article's headline into the output language for its card, which shows the article's own title when the reply gives none; topics, votes and links keep the article's own title and URL. Every one is a pebble on the page (below). The filter asks only for its topic. |
+| `follow` | Passthrough. Never scored or discarded — followed groups and newsletters go straight through, each a pebble on the page. An item carries an excerpt of its own text, or, with `digest.summarize_follow` on (§5), the read lane's explanation and translated headline, written in one call per source. The filter asks only for its topic, so a follow article reaches the model with that setting off too. |
 
 Between scoring and the pipeline one optional filter runs. **Vote similarity** suppresses candidates
 sitting close to a downvoted article — it runs over *every* candidate, not just scored ones, because
@@ -495,8 +495,9 @@ prompt's follow-up rule keeps all of a topic: a report on a story that qualifies
 adds no new information. The filter's criteria are the ones Clef falls back on, so Clef's text
 changed with it.
 
-The summarize call writes a summary for each group and one for each article. `layer_by_score`
-then lays them out inside `DigestPipeline`: the Top story is a group only when two or more of its
+The summarize call writes a summary for each group and, for each article, one summary and its
+headline in the output language (display only; the card falls back to the article's own title).
+`layer_by_score` then lays them out inside `DigestPipeline`: the Top story is a group only when two or more of its
 articles reach `[routing] score_threshold`, and then it carries every article of that group, since
 the group summary covers them all. Every other article is one Features card under its own summary,
 highest score first. That is the stored issue's shape, which the page, the mail and Discord all

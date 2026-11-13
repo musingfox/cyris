@@ -44,8 +44,9 @@ page added later.
 7. **The chrome is English; content names its own language.** A screen reader picks its voice from
    `lang` (WCAG 3.1.1, 3.1.2). Every page's `<html lang>` is `en`, the language of its labels. A block of
    digest text, which the model writes in `[digest] output_language`, carries that tag as its `lang`, and
-   an English control inside it (a vote group, a topic dialog's count and `Close`) carries `lang="en"`. An article's own
-   title inside such a block, which is a pebble's title, is the source's text and carries `lang=""`;
+   an English control inside it (a vote group, a topic dialog's count and `Close`) carries `lang="en"`. A pebble's title,
+   which is the summarizer's translation of the article's headline or, when it gave none, the
+   source's own title, carries `lang=""`, since the item does not record which of the two it holds;
    a topic's heading, the summaries and the headline rows' titles, which the model writes in the
    output language, keep its tag. The archive
    headline card's title follows its lead, so a group's heading keeps the tag and a single article's
@@ -54,7 +55,7 @@ page added later.
    `digest.summarize_follow` is off, Tracking, a topic dialog's member list and every raw row,
    carries `lang=""`, HTML's unknown
    language: no reliable tag for it exists. So does a pebble, sand line or headline row that holds the
-   article's own title and excerpt because no usable LLM wrote it or the model wrote no summary for
+   article's own excerpt, under its own title or a model-written one, because no usable LLM wrote it or the model wrote no summary for
    it; the step that writes that fallback marks the item, so the page and the mail tag those items by
    what wrote them, not by their section. A value that is not a BCP 47 tag, such as a plain language
    name an older config still holds, also renders as `lang=""`, never as a wrong tag.

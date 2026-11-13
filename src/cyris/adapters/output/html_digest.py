@@ -149,7 +149,8 @@ class HeadlineCard:
 
     None is absent, as in the history rows; a count of 0 is a count and shows.
     The lead and the topics each carry their own `lang`: a single lead is an
-    article's own title, while a group's heading and the topics are model-written.
+    article's title, its own or the
+    summarize step's translation, while a group's heading and the topics are model-written.
     """
 
     lead: str | None = None

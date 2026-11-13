@@ -12,10 +12,13 @@ from cyris.service_layer.prompts import (
     FILTER_SYSTEM,
     KEEP_MARKER,
     NO_BODY_MARKER,
+    OUTPUT_LANGUAGE_RULES,
     SUMMARIZE_SYSTEM,
+    SUMMARY_OPENING_RULES,
     build_filter_prompt,
     build_filter_system_prompt,
     build_summarize_prompt,
+    build_summarize_system_prompt,
     language_wording,
 )
 
@@ -114,8 +117,95 @@ class TestSummarizeSystemPrompt:
         assert any("teaser" in s and "from what that text says" in s for s in sentences)
 
     def test_it_keeps_the_reply_shape_summarize_parses(self):
-        for key in ('"heading"', '"summary"', '"summaries"', '"article_ids"'):
+        for key in ('"heading"', '"summary"', '"summaries"', '"titles"', '"article_ids"'):
             assert key in SUMMARIZE_SYSTEM
+
+    def test_it_no_longer_models_an_opening_with_no_subject(self):
+        """The old "Instead … Reports that…" line taught the subjectless opening."""
+        assert "say what the article does with it" not in SUMMARIZE_SYSTEM
+        sentences = SUMMARIZE_SYSTEM.replace("\n", " ").split(". ")
+        modelled = [s for s in sentences if '"Reports that…"' in s or '"Announces…"' in s]
+        assert modelled and all("wrong" in s for s in modelled)
+
+    def test_it_still_asks_for_the_kind_of_piece(self):
+        """The kind of piece helps the reader decide (pebble-explanation-prompt): it moves."""
+        assert "what kind of piece it is" in SUMMARIZE_SYSTEM
+        assert "folded into the sentence after the subject" in SUMMARIZE_SYSTEM
+
+    def test_the_heading_is_written_not_copied(self):
+        assert "a group of one article does not take that article's headline" in SUMMARIZE_SYSTEM
+
+
+# Sentences the production site published, zh-Hant issues 2026-11-09 morning to 11-12 morning,
+# and the ones a 2026-11-11 evening rerun of the first version of these rules still wrote.
+FILLER_OPENINGS = [
+    "這是一集播客訪談的推廣文，受訪者為 Webflow 執行長 Linda Tong…",
+    "這篇 Stratechery 文章表示，黃仁勳的相關報導…",
+    "文章介紹 LinkedIn 自行打造的 AI 審查工具…",
+    "本文從維吉尼亞州資料中心重鎮的實地觀察出發…",
+    "為 ByteByteGo 的軟體開發趨勢摘要…",
+    "Stratechery 文章討論 Intel 與 AMD 財報出現分歧…",
+    "Vincent 的 Substack 文章以近期股市的波動為例…",
+]
+OFF_ARTICLE_NOTES = [
+    "內文在此處中斷",
+    "所見文字大部分是訂閱方案的介紹",
+    "文末夾帶一段 Datadog 電子書的廣告文字",
+    "開頭附有 Railway 雲端平台的廣告",
+]
+UNTRANSLATED = [
+    "How GitHub Used AI to Port Copilot From TypeScript to Rust in Record Time",
+    "How to Survive AI as a SaaS Company",
+    "CoreWeave turns to customer prepayments, shorter contracts to fund AI growth",
+    "文章also指出各層資料的更新速度不同",
+]
+
+BUILDERS = pytest.mark.parametrize(
+    "build",
+    [build_filter_system_prompt, build_summarize_system_prompt],
+    ids=["filter", "summarize"],
+)
+
+
+class TestSummaryWording:
+    """Both prompts that write a summary carry the opening, page and language rules."""
+
+    @BUILDERS
+    @pytest.mark.parametrize("example", FILLER_OPENINGS + OFF_ARTICLE_NOTES + UNTRANSLATED)
+    def test_each_published_counter_example_is_quoted(self, build, example):
+        assert example in build("zh-Hant", style_prompt="")
+
+    @BUILDERS
+    def test_the_rules_are_in_the_built_prompt(self, build):
+        prompt = build("zh-Hant", style_prompt="")
+
+        assert SUMMARY_OPENING_RULES.replace("<output_language>", language_wording("zh-Hant")) in (
+            prompt
+        )
+        assert "Proper nouns are the one exception" in prompt
+        assert "no advertisement, no subscription or paywall offer" in prompt
+
+    @BUILDERS
+    @pytest.mark.parametrize("tag", ["zh-Hant", "en", "ja"])
+    def test_the_output_language_is_substituted_into_the_rules(self, build, tag):
+        prompt = build(tag, style_prompt="")
+
+        assert "<output_language>" not in prompt
+        assert f"Write every field in {language_wording(tag)}." in prompt
+        assert f"everything you write is still in {language_wording(tag)}." in prompt
+
+    def test_only_summarize_keeps_the_missing_text_remark(self):
+        """The one remark about the text allowed is NO_BODY_MARKER's, which only summarize sees."""
+        assert NO_BODY_MARKER in build_summarize_system_prompt("en", style_prompt="")
+        assert NO_BODY_MARKER not in build_filter_system_prompt("en", style_prompt="")
+
+    @pytest.mark.parametrize("rules", [SUMMARY_OPENING_RULES, OUTPUT_LANGUAGE_RULES])
+    def test_a_rule_assumes_no_output_language(self, rules):
+        """Chinese appears only inside quoted examples; the rule itself is written in English."""
+        unquoted = re.sub(r"「[^」]*」", "", rules)
+
+        assert not re.search(r"[぀-ヿ㐀-鿿]", unquoted)
+        assert "Chinese" not in rules
 
 
 class TestBuildFilterPrompt:

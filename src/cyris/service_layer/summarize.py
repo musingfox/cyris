@@ -3,6 +3,7 @@
 import logging
 from collections import defaultdict
 from collections.abc import Mapping
+from typing import NamedTuple
 
 from cyris.domain.models import Article, DigestItem, DigestSection, UsageStats
 from cyris.service_layer.degrade import excerpt, excerpt_sections_from_articles
@@ -13,6 +14,23 @@ from cyris.service_layer.prompts import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class Explanation(NamedTuple):
+    """The model's words for one article: its explanation, and its headline if it gave one."""
+
+    summary: str
+    title: str | None
+
+
+def _own_title(section_data: Mapping, raw_id: object) -> str | None:
+    """The headline the model wrote for this id in the output language, or None if it gave none.
+
+    For display only: topics, votes and links go by the article's own title and URL.
+    """
+    titles = section_data.get("titles")
+    title = titles.get(str(raw_id)) if isinstance(titles, dict) else None
+    return title.strip() if isinstance(title, str) and title.strip() else None
 
 
 def _group_by_tags(articles: list[Article]) -> dict[str, list[Article]]:
@@ -83,8 +101,9 @@ async def summarize_articles(
             continue
 
         for section_data in data.get("sections", []):
-            # Ids are group-positional indexes; everything else (title, source,
-            # url, ref_urls) comes from the local article, never the LLM echo.
+            # Ids are group-positional indexes; what identifies an article (source,
+            # url, ref_urls) comes from the local article, never the LLM echo. The
+            # title shown is the model's translation when it gave one.
             raw_ids = section_data.get("article_ids") or [
                 ref.get("id") for ref in section_data.get("articles", [])
             ]
@@ -116,7 +135,7 @@ async def summarize_articles(
                     own = excerpt(article.content)
                 items.append(
                     DigestItem(
-                        title=article.title,
+                        title=_own_title(section_data, raw_id) or article.title,
                         summary=own,
                         sources=[article.source_name],
                         urls=[article.url],
@@ -138,12 +157,12 @@ async def summarize_articles(
     return sections
 
 
-def _explanations_in(data: object, group: list[Article]) -> dict[str, str]:
+def _explanations_in(data: object, group: list[Article]) -> dict[str, Explanation]:
     """The explanations a reply holds for `group`, by URL; malformed parts are skipped."""
     sections = data.get("sections") if isinstance(data, dict) else None
     if not isinstance(sections, list):
         raise ValueError(f"explain reply has no sections list: {data!r:.200}")
-    found: dict[str, str] = {}
+    found: dict[str, Explanation] = {}
     for section_data in sections:
         own_summaries = section_data.get("summaries") if isinstance(section_data, dict) else None
         if not isinstance(own_summaries, dict):
@@ -154,7 +173,7 @@ def _explanations_in(data: object, group: list[Article]) -> dict[str, str]:
             except (TypeError, ValueError):
                 continue
             if 0 <= index < len(group) and isinstance(text, str) and text.strip():
-                found[group[index].url] = text
+                found[group[index].url] = Explanation(text, _own_title(section_data, raw_id))
     return found
 
 
@@ -166,18 +185,19 @@ async def explain_follow_articles(
     snippet_length: int,
     output_language: str,
     style_prompt: str,
-) -> dict[str, str]:
+) -> dict[str, Explanation]:
     """Each follow-lane article's explanation by URL, one call per source.
 
     The read lane's prompt writes it, so a followed article's card says what the article
-    is the way a read article's does. An article the model left unexplained, or a source
-    whose call failed, is absent, and keeps its excerpt.
+    is, under a translated headline, the way a read article's does. An article the model
+    left unexplained, or a source whose call failed, is absent, and keeps its excerpt and
+    its own title.
     """
     groups: dict[str, list[Article]] = {}
     for article in articles:
         groups.setdefault(article.source_name, []).append(article)
 
-    explanations: dict[str, str] = {}
+    explanations: dict[str, Explanation] = {}
     for source_name, group in groups.items():
         try:
             data = await complete_json(
@@ -203,14 +223,15 @@ async def explain_follow_articles(
 
 
 def build_follow_sections(
-    articles: list[Article], explanations: Mapping[str, str] | None = None
+    articles: list[Article], explanations: Mapping[str, Explanation] | None = None
 ) -> list[DigestSection]:
     """Build follow-lane sections grouped by source, never discarded.
 
     Each followed group/newsletter becomes one section, so updates from tracked groups
     keep their own channel and aren't washed out by the knowledge sections. An item
     carries its explanation from `explanations` when it has one, else a short excerpt
-    of its own text.
+    of its own text, and the explanation's headline when the model gave one, else its
+    own title.
 
     Args:
         articles: Follow-lane articles to group by source.
@@ -234,9 +255,10 @@ def build_follow_sections(
             explanation = explanations.get(article.url)
             items.append(
                 DigestItem(
-                    title=article.title,
-                    summary=explanation
-                    or (excerpt(article.content, 80) if article.content else ""),
+                    title=(explanation and explanation.title) or article.title,
+                    summary=explanation.summary
+                    if explanation
+                    else (excerpt(article.content, 80) if article.content else ""),
                     sources=[article.source_name],
                     urls=[article.url],
                     ref_urls=article.ref_urls,
