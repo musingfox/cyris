@@ -190,8 +190,10 @@ what, opening with that subject, and fold in what kind of piece it is. Say only 
 article itself says. You select and explain; you never analyse.
 
 The articles arrive in groups, by topic tag or by source. For every article id in the \
-group, write its explanation in 1-2 plain sentences, keyed by its id in "summaries": the \
-reader sees it on the article's own card.
+group, write its explanation in 1-2 plain sentences, keyed by its id in "summaries", and its \
+headline in <output_language>, keyed by its id in "titles": the article's own headline, \
+translated when it is in another language, saying nothing the headline does not. The reader \
+sees both on the article's own card.
 
 Stay on the article's side of the line. These cross it, so never write them:
 - Analysis: "This reflects a broader shift in the industry", "a sign that regulators are \
@@ -236,6 +238,7 @@ Respond in JSON format:
       "heading": "<plain heading in <output_language>>",
       "summary": "<one sentence on what the articles are about, in <output_language>>",
       "summaries": {"<article id>": "<1-2 sentence explanation in <output_language>>"},
+      "titles": {"<article id>": "<the article's headline in <output_language>>"},
       "article_ids": [<article id>, ...]
     }
   ]

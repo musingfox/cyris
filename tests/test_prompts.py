@@ -117,7 +117,7 @@ class TestSummarizeSystemPrompt:
         assert any("teaser" in s and "from what that text says" in s for s in sentences)
 
     def test_it_keeps_the_reply_shape_summarize_parses(self):
-        for key in ('"heading"', '"summary"', '"summaries"', '"article_ids"'):
+        for key in ('"heading"', '"summary"', '"summaries"', '"titles"', '"article_ids"'):
             assert key in SUMMARIZE_SYSTEM
 
     def test_it_no_longer_models_an_opening_with_no_subject(self):
