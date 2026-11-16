@@ -9,6 +9,7 @@ matching, one tag at a time, and anything that matches none is worded in English
 import functools
 import hashlib
 import json
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,11 +17,20 @@ from pathlib import Path
 import langcodes
 from babel import Locale
 from langcodes.tag_parser import LanguageTagError
+from markupsafe import Markup, escape
 from messageformat2 import Message
 
 LOCALES = Path(__file__).parent / "locales"
 # The fallback of every lookup, and the catalog each other catalog's `source` repeats.
 ENGLISH = "en"
+
+# What a caller supplies for a message's markup: each markup name's element and attributes,
+# as `{"link": ("a", {"href": url})}` for `{#link}…{/link}`. The catalog never holds HTML.
+Elements = Mapping[str, tuple[str, Mapping[str, str]]]
+# Markup stands in the formatted text as private-use characters, which escaping leaves alone.
+# Only markup may write them: they are removed from the catalog text and from every value.
+_PLACEHOLDER = re.compile("\ue000(open|close|standalone):([^\ue001]*)\ue001")
+_DELIMITERS = str.maketrans("", "", "\ue000\ue001")
 
 
 @dataclass(frozen=True)
@@ -96,10 +106,21 @@ def accept_language(header: str) -> str | None:
     return None
 
 
+def _placeholder(kind: str, name: str, options: Mapping[str, object]) -> str:
+    return f"\ue000{kind}:{name}\ue001"
+
+
+def _element(elements: Elements, kind: str, name: str) -> str:
+    tag, attributes = elements[name]
+    if kind == "close":
+        return f"</{tag}>"
+    return f"<{tag}{''.join(f' {key}="{escape(value)}"' for key, value in attributes.items())}>"
+
+
 @functools.cache
 def _message(tag: str, key: str) -> Message | None:
     text = catalogs()[tag].texts.get(key)
-    return None if text is None else Message(text)
+    return None if text is None else Message(text.translate(_DELIMITERS))
 
 
 class Translator:
@@ -107,15 +128,28 @@ class Translator:
 
     A key English lacks is a programming error and raises KeyError; a variable the message
     names and the caller does not pass raises the formatter's error.
+
+    With `elements`, the message is HTML: its text escaped, each markup span drawn as the
+    element `elements` names for it. A markup name `elements` lacks raises KeyError.
     """
 
     def __init__(self, tag: str) -> None:
         self.tag = tag
 
-    def __call__(self, key: str, /, **variables: object) -> str:
+    def __call__(
+        self, key: str, /, *, elements: Elements | None = None, **variables: object
+    ) -> str:
         source = self.origin(key)
-        return _message(source, key).format(
-            variables, catalogs()[source].locale, bidi_isolation=False
+        message, locale = _message(source, key), catalogs()[source].locale
+        if elements is None:
+            return message.format(variables, locale, bidi_isolation=False)
+        inert = {
+            name: value.translate(_DELIMITERS) if isinstance(value, str) else value
+            for name, value in variables.items()
+        }
+        text = message.format(inert, locale, markup=_placeholder, bidi_isolation=False)
+        return Markup(
+            _PLACEHOLDER.sub(lambda span: _element(elements, span[1], span[2]), str(escape(text)))
         )
 
     def origin(self, key: str) -> str:

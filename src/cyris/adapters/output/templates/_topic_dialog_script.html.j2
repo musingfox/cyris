@@ -78,7 +78,9 @@
 
         for (const each of document.querySelectorAll('.topic-dialog')) {
             const t = document.createElement('template');
-            t.innerHTML = '<div class="topic-dialog-pull" aria-hidden="true"><div class="topic-dialog-pull-inner" hidden lang="en"><span class="label">Keep pulling to close</span><i><b></b></i></div></div>';
+            t.innerHTML = '<div class="topic-dialog-pull" aria-hidden="true"><div class="topic-dialog-pull-inner" hidden><span class="label"></span><i><b></b></i></div></div>';
+            t.content.querySelector('.topic-dialog-pull-inner').lang = {{ ui_lang | tojson }};
+            t.content.querySelector('.label').textContent = {{ t("digest.pull_to_close") | tojson }};
             each.append(t.content);
             const close = each.querySelector('.topic-dialog-close');
             close.addEventListener('click', (e) => { e.preventDefault(); requestClose(); });

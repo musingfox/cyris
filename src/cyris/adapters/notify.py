@@ -5,7 +5,7 @@ import re
 
 import httpx
 
-from cyris.adapters.output.html_digest import Story, citation_links
+from cyris.adapters.output.html_digest import Story, citation_links, issue_language
 from cyris.adapters.run_alert import alert_message
 from cyris.domain.area_layout import AreaSection
 from cyris.domain.layers import Pebble, Sand, layer_by_lane
@@ -224,9 +224,15 @@ def _continued(parts: list[str]) -> list[str]:
 
 
 def build_discord_embeds(
-    content: DigestContent, digest_url: str = "", publish_failed: bool = False
+    content: DigestContent,
+    digest_url: str = "",
+    publish_failed: bool = False,
+    *,
+    language: str = "",
 ) -> list[dict]:
-    """Build Discord embed objects from DigestContent.
+    """Build Discord embed objects from DigestContent, worded in the issue's language.
+
+    An issue stored with no language is worded in `language`, the current setting.
 
     Returns a list of embed dicts, uncapped in total: `build_discord_payload` holds them
     to Discord's limits.
@@ -237,12 +243,13 @@ def build_discord_embeds(
     which cuts from the end, takes the Topics first and the Stories last when the message
     runs out of room.
     """
-    label = period_label(content.period, translator(content.output_language))
+    t = translator(issue_language(content, language))
+    label = period_label(content.period, t)
     layers = layer_by_lane(content)
     blocks = [
-        ("Tracking", [_render_tracking(topic) for topic in layers.tracking], 0xE67E22),
-        ("Stories", [_render_pebble(pebble) for pebble in layers.pebbles], 0xF1C40F),
-        ("Topics", [_render_sand(sand) for sand in layers.sand], 0x5865F2),
+        (t("layer.tracking"), [_render_tracking(topic) for topic in layers.tracking], 0xE67E22),
+        (t("layer.stories"), [_render_pebble(pebble) for pebble in layers.pebbles], 0xF1C40F),
+        (t("layer.topics"), [_render_sand(sand) for sand in layers.sand], 0x5865F2),
     ]
     embeds: list[dict] = []
     for title, parts, color in blocks:
@@ -253,17 +260,17 @@ def build_discord_embeds(
     pct = (
         f"{content.articles_included / content.articles_received * 100:.1f}%"
         if content.articles_received > 0
-        else "N/A"
+        else t("notify.no_share")
     )
     stats_lines = []
     if digest_url:
-        stats_lines.append(f"📖 [Read online]({digest_url})")
+        stats_lines.append(f"📖 [{t('email.read_online')}]({digest_url})")
     elif publish_failed:
-        stats_lines.append("⚠️ Publishing the online edition failed")
+        stats_lines.append(f"⚠️ {t('notify.publish_failed')}")
     stats_lines += [
-        f"📊 Sources **{content.sources_processed}**",
-        f"📥 Articles **{content.articles_received}**",
-        f"✅ Kept **{content.articles_included}** ({pct})",
+        f"📊 {t('notify.stat_sources')} **{content.sources_processed}**",
+        f"📥 {t('notify.stat_articles')} **{content.articles_received}**",
+        f"✅ {t('notify.stat_kept')} **{content.articles_included}** ({pct})",
     ]
     synthetic = content.synthetic_url_count
     dead = content.dead_link_count
@@ -271,12 +278,9 @@ def build_discord_embeds(
         # The two counts have different scopes on purpose — synthetic covers every
         # article fetched this run, dead covers what actually reached the digest.
         # Saying so keeps them from reading as a contradiction next to the kept count.
-        stats_lines.append(
-            f"⚠️ {synthetic or 0} newsletter issue(s) fetched with no canonical link; "
-            f"{dead or 0} item(s) in this digest have no link to follow"
-        )
+        stats_lines.append(f"⚠️ {t('notify.link_health', synthetic=synthetic or 0, dead=dead or 0)}")
     if content.usage.api_calls > 0 and content.usage.estimated_cost is not None:
-        stats_lines.append(f"💰 Cost **${content.usage.estimated_cost:.4f}**")
+        stats_lines.append(f"💰 {t('notify.stat_cost')} **${content.usage.estimated_cost:.4f}**")
 
     embeds.append(
         {
@@ -297,7 +301,6 @@ _DISCORD_TITLE_MAX = 256
 _DISCORD_DESCRIPTION_MAX = 4096
 _DISCORD_EMBED_TOTAL = 6000
 _DISCORD_CONTENT_MAX = 2000
-_MORE_ONLINE = "*… more in the online edition*"
 
 
 def _size(text: str) -> int:
@@ -315,12 +318,12 @@ def _cut_title(title: str) -> str:
     return title.encode("utf-8")[:_DISCORD_TITLE_MAX].decode("utf-8", errors="ignore")
 
 
-def _cut_at_lines(text: str, room: int) -> str:
-    """`text` if it fits in `room`, else its leading whole lines and a marker, else ""."""
+def _cut_at_lines(text: str, room: int, more: str) -> str:
+    """`text` if it fits in `room`, else its leading whole lines and the marker `more`, else ""."""
     if _size(text) <= room:
         return text
     kept: list[str] = []
-    used = _size(_MORE_ONLINE)
+    used = _size(more)
     for line in text.split("\n"):
         used += _size(line) + 1
         if used > room:
@@ -328,24 +331,26 @@ def _cut_at_lines(text: str, room: int) -> str:
         kept.append(line)
     while kept and not kept[-1].strip():
         kept.pop()
-    return "\n".join([*kept, _MORE_ONLINE]) if kept else ""
+    return "\n".join([*kept, more]) if kept else ""
 
 
-def _fit_embeds(embeds: list[dict]) -> list[dict]:
+def _fit_embeds(embeds: list[dict], more: str) -> list[dict]:
     """Hold a digest's embeds to Discord's limits; the stats embed, last, stays whole.
 
     Sections keep their order and are cut from the end, at line boundaries so no
     markdown link is split: the section the total runs out in keeps what fits,
-    and every section after it is dropped.
+    and every section after it is dropped. A cut section ends in the marker `more`.
     """
     *sections, stats = embeds
     budget = _DISCORD_EMBED_TOTAL - _size(stats["title"]) - _size(stats["description"])
     fitted = []
     for embed in sections[: _DISCORD_MAX_EMBEDS - 1]:
         title = _cut_title(embed["title"])
-        capped = _cut_at_lines(embed["description"], _DISCORD_DESCRIPTION_MAX)
+        capped = _cut_at_lines(embed["description"], _DISCORD_DESCRIPTION_MAX, more)
         room = budget - _size(title)
-        description = capped if _size(capped) <= room else _cut_at_lines(embed["description"], room)
+        description = (
+            capped if _size(capped) <= room else _cut_at_lines(embed["description"], room, more)
+        )
         if description:
             fitted.append(embed | {"title": title, "description": description})
             budget -= _size(title) + _size(description)
@@ -359,23 +364,24 @@ def build_discord_payload(
     digest_url: str = "",
     publish_failed: bool = False,
     degraded: bool = False,
+    *,
+    language: str = "",
 ) -> dict:
     """Build the Discord webhook payload for a digest.
 
     `degraded` is `is_degraded_run`'s verdict, passed in: only the run knows the
     configured provider, and a missing key leaves no trace of it in the usage.
+    `language` is the current setting, which words an issue stored with none.
     """
-    payload = {"embeds": _fit_embeds(build_discord_embeds(content, digest_url, publish_failed))}
+    t = translator(issue_language(content, language))
+    embeds = build_discord_embeds(content, digest_url, publish_failed, language=language)
+    payload = {"embeds": _fit_embeds(embeds, f"*{t('notify.more_online')}*")}
     if degraded and content.usage.model != NO_LLM_MODEL:
-        payload["content"] = (
-            f"⚠️ Degraded digest: LLM {content.usage.model} could not be used for every step "
-            "this run, so some or all of it is unscored or plain excerpts."
-        )[:_DISCORD_CONTENT_MAX]
+        payload["content"] = f"⚠️ {t('notify.degraded_model', model=content.usage.model)}"[
+            :_DISCORD_CONTENT_MAX
+        ]
     elif degraded:
-        payload["content"] = (
-            "⚠️ Degraded digest: the configured LLM could not be used this run, "
-            "so some or all of it is unscored or plain excerpts."
-        )
+        payload["content"] = f"⚠️ {t('notify.degraded')}"
     return payload
 
 
@@ -385,6 +391,8 @@ async def send_discord(
     digest_url: str = "",
     publish_failed: bool = False,
     degraded: bool = False,
+    *,
+    language: str = "",
 ) -> dict[str, str]:
     """Send digest content to Discord via webhook; return the outcome for the run summary.
 
@@ -393,12 +401,15 @@ async def send_discord(
     a lost message must not cost the run its record.
     When digest_url is set, a link to the online (Cloudflare Pages) digest is
     included in the stats embed; when publishing was attempted and failed, the
-    missing link is called out instead of silently omitted.
+    missing link is called out instead of silently omitted. `language` is the current
+    `digest.output_language`, which words an issue stored with none.
     """
     if not webhook_url:
         return {"status": "skipped"}
 
-    payload = build_discord_payload(content, digest_url, publish_failed, degraded)
+    payload = build_discord_payload(
+        content, digest_url, publish_failed, degraded, language=language
+    )
 
     try:
         async with httpx.AsyncClient() as client:

@@ -21,10 +21,11 @@ from cyris.adapters.output.html_digest import (
     HtmlDigestWriter,
     _html_lang,
     environment,
+    issue_language,
 )
 from cyris.domain.layers import layer_by_lane
 from cyris.domain.models import DigestContent
-from cyris.i18n import ENGLISH, translator
+from cyris.i18n import translator
 
 PALETTE_FILE = Path(__file__).parent / "email_palette.json"
 LIGHT_PALETTE: dict[str, str] = json.loads(PALETTE_FILE.read_text(encoding="utf-8"))["light"]
@@ -52,10 +53,13 @@ def render_digest_email(
     raw_page: bool = False,
     publish_failed: bool = False,
     degraded: bool = False,
+    *,
+    language: str = "",
 ) -> str:
     """The issue as one self-contained HTML document with absolute links only.
 
-    Worded in the issue's `output_language`, which a run always sets on the content it mails.
+    Worded in the issue's `output_language`, or `language`, the current setting, when the
+    issue stored none.
     """
     site = ""
     if digest_url:
@@ -66,11 +70,12 @@ def render_digest_email(
     # Our own tokens, not feed text: escaping would turn a font stack's quotes into
     # entities, which a <style> block does not decode.
     dark = {name: Markup(value) for name, value in tokens().items()}
-    template = environment(content.output_language).get_template("email.html.j2")
+    worded_in = issue_language(content, language)
+    template = environment(worded_in).get_template("email.html.j2")
     return template.render(
         content=content,
         content_lang=_html_lang(content.output_language),
-        period_label=period_label(content.period, translator(ENGLISH)),
+        period_label=period_label(content.period, translator(worded_in)),
         layers=layer_by_lane(content),
         digest_url=digest_url,
         raw_url=raw_url,

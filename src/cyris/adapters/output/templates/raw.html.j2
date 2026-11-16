@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="dark">
-    <title>CYRIS // {{ date }} · {{ period | period_name }} · Raw</title>
-    <meta name="description" content="Every article the {{ date }} {{ period }} issue of a Cyris digest judged, grouped by source.">
+    <title>CYRIS // {{ date }} · {{ period | period_name }} · {{ t("raw.title") }}</title>
+    <meta name="description" content="{{ t("raw.description", date=date, period=period | period_name) }}">
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -76,10 +76,10 @@
     {% with view="raw" %}{% include "_issue_bar.html.j2" %}{% endwith %}
     <div class="container">
         <div class="page-head">
-            <span class="label">All articles · {{ total | plural("article") }} · {{ groups | length | plural("source") }}</span>
-            <h1 class="display">What this run <em>judged</em></h1>
-            <p class="small">Everything the run decided on, plus what is still pending. The digest shows a selection of it.</p>
-            <div class="seg gated" role="group" aria-label="Article view" id="raw-views" hidden><button type="button" data-raw-view="list" aria-pressed="true">List</button><button type="button" data-raw-view="triage" aria-pressed="false">Triage</button></div>
+            <span class="label">{{ t("raw.label", articles=total, sources=groups | length) }}</span>
+            <h1 class="display">{{ t("raw.heading", elements={"em": ("em", {})}) }}</h1>
+            <p class="small">{{ t("raw.intro") }}</p>
+            <div class="seg gated" role="group" aria-label="{{ t("raw.views") }}" id="raw-views" hidden><button type="button" data-raw-view="list" aria-pressed="true">{{ t("raw.view_list") }}</button><button type="button" data-raw-view="triage" aria-pressed="false">{{ t("raw.view_triage") }}</button></div>
         </div>
 
         <div id="raw-groups">
@@ -91,7 +91,7 @@
                 <span class="state {{ a.state }}">{{ t("article_state." ~ a.state) }}</span>
                 <span class="score">{{ "%.2f" | format(a.score) if a.score is not none else "—" }}</span>
                 <a href="{{ a.url }}" target="_blank" rel="noopener" lang="">{{ a.title }}</a>
-                <span class="vote-group" data-urls='{{ [a.url] | tojson }}'><button class="btn sm secondary promote-btn" data-vote="up" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn sm secondary promote-btn" data-vote="down" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
+                <span class="vote-group" data-urls='{{ [a.url] | tojson }}'><button class="btn sm secondary promote-btn" data-vote="up" title="{{ t("vote.more") }}" aria-label="{{ t("vote.more") }}" aria-pressed="false">↑</button><button class="btn sm secondary promote-btn" data-vote="down" title="{{ t("vote.less") }}" aria-label="{{ t("vote.less") }}" aria-pressed="false">↓</button></span>
             </div>
             {% endfor %}
         </section>
@@ -100,15 +100,17 @@
         <div class="deck-wrap" id="raw-triage" hidden>
             <span class="label" id="t-remaining"></span>
             <article class="card" id="t-card" tabindex="0" role="link"><span class="label" id="t-source"></span><h2 id="t-title"></h2></article>
-            <div class="deck-actions" id="t-actions"><button class="btn danger" type="button" id="t-down" data-dir="down">Down</button><button class="btn primary" type="button" id="t-up" data-dir="up">Up</button></div>
+            <div class="deck-actions" id="t-actions"><button class="btn danger" type="button" id="t-down" data-dir="down">{{ t("raw.down") }}</button><button class="btn primary" type="button" id="t-up" data-dir="up">{{ t("raw.up") }}</button></div>
             <p class="notice err" id="t-error" role="alert" hidden></p>
-            <p class="small" id="t-hint">Swipe left for down, right for up; with the card focused, ← and → do the same. Tap the card to open the article in a new tab.</p>
+            <p class="small" id="t-hint">{{ t("raw.hint") }}</p>
         </div>
 
         <div class="footer">// <a href="{{ project_url }}">cyris</a></div>
     </div>
     {% include "_promote_script.html.j2" %}
     <script>
+    // Worded where the page was rendered, the count taking the place its placeholder held.
+    const REMAINING = (count) => {{ t("raw.remaining", count="%COUNT%") | tojson }}.replace('%COUNT%', count);
     // The rows are the only copy of the data, so the deck reads them: what is still
     // pending and not yet voted in this browser, in list order.
     const pool = () => [...document.querySelectorAll('.raw-row')].filter((row) =>
@@ -116,7 +118,7 @@
 
     function renderDeck() {
         const rows = pool();
-        document.getElementById('t-remaining').textContent = `${rows.length} remaining`;
+        document.getElementById('t-remaining').textContent = REMAINING(rows.length);
         const [next] = rows;
         // With nothing left to judge only the count stays, per §6 raw.
         for (const id of ['t-card', 't-actions', 't-hint']) {

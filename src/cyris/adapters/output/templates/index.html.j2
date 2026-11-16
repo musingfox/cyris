@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="dark">
-    <title>CYRIS // Archive</title>
-    <meta name="description" content="Every issue of a Cyris digest: the articles worth reading from a set of RSS feeds and newsletters, newest first.">
+    <title>CYRIS // {{ t("site.archive") }}</title>
+    <meta name="description" content="{{ t("index.description") }}">
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -50,42 +50,42 @@
     </style>
 </head>
 <body>
-    {% macro actions(issue) %}<span class="actions"><a class="btn secondary sm digest-link" href="{{ issue.filename }}">Digest</a>{% if issue.raw_filename %}<a class="btn secondary sm" href="{{ issue.raw_filename }}">All articles</a>{% endif %}</span>{% endmacro %}
+    {% macro actions(issue) %}<span class="actions"><a class="btn secondary sm digest-link" href="{{ issue.filename }}">{{ t("issue.digest") }}</a>{% if issue.raw_filename %}<a class="btn secondary sm" href="{{ issue.raw_filename }}">{{ t("issue.all_articles") }}</a>{% endif %}</span>{% endmacro %}
     {% include "_site_bar.html.j2" %}
     <div class="container">
         <div class="page-head">
-            <span class="label">Archive</span>
-            <h1 class="display">Every <em>issue</em></h1>
-            <p class="small">Cyris collects articles from RSS feeds and newsletters and selects the ones worth reading into a digest. Newest first. Each issue has the digest and the full list of articles it judged.</p>
-            <p class="small gated" hidden>See the <a href="/interest">Interest map</a> of the tags you vote on.</p>
+            <span class="label">{{ t("site.archive") }}</span>
+            <h1 class="display">{{ t("index.heading", elements={"em": ("em", {})}) }}</h1>
+            <p class="small">{{ t("index.intro") }}</p>
+            <p class="small gated" hidden>{{ t("index.interest", elements={"link": ("a", {"href": "/interest"})}) }}</p>
         </div>
 
         {% if digests %}
         <article class="front-card">
-            <div class="line"><span class="label latest">Latest</span><span class="date">{{ latest.date }}</span><span class="label">{{ latest.period | period_name }}</span></div>
+            <div class="line"><span class="label latest">{{ t("index.latest") }}</span><span class="date">{{ latest.date }}</span><span class="label">{{ latest.period | period_name }}</span></div>
             {% if card.lead is not none %}<h2 lang="{{ card.lead_lang }}">{{ card.lead }}</h2>{% endif %}
-            {% if card.count is not none %}<span class="data">{{ card.count | plural("article") }}</span>{% endif %}
+            {% if card.count is not none %}<span class="data">{{ t("index.articles", count=card.count) }}</span>{% endif %}
             {% if card.topics is not none %}<p class="small" lang="{{ card.topics_lang }}">{{ card.topics }}</p>{% endif %}
             {{ actions(latest) }}
         </article>
         {% for panel in months %}
         <section class="panel">
-            <div class="panel-head"><span class="data">{{ panel.month }}</span><span class="label">{{ panel.issues | length | plural("issue") }}</span></div>
+            <div class="panel-head"><span class="data">{{ panel.month }}</span><span class="label">{{ t("index.issues", count=panel.issues | length) }}</span></div>
             {% for digest in panel.issues %}
             <div class="list-row archive-row{{ ' same-day' if digest.same_day }}">
                 <span class="date">{{ digest.date }}</span>
                 <span class="label">{{ digest.period | period_name }}</span>
-                {% if digest["count"] is not none %}<span class="small">{{ digest["count"] | plural("article") }}</span>{% endif %}
+                {% if digest["count"] is not none %}<span class="small">{{ t("index.articles", count=digest["count"]) }}</span>{% endif %}
                 {{ actions(digest) }}
             </div>
             {% endfor %}
         </section>
         {% endfor %}
         {% else %}
-        <p class="small">No digests yet. Run <code class="data">cyris run</code> to generate your first digest.</p>
+        <p class="small">{{ t("index.empty", elements={"code": ("code", {"class": "data"})}) }}</p>
         {% endif %}
 
-        <div class="footer">// <a href="{{ project_url }}">cyris</a> &middot; {{ digests | length | plural("issue") }}</div>
+        <div class="footer">// <a href="{{ project_url }}">cyris</a> &middot; {{ t("index.issues", count=digests | length) }}</div>
     </div>
     {% include "_probe_script.html.j2" %}
 </body>

@@ -8,12 +8,14 @@
     // A vote is one hop through the app Worker to the promote Worker, which answers in well
     // under a second; past this the reader is told it did not land instead of waiting on.
     const VOTE_TIMEOUT_MS = 10000;
+    // Worded where the page was rendered: a static page formats nothing, so the one runtime
+    // value, the status, takes the place the message's placeholder held.
     const VOTE_FAILED = {
-        signedOut: 'Your session has ended, so the vote was not taken. Reload the page and sign in again.',
-        accessNotSetUp: 'Access is not set up for this deployment. Ask the operator to finish the Cloudflare Access setup, then reload the page.',
-        notConfigured: 'Voting is not set up here: the app Worker has no CYRIS_PROMOTE_WORKER_URL. Set it, then vote again.',
-        refused: (status) => `The vote did not go through (HTTP ${status}). Try again; if it keeps failing, check the promote Worker.`,
-        unanswered: 'No answer from the server, so the vote may not have been taken. Check your connection, then try again.',
+        signedOut: {{ t("vote.signed_out") | tojson }},
+        accessNotSetUp: {{ t("vote.access_not_set_up") | tojson }},
+        notConfigured: {{ t("vote.not_configured") | tojson }},
+        refused: (status) => {{ t("vote.refused", status="%STATUS%") | tojson }}.replace('%STATUS%', status),
+        unanswered: {{ t("vote.unanswered") | tojson }},
     };
     // AbortSignal.timeout is missing before Safari 16 and Chrome 103, which could vote before it.
     function timeoutSignal(ms) {
@@ -108,7 +110,7 @@
             notice = document.createElement('p');
             notice.className = 'notice err vote-error';
             notice.setAttribute('role', 'alert');
-            notice.lang = 'en';
+            notice.lang = {{ ui_lang | tojson }};
             row.after(notice);
         }
         notice.textContent = reason;

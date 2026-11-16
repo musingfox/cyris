@@ -14,12 +14,12 @@ import httpx
 from cyris.adapters.cloudflare import API_ROOT, TIMEOUT_SECONDS
 from cyris.adapters.notify import period_label, redact_webhook_tokens
 from cyris.adapters.output.email_digest import raw_page_url, render_digest_email
-from cyris.adapters.output.html_digest import Story, citation_links
+from cyris.adapters.output.html_digest import Story, citation_links, issue_language
 from cyris.adapters.run_alert import alert_message
 from cyris.domain.area_layout import AreaSection
 from cyris.domain.layers import Sand, layer_by_lane
 from cyris.domain.models import DigestContent, DigestItem, DigestSection, NewsParagraph
-from cyris.i18n import ENGLISH, translator
+from cyris.i18n import translator
 from cyris.service_layer.alerts import RunAlert
 
 logger = logging.getLogger(__name__)
@@ -99,37 +99,48 @@ def build_digest_mail(
     publish_failed: bool = False,
     raw_page: bool = False,
     degraded: bool = False,
+    *,
+    language: str = "",
 ) -> tuple[str, str]:
-    """The subject and plain-text body: Tracking, Stories and Topics, as the HTML part has them."""
-    title = f"{period_label(content.period, translator(ENGLISH))} digest {content.date}"
+    """The subject and plain-text body: Tracking, Stories and Topics, as the HTML part has them.
+
+    Worded as the HTML part is: in the issue's language, else `language`, the current setting.
+    """
+    t = translator(issue_language(content, language))
+    title = t("mail.subject", period=period_label(content.period, t), date=content.date)
     lines = [title, ""]
     if digest_url:
-        lines.append(f"Read online: {digest_url}")
+        lines.append(t("mail.read_online_at", url=digest_url))
     elif publish_failed:
-        lines.append("Publishing the online edition failed, so this issue has no link.")
+        lines.append(t("mail.publish_failed_text"))
     if degraded:
-        lines += [
-            "",
-            "Some or all of this issue is unscored or plain excerpts: the configured LLM could "
-            "not be used for every step this run. Check the provider and its key on Settings.",
-        ]
+        lines += ["", t("issue.degraded")]
     lines += [
         "",
-        f"Kept {content.articles_included} of {content.articles_received} articles "
-        f"from {content.sources_processed} sources.",
+        t(
+            "mail.kept",
+            included=content.articles_included,
+            received=content.articles_received,
+            sources=content.sources_processed,
+        ),
     ]
     if not content.articles_included:
-        raw_url = raw_page_url(content, digest_url, raw_page)
-        lines.append(
-            "Nothing is in this issue: this run judged the "
-            f"{content.articles_received} articles it received and kept none."
-            + (f" All articles lists each one with its verdict: {raw_url}" if raw_url else "")
-        )
+        received = content.articles_received
+        if raw_url := raw_page_url(content, digest_url, raw_page):
+            lines.append(t("mail.empty_raw_at", received=received, url=raw_url))
+        else:
+            lines.append(t("issue.empty", received=received))
     layers = layer_by_lane(content)
     blocks = [
-        ("Tracking", [line for topic in layers.tracking for line in _tracking_lines(topic)]),
-        ("Stories", [line for pebble in layers.pebbles for line in _pebble_lines(pebble.item)]),
-        ("Topics", [line for sand in layers.sand for line in _sand_lines(sand)]),
+        (
+            t("layer.tracking"),
+            [line for topic in layers.tracking for line in _tracking_lines(topic)],
+        ),
+        (
+            t("layer.stories"),
+            [line for pebble in layers.pebbles for line in _pebble_lines(pebble.item)],
+        ),
+        (t("layer.topics"), [line for sand in layers.sand for line in _sand_lines(sand)]),
     ]
     for label, entries in blocks:
         if entries:
@@ -174,8 +185,11 @@ async def send_digest_mail(
     *,
     account_id: str,
     token: str,
+    language: str = "",
 ) -> dict[str, str]:
     """Mail one issue's announcement; return the outcome for the run summary.
+
+    `language` is the current `digest.output_language`, which words an issue stored with none.
 
     The outcome is `{"status": "delivered"}` or `"queued"`, `{"status": "skipped"}`
     without a recipient, or `{"status": "failed", "reason": ...}`. Failures are logged
@@ -184,8 +198,12 @@ async def send_digest_mail(
     """
     if not recipient:
         return {"status": "skipped"}
-    subject, text = build_digest_mail(content, digest_url, publish_failed, raw_page, degraded)
-    html = render_digest_email(content, digest_url, raw_page, publish_failed, degraded)
+    subject, text = build_digest_mail(
+        content, digest_url, publish_failed, raw_page, degraded, language=language
+    )
+    html = render_digest_email(
+        content, digest_url, raw_page, publish_failed, degraded, language=language
+    )
     try:
         status = await send_mail(account_id, token, sender, recipient, subject, text, html)
     except RuntimeError as e:

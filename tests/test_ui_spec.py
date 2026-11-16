@@ -35,6 +35,7 @@ import cyris.entrypoints
 from cyris.adapters.output.email_digest import LIGHT_PALETTE, tokens
 from cyris.adapters.output.html_digest import FAVICON, PROJECT_URL, HtmlDigestWriter
 from cyris.domain.interest_graph import InterestEdge, InterestGraph, InterestNode
+from cyris.domain.models import DigestContent
 from cyris.entrypoints.triage_server import (
     TriageServer,
     render_labels_page,
@@ -72,13 +73,45 @@ def _source(name: str) -> str:
 GUARDED = ["index", "digest", "raw", "style.css", "settings", "labels", "onboarding", "interest"]
 
 
-@pytest.mark.parametrize(
-    "page", ["index", "digest", "raw", "settings", "labels", "onboarding", "interest", "prototype"]
-)
-def test_every_page_says_its_chrome_is_english(page):
-    html = PROTOTYPE.read_text() if page == "prototype" else _source(page)
+def test_the_prototype_says_its_chrome_is_english():
+    assert re.search(r"<html\b[^>]*>", PROTOTYPE.read_text()).group() == '<html lang="en">'
 
-    assert re.search(r"<html\b[^>]*>", html).group() == '<html lang="en">'
+
+def _page_in(page: str, tag: str) -> str:
+    """`page` worded from catalog `tag`: an issue's in its own language, else the setting's."""
+    if page == "settings":
+        return render_settings_page(tag)
+    if page == "labels":
+        return render_labels_page(tag)
+    if page == "onboarding":
+        return render_onboarding_page(tag)
+    writer = HtmlDigestWriter("unused-by-these-tests", language=tag)
+    if page == "interest":
+        graph = InterestGraph(nodes=[InterestNode("agents", 1, 0, "up", 1.0)], edges=[])
+        return writer.render_interest(graph, holds_active=True, generated_at="", clock_days=7)
+    if page == "index":
+        return writer.render_index(["2026-01-02-morning.html"])
+    if page == "raw":
+        return writer.render_raw("2026-01-02", "morning", [], tag)
+    content = DigestContent(
+        date="2026-01-02",
+        period="morning",
+        sources_processed=0,
+        articles_received=0,
+        articles_included=0,
+        output_language=tag,
+    )
+    return writer.render(content)
+
+
+@pytest.mark.parametrize("tag", ["en", "zh-Hant"])
+@pytest.mark.parametrize(
+    "page", ["index", "digest", "raw", "settings", "labels", "onboarding", "interest"]
+)
+def test_every_page_says_its_chrome_is_in_the_catalog_it_is_worded_from(page, tag):
+    html = _page_in(page, tag)
+
+    assert re.search(r"<html\b[^>]*>", html).group() == f'<html lang="{tag}">'
 
 
 def _render_partial(name: str) -> str:
