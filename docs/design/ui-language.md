@@ -376,7 +376,9 @@ its hour (08:05 is `0800`, 20:59 is `2000`). The day is the CLDR skeleton `Md` a
 `HH'00'`, formatted in the catalog's locale outside any message, from the start the run stored with the
 issue, in `general.timezone`; the stored start keeps its full precision, and only the name rounds it. An
 issue stored before its start was kept is named by its date alone, `11/17`. The period stays in the file
-names and links (`2026-11-17-morning.html`) and is shown nowhere.
+names and links (`2026-11-17-morning.html`), and none of the issue's surfaces above shows it. /settings
+and /onboarding, which are not issue surfaces, still show periods: the schedule's two hours, and the
+onboarding notice about its first issue, which names that issue by its date and period.
 
 ### archive
 

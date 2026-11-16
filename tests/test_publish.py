@@ -355,3 +355,29 @@ def test_the_rendered_archive_is_not_the_receipt(monkeypatch, tmp_path):
     _fake_get(monkeypatch, HtmlDigestWriter(tmp_path).render_index([f"{SLUG}.html"]))
 
     assert _publish() is False
+
+
+def test_a_rendered_digest_page_without_its_receipt_is_refused(monkeypatch):
+    page = _rendered(_issue("morning"))
+    stripped = re.sub(r'<meta name="cyris-issue"[^>]*>', "", page)
+    assert stripped != page
+    _fake_deploy(monkeypatch)
+    _fake_get(monkeypatch, stripped)
+
+    assert _publish() is False
+
+
+def test_a_page_published_before_the_receipt_passes_by_the_date_in_its_title(monkeypatch):
+    """`scripts/prune_archive.py` verifies the newest issue's page without redeploying it,
+    so that page can be one an earlier release rendered, titled by its date."""
+    _fake_deploy(monkeypatch)
+    _fake_get(monkeypatch, "<html><head><title>CYRIS // 2026-08-20 · 早報</title></head></html>")
+
+    assert _publish() is True
+
+
+def test_a_page_of_another_day_from_before_the_receipt_is_refused(monkeypatch):
+    _fake_deploy(monkeypatch)
+    _fake_get(monkeypatch, "<html><head><title>CYRIS // 2026-08-19 · 晚報</title></head></html>")
+
+    assert _publish() is False

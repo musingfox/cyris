@@ -84,6 +84,7 @@ class _Deadline:
 # The receipt a digest page carries in its head, naming its issue by slug: the title names it
 # for a reader, by the hour its run started, and no longer holds the date (digest.html.j2).
 _RECEIPT_RE = re.compile(r'<meta name="cyris-issue" content="([^"]*)">')
+_TITLE_RE = re.compile(r"<title>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
 
 def _slash(path: str) -> str:
@@ -430,6 +431,21 @@ def page_serves(pages_project: str, path: str, expected: bytes) -> bool:
     return False
 
 
+def _names_issue(page: str, slug: str) -> bool:
+    """Whether `page` is the digest page of `slug`, by its receipt, else by the title it had before.
+
+    A page carrying a receipt is that issue's only when the receipt names `slug`. A page with
+    none was published before the receipt was: a run, a republish and a rerun verify the page
+    they just rendered, which carries one, but `scripts/prune_archive.py` verifies the newest
+    issue's live page without deploying it. Such a page's title held the issue's ISO date, which
+    no archive title holds.
+    """
+    if match := _RECEIPT_RE.search(page):
+        return match.group(1) == slug
+    title = _TITLE_RE.search(page)
+    return title is not None and slug[:10] in title.group(1)
+
+
 def _page_is_live(pages_project: str, slug: str, deadline: _Deadline) -> bool:
     """Fetch the deployed page and assert it is the digest, not the 404 fallback.
 
@@ -455,10 +471,10 @@ def _page_is_live(pages_project: str, slug: str, deadline: _Deadline) -> bool:
         except httpx.HTTPError as e:
             logger.warning("Pages verify request failed (poll %d): %s", poll, e)
             continue
+        if _names_issue(resp.text, slug):
+            return True
         match = _RECEIPT_RE.search(resp.text)
         served = match.group(1) if match else ""
-        if served == slug:
-            return True
         logger.warning(
             "Pages verify: %s served %d naming issue %r, expected %s (poll %d)",
             url,
