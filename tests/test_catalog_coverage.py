@@ -27,6 +27,7 @@ from messageformat2.datamodel import (
 )
 
 import cyris
+from cyris.domain.models import ArticleState
 from cyris.entrypoints.triage_server import (
     BROWSER_MESSAGES,
     STATIC_DIR,
@@ -46,7 +47,10 @@ ENGLISH = "en"
 # The functions both formatters ship as Stable and on by default.
 FUNCTIONS = {"string", "number", "integer"}
 # Each key family built from a value, with the value's closed range.
-FAMILIES: dict[str, tuple[str, ...]] = {"period.": PERIOD_ORDER}
+FAMILIES: dict[str, tuple[str, ...]] = {
+    "period.": PERIOD_ORDER,
+    "article_state.": tuple(map(str, ArticleState)),
+}
 RENDERERS = {
     "settings.html.j2": render_settings_page,
     "labels.html.j2": render_labels_page,

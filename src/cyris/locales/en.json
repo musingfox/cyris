@@ -1,4 +1,8 @@
 {
+  "article_state.accepted": "accepted",
+  "article_state.awaiting_triage": "awaiting_triage",
+  "article_state.pending": "pending",
+  "article_state.rejected": "rejected",
   "email.read_online": "Read online",
   "error.no_settings_store": "this deployment has no settings store to write",
   "period.evening": "Evening",

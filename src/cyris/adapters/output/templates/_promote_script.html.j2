@@ -22,8 +22,9 @@
         setTimeout(() => controller.abort(), ms);
         return controller.signal;
     }
-    // What a vote turns the raw list's state text into, as the next promote-sync will.
+    // What a vote turns the raw list's state into, as the next promote-sync will.
     const VOTED_STATE = { up: 'accepted', down: 'rejected' };
+    const STATE_NAME = {{ {"accepted": t("article_state.accepted"), "rejected": t("article_state.rejected")} | tojson }};
 
     // A remembered vote changes only a row still rendered pending: every run applies the
     // votes cast before it, so a verdict the page was rendered with may be newer than the vote.
@@ -38,7 +39,7 @@
         const state = group.closest('.list-row')?.querySelector('.state');
         if (state && (live || state.classList.contains('pending'))) {
             state.className = 'state ' + VOTED_STATE[shown];
-            state.textContent = VOTED_STATE[shown];
+            state.textContent = STATE_NAME[VOTED_STATE[shown]];
         }
     }
     // A news cluster is one vote-group over every article in it, so urls is a list.

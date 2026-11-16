@@ -88,7 +88,7 @@
             <div class="panel-head"><span class="source-name">{{ group.name }}</span><span class="label">{{ group.articles | length }}</span></div>
             {% for a in group.articles %}
             <div class="list-row raw-row">
-                <span class="state {{ a.state }}">{{ a.state }}</span>
+                <span class="state {{ a.state }}">{{ t("article_state." ~ a.state) }}</span>
                 <span class="score">{{ "%.2f" | format(a.score) if a.score is not none else "—" }}</span>
                 <a href="{{ a.url }}" target="_blank" rel="noopener" lang="">{{ a.title }}</a>
                 <span class="vote-group" data-urls='{{ [a.url] | tojson }}'><button class="btn sm secondary promote-btn" data-vote="up" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn sm secondary promote-btn" data-vote="down" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>
