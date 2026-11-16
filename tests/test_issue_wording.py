@@ -672,3 +672,11 @@ def test_an_issue_sent_with_no_language_is_worded_in_the_current_setting() -> No
 
     assert payload["embeds"][-1]["title"] == "早報 2026-01-02"
     assert "線上閱讀" in payload["embeds"][-1]["description"]
+
+
+@pytest.mark.parametrize(
+    ("sources", "said"),
+    [(1, "1 source · 3 received · 2 included"), (2, "2 sources · 3 received · 2 included")],
+)
+def test_the_mail_stats_count_sources_by_their_plural(sources, said) -> None:
+    assert translator("en")("mail.stats", sources=sources, received=3, included=2) == said

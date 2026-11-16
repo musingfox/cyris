@@ -73,7 +73,7 @@
   "mail.publish_failed": {"text": "線上版發佈失敗，這一期沒有可以開啟的頁面。", "source": "Publishing the online edition failed, so this issue has no page to open."},
   "mail.publish_failed_text": {"text": "線上版發佈失敗，這一期沒有連結。", "source": "Publishing the online edition failed, so this issue has no link."},
   "mail.read_online_at": {"text": "線上閱讀：{$url}", "source": "Read online: {$url}"},
-  "mail.stats": {"text": "{$sources} 個來源 · 收到 {$received} 篇 · {#b}收錄 {$included} 篇{/b}", "source": "{$sources} sources · {$received} received · {#b}{$included} included{/b}"},
+  "mail.stats": {"text": "{$sources} 個來源 · 收到 {$received} 篇 · {#b}收錄 {$included} 篇{/b}", "source": ".input {$sources :integer}\n.match $sources\none {{{$sources} source · {$received} received · {#b}{$included} included{/b}}}\n* {{{$sources} sources · {$received} received · {#b}{$included} included{/b}}}"},
   "mail.subject": {"text": "{$period}精選 {$date}", "source": "{$period} digest {$date}"},
   "notify.degraded": {"text": "精選品質下降：這次執行沒辦法使用設定的 LLM，所以有部分或全部內容沒有評分，或只是原文摘錄。", "source": "Degraded digest: the configured LLM could not be used this run, so some or all of it is unscored or plain excerpts."},
   "notify.degraded_model": {"text": "精選品質下降：這次執行時 LLM {$model} 沒辦法用在每個步驟，所以有部分或全部內容沒有評分，或只是原文摘錄。", "source": "Degraded digest: LLM {$model} could not be used for every step this run, so some or all of it is unscored or plain excerpts."},

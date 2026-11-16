@@ -77,7 +77,7 @@
   "mail.publish_failed": "Publishing the online edition failed, so this issue has no page to open.",
   "mail.publish_failed_text": "Publishing the online edition failed, so this issue has no link.",
   "mail.read_online_at": "Read online: {$url}",
-  "mail.stats": "{$sources} sources · {$received} received · {#b}{$included} included{/b}",
+  "mail.stats": ".input {$sources :integer}\n.match $sources\none {{{$sources} source · {$received} received · {#b}{$included} included{/b}}}\n* {{{$sources} sources · {$received} received · {#b}{$included} included{/b}}}",
   "mail.subject": "{$period} digest {$date}",
   "notify.degraded": "Degraded digest: the configured LLM could not be used this run, so some or all of it is unscored or plain excerpts.",
   "notify.degraded_model": "Degraded digest: LLM {$model} could not be used for every step this run, so some or all of it is unscored or plain excerpts.",
