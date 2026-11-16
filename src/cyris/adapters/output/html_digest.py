@@ -21,7 +21,7 @@ from cyris.domain.models import (
     NewsParagraph,
     StoredArticle,
 )
-from cyris.i18n import resolve, translator
+from cyris.i18n import Translator, resolve, translator
 from cyris.service_layer.schedule import PERIOD_ORDER
 
 # The upstream project, not this deployment: a fork's pages still credit it, so no
@@ -83,6 +83,14 @@ def _plural(n: int, noun: str) -> str:
     return f"{n} {noun}{'' if n == 1 else 's'}"
 
 
+def issue_period(period: str, t: Translator) -> str:
+    """How an issue's pages name its period, in `t`'s catalog; one outside `PERIOD_ORDER` as it is.
+
+    Display only: the period in a file name or a link stays the stored identifier.
+    """
+    return t(f"issue_period.{period}") if period in PERIOD_ORDER else period
+
+
 def issue_language(content: DigestContent, current: str) -> str:
     """The language an issue's own pages are worded in: its stored one, else the current setting."""
     return content.output_language or current
@@ -103,6 +111,7 @@ def _environment(tag: str, search_path: tuple[Path, ...]) -> Environment:
     env.filters["paragraph_links"] = paragraph_links
     env.globals["project_url"] = PROJECT_URL
     env.globals["t"] = translator(tag)
+    env.filters["period_name"] = functools.partial(issue_period, t=env.globals["t"])
     env.globals["ui_lang"] = tag
     return env
 

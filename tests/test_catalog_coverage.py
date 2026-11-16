@@ -52,6 +52,7 @@ FUNCTIONS = {"string", "number", "integer"}
 # Each key family built from a value, with the value's closed range.
 FAMILIES: dict[str, tuple[str, ...]] = {
     "period.": PERIOD_ORDER,
+    "issue_period.": PERIOD_ORDER,
     "article_state.": tuple(map(str, ArticleState)),
     "lane.": tuple(map(str, Lane)),
     "area_status.": get_args(AreaStatus),

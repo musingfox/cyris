@@ -9,6 +9,8 @@
   "article_state.rejected": "rejected",
   "email.read_online": "Read online",
   "error.no_settings_store": "this deployment has no settings store to write",
+  "issue_period.evening": "evening",
+  "issue_period.morning": "morning",
   "lane.follow": "follow",
   "lane.read": "read",
   "lane.skim": "skim",
