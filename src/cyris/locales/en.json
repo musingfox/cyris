@@ -19,6 +19,7 @@
   "polarity.down": "down",
   "polarity.mixed": "mixed",
   "polarity.up": "up",
+  "provider.none": "None — plain excerpts",
   "settings.checking_discord": "Checking with Discord…",
   "site.settings": "Settings"
 }

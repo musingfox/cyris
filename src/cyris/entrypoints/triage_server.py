@@ -152,6 +152,7 @@ TOPIC_REFUSALS = {
 # `tests/test_catalog_coverage.py` holds it equal to what those scripts call `t` with.
 BROWSER_MESSAGES: tuple[str, ...] = (
     "settings.checking_discord",
+    "provider.none",
     *(f"lane.{lane}" for lane in Lane),
     *(f"area_status.{status}" for status in get_args(AreaStatus)),
 )

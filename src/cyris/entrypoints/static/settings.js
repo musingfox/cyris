@@ -191,7 +191,7 @@ function render() {
       <input type="radio" name="provider" value="${esc(p.name)}"
              ${p.name === values["llm_provider.provider"] && p.configured ? "checked" : ""}
              ${p.configured ? "" : "disabled"}>
-      <span class="name">${p.name === "none" ? "None — plain excerpts" : esc(p.name)}</span>
+      <span class="name">${esc(p.name === "none" ? t("provider.none") : p.name)}</span>
       ${p.name === "none" ? `<span class="label">No key needed</span>`
         : p.configured ? `<span class="label">Key ready</span>`
         : `<span class="label key-missing">${esc(p.env_var)} missing</span>`}
