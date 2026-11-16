@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from markupsafe import Markup
 from messageformat2.errors import FormatError
 
 from cyris import i18n
@@ -188,3 +189,43 @@ def test_the_browser_files_etag_is_strong_and_changes_with_its_content(locales) 
 
     assert before.etag.startswith('"') and before.etag.endswith('"')
     assert after.etag != before.etag
+
+
+def test_markup_draws_the_element_the_caller_names_around_escaped_text(locales) -> None:
+    locales({"en": {"a.link": "See {#link}the {$what}{/link} <now>."}})
+    t = i18n.translator("en")
+
+    html = t("a.link", what="map & <list>", elements={"link": ("a", {"href": '/x?a=1&b="2"'})})
+
+    assert html == (
+        'See <a href="/x?a=1&amp;b=&#34;2&#34;">the map &amp; &lt;list&gt;</a> &lt;now&gt;.'
+    )
+    assert isinstance(html, Markup)
+
+
+def test_markup_without_elements_is_plain_text_with_the_spans_dropped(locales) -> None:
+    locales({"en": {"a.link": "See {#link}the map{/link}."}})
+
+    assert i18n.translator("en")("a.link") == "See the map."
+
+
+def test_a_markup_name_the_caller_supplies_no_element_for_raises(locales) -> None:
+    locales({"en": {"a.link": "See {#link}the map{/link}."}})
+
+    with pytest.raises(KeyError):
+        i18n.translator("en")("a.link", elements={"code": ("code", {})})
+
+
+def test_a_translation_places_the_markup_where_its_language_puts_it(locales) -> None:
+    locales(
+        {
+            "en": {"a.run": "Run {#code}cyris run{/code} first."},
+            "zh-Hant": {
+                "a.run": {"text": "先執行 {#code}cyris run{/code}。", "source": "Run …"},
+            },
+        }
+    )
+
+    html = i18n.translator("zh-Hant")("a.run", elements={"code": ("code", {"class": "data"})})
+
+    assert html == '先執行 <code class="data">cyris run</code>。'
