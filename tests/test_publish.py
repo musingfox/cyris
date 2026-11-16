@@ -1,6 +1,7 @@
 """Tests for the Cloudflare Pages publish step."""
 
 import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -8,18 +9,27 @@ import pytest
 
 from cyris.adapters.output import pages_deploy
 from cyris.adapters.output import publish as publish_mod
+from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.adapters.output.pages_deploy import DeploymentRecord
 from cyris.adapters.output.publish import publish_site
+from cyris.domain.models import DigestContent
 from cyris.service_layer import vote_order
 
 pytestmark = pytest.mark.unit
 
 SLUG = "2026-08-20-morning"
 LANDED = DeploymentRecord("dep-1", "https://ab12.cyris-digest.pages.dev", "deploy", "success")
-LIVE_PAGE = "<html><head><title>CYRIS // 2026-08-20 · morning</title></head></html>"
+LIVE_PAGE = (
+    '<html><head><title>CYRIS // 8/20 0800</title><meta name="cyris-issue" content="'
+    + SLUG
+    + '"></head></html>'
+)
 # A missing page is served as the Archive index — HTTP 200, and its body even
-# lists other digests' dates. Only the <title> tells them apart.
-ARCHIVE_PAGE = "<html><head><title>CYRIS // Archive</title></head><body>2026-08-20</body></html>"
+# lists other digests' dates and links. Only the issue receipt tells them apart.
+ARCHIVE_PAGE = (
+    "<html><head><title>CYRIS // Archive</title></head>"
+    f'<body>2026-08-20 <a href="{SLUG}.html">8/20</a></body></html>'
+)
 
 
 @pytest.fixture(autouse=True)
@@ -115,7 +125,7 @@ def test_live_page_confirms_the_deploy(monkeypatch):
 def test_a_landed_deployment_without_a_live_page_is_not_published(monkeypatch):
     """Cloudflare saying `success` is not the page being served, and the 404
     fallback answers 200 — that silently dropped the Discord link on 2026-08-18
-    evening and 2026-08-20 morning. The alias serving the page's own title is what
+    evening and 2026-08-20 morning. The alias serving the page's own receipt is what
     makes the digest count as published."""
     _fake_deploy(monkeypatch)
     _fake_get(monkeypatch, ARCHIVE_PAGE)
@@ -305,5 +315,43 @@ def test_missing_credentials_fail_rather_than_calling_the_api(monkeypatch):
         raise AssertionError("should not call the API without a token")
 
     monkeypatch.setattr(publish_mod.PagesClient, "deploy_manifest", explode)
+
+    assert _publish() is False
+
+
+def _rendered(content: DigestContent) -> str:
+    return HtmlDigestWriter(Path("unused")).render(content)
+
+
+def _issue(period: str) -> DigestContent:
+    return DigestContent(
+        date="2026-08-20",
+        period=period,
+        started_at=datetime(2026, 8, 20, 8, 5, tzinfo=timezone(timedelta(hours=8))),
+        sources_processed=1,
+        articles_received=1,
+        articles_included=1,
+    )
+
+
+def test_the_rendered_digest_page_is_its_own_receipt(monkeypatch):
+    """The live check reads what the digest template writes, not a fixture of it: on
+    2026-11-17 the title stopped holding the date, and every publish failed its check."""
+    _fake_deploy(monkeypatch)
+    _fake_get(monkeypatch, _rendered(_issue("morning")))
+
+    assert _publish() is True
+
+
+def test_another_issue_of_the_same_day_is_not_the_receipt(monkeypatch):
+    _fake_deploy(monkeypatch)
+    _fake_get(monkeypatch, _rendered(_issue("evening")))
+
+    assert _publish() is False
+
+
+def test_the_rendered_archive_is_not_the_receipt(monkeypatch, tmp_path):
+    _fake_deploy(monkeypatch)
+    _fake_get(monkeypatch, HtmlDigestWriter(tmp_path).render_index([f"{SLUG}.html"]))
 
     assert _publish() is False

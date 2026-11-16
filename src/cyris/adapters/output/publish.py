@@ -81,7 +81,9 @@ class _Deadline:
         return _clock() + worst_case <= self._at
 
 
-_TITLE_RE = re.compile(r"<title>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+# The receipt a digest page carries in its head, naming its issue by slug: the title names it
+# for a reader, by the hour its run started, and no longer holds the date (digest.html.j2).
+_RECEIPT_RE = re.compile(r'<meta name="cyris-issue" content="([^"]*)">')
 
 
 def _slash(path: str) -> str:
@@ -436,12 +438,12 @@ def _page_is_live(pages_project: str, slug: str, deadline: _Deadline) -> bool:
     the 2026-08-18 evening and 2026-08-20 morning digests lost their Discord
     links while both deploy attempts "succeeded". A missing page is served as
     the Archive index with HTTP 200, so the status code proves nothing either:
-    the receipt is the page's own <title>, which carries the digest date.
+    the receipt is the page's own `cyris-issue` meta tag, which names its slug. The
+    title was the receipt until it named the issue by its hour instead of its date.
 
     ponytail: a re-run of the same period passes on the previous deploy's page.
     Re-runs overwrite the same URL, so the link is never dead — only possibly stale.
     """
-    date = slug[:10]
     url = f"https://{pages_project}.pages.dev/{slug}"
     for poll in range(1, VERIFY_POLLS + 1):
         if not deadline.fits(VERIFY_INTERVAL_SECONDS + VERIFY_TIMEOUT_SECONDS):
@@ -453,16 +455,16 @@ def _page_is_live(pages_project: str, slug: str, deadline: _Deadline) -> bool:
         except httpx.HTTPError as e:
             logger.warning("Pages verify request failed (poll %d): %s", poll, e)
             continue
-        match = _TITLE_RE.search(resp.text)
-        title = match.group(1).strip() if match else ""
-        if date in title:
+        match = _RECEIPT_RE.search(resp.text)
+        served = match.group(1) if match else ""
+        if served == slug:
             return True
         logger.warning(
-            "Pages verify: %s served %d with title %r, expected one containing %s (poll %d)",
+            "Pages verify: %s served %d naming issue %r, expected %s (poll %d)",
             url,
             resp.status_code,
-            title,
-            date,
+            served,
+            slug,
             poll,
         )
     logger.error("Pages verify: %s is not live; the digest is not published", url)

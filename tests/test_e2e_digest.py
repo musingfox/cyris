@@ -38,7 +38,7 @@ from e2e.receipts import (
 from cyris.bootstrap import default_model
 from cyris.domain.models import ArticleState, Lane, SourceConfig, StoredArticle, UsageStats
 from cyris.domain.triage import RejectReason
-from cyris.i18n import translator
+from cyris.i18n import issue_name, translator
 from cyris.service_layer.prompts import language_wording
 
 pytestmark = pytest.mark.e2e
@@ -410,10 +410,12 @@ EXPECTED_D1 = [
     "SELECT stored_articles",
     "INSERT OR REPLACE INTO digests",
     "INSERT OR REPLACE INTO digest_inputs",
-    # The archive's file list and counts for the index page, then the manifest the
+    # The archive's file list, counts and starts for the index page, then the manifest the
     # deploy extends, the first-publish receipt, and the manifest of what landed.
     "SELECT pages_manifest",
     "SELECT usage_log",
+    # Each archived issue's start, which names its row by its hour (this run's own included).
+    "SELECT digests",
     "SELECT pages_manifest",
     "SELECT pages_deploy_receipt",
     "INSERT OR IGNORE INTO pages_deploy_receipt",
@@ -971,13 +973,17 @@ def test_discord_and_mail_each_receive_the_issue_once(receipts) -> None:
     # 4 sources, 13 articles received, 12 kept: the topic of two counts as two.
     for count in ("**4**", "**13**", "**12**"):
         assert count in stats["description"], count
-    assert stats["title"].endswith(receipts.date)
-    # The issue is zh-Hant, so Discord and the mail name its period from that catalog.
-    assert stats["title"].split()[0] == zh("period.morning")
+    # Discord and the mail name the issue by the hour its run started, never by its period.
+    (issue,) = receipts.run.rows("SELECT content FROM digests")
+    started = datetime.fromisoformat(json.loads(issue["content"])["started_at"])
+    # Stored to the second, so the harness's clock is too.
+    assert receipts.run.started_at.replace(microsecond=0) <= started <= receipts.run.finished_at
+    name = issue_name(zh, receipts.date, started)
+    assert stats["title"] == name
     assert all(e["title"] for e in (stories, topics, stats))
     mail = receipts.mail()
     assert (mail["to"], mail["from"]) == ("reader@e2e.test", "digest@e2e.test")
-    assert mail["subject"] == zh("mail.subject", period=zh("period.morning"), date=receipts.date)
+    assert mail["subject"] == zh("mail.subject", issue=name)
     assert receipts.digest_url in mail["text"]
     assert receipts.digest_url in parse_html(mail["html"]).hrefs()
     for key in SHOWN - {"n1", "n2"} - set(WATER):

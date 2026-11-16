@@ -263,6 +263,8 @@ class HtmlDigestWriter:
         return template.render(
             date=content.date,
             period=content.period,
+            # The receipt the publish step's live check reads back (`publish._page_is_live`).
+            slug=Path(self.digest_filename(content.date, content.period)).stem,
             started_at=content.started_at,
             sources_processed=content.sources_processed,
             articles_received=content.articles_received,

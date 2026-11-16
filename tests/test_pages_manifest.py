@@ -490,7 +490,9 @@ def test_the_budget_leaves_a_fast_retry_alone(monkeypatch):
     monkeypatch.setattr(
         publish_mod.httpx,
         "get",
-        lambda _u, **_k: httpx.Response(200, text="<title>CYRIS // 2026-08-27</title>"),
+        lambda _u, **_k: httpx.Response(
+            200, text='<meta name="cyris-issue" content="2026-08-27-morning">'
+        ),
     )
     deployed = []
 

@@ -1199,7 +1199,9 @@ production branch, or it lands on a preview URL. The first publish creates the P
 (`pages_deploy.create_project`).
 
 - **What counts as published.** `_page_is_live` decides whether a digest is published, which
-  drives the Discord link and `publish_failed`. A publishing rerun is the exception: there
+  drives the Discord link and `publish_failed`. Its receipt is the digest page's
+  `<meta name="cyris-issue">`, which names the issue's slug; the archive the 404 fallback serves carries
+  none. The page's title was the receipt until it named the issue by its hour rather than its date. A publishing rerun is the exception: there
   `page_serves` decides, by comparing the served bytes with the render byte for byte. What `pages_manifest` records follows
   Cloudflare's own stage for the deployment instead: one at `deploy`/`success`, read from the
   create response or re-read every 5s for 30s, is recorded before the alias is asked; one with no

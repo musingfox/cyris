@@ -257,9 +257,9 @@ def test_the_name_rounds_the_start_down_to_its_hour(
 
 class _Read(HTMLParser):
     """What a reader reads or hears on a page: text outside scripts and styles, the worded
-    attributes, the description and the layer script's words. Never a link."""
+    attributes, the description and the layer script's words. Never a link or a receipt."""
 
-    WORDED = {"title", "aria-label", "alt", "content", "data-layer-words"}
+    WORDED = {"title", "aria-label", "alt", "data-layer-words"}
 
     def __init__(self) -> None:
         super().__init__()
@@ -268,6 +268,9 @@ class _Read(HTMLParser):
 
     def handle_starttag(self, tag, attrs) -> None:
         self.runs += [value for name, value in attrs if name in self.WORDED and value]
+        values = dict(attrs)
+        if tag == "meta" and values.get("name") == "description":
+            self.runs.append(values["content"])
         if tag in ("script", "style"):
             self.inside.append(tag)
 
@@ -301,10 +304,13 @@ def test_no_surface_shows_a_reader_the_period(language, started_at, tmp_path) ->
 
 
 def test_the_period_word_check_finds_one_on_a_page() -> None:
-    assert PERIOD_WORDS.findall(_read('<p>Evening</p><a href="x-morning.html">晚報</a>')) == [
-        "Evening",
-        "晚報",
-    ]
+    page = (
+        '<meta name="description" content="a morning issue">'
+        '<meta name="cyris-issue" content="x-evening">'
+        '<p>Evening</p><a href="x-morning.html">晚報</a>'
+    )
+
+    assert PERIOD_WORDS.findall(_read(page)) == ["morning", "Evening", "晚報"]
 
 
 # ---- what the code stores keeps its English identifier ---------------------------------
