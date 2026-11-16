@@ -52,7 +52,7 @@ NAMES = {
 }
 
 
-# The minute the issue's run started, in the deployment's timezone.
+# When the issue's run started, in the deployment's timezone; it is named by the hour.
 STARTED = datetime(2026, 1, 2, 8, 5, tzinfo=timezone(timedelta(hours=8)))
 
 
@@ -226,11 +226,11 @@ def test_the_digest_page_is_worded_in_its_issues_language(language, tmp_path) ->
         assert _shows(html, text), text
 
 
-def test_the_digest_pages_description_names_the_issue_by_its_minute(tmp_path) -> None:
+def test_the_digest_pages_description_names_the_issue_by_its_hour(tmp_path) -> None:
     html = _digest("zh-Hant", tmp_path)
 
     description = re.search(r'<meta name="description" content="([^"]*)">', html)[1]
-    assert description == "Cyris 1/2 08:05 精選：從 20 篇文章選出 10 篇。"
+    assert description == "Cyris 1/2 0800 精選：從 20 篇文章選出 10 篇。"
 
 
 def test_the_digest_pages_footer_links_the_project_inside_its_sentence(tmp_path) -> None:
@@ -395,7 +395,7 @@ def test_the_archive_is_worded_in_the_current_setting(language, tmp_path) -> Non
         t("index.issues", count=2),
         t("issue.digest"),
         t("issue.all_articles"),
-        "20:05",
+        "2000",
     ]:
         assert _shows(html, text), text
     assert t("index.heading", elements={"em": ("em", {})}) in html
@@ -564,7 +564,7 @@ def test_the_text_mail_and_its_subject_are_worded_in_its_issues_language(languag
 def test_a_zh_hant_text_mail_says_nothing_in_english() -> None:
     subject, text = build_digest_mail(_content("zh-Hant"), ONLINE, degraded=True)
 
-    assert subject == "1/2 08:05 精選"
+    assert subject == "1/2 0800 精選"
     words = set(re.findall(r"[A-Za-z]+", re.sub(r"https://\S+", "", text))) - NAMES
     assert words == set()
 
@@ -588,7 +588,7 @@ def test_an_issue_mailed_with_no_language_is_worded_in_the_current_setting() -> 
     subject, text = build_digest_mail(content, ONLINE, language="zh-Hant")
     html = render_digest_email(content, ONLINE, language="zh-Hant")
 
-    assert subject == "1/2 08:05 精選"
+    assert subject == "1/2 0800 精選"
     assert "報導" in text
     assert _html_lang(html) == "zh-Hant"
 
@@ -596,7 +596,7 @@ def test_an_issue_mailed_with_no_language_is_worded_in_the_current_setting() -> 
 def test_an_issue_mailed_with_its_own_language_keeps_it_whatever_the_setting() -> None:
     subject, _ = build_digest_mail(_content("zh-Hant"), ONLINE, language="en")
 
-    assert subject == "1/2 08:05 精選"
+    assert subject == "1/2 0800 精選"
 
 
 # ---- Discord ---------------------------------------------------------------------------
@@ -676,7 +676,7 @@ def test_an_issue_sent_with_no_language_is_worded_in_the_current_setting() -> No
 
     payload = build_discord_payload(content, ONLINE, language="zh-Hant")
 
-    assert payload["embeds"][-1]["title"] == "1/2 08:05"
+    assert payload["embeds"][-1]["title"] == "1/2 0800"
     assert "線上閱讀" in payload["embeds"][-1]["description"]
 
 

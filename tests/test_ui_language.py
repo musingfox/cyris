@@ -4,7 +4,7 @@ The skeleton of ADR-0027 converts one string on each of five surfaces: the site 
 Settings on the digest page, the mail's Read online, the Discord message's title, the
 /settings script's Discord check, and the triage server's refusal of a settings write with
 no store. Every expected text is read from the catalog files, never from `cyris.i18n`; the
-Discord title names the issue by its minute, which no catalog words, as CLDR formats it.
+Discord title names the issue by the hour its run started, which no catalog words.
 
 A container page's script formats from one file per catalog, which the page names and the
 server serves under `/static/i18n/`.
@@ -164,7 +164,7 @@ def test_the_mails_design_tokens_still_reach_its_layout() -> None:
 
 @pytest.mark.parametrize(
     ("language", "title"),
-    [("en", "11/16, 08:05"), ("ja", "11/16, 08:05"), ("zh-Hant", "11/16 08:05")],
+    [("en", "11/16 0800"), ("ja", "11/16 0800"), ("zh-Hant", "11/16 0800")],
 )
 def test_the_discord_title_follows_the_issue(language, title) -> None:
     started = datetime(2026, 11, 16, 8, 5, tzinfo=timezone(timedelta(hours=8)))

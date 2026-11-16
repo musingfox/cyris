@@ -17,7 +17,7 @@ from pathlib import Path
 
 import langcodes
 from babel import Locale
-from babel.dates import format_skeleton
+from babel.dates import format_datetime, format_skeleton
 from langcodes.tag_parser import LanguageTagError
 from markupsafe import Markup, escape
 from messageformat2 import Message
@@ -25,11 +25,11 @@ from messageformat2 import Message
 LOCALES = Path(__file__).parent / "locales"
 # The fallback of every lookup, and the catalog each other catalog's `source` repeats.
 ENGLISH = "en"
-# An issue is named by the minute its run started, never by its period, since a day may hold any
-# number of issues (owner, 2026-11-17). CLDR skeletons, so each catalog's locale orders and
-# punctuates the month, the day and the clock: `11/17, 08:00` in English, `11/17 08:00` in zh-Hant.
+# An issue is named by the hour its run started, never by its period, since a day may hold any
+# number of issues: `11/17 0800` in every catalog, the hour rounded down (owner, 2026-11-17). The
+# day is a CLDR skeleton in the catalog's locale; the hour an LDML pattern with a literal `00`.
 ISSUE_DAY = "Md"
-ISSUE_TIME = "Hm"
+ISSUE_HOUR = "HH'00'"
 
 # What a caller supplies for a message's markup: each markup name's element and attributes,
 # as `{"link": ("a", {"href": url})}` for `{#link}…{/link}`. The catalog never holds HTML.
@@ -227,16 +227,16 @@ def issue_day(t: Translator, day: str, started_at: datetime | None) -> str:
     return format_skeleton(ISSUE_DAY, stored, locale=_locale(t))
 
 
-def issue_time(t: Translator, started_at: datetime | None) -> str:
-    """The minute an issue's run started, or "" for an issue stored without it."""
+def issue_hour(t: Translator, started_at: datetime | None) -> str:
+    """The hour an issue's run started, `0800` for 08:05, or "" for an issue stored without it."""
     if started_at is None:
         return ""
-    return format_skeleton(ISSUE_TIME, started_at, tzinfo=started_at.tzinfo, locale=_locale(t))
+    return format_datetime(started_at, ISSUE_HOUR, tzinfo=started_at.tzinfo, locale=_locale(t))
 
 
 def issue_name(t: Translator, day: str, started_at: datetime | None) -> str:
-    """An issue's name: its day and minute joined as the locale joins them, else its day alone."""
+    """An issue's name: its day, a space and its hour, `11/17 0800`, else its day alone."""
     named = issue_day(t, day, started_at)
     if started_at is None:
         return named
-    return _locale(t).datetime_formats["short"].format(issue_time(t, started_at), named)
+    return f"{named} {issue_hour(t, started_at)}"

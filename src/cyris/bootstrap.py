@@ -361,7 +361,7 @@ class Deps:
     suppressions: Any | None = None
     # `{(date, period): articles_included}` for the archive's history rows.
     archive_counts: Callable[[], dict[tuple[str, str], int]] = field(default_factory=lambda: dict)
-    # `{(date, period): started_at}`, the minute each archived issue is named by.
+    # `{(date, period): started_at}`, the start each archived issue is named by.
     archive_starts: Callable[[], dict[tuple[str, str], datetime]] | None = None
     # Keeps each issue's final content in D1.
     digest_store: Any | None = None

@@ -21,7 +21,7 @@ from cyris.domain.models import (
     NewsParagraph,
     StoredArticle,
 )
-from cyris.i18n import issue_day, issue_name, issue_time, resolve, translator
+from cyris.i18n import issue_day, issue_hour, issue_name, resolve, translator
 from cyris.service_layer.schedule import PERIOD_ORDER
 
 logger = logging.getLogger(__name__)
@@ -96,7 +96,7 @@ def _environment(tag: str, search_path: tuple[Path, ...]) -> Environment:
     # An issue is named by its run's start, never by its period, which stays in file names
     # and links only.
     env.globals["issue_day"] = functools.partial(issue_day, env.globals["t"])
-    env.globals["issue_time"] = functools.partial(issue_time, env.globals["t"])
+    env.globals["issue_hour"] = functools.partial(issue_hour, env.globals["t"])
     env.globals["issue_name"] = functools.partial(issue_name, env.globals["t"])
     env.globals["ui_lang"] = tag
     return env

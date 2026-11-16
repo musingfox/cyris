@@ -1010,7 +1010,7 @@ def test_the_published_archive_leads_with_this_runs_issue(tmp_path: Path) -> Non
     panels = index[index.index('<section class="panel">') :]
     assert 'href="2026-04-15-evening.html"' in panels
     assert (
-        '<span class="date">4/15</span>\n                <span class="label">20:05</span>' in panels
+        '<span class="date">4/15</span>\n                <span class="label">2000</span>' in panels
     )
 
 
@@ -1989,7 +1989,7 @@ async def test_the_stored_digest_is_the_final_content(tmp_path: Path, caplog) ->
     assert loaded.usage.api_calls == _run_summary(caplog)["llm"]["api_calls"]
 
 
-async def test_the_stored_digest_is_named_by_the_minute_its_run_started(
+async def test_the_stored_digest_keeps_the_start_its_run_is_named_by(
     tmp_path: Path, caplog
 ) -> None:
     deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
@@ -2196,7 +2196,7 @@ async def test_the_stored_digest_renders_the_written_page(
         assert on_disk != deps.html_writer.render(row.content, raw_page=True)
 
 
-_FAILED_SUBJECT = re.compile(r"^Digest run failed: \d{1,2}/\d{1,2}, \d{2}:\d{2} Asia/Taipei$")
+_FAILED_SUBJECT = re.compile(r"^Digest run failed: \d{1,2}/\d{1,2} \d{2}00 Asia/Taipei$")
 _ALERT_WEBHOOK = "https://discord.com/api/webhooks/1/alert"
 
 
@@ -2207,12 +2207,12 @@ def _with_alert_channels(deps: Deps, discord, mail) -> Deps:
     return replace(deps, send_discord_alert=discord, send_email_alert=mail)
 
 
-def _subject_minute(subject: str, year: int) -> datetime:
-    """The minute an English subject names, `11/16, 08:05`, in `year`, which it leaves out."""
-    found = re.search(r"(\d{1,2})/(\d{1,2}), (\d{2}):(\d{2})", subject)
+def _subject_hour(subject: str, year: int) -> datetime:
+    """The hour a subject names, `11/16 0800`, in `year`, which it leaves out."""
+    found = re.search(r"(\d{1,2})/(\d{1,2}) (\d{2})00", subject)
     assert found is not None
-    month, day, hour, minute = map(int, found.groups())
-    return datetime(year, month, day, hour, minute, tzinfo=ZoneInfo("Asia/Taipei"))
+    month, day, hour = map(int, found.groups())
+    return datetime(year, month, day, hour, tzinfo=ZoneInfo("Asia/Taipei"))
 
 
 def _recording_alert_fakes() -> tuple[list, list, object, object]:
@@ -2285,7 +2285,7 @@ async def test_a_raised_run_is_headed_in_the_output_language(tmp_path: Path) -> 
         await run_digest(deps, RunOptions())
 
     [(_, subject, text)] = discord_calls
-    assert re.match(r"^精選產生失敗：\d{1,2}/\d{1,2} \d{2}:\d{2} Asia/Taipei$", subject)
+    assert re.match(r"^精選產生失敗：\d{1,2}/\d{1,2} \d{2}00 Asia/Taipei$", subject)
     assert text == "RuntimeError: the store is gone"
     assert mail_calls[0][2:] == (subject, text)
 
@@ -2308,19 +2308,19 @@ async def test_a_raised_run_with_no_digest_settings_still_alerts_in_english(
     assert len(mail_calls) == 1
 
 
-async def test_the_failure_alert_names_the_minute_the_run_started(tmp_path: Path) -> None:
+async def test_the_failure_alert_names_the_hour_the_run_started(tmp_path: Path) -> None:
     discord_calls, _, discord, mail = _recording_alert_fakes()
 
     deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
     deps = _with_alert_channels(deps, discord, mail)
     _exploding_store(deps)
-    before = now_in_timezone("Asia/Taipei").replace(second=0, microsecond=0)
+    before = now_in_timezone("Asia/Taipei").replace(minute=0, second=0, microsecond=0)
 
     with pytest.raises(RuntimeError, match="the store is gone"):
         await run_digest(deps, RunOptions())
 
     after = now_in_timezone("Asia/Taipei")
-    when = _subject_minute(discord_calls[0][1], before.year)
+    when = _subject_hour(discord_calls[0][1], before.year)
     assert before <= when <= after
 
 
@@ -2402,9 +2402,7 @@ async def test_an_error_with_no_message_is_named_by_its_type_alone(tmp_path: Pat
     assert discord_calls[0][2] == "RuntimeError"
 
 
-_FETCH_SUBJECT = re.compile(
-    r"^Digest run fetched nothing: \d{1,2}/\d{1,2}, \d{2}:\d{2} Asia/Taipei$"
-)
+_FETCH_SUBJECT = re.compile(r"^Digest run fetched nothing: \d{1,2}/\d{1,2} \d{2}00 Asia/Taipei$")
 
 
 class BrokenSource(FakeSource):
@@ -2504,7 +2502,7 @@ async def test_a_run_that_fetched_nothing_is_worded_in_the_output_language(
     )
 
     [(_, subject, text)] = discord_calls
-    assert re.match(r"^精選沒抓到任何文章：\d{1,2}/\d{1,2} \d{2}:\d{2} Asia/Taipei$", subject)
+    assert re.match(r"^精選沒抓到任何文章：\d{1,2}/\d{1,2} \d{2}00 Asia/Taipei$", subject)
     assert text == "抓取失敗的來源：BrokenSource, OtherBrokenSource"
     assert mail_calls[0][2:] == (subject, text)
 
@@ -3131,7 +3129,7 @@ class _FailingEmbedder(_TitleEmbedder):
 
 
 _SIMILARITY_WARNING_SUBJECT = re.compile(
-    r"^Vote similarity did not run: \d{1,2}/\d{1,2}, \d{2}:\d{2} Asia/Taipei$"
+    r"^Vote similarity did not run: \d{1,2}/\d{1,2} \d{2}00 Asia/Taipei$"
 )
 
 
@@ -3196,7 +3194,7 @@ async def test_a_rejected_embedding_key_warns_in_the_output_language(tmp_path: P
     )
 
     [(_, subject, text)] = discord_calls
-    assert re.match(r"^投票相似度未執行：\d{1,2}/\d{1,2} \d{2}:\d{2} Asia/Taipei$", subject)
+    assert re.match(r"^投票相似度未執行：\d{1,2}/\d{1,2} \d{2}00 Asia/Taipei$", subject)
     assert text == (
         "本期未執行投票相似度，讀者的投票沒有作用，精選未經過濾就直接發布。嵌入 API "
         "拒絕了請求：HTTP 403 Forbidden。在嵌入金鑰或其權限修好之前，每次產生精選都會"

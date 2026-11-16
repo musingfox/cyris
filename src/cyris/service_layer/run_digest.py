@@ -178,7 +178,7 @@ def _raw_page_for(deps: "Deps", key: tuple[str, str], stored) -> tuple[bool, dic
 
 
 def _issue_start(deps: "Deps", options: RunOptions, started_at: datetime) -> datetime | None:
-    """The minute the issue is named by: this run's start, or the one a rerun's issue has.
+    """The start the issue is named by: this run's, or the one a rerun's issue has.
 
     A rerun replaces its issue rather than adding one, so the issue keeps its name; one stored
     without a start stays without, and so does one whose stored row cannot be read.

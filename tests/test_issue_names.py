@@ -124,11 +124,12 @@ def test_a_suppression_keeps_its_english_name(tmp_path) -> None:
     assert "No suppression is active." in _interest("en", tmp_path, lit=0.0, holds=False)
 
 
-# ---- an issue is named by the minute its run started -----------------------------------
+# ---- an issue is named by the hour its run started -------------------------------------
 
 # 00:05 UTC is 08:05 in Asia/Taipei, the offset a run stores its start at.
 STARTED = datetime(2026, 11, 17, 8, 5, tzinfo=timezone(timedelta(hours=8)))
-NAMES = {"en": "11/17, 08:05", "zh-Hant": "11/17 08:05"}
+# One form in every catalog: the day, a space, the hour rounded down with `00` after it.
+NAMES = {"en": "11/17 0800", "zh-Hant": "11/17 0800"}
 # The words a reader once knew an issue's period by, in every catalog.
 PERIOD_WORDS = re.compile(r"morning|evening|早報|晚報", re.IGNORECASE)
 
@@ -171,7 +172,7 @@ def _pages(language: str, tmp_path, started_at: datetime | None) -> dict[str, st
 
 
 @pytest.mark.parametrize("language", ["en", "zh-Hant"])
-def test_every_surface_names_the_issue_by_its_minute(language, tmp_path) -> None:
+def test_every_surface_names_the_issue_by_its_hour(language, tmp_path) -> None:
     name = NAMES[language]
 
     pages = _pages(language, tmp_path, STARTED)
@@ -179,10 +180,10 @@ def test_every_surface_names_the_issue_by_its_minute(language, tmp_path) -> None
     assert f"<title>CYRIS // {name}</title>" in pages["digest"]
     assert f"<title>CYRIS // {name} · " in pages["raw"]
     for page in ("digest", "raw"):
-        assert '<span class="data">11/17</span><span class="label">08:05</span>' in pages[page]
-    assert '<span class="date">11/17</span><span class="label">08:05</span>' in pages["archive"]
+        assert '<span class="data">11/17</span><span class="label">0800</span>' in pages[page]
+    assert '<span class="date">11/17</span><span class="label">0800</span>' in pages["archive"]
     assert (
-        '<span class="date">11/16</span>\n                <span class="label">20:05</span>'
+        '<span class="date">11/16</span>\n                <span class="label">2000</span>'
         in (pages["archive"])
     )
     assert f"<title>CYRIS // {name}</title>" in pages["mail"]
@@ -194,17 +195,17 @@ def test_the_issue_is_named_in_each_catalogs_sentences(tmp_path) -> None:
     en, zh = _pages("en", tmp_path, STARTED), _pages("zh-Hant", tmp_path, STARTED)
 
     assert (
-        'content="The 11/17, 08:05 issue of a Cyris digest: 1 article selected from 3."'
+        'content="The 11/17 0800 issue of a Cyris digest: 1 article selected from 3."'
         in en["digest"]
     )
-    assert 'content="Cyris 11/17 08:05 精選：從 3 篇文章選出 1 篇。"' in zh["digest"]
+    assert 'content="Cyris 11/17 0800 精選：從 3 篇文章選出 1 篇。"' in zh["digest"]
     assert (
-        'content="Every article the 11/17, 08:05 issue of a Cyris digest judged, grouped by'
+        'content="Every article the 11/17 0800 issue of a Cyris digest judged, grouped by'
         ' source."' in en["raw"]
     )
-    assert 'content="Cyris 11/17 08:05 精選評選過的所有文章，依來源分組。"' in zh["raw"]
-    assert en["subject"] == "Digest for 11/17, 08:05"
-    assert zh["subject"] == "11/17 08:05 精選"
+    assert 'content="Cyris 11/17 0800 精選評選過的所有文章，依來源分組。"' in zh["raw"]
+    assert en["subject"] == "Digest for 11/17 0800"
+    assert zh["subject"] == "11/17 0800 精選"
 
 
 @pytest.mark.parametrize("language", ["en", "zh-Hant"])
@@ -231,8 +232,27 @@ def _alert(language: str) -> RunAlert:
 
 
 def test_a_run_alert_names_its_issue_in_its_catalogs_punctuation() -> None:
-    assert alert_message(_alert("en"))[0] == "Digest run failed: 11/17, 20:05 Asia/Taipei"
-    assert alert_message(_alert("zh-Hant"))[0] == "精選產生失敗：11/17 20:05 Asia/Taipei"
+    assert alert_message(_alert("en"))[0] == "Digest run failed: 11/17 2000 Asia/Taipei"
+    assert alert_message(_alert("zh-Hant"))[0] == "精選產生失敗：11/17 2000 Asia/Taipei"
+
+
+@pytest.mark.parametrize(
+    ("hour", "minute", "named"), [(8, 5, "0800"), (20, 59, "2000"), (0, 0, "0000"), (23, 1, "2300")]
+)
+@pytest.mark.parametrize("language", ["en", "zh-Hant"])
+def test_the_name_rounds_the_start_down_to_its_hour(
+    language, hour, minute, named, tmp_path
+) -> None:
+    started = datetime(2026, 11, 17, hour, minute, 30, tzinfo=timezone(timedelta(hours=8)))
+    content = _content(language, started_at=started)
+
+    subject, _ = build_digest_mail(content)
+
+    assert build_discord_embeds(content)[-1]["title"] == f"11/17 {named}"
+    assert (
+        subject == {"en": f"Digest for 11/17 {named}", "zh-Hant": f"11/17 {named} 精選"}[language]
+    )
+    assert DigestContent.model_validate_json(content.model_dump_json()).started_at == started
 
 
 class _Read(HTMLParser):

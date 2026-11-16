@@ -62,7 +62,7 @@
 
         {% if digests %}
         <article class="front-card">
-            <div class="line"><span class="label latest">{{ t("index.latest") }}</span><span class="date">{{ issue_day(latest.date, latest.started_at) }}</span>{% if latest.started_at %}<span class="label">{{ issue_time(latest.started_at) }}</span>{% endif %}</div>
+            <div class="line"><span class="label latest">{{ t("index.latest") }}</span><span class="date">{{ issue_day(latest.date, latest.started_at) }}</span>{% if latest.started_at %}<span class="label">{{ issue_hour(latest.started_at) }}</span>{% endif %}</div>
             {% if card.lead is not none %}<h2 lang="{{ card.lead_lang }}">{{ card.lead }}</h2>{% endif %}
             {% if card.count is not none %}<span class="data">{{ t("index.articles", count=card.count) }}</span>{% endif %}
             {% if card.topics is not none %}<p class="small" lang="{{ card.topics_lang }}">{{ card.topics }}</p>{% endif %}
@@ -74,7 +74,7 @@
             {% for digest in panel.issues %}
             <div class="list-row archive-row{{ ' same-day' if digest.same_day }}">
                 <span class="date">{{ issue_day(digest.date, digest.started_at) }}</span>
-                <span class="label">{{ issue_time(digest.started_at) }}</span>
+                <span class="label">{{ issue_hour(digest.started_at) }}</span>
                 {% if digest["count"] is not none %}<span class="small">{{ t("index.articles", count=digest["count"]) }}</span>{% endif %}
                 {{ actions(digest) }}
             </div>

@@ -307,7 +307,7 @@ async def test_the_newest_is_judged_by_date_and_period_not_by_when_it_was_saved(
     assert newer.status == "ok"
 
 
-async def test_a_rerun_keeps_the_minute_its_issue_is_named_by(tmp_path: Path) -> None:
+async def test_a_rerun_keeps_the_start_its_issue_is_named_by(tmp_path: Path) -> None:
     a = _article(1, "Kept one")
     deps, _, site, _, _, _, _, _ = _setup(tmp_path, [a], replies=[_scores([a]), _sections([a])])
     started = datetime(2026, 10, 14, 20, 5, tzinfo=timezone(timedelta(hours=8)))
@@ -317,7 +317,7 @@ async def test_a_rerun_keeps_the_minute_its_issue_is_named_by(tmp_path: Path) ->
     await run_digest(deps, RunOptions(dry_run=False, rerun_of=RERUN, period="evening"))
 
     assert deps.digest_store.load(RERUN, "evening").content.started_at == started
-    assert '<span class="label">20:05</span>' in site.live[f"/{SLUG}.html"].decode()
+    assert '<span class="label">2000</span>' in site.live[f"/{SLUG}.html"].decode()
 
 
 async def test_a_rerun_of_an_issue_stored_without_a_start_names_it_by_its_date(

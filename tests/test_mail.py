@@ -388,7 +388,7 @@ class TestAlertMail:
         assert json.loads(route.calls.last.request.content) == {
             "to": "me@example.org",
             "from": "digest@example.org",
-            "subject": "Digest run failed: 11/16, 20:05 Asia/Taipei",
+            "subject": "Digest run failed: 11/16 2000 Asia/Taipei",
             "text": "B",
         }
 
@@ -411,7 +411,7 @@ class TestAlertMail:
 
         assert route.call_count == 1
         sent = json.loads(route.calls.last.request.content)
-        assert sent["subject"] == "投票相似度未執行：11/16 20:05 Asia/Taipei"
+        assert sent["subject"] == "投票相似度未執行：11/16 2000 Asia/Taipei"
         assert "讀者的投票沒有作用" in sent["text"]
         assert "HTTP 401 Unauthorized" in sent["text"]
 

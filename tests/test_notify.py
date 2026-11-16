@@ -864,7 +864,7 @@ _ALERT = RunAlert(
     language="en",
     error="B",
 )
-_SUBJECT = "Digest run failed: 11/16, 08:05 Asia/Taipei"
+_SUBJECT = "Digest run failed: 11/16 0800 Asia/Taipei"
 
 
 class TestSendDiscordAlert:
@@ -897,7 +897,7 @@ class TestSendDiscordAlert:
         await send_discord_alert("https://discord.com/api/webhooks/123/s3cr3t-token", alert)
 
         assert json.loads(requests[0].content) == {
-            "content": "精選沒抓到任何文章：11/16 08:05 Asia/Taipei\n抓取失敗的來源：Feed"
+            "content": "精選沒抓到任何文章：11/16 0800 Asia/Taipei\n抓取失敗的來源：Feed"
         }
 
     async def test_truncates_content_to_discord_limit(self, monkeypatch):

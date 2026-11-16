@@ -13,7 +13,7 @@ pytestmark = pytest.mark.unit
 
 STARTED = datetime(2026, 11, 16, 0, 5, tzinfo=UTC)
 # The issue the alert is about, named as every surface names it, in each catalog's punctuation.
-SUFFIX = {"en": ": 11/16, 08:05 Asia/Taipei", "zh-Hant": "：11/16 08:05 Asia/Taipei"}
+SUFFIX = {"en": ": 11/16 0800 Asia/Taipei", "zh-Hant": "：11/16 0800 Asia/Taipei"}
 
 
 def _alert(kind: AlertKind, language: str = "en", **values) -> RunAlert:
@@ -40,9 +40,7 @@ def _alert(kind: AlertKind, language: str = "en", **values) -> RunAlert:
         ("vote_similarity_rejected", "zh-Hant", "投票相似度未執行"),
     ],
 )
-def test_the_subject_is_the_headline_and_the_minute_in_the_timezone(
-    kind, language, headline
-) -> None:
+def test_the_subject_is_the_headline_and_the_hour_in_the_timezone(kind, language, headline) -> None:
     subject, _ = alert_message(_alert(kind, language))
 
     assert subject == headline + SUFFIX[language]

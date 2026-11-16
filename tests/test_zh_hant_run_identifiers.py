@@ -162,6 +162,6 @@ async def test_a_zh_hant_issue_shows_the_names_of_its_identifiers(
     raw = pages[f"/{date}-evening-raw.html"].decode()
     accepted = _translation("article_state.accepted")
 
-    assert f'<span class="label">{started:%H:%M}</span>' in digest
+    assert f'<span class="label">{started:%H}00</span>' in digest
     assert "evening" not in digest.split('<div class="issue-id">', 1)[1].split("</div>", 1)[0]
     assert f'<span class="state accepted">{accepted}</span>' in raw

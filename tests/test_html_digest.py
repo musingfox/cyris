@@ -456,7 +456,7 @@ def test_the_newer_month_panel_comes_first(tmp_path):
     assert '<span class="data">2026-07</span><span class="label">2 issues</span>' in html
 
 
-def test_an_archive_row_holds_its_day_its_minute_and_the_issues_two_views(tmp_path):
+def test_an_archive_row_holds_its_day_its_hour_and_the_issues_two_views(tmp_path):
     names = ["2026-08-31-morning.html", "2026-08-31-morning-raw.html", "2026-09-02-morning.html"]
     started = datetime(2026, 8, 31, 8, 5, tzinfo=timezone(timedelta(hours=8)))
 
@@ -466,7 +466,7 @@ def test_an_archive_row_holds_its_day_its_minute_and_the_issues_two_views(tmp_pa
 
     assert (
         '<div class="list-row archive-row"><span class="date">8/31</span>'
-        '<span class="label">08:05</span><span class="actions">'
+        '<span class="label">0800</span><span class="actions">'
         '<a class="btn secondary sm digest-link" href="2026-08-31-morning.html">Digest</a>'
         '<a class="btn secondary sm" href="2026-08-31-morning-raw.html">All articles</a>'
         "</span></div>"
@@ -1890,7 +1890,7 @@ def test_the_old_masthead_brand_and_meta_strip_are_gone(tmp_path):
 def test_the_digest_switches_to_its_raw_page_from_the_issue_bar(tmp_path):
     digest = _issue_pages(tmp_path)["digest"]
 
-    assert '<span class="data">4/15</span><span class="label">20:05</span>' in digest
+    assert '<span class="data">4/15</span><span class="label">2000</span>' in digest
     assert '<a href="2026-04-15-evening.html" aria-current="page">Digest</a>' in digest
     assert '<a href="2026-04-15-evening-raw.html">All articles</a>' in digest
 
@@ -1916,7 +1916,7 @@ def test_a_digest_without_a_raw_page_offers_no_all_articles(tmp_path):
 def test_the_raw_page_switches_back_to_its_digest_from_the_issue_bar(tmp_path):
     raw = _issue_pages(tmp_path)["raw"]
 
-    assert '<span class="data">4/15</span><span class="label">20:05</span>' in raw
+    assert '<span class="data">4/15</span><span class="label">2000</span>' in raw
     assert '<a href="2026-04-15-evening.html">Digest</a>' in raw
     assert '<a href="2026-04-15-evening-raw.html" aria-current="page">All articles</a>' in raw
 

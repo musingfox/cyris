@@ -51,7 +51,7 @@ from cyris.domain.models import ArticleState, Lane, StoredArticle
 DATE = "2026-01-02"
 PERIOD = "morning"
 PAGE = f"/{DATE}-{PERIOD}-raw.html"
-# The minute the fixture issue's run started, which names it in the issue bar.
+# When the fixture issue's run started; its hour names it in the issue bar.
 STARTED = datetime(2026, 1, 2, 8, 5, tzinfo=timezone(timedelta(hours=8)))
 
 ACCESS_LOGIN = "https://access.example.test/cdn-cgi/access/login"

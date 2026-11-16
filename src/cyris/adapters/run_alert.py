@@ -41,7 +41,7 @@ def alert_message(alert: RunAlert) -> tuple[str, str]:
     """`(subject, body)`.
 
     The subject is the headline, then the run's issue named as every surface names it, by the
-    minute the run started in `general.timezone`, then the zone.
+    hour the run started in `general.timezone`, then the zone.
     """
     t = translator(alert.language)
     when = alert.started_at.astimezone(ZoneInfo(alert.timezone))

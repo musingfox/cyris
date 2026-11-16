@@ -88,7 +88,7 @@ def test_incomplete_settings_on_a_digest_hour_alert_every_channel(
     assert result.exit_code == 1
     [(webhook, subject, text)] = alerts["discord"]
     assert webhook == WEBHOOK
-    assert subject == "Digest run could not start: 9/19, 08:05 Asia/Taipei"
+    assert subject == "Digest run could not start: 9/19 0800 Asia/Taipei"
     assert "digest.max_articles_per_digest" in text
     [(to, sender, mail_subject, mail_text)] = alerts["mail"]
     assert (to, sender, mail_subject, mail_text) == ("reader@a.test", "cyris@a.test", subject, text)
@@ -138,7 +138,7 @@ def test_a_failed_build_on_a_digest_hour_alerts(
     assert result.exit_code != 0
     assert isinstance(result.exception, RuntimeError)
     [(_webhook, subject, text)] = alerts["discord"]
-    assert subject == "Digest run could not start: 9/19, 20:05 Asia/Taipei"
+    assert subject == "Digest run could not start: 9/19 2000 Asia/Taipei"
     assert text == "RuntimeError: D1 token rejected"
     # No address is set, so no mail goes out.
     assert alerts["mail"] == []
@@ -157,7 +157,7 @@ def test_a_failed_build_alerts_in_the_output_language(
     runner.invoke(app, ["run", "--if-due", *_paths(tmp_path)])
 
     [(_webhook, subject, text)] = alerts["discord"]
-    assert subject == "精選無法啟動：9/19 20:05 Asia/Taipei"
+    assert subject == "精選無法啟動：9/19 2000 Asia/Taipei"
     assert text == "RuntimeError: D1 token rejected"
 
 

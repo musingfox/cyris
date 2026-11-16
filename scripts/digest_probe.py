@@ -58,7 +58,7 @@ from cyris.i18n import translator
 
 DATE = "2026-01-02"
 PERIOD = "morning"
-# The minute each fixture issue's run started, which names it on every page.
+# When each fixture issue's run started; its hour names it on every page.
 STARTED = datetime(2026, 1, 2, 8, 5, tzinfo=timezone(timedelta(hours=8)))
 EARLIER = ("2026-01-01", "evening")
 PAGE = f"/{HtmlDigestWriter.digest_filename(DATE, PERIOD)}"
