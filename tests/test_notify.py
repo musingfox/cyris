@@ -2,6 +2,8 @@
 
 import json
 import logging
+from dataclasses import replace
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -24,6 +26,7 @@ from cyris.domain.models import (
     DigestSection,
     UsageStats,
 )
+from cyris.service_layer.alerts import RunAlert
 
 pytestmark = pytest.mark.unit
 
@@ -852,6 +855,17 @@ def _warning_records(caplog):
     ]
 
 
+_ALERT = RunAlert(
+    kind="run_failed",
+    period="morning",
+    started_at=datetime(2026, 11, 16, 0, 5, tzinfo=UTC),
+    timezone="Asia/Taipei",
+    language="en",
+    error="B",
+)
+_SUBJECT = "Digest run failed: morning, 2026-11-16 08:05 Asia/Taipei"
+
+
 class TestSendDiscordAlert:
     async def test_posts_plain_content(self, monkeypatch):
         requests: list[httpx.Request] = []
@@ -863,11 +877,28 @@ class TestSendDiscordAlert:
         _discord_transport(monkeypatch, handler)
         webhook = "https://discord.com/api/webhooks/123/s3cr3t-token"
 
-        await send_discord_alert(webhook, "S", "B")
+        await send_discord_alert(webhook, _ALERT)
 
         assert len(requests) == 1
         assert str(requests[0].url) == webhook
-        assert json.loads(requests[0].content) == {"content": "S\nB"}
+        assert json.loads(requests[0].content) == {"content": f"{_SUBJECT}\nB"}
+
+    async def test_words_the_alert_in_its_language(self, monkeypatch):
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(204)
+
+        _discord_transport(monkeypatch, handler)
+        alert = replace(_ALERT, kind="fetched_nothing", language="zh-Hant", sources=("Feed",))
+
+        await send_discord_alert("https://discord.com/api/webhooks/123/s3cr3t-token", alert)
+
+        assert json.loads(requests[0].content) == {
+            "content": "精選執行沒有抓到文章: morning, 2026-11-16 08:05 Asia/Taipei\n"
+            "失敗的來源：Feed"
+        }
 
     async def test_truncates_content_to_discord_limit(self, monkeypatch):
         requests: list[httpx.Request] = []
@@ -879,11 +910,13 @@ class TestSendDiscordAlert:
         _discord_transport(monkeypatch, handler)
         text = "x" * 2500
 
-        await send_discord_alert("https://discord.com/api/webhooks/123/s3cr3t-token", "S", text)
+        await send_discord_alert(
+            "https://discord.com/api/webhooks/123/s3cr3t-token", replace(_ALERT, error=text)
+        )
 
         assert len(requests) == 1
         content = json.loads(requests[0].content)["content"]
-        assert content == ("S\n" + text)[:2000]
+        assert content == (f"{_SUBJECT}\n" + text)[:2000]
         assert len(content) == 2000
 
     async def test_empty_webhook_posts_nothing(self, monkeypatch):
@@ -895,7 +928,7 @@ class TestSendDiscordAlert:
 
         _discord_transport(monkeypatch, handler)
 
-        await send_discord_alert("", "S", "B")
+        await send_discord_alert("", _ALERT)
 
         assert requests == []
 
@@ -910,7 +943,7 @@ class TestSendDiscordAlert:
 
         with caplog.at_level(logging.WARNING, logger="cyris.adapters.notify"):
             result = await send_discord_alert(
-                "https://discord.com/api/webhooks/123/s3cr3t-token", "S", "B"
+                "https://discord.com/api/webhooks/123/s3cr3t-token", _ALERT
             )
 
         assert result is None
@@ -928,7 +961,7 @@ class TestSendDiscordAlert:
 
         with caplog.at_level(logging.WARNING, logger="cyris.adapters.notify"):
             result = await send_discord_alert(
-                "https://discord.com/api/webhooks/123/s3cr3t-token", "S", "B"
+                "https://discord.com/api/webhooks/123/s3cr3t-token", _ALERT
             )
 
         assert result is None
@@ -953,7 +986,9 @@ class TestDiscordAlertRedaction:
 
         _discord_transport(monkeypatch, handler)
 
-        await send_discord_alert("https://discord.com/api/webhooks/123/s3cr3t-token", "S", _LEAK)
+        await send_discord_alert(
+            "https://discord.com/api/webhooks/123/s3cr3t-token", replace(_ALERT, error=_LEAK)
+        )
 
         assert len(requests) == 1
         body = requests[0].content.decode()
@@ -969,7 +1004,9 @@ class TestDiscordAlertRedaction:
 
         _discord_transport(monkeypatch, handler)
 
-        await send_discord_alert("https://discord.com/api/webhooks/123/s3cr3t-token", _LEAK, "B")
+        await send_discord_alert(
+            "https://discord.com/api/webhooks/123/s3cr3t-token", replace(_ALERT, period=_LEAK)
+        )
 
         assert len(requests) == 1
         body = requests[0].content.decode()
@@ -986,7 +1023,7 @@ class TestDiscordAlertRedaction:
         _discord_transport(monkeypatch, handler)
 
         with caplog.at_level(logging.WARNING, logger="cyris.adapters.notify"):
-            await send_discord_alert("https://discord.com/api/webhooks/999/s3cr3t-token", "S", "B")
+            await send_discord_alert("https://discord.com/api/webhooks/999/s3cr3t-token", _ALERT)
 
         assert len(requests) == 1
         assert "404" in caplog.text

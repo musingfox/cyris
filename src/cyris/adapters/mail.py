@@ -15,10 +15,12 @@ from cyris.adapters.cloudflare import API_ROOT, TIMEOUT_SECONDS
 from cyris.adapters.notify import period_label, redact_webhook_tokens
 from cyris.adapters.output.email_digest import raw_page_url, render_digest_email
 from cyris.adapters.output.html_digest import Story, citation_links
+from cyris.adapters.run_alert import alert_message
 from cyris.domain.area_layout import AreaSection
 from cyris.domain.layers import Sand, layer_by_lane
 from cyris.domain.models import DigestContent, DigestItem, DigestSection, NewsParagraph
 from cyris.i18n import ENGLISH, translator
+from cyris.service_layer.alerts import RunAlert
 
 logger = logging.getLogger(__name__)
 
@@ -196,19 +198,20 @@ async def send_digest_mail(
 async def send_alert_mail(
     recipient: str,
     sender: str,
-    subject: str,
-    text: str,
+    alert: RunAlert,
     *,
     account_id: str,
     token: str,
 ) -> None:
-    """Mail a plain-text failure alert. Does nothing without a recipient.
+    """Mail a plain-text failure alert, worded in its language. Does nothing without a recipient.
 
-    Failures are logged, not raised, as `send_discord_alert` does: a lost
-    message must not mask the run exception that triggered it.
+    A failed send is logged, not raised, as `send_discord_alert` does: a lost
+    message must not mask the run exception that triggered it. Wording that fails
+    raises to `send_alert`, whose per-channel guard logs it.
     """
     if not recipient:
         return
+    subject, text = alert_message(alert)
     subject = redact_webhook_tokens(subject)
     text = redact_webhook_tokens(text)
     try:

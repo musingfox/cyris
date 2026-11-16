@@ -134,6 +134,8 @@ def _alert_could_not_start(cfg, error: Exception) -> None:
     """
     from cyris import bootstrap
     from cyris.adapters import notify
+    from cyris.i18n import ENGLISH
+    from cyris.service_layer.alerts import RunAlert
     from cyris.service_layer.run_digest import failure_alert_text, send_alert
     from cyris.service_layer.schedule import due_period
     from cyris.utils.timezone import now_in_timezone
@@ -144,14 +146,22 @@ def _alert_could_not_start(cfg, error: Exception) -> None:
         period = due_period(now, cfg.app.general.digest_schedule)
         if period is None:
             return
-        subject = f"Digest run could not start: {period}, {now:%Y-%m-%d %H:%M} {tz}"
+        # A `digest` table missing any of its settings is None, and the alert is in English.
+        digest = cfg.app.digest
+        alert = RunAlert(
+            kind="could_not_start",
+            period=period,
+            started_at=now,
+            timezone=tz,
+            language=digest.output_language if digest is not None else ENGLISH,
+            error=failure_alert_text(error),
+        )
         asyncio.run(
             send_alert(
                 cfg.app.notify,
                 notify.send_discord_alert,
                 bootstrap.build_send_email_alert(),
-                subject,
-                failure_alert_text(error),
+                alert,
             )
         )
     except Exception as e:

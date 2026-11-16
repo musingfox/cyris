@@ -6,6 +6,7 @@ import re
 import httpx
 
 from cyris.adapters.output.html_digest import Story, citation_links
+from cyris.adapters.run_alert import alert_message
 from cyris.domain.area_layout import AreaSection
 from cyris.domain.layers import Pebble, Sand, layer_by_lane
 from cyris.domain.models import (
@@ -16,6 +17,7 @@ from cyris.domain.models import (
     NewsParagraph,
 )
 from cyris.i18n import Translator, translator
+from cyris.service_layer.alerts import RunAlert
 from cyris.service_layer.schedule import PERIOD_ORDER
 
 logger = logging.getLogger(__name__)
@@ -428,15 +430,17 @@ def _discord_message(resp: httpx.Response) -> str:
     return redact_webhook_tokens(str(message or resp.text)[:500])
 
 
-async def send_discord_alert(webhook_url: str, subject: str, text: str) -> None:
-    """Post a plain failure alert. Does nothing without a webhook.
+async def send_discord_alert(webhook_url: str, alert: RunAlert) -> None:
+    """Post a plain failure alert, worded in its language. Does nothing without a webhook.
 
-    Failures are logged, not raised: the alert must not mask the run exception
-    that triggered it. There is no digest behind this message.
+    A failed post is logged, not raised: the alert must not mask the run exception
+    that triggered it. Wording that fails raises to `send_alert`, whose per-channel
+    guard logs it. There is no digest behind this message.
     """
     if not webhook_url:
         return
 
+    subject, text = alert_message(alert)
     subject = redact_webhook_tokens(subject)
     text = redact_webhook_tokens(text)
     content = f"{subject}\n{text}"[:_DISCORD_CONTENT_MAX]

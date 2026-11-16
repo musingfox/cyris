@@ -2,6 +2,8 @@
 
 import json
 import logging
+from dataclasses import replace
+from datetime import UTC, datetime
 
 import httpx
 import pytest
@@ -10,6 +12,7 @@ from layered_issue import UNNAMED_SOURCES, four_layer_issue
 
 from cyris.adapters.mail import build_digest_mail, send_alert_mail, send_digest_mail, send_mail
 from cyris.domain.models import DigestContent
+from cyris.service_layer.alerts import RunAlert
 
 pytestmark = pytest.mark.unit
 
@@ -354,6 +357,16 @@ class TestDigestMailText:
         assert (self.DEGRADED in sent["text"]) is degraded
 
 
+_ALERT = RunAlert(
+    kind="run_failed",
+    period="evening",
+    started_at=datetime(2026, 11, 16, 12, 5, tzinfo=UTC),
+    timezone="Asia/Taipei",
+    language="en",
+    error="B",
+)
+
+
 class TestAlertMail:
     @respx.mock
     async def test_posts_plain_text_without_html(self):
@@ -364,8 +377,7 @@ class TestAlertMail:
         await send_alert_mail(
             "me@example.org",
             "digest@example.org",
-            "S",
-            "B",
+            _ALERT,
             account_id=ACCOUNT,
             token="tok",
         )
@@ -375,13 +387,36 @@ class TestAlertMail:
         assert json.loads(route.calls.last.request.content) == {
             "to": "me@example.org",
             "from": "digest@example.org",
-            "subject": "S",
+            "subject": "Digest run failed: evening, 2026-11-16 20:05 Asia/Taipei",
             "text": "B",
         }
 
     @respx.mock
+    async def test_words_the_alert_in_its_language(self):
+        route = respx.post(SEND_URL).mock(
+            return_value=httpx.Response(200, json=_result(delivered=["me@example.org"]))
+        )
+        alert = replace(
+            _ALERT,
+            kind="vote_similarity_rejected",
+            language="zh-Hant",
+            status="401",
+            detail="Unauthorized",
+        )
+
+        await send_alert_mail(
+            "me@example.org", "digest@example.org", alert, account_id=ACCOUNT, token="tok"
+        )
+
+        assert route.call_count == 1
+        sent = json.loads(route.calls.last.request.content)
+        assert sent["subject"] == "投票相似度沒有執行: evening, 2026-11-16 20:05 Asia/Taipei"
+        assert "這份精選" in sent["text"]
+        assert "HTTP 401 Unauthorized" in sent["text"]
+
+    @respx.mock
     async def test_empty_recipient_sends_nothing(self):
-        await send_alert_mail("", "digest@example.org", "S", "B", account_id=ACCOUNT, token="tok")
+        await send_alert_mail("", "digest@example.org", _ALERT, account_id=ACCOUNT, token="tok")
 
         assert respx.calls.call_count == 0
 
@@ -398,8 +433,7 @@ class TestAlertMail:
             result = await send_alert_mail(
                 "me@example.org",
                 "digest@example.org",
-                "S",
-                "B",
+                _ALERT,
                 account_id=ACCOUNT,
                 token="tok-secret",
             )
@@ -423,8 +457,7 @@ class TestAlertMail:
         await send_alert_mail(
             "me@example.org",
             "digest@example.org",
-            leak,
-            leak,
+            replace(_ALERT, period=leak, error=leak),
             account_id=ACCOUNT,
             token="tok",
         )

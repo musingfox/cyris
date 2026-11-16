@@ -1,4 +1,13 @@
 {
+  "alert.could_not_start_headline": {"text": "精選無法開始執行", "source": "Digest run could not start"},
+  "alert.fetched_nothing_body": {"text": "失敗的來源：{$sources}", "source": "Failed sources: {$sources}"},
+  "alert.fetched_nothing_headline": {"text": "精選執行沒有抓到文章", "source": "Digest run fetched nothing"},
+  "alert.run_failed_headline": {"text": "精選執行失敗", "source": "Digest run failed"},
+  "alert.vote_similarity_body": {
+    "text": "這一期沒有執行投票相似度，所以讀者的投票對這份精選沒有作用。精選已直接發布，沒有經過過濾。嵌入 API 拒絕了請求：HTTP {$status} {$detail}。在嵌入金鑰或其權限修好之前，每次執行都會再發出這則警示。",
+    "source": "Vote similarity did not run this period, so reader votes had no effect on this digest. The digest was published unfiltered. The embedding API refused the request: HTTP {$status} {$detail}. This repeats every run until the embedding key or its permissions are fixed."
+  },
+  "alert.vote_similarity_headline": {"text": "投票相似度沒有執行", "source": "Vote similarity did not run"},
   "email.read_online": {"text": "線上閱讀", "source": "Read online"},
   "error.no_settings_store": {
     "text": "這個部署沒有可寫入的設定儲存區",

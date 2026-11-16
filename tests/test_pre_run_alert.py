@@ -13,8 +13,10 @@ import pytest
 from fakes import SqliteD1, seed_d1_settings
 from typer.testing import CliRunner
 
+from cyris.adapters.run_alert import alert_message
 from cyris.domain.models import SourceConfig
 from cyris.entrypoints.cli import app
+from cyris.service_layer.alerts import RunAlert
 
 pytestmark = pytest.mark.integration
 
@@ -27,11 +29,11 @@ WEBHOOK = "https://discord.com/api/webhooks/1/tok"
 def alerts(monkeypatch: pytest.MonkeyPatch) -> dict[str, list[tuple]]:
     sent: dict[str, list[tuple]] = {"discord": [], "mail": []}
 
-    async def discord(webhook_url: str, subject: str, text: str) -> None:
-        sent["discord"].append((webhook_url, subject, text))
+    async def discord(webhook_url: str, alert: RunAlert) -> None:
+        sent["discord"].append((webhook_url, *alert_message(alert)))
 
-    async def mail(to: str, sender: str, subject: str, text: str) -> None:
-        sent["mail"].append((to, sender, subject, text))
+    async def mail(to: str, sender: str, alert: RunAlert) -> None:
+        sent["mail"].append((to, sender, *alert_message(alert)))
 
     monkeypatch.setattr("cyris.adapters.notify.send_discord_alert", discord)
     monkeypatch.setattr("cyris.bootstrap.build_send_email_alert", lambda: mail)
@@ -140,6 +142,23 @@ def test_a_failed_build_on_a_digest_hour_alerts(
     assert text == "RuntimeError: D1 token rejected"
     # No address is set, so no mail goes out.
     assert alerts["mail"] == []
+
+
+def test_a_failed_build_alerts_in_the_output_language(
+    tmp_path: Path, d1: SqliteD1, alerts, monkeypatch
+) -> None:
+    seed_d1_settings(
+        d1, **{"notify.discord_webhook_url": WEBHOOK, "digest.output_language": "zh-Hant"}
+    )
+    _one_source(d1)
+    _at_hour(monkeypatch, 20)
+    _failing_build_deps(monkeypatch)
+
+    runner.invoke(app, ["run", "--if-due", *_paths(tmp_path)])
+
+    [(_webhook, subject, text)] = alerts["discord"]
+    assert subject == "精選無法開始執行: evening, 2026-09-19 20:05 Asia/Taipei"
+    assert text == "RuntimeError: D1 token rejected"
 
 
 def test_a_run_started_by_hand_alerts_nobody(
