@@ -229,3 +229,12 @@ def test_a_translation_places_the_markup_where_its_language_puts_it(locales) -> 
     html = i18n.translator("zh-Hant")("a.run", elements={"code": ("code", {"class": "data"})})
 
     assert html == '先執行 <code class="data">cyris run</code>。'
+
+
+def test_a_value_forging_the_markup_placeholder_stays_inert_text(locales) -> None:
+    locales({"en": {"a.link": "{#link}{$title}{/link}"}})
+    forged = "x\ue000close:link\ue001<b>\ue000open:link\ue001y"
+
+    html = i18n.translator("en")("a.link", title=forged, elements={"link": ("a", {"href": "/"})})
+
+    assert html == '<a href="/">xclose:link&lt;b&gt;open:linky</a>'

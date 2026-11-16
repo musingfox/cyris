@@ -28,7 +28,9 @@ ENGLISH = "en"
 # as `{"link": ("a", {"href": url})}` for `{#link}…{/link}`. The catalog never holds HTML.
 Elements = Mapping[str, tuple[str, Mapping[str, str]]]
 # Markup stands in the formatted text as private-use characters, which escaping leaves alone.
-_PLACEHOLDER = re.compile("(open|close|standalone):([^]*)")
+# Only markup may write them: they are removed from the catalog text and from every value.
+_PLACEHOLDER = re.compile("\ue000(open|close|standalone):([^\ue001]*)\ue001")
+_DELIMITERS = str.maketrans("", "", "\ue000\ue001")
 
 
 @dataclass(frozen=True)
@@ -105,7 +107,7 @@ def accept_language(header: str) -> str | None:
 
 
 def _placeholder(kind: str, name: str, options: Mapping[str, object]) -> str:
-    return f"{kind}:{name}"
+    return f"\ue000{kind}:{name}\ue001"
 
 
 def _element(elements: Elements, kind: str, name: str) -> str:
@@ -118,7 +120,7 @@ def _element(elements: Elements, kind: str, name: str) -> str:
 @functools.cache
 def _message(tag: str, key: str) -> Message | None:
     text = catalogs()[tag].texts.get(key)
-    return None if text is None else Message(text)
+    return None if text is None else Message(text.translate(_DELIMITERS))
 
 
 class Translator:
@@ -141,7 +143,11 @@ class Translator:
         message, locale = _message(source, key), catalogs()[source].locale
         if elements is None:
             return message.format(variables, locale, bidi_isolation=False)
-        text = message.format(variables, locale, markup=_placeholder, bidi_isolation=False)
+        inert = {
+            name: value.translate(_DELIMITERS) if isinstance(value, str) else value
+            for name, value in variables.items()
+        }
+        text = message.format(inert, locale, markup=_placeholder, bidi_isolation=False)
         return Markup(
             _PLACEHOLDER.sub(lambda span: _element(elements, span[1], span[2]), str(escape(text)))
         )
