@@ -1584,6 +1584,7 @@ on main after the change lands, citing the hash it landed as.
 | 2026-11-12 | `96d3b277` | §5 provider defaults: `anthropic` is `claude-haiku-5-5`, `gemini` is `gemini-3.5-flash-lite` and `openai` is `gpt-6-luna`, each the provider's cheapest current tier, chosen from the providers' docs rather than the Lm evaluation; `workers_ai` and `ai_gateway` are unchanged. |
 | 2026-11-12 | `c0ceef13` | §3.2: the filter prompt has the model name each article's subject before it places the article in a topic; the `subject` field is not stored, and the vault's `topic-assignment-eval` chose it over the old prompt and over granularity examples. |
 | 2026-11-13 | `8a699e76`..`d024a27e` | §3.2: the filter and summarize prompts share opening and output-language rules (subject first, no page notes, names in the article's spelling, everything else in the output language), and the summarize call also returns a translated headline per article that the pebble card shows, display only, with the source's title as the fallback. |
+| 2026-11-16 | `e7dca353` | §5 grades the UI catalogs A: `src/cyris/locales/<tag>.json` words the UI in the output language (an issue's stored one on its own pages, the current setting elsewhere, `Accept-Language` until one is saved), matched by CLDR Language Matching and formatted as MessageFormat 2 (ADR-0027); the container serves a page script's messages as one revalidated `/static/i18n/<tag>.json` per catalog. Five strings are worded from it so far. |
 
 ## 8. Where the core never changes
 
