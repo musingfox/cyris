@@ -14,6 +14,9 @@
   "lane.skim": "skim",
   "period.evening": "Evening",
   "period.morning": "Morning",
+  "polarity.down": "down",
+  "polarity.mixed": "mixed",
+  "polarity.up": "up",
   "settings.checking_discord": "Checking with Discord…",
   "site.settings": "Settings"
 }

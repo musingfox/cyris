@@ -12,7 +12,7 @@ import asyncio
 import json
 import re
 from pathlib import Path
-from typing import get_args
+from typing import get_args, get_type_hints
 
 import jinja2
 import jinja2.nodes
@@ -29,6 +29,7 @@ from messageformat2.datamodel import (
 
 import cyris
 from cyris.domain.areas import AreaStatus
+from cyris.domain.interest_graph import InterestNode
 from cyris.domain.models import ArticleState, Lane
 from cyris.entrypoints.triage_server import (
     BROWSER_MESSAGES,
@@ -54,6 +55,7 @@ FAMILIES: dict[str, tuple[str, ...]] = {
     "article_state.": tuple(map(str, ArticleState)),
     "lane.": tuple(map(str, Lane)),
     "area_status.": get_args(AreaStatus),
+    "polarity.": get_args(get_type_hints(InterestNode)["polarity"]),
 }
 RENDERERS = {
     "settings.html.j2": render_settings_page,
