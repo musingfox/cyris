@@ -410,8 +410,8 @@ class TestAlertMail:
 
         assert route.call_count == 1
         sent = json.loads(route.calls.last.request.content)
-        assert sent["subject"] == "投票相似度沒有執行: evening, 2026-11-16 20:05 Asia/Taipei"
-        assert "這份精選" in sent["text"]
+        assert sent["subject"] == "投票相似度未執行: evening, 2026-11-16 20:05 Asia/Taipei"
+        assert "讀者的投票沒有作用" in sent["text"]
         assert "HTTP 401 Unauthorized" in sent["text"]
 
     @respx.mock

@@ -157,7 +157,7 @@ def test_a_failed_build_alerts_in_the_output_language(
     runner.invoke(app, ["run", "--if-due", *_paths(tmp_path)])
 
     [(_webhook, subject, text)] = alerts["discord"]
-    assert subject == "精選無法開始執行: evening, 2026-09-19 20:05 Asia/Taipei"
+    assert subject == "精選無法啟動: evening, 2026-09-19 20:05 Asia/Taipei"
     assert text == "RuntimeError: D1 token rejected"
 
 

@@ -2258,7 +2258,7 @@ async def test_a_raised_run_is_headed_in_the_output_language(tmp_path: Path) -> 
         await run_digest(deps, RunOptions())
 
     [(_, subject, text)] = discord_calls
-    assert re.match(r"^精選執行失敗: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$", subject)
+    assert re.match(r"^精選產生失敗: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$", subject)
     assert text == "RuntimeError: the store is gone"
     assert mail_calls[0][2:] == (subject, text)
 
@@ -2478,9 +2478,9 @@ async def test_a_run_that_fetched_nothing_is_worded_in_the_output_language(
 
     [(_, subject, text)] = discord_calls
     assert re.match(
-        r"^精選執行沒有抓到文章: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$", subject
+        r"^精選沒抓到任何文章: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$", subject
     )
-    assert text == "失敗的來源：BrokenSource, OtherBrokenSource"
+    assert text == "抓取失敗的來源：BrokenSource, OtherBrokenSource"
     assert mail_calls[0][2:] == (subject, text)
 
 
@@ -3172,12 +3172,12 @@ async def test_a_rejected_embedding_key_warns_in_the_output_language(tmp_path: P
 
     [(_, subject, text)] = discord_calls
     assert re.match(
-        r"^投票相似度沒有執行: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$", subject
+        r"^投票相似度未執行: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$", subject
     )
     assert text == (
-        "這一期沒有執行投票相似度，所以讀者的投票對這份精選沒有作用。精選已直接發布，"
-        "沒有經過過濾。嵌入 API 拒絕了請求：HTTP 403 Forbidden。在嵌入金鑰或其權限修好之前，"
-        "每次執行都會再發出這則警示。"
+        "本期未執行投票相似度，讀者的投票沒有作用，精選未經過濾就直接發布。嵌入 API "
+        "拒絕了請求：HTTP 403 Forbidden。在嵌入金鑰或其權限修好之前，每次產生精選都會"
+        "再發生。"
     )
     assert mail_calls[0][2:] == (subject, text)
 

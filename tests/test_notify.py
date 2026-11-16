@@ -896,8 +896,8 @@ class TestSendDiscordAlert:
         await send_discord_alert("https://discord.com/api/webhooks/123/s3cr3t-token", alert)
 
         assert json.loads(requests[0].content) == {
-            "content": "精選執行沒有抓到文章: morning, 2026-11-16 08:05 Asia/Taipei\n"
-            "失敗的來源：Feed"
+            "content": "精選沒抓到任何文章: morning, 2026-11-16 08:05 Asia/Taipei\n"
+            "抓取失敗的來源：Feed"
         }
 
     async def test_truncates_content_to_discord_limit(self, monkeypatch):
