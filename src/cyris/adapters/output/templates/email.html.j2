@@ -1,6 +1,6 @@
 {#- One issue as a mail body. Every colour arrives by value through `c`, and the
     palette macro is rendered twice: light as the default, the page's own dark
-    tokens under prefers-color-scheme. Layout rules take `t`, the same tokens. -#}
+    tokens under prefers-color-scheme. Layout rules take `tok`, the same tokens. -#}
 {% macro palette(c) -%}
         body, .body { background: {{ c['bg'] }}; color: {{ c['text'] }}; }
         .brand, .section-tag, .meta, .idx, .footer { color: {{ c['text-dim'] }}; }
@@ -41,7 +41,7 @@
 {% endfor %}
 {%- endmacro -%}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ ui_lang }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -52,37 +52,37 @@
     <style>
         :root { color-scheme: light dark; supported-color-schemes: light dark; }
         body, .body { margin: 0; padding: 0; -webkit-text-size-adjust: 100%; }
-        .wrap { max-width: {{ t['measure'] }}; margin: 0 auto; padding: {{ t['s-8'] }} {{ t['s-4'] }} {{ t['s-12'] }}; font-family: {{ t['font-sans'] }}; }
+        .wrap { max-width: {{ tok['measure'] }}; margin: 0 auto; padding: {{ tok['s-8'] }} {{ tok['s-4'] }} {{ tok['s-12'] }}; font-family: {{ tok['font-sans'] }}; }
         .preheader { display: none; max-height: 0; overflow: hidden; mso-hide: all; font-size: 1px; line-height: 1px; opacity: 0; }
-        .brand, .section-tag, .meta, .btn, .idx { font-family: {{ t['font-mono'] }}; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
-        .brand { margin: 0 0 {{ t['s-5'] }}; }
-        .mark { display: inline-block; width: 12px; height: 12px; vertical-align: -1px; margin-right: {{ t['s-3'] }}; }
-        .issue-title { font-family: {{ t['font-serif'] }}; font-weight: 400; font-size: 56px; line-height: .92; letter-spacing: -.04em; margin: 0 0 {{ t['s-5'] }}; }
+        .brand, .section-tag, .meta, .btn, .idx { font-family: {{ tok['font-mono'] }}; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
+        .brand { margin: 0 0 {{ tok['s-5'] }}; }
+        .mark { display: inline-block; width: 12px; height: 12px; vertical-align: -1px; margin-right: {{ tok['s-3'] }}; }
+        .issue-title { font-family: {{ tok['font-serif'] }}; font-weight: 400; font-size: 56px; line-height: .92; letter-spacing: -.04em; margin: 0 0 {{ tok['s-5'] }}; }
         .issue-title em { font-style: italic; }
-        .stats { font-family: {{ t['font-mono'] }}; font-size: 14px; font-variant-numeric: tabular-nums; margin: 0 0 {{ t['s-6'] }}; }
+        .stats { font-family: {{ tok['font-mono'] }}; font-size: 14px; font-variant-numeric: tabular-nums; margin: 0 0 {{ tok['s-6'] }}; }
         .stats b { font-weight: 500; }
-        .actions { margin: 0 0 {{ t['s-12'] }}; }
-        .btn { display: inline-block; padding: {{ t['s-3'] }} {{ t['s-5'] }}; line-height: 18px; border: 1px solid; border-radius: {{ t['r-control'] }}; text-decoration: none; margin: 0 {{ t['s-2'] }} {{ t['s-2'] }} 0; }
-        .notice { padding: {{ t['s-2'] }} {{ t['s-3'] }}; border-left: 2px solid; font-size: 14px; line-height: 1.5; margin: 0 0 {{ t['s-12'] }}; }
-        .section { margin: 0 0 {{ t['s-12'] }}; }
-        .section-tag { margin: 0 0 {{ t['s-5'] }}; }
-        .rule { display: inline-block; width: 24px; height: 1px; vertical-align: middle; margin-right: {{ t['s-3'] }}; }
-        .lead { padding: {{ t['s-6'] }}; border: 1px solid; }
-        .pill { display: inline-block; padding: 2px 10px; border: 1px solid; border-radius: {{ t['r-tag'] }}; font-family: {{ t['font-mono'] }}; font-size: 12px; letter-spacing: .04em; margin: 0 0 {{ t['s-3'] }}; }
-        .lead-title { font-size: 24px; font-weight: 600; line-height: 1.3; letter-spacing: -.015em; margin: 0 0 {{ t['s-3'] }}; }
-        .title { font-size: 18px; font-weight: 600; line-height: 1.3; margin: 0 0 {{ t['s-2'] }}; }
+        .actions { margin: 0 0 {{ tok['s-12'] }}; }
+        .btn { display: inline-block; padding: {{ tok['s-3'] }} {{ tok['s-5'] }}; line-height: 18px; border: 1px solid; border-radius: {{ tok['r-control'] }}; text-decoration: none; margin: 0 {{ tok['s-2'] }} {{ tok['s-2'] }} 0; }
+        .notice { padding: {{ tok['s-2'] }} {{ tok['s-3'] }}; border-left: 2px solid; font-size: 14px; line-height: 1.5; margin: 0 0 {{ tok['s-12'] }}; }
+        .section { margin: 0 0 {{ tok['s-12'] }}; }
+        .section-tag { margin: 0 0 {{ tok['s-5'] }}; }
+        .rule { display: inline-block; width: 24px; height: 1px; vertical-align: middle; margin-right: {{ tok['s-3'] }}; }
+        .lead { padding: {{ tok['s-6'] }}; border: 1px solid; }
+        .pill { display: inline-block; padding: 2px 10px; border: 1px solid; border-radius: {{ tok['r-tag'] }}; font-family: {{ tok['font-mono'] }}; font-size: 12px; letter-spacing: .04em; margin: 0 0 {{ tok['s-3'] }}; }
+        .lead-title { font-size: 24px; font-weight: 600; line-height: 1.3; letter-spacing: -.015em; margin: 0 0 {{ tok['s-3'] }}; }
+        .title { font-size: 18px; font-weight: 600; line-height: 1.3; margin: 0 0 {{ tok['s-2'] }}; }
         .title a, .lead-title a, .wire a { text-decoration: none; }
-        .summary { font-size: 18px; line-height: 1.65; margin: 0 0 {{ t['s-3'] }}; }
-        .desc { font-size: 14px; line-height: 1.5; margin: 0 0 {{ t['s-3'] }}; }
+        .summary { font-size: 18px; line-height: 1.65; margin: 0 0 {{ tok['s-3'] }}; }
+        .desc { font-size: 14px; line-height: 1.5; margin: 0 0 {{ tok['s-3'] }}; }
         .meta { margin: 0; line-height: 1.6; }
         .desc a, .meta a, .footer a { text-decoration: underline; }
-        .item { padding: {{ t['s-5'] }} 0; border-top: 1px solid; }
-        .member { margin: {{ t['s-3'] }} 0 0; }
+        .item { padding: {{ tok['s-5'] }} 0; border-top: 1px solid; }
+        .member { margin: {{ tok['s-3'] }} 0 0; }
         .wire { list-style: none; margin: 0; padding: 0; }
-        .wire li { padding: {{ t['s-3'] }} 0; border-top: 1px solid; font-size: 16px; line-height: 1.5; }
-        .wire .summary { font-size: 14px; line-height: 1.5; margin: {{ t['s-1'] }} 0 0; overflow-wrap: anywhere; }
-        .idx { margin-right: {{ t['s-3'] }}; }
-        .footer { margin: {{ t['s-12'] }} 0 0; padding: {{ t['s-5'] }} 0 0; border-top: 1px solid; font-family: {{ t['font-mono'] }}; font-size: 12px; line-height: 1.8; }
+        .wire li { padding: {{ tok['s-3'] }} 0; border-top: 1px solid; font-size: 16px; line-height: 1.5; }
+        .wire .summary { font-size: 14px; line-height: 1.5; margin: {{ tok['s-1'] }} 0 0; overflow-wrap: anywhere; }
+        .idx { margin-right: {{ tok['s-3'] }}; }
+        .footer { margin: {{ tok['s-12'] }} 0 0; padding: {{ tok['s-5'] }} 0 0; border-top: 1px solid; font-family: {{ tok['font-mono'] }}; font-size: 12px; line-height: 1.8; }
 {{ palette(light) }}
         @media (prefers-color-scheme: dark) {
 {{ palette(dark) }}
@@ -96,7 +96,7 @@
         <h1 class="issue-title">Signal<em>/</em>Noise</h1>
         <p class="stats">{{ content.sources_processed }} sources · {{ content.articles_received }} received · <b>{{ content.articles_included }} included</b></p>
         {% if digest_url %}
-        <p class="actions"><a class="btn primary" href="{{ digest_url }}">Read online</a>{% if raw_url %}<a class="btn secondary" href="{{ raw_url }}">All articles</a>{% endif %}</p>
+        <p class="actions"><a class="btn primary" href="{{ digest_url }}">{{ t("email.read_online") }}</a>{% if raw_url %}<a class="btn secondary" href="{{ raw_url }}">All articles</a>{% endif %}</p>
         {% elif publish_failed %}
         <p class="notice">Publishing the online edition failed, so this issue has no page to open.</p>
         {% endif %}

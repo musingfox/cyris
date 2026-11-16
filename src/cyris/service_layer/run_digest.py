@@ -112,7 +112,9 @@ def _render_site(
     pages = {page: writer.render(content, raw_page=raw_page, degraded=degraded)}
     if collected:
         raw = "/" + writer.raw_filename(content.date, content.period)
-        pages[raw] = writer.render_raw(content.date, content.period, collected)
+        pages[raw] = writer.render_raw(
+            content.date, content.period, collected, content.output_language
+        )
     # The archive leads with this run's issue: its title and count come from memory.
     return _with_archive(deps, pages, lead=content)
 
@@ -156,7 +158,7 @@ def _raw_page_for(deps: "Deps", key: tuple[str, str], stored) -> tuple[bool, dic
             return False, {}
         writer = deps.html_writer
         path = "/" + writer.raw_filename(*key)
-        return True, {path: writer.render_raw(key[0], key[1], rows)}
+        return True, {path: writer.render_raw(*key, rows, stored.content.output_language)}
     except Exception as e:
         logger.error("Failed to rebuild the raw page for %s %s: %s", *key, e)
         return False, {}
@@ -918,7 +920,9 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             # already sees it and offers its All articles entry. Own try/except:
             # a broken raw page must not cost the digest its publish.
             try:
-                raw = deps.html_writer.write_raw(content.date, content.period, collected)
+                raw = deps.html_writer.write_raw(
+                    content.date, content.period, collected, content.output_language
+                )
                 progress(f"Raw page written to {raw}")
             except Exception as e:
                 logger.error("Failed to write raw HTML page: %s", e)

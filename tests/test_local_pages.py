@@ -68,6 +68,7 @@ def _write_archive(html_dir: Path) -> None:
                 first_seen_at=now,
             )
         ],
+        "en",
     )
     writer.write(content, raw_page=True)
 

@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ ui_lang }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark">
+  <meta name="i18n-catalog" content="{{ i18n_catalog }}">
   <title>Cyris Settings</title>
   <meta name="description" content="Settings for this Cyris deployment: model, digest, pipeline, notifications, sources and tracked topics.">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
@@ -492,7 +493,7 @@
     </div></td></tr>
   </template>
 
-<script src="/static/settings.js"></script>
+<script type="module" src="/static/settings.js"></script>
 {% include "_probe_script.html.j2" %}
 </body>
 </html>

@@ -33,7 +33,9 @@ def _article(i: int) -> Article:
     )
 
 
-async def _republish(tmp_path: Path, *, raw_page: bool, record, articles=(), store_cls=None):
+async def _republish(
+    tmp_path: Path, *, raw_page: bool, record, articles=(), store_cls=None, language=""
+):
     deps, _ = make_deps(tmp_path, FakeLLM("{}"), FakeSource([]))
     if store_cls is not None:
         deps = replace(deps, store=store_cls(SqliteD1()))
@@ -52,6 +54,7 @@ async def _republish(tmp_path: Path, *, raw_page: bool, record, articles=(), sto
             articles_received=2,
             articles_included=2,
             usage=UsageStats(),
+            output_language=language,
         ),
         raw_page=raw_page,
     )
@@ -89,6 +92,21 @@ async def test_a_raw_page_is_rebuilt_from_the_record_and_linked(tmp_path: Path) 
     assert b"Raw story 1" in pages[f"/{RAW.decode()}"]
     assert b"Raw story 2" in pages[f"/{RAW.decode()}"]
     assert RAW in pages[f"/{DATE}-{PERIOD}.html"]
+
+
+async def test_both_pages_of_a_zh_hant_issue_republish_in_its_language(tmp_path: Path) -> None:
+    articles = [_article(1)]
+    pages, _ = await _republish(
+        tmp_path,
+        raw_page=True,
+        record=[a.url for a in articles],
+        articles=articles,
+        language="zh-Hant",
+    )
+
+    for page in (pages[f"/{RAW.decode()}"], pages[f"/{DATE}-{PERIOD}.html"]):
+        assert b'<html lang="zh-Hant">' in page
+    assert b'<html lang="en">' in pages["/index.html"]
 
 
 async def test_no_record_means_no_raw_page_and_no_link(tmp_path: Path) -> None:

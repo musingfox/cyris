@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any, get_args
 
 from aiohttp import web
-from jinja2 import ChoiceLoader, Environment, FileSystemLoader, select_autoescape
 from pydantic import ValidationError
 
 from cyris.adapters.output import html_digest
@@ -23,6 +22,7 @@ from cyris.config import SETTINGS_FIELDS, STARTING_VALUES, DigestConfig
 from cyris.diagnostics.doctor import LLM_PROBE_TIMEOUT_SECONDS, probe_discord, probe_embedder
 from cyris.domain.areas import Area, AreaCatalog, is_unplaced_label, meets_birth_threshold
 from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, SourceConfig, TrackedTopic
+from cyris.i18n import ENGLISH, accept_language, browser_file, catalogs, resolve, translator
 from cyris.service_layer import area_llm
 
 logger = logging.getLogger(__name__)
@@ -52,6 +52,7 @@ NO_PAGES_WRITTEN = (
     "and run `cyris run --period morning`."
 )
 TYPE_SCALE_KEY = "digest.type_scale"
+OUTPUT_LANGUAGE_KEY = "digest.output_language"
 # The steps `DigestConfig.type_scale` allows; the app Worker's own list is `type_scale.js`'s.
 TYPE_SCALES = tuple(get_args(DigestConfig.model_fields["type_scale"].annotation))
 NEUTRAL_TYPE_SCALE = 1
@@ -141,35 +142,42 @@ TOPIC_REFUSALS = {
 }
 
 
-def _render_page(template: str, **context: object) -> str:
-    """Render one of this server's pages with the digest pages' own site bar.
+# Every catalog key a container page script formats, all pages' scripts together:
+# `tests/test_catalog_coverage.py` holds it equal to what those scripts call `t` with.
+BROWSER_MESSAGES: tuple[str, ...] = ("settings.checking_discord",)
+# One file per catalog, under `/static/` so the app Worker forwards it to this server,
+# which is what serves `/static/` in both editions. A page names its own in a meta tag;
+# the route registering this path is a literal, so the Worker's route table can read it.
+BROWSER_MESSAGES_URL = "/static/i18n/{tag}.json"
+
+
+def _render_page(template: str, language: str) -> str:
+    """Render one of this server's pages, worded in `language`, with the digest pages' site bar.
 
     The pages live outside `static/` so no unrendered copy is served, and the
-    loader also reads the digest templates, where the site bar partial is.
-    Autoescaping matches `HtmlDigestWriter`: these templates end in `.j2`.
+    environment also reads the digest templates, where the site bar partial is.
     """
-    env = Environment(
-        loader=ChoiceLoader(
-            [
-                FileSystemLoader(TEMPLATES_DIR),
-                FileSystemLoader(Path(html_digest.__file__).parent / "templates"),
-            ]
-        ),
-        autoescape=select_autoescape(["html", "xml"], default=True),
-    )
-    return env.get_template(template).render(**context)
+    env = html_digest.environment(language, TEMPLATES_DIR)
+    url = BROWSER_MESSAGES_URL.format(tag=env.globals["ui_lang"])
+    return env.get_template(template).render(i18n_catalog=url)
 
 
-def render_settings_page() -> str:
-    return _render_page("settings.html.j2")
+def _etag_matches(if_none_match: str, etag: str) -> bool:
+    """Whether an `If-None-Match` header names `etag`, by RFC 9110 §13.1.2's weak comparison."""
+    tags = {tag.strip() for tag in if_none_match.split(",")}
+    return "*" in tags or etag in tags or f"W/{etag}" in tags
 
 
-def render_labels_page() -> str:
-    return _render_page("labels.html.j2")
+def render_settings_page(language: str = ENGLISH) -> str:
+    return _render_page("settings.html.j2", language)
 
 
-def render_onboarding_page() -> str:
-    return _render_page("onboarding.html.j2")
+def render_labels_page(language: str = ENGLISH) -> str:
+    return _render_page("labels.html.j2", language)
+
+
+def render_onboarding_page(language: str = ENGLISH) -> str:
+    return _render_page("onboarding.html.j2", language)
 
 
 # The answers /labels takes; a skip is kept on the sample alone.
@@ -419,9 +427,11 @@ class TriageServer:
         # (either may be None). Behind the app Worker `POST /run` never reaches here: the
         # Worker answers it and starts its own run container.
         self._start_run = start_run
-        self._settings_page = render_settings_page()
-        self._labels_page = render_labels_page()
-        self._onboarding_page = render_onboarding_page()
+        # Rendered per request in the language `_ui_language` picks, so a saved language
+        # takes effect on the next request; each takes the catalog tag.
+        self._settings_page: Callable[[str], str] = render_settings_page
+        self._labels_page: Callable[[str], str] = render_labels_page
+        self._onboarding_page: Callable[[str], str] = render_onboarding_page
         self._app = web.Application(
             middlewares=[] if behind_app_worker else [_refuse_foreign_requests(host)]
         )
@@ -469,6 +479,9 @@ class TriageServer:
         # Production never reaches this: the app Worker sends /favicon.svg to Pages.
         # A local `cyris triage-ui` has no Pages behind it.
         self._app.router.add_get("/favicon.svg", self._handle_favicon)
+        # aiohttp tries the longest path prefix first and then registration order, so
+        # this route answers `/static/i18n/` and add_static never looks in STATIC_DIR for it.
+        self._app.router.add_get("/static/i18n/{tag}.json", self._handle_browser_messages)
         self._app.router.add_static("/static", STATIC_DIR)
         # A fixed path outranks these in aiohttp's resolver, so a page cannot take a route's path.
         self._app.router.add_get("/", self._handle_index)
@@ -567,12 +580,22 @@ class TriageServer:
             }
         )
 
+    def _ui_language(self, request: web.Request) -> str:
+        """The catalog this deployment's own pages and errors are worded from.
+
+        The saved `digest.output_language`; until one is saved, the browser's `Accept-Language`.
+        """
+        saved = self._values.get(OUTPUT_LANGUAGE_KEY)
+        if saved:
+            return resolve(saved)
+        return accept_language(request.headers.get("Accept-Language", "")) or ENGLISH
+
     async def _settings_body(self, request: web.Request) -> dict | web.Response:
         """The JSON object a settings write sent, or the response refusing it."""
         if self._settings is None:
+            t = translator(self._ui_language(request))
             return web.json_response(
-                {"ok": False, "error": "this deployment has no settings store to write"},
-                status=409,
+                {"ok": False, "error": t("error.no_settings_store")}, status=409
             )
         try:
             body = await request.json()
@@ -2048,7 +2071,7 @@ class TriageServer:
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
     async def _handle_labels_page(self, request: web.Request) -> web.Response:
-        return self._own_page(self._labels_page)
+        return self._own_page(self._labels_page(self._ui_language(request)))
 
     def _awaiting_onboarding(self) -> bool:
         """Whether this deployment is waiting for onboarding: a writable, empty source table.
@@ -2068,7 +2091,7 @@ class TriageServer:
         key, value = ONBOARDING_EXIT_MARK
         if self._awaiting_onboarding() and request.query.get(key) != value:
             raise web.HTTPFound(ONBOARDING_PATH)
-        return self._own_page(self._settings_page)
+        return self._own_page(self._settings_page(self._ui_language(request)))
 
     async def _handle_onboarding_page(self, request: web.Request) -> web.Response:
         """The wizard, on any deployment with a writable source table.
@@ -2079,7 +2102,7 @@ class TriageServer:
         """
         if self._source_store is None:
             raise web.HTTPFound("/settings")
-        return self._own_page(self._onboarding_page)
+        return self._own_page(self._onboarding_page(self._ui_language(request)))
 
     async def _handle_interest_page(self, request: web.Request) -> web.Response:
         """The interest map, drawn from D1 as it is now."""
@@ -2092,13 +2115,27 @@ class TriageServer:
                 status=409,
             )
         try:
-            page = render_interest_page(
-                self._interest_reader, html_digest.HtmlDigestWriter(Path(".")), self._clock()
-            )
+            writer = html_digest.HtmlDigestWriter(Path("."), language=self._ui_language(request))
+            page = render_interest_page(self._interest_reader, writer, self._clock())
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             logger.error("Failed to render the interest map: %s", e)
             return web.Response(text=f"Could not draw the interest map: {e}", status=500)
         return web.Response(text=page, content_type="text/html")
+
+    async def _handle_browser_messages(self, request: web.Request) -> web.Response:
+        """One catalog's browser messages, merged with English's for each key it lacks.
+
+        `no-cache`, as for every `/static/` file: the browser keeps its copy and asks
+        each time, and a matching `If-None-Match` is answered 304 with no body.
+        """
+        tag = request.match_info["tag"]
+        if tag not in catalogs():
+            raise web.HTTPNotFound()
+        served = browser_file(tag, BROWSER_MESSAGES)
+        headers = {"ETag": served.etag, "Cache-Control": "no-cache"}
+        if _etag_matches(request.headers.get("If-None-Match", ""), served.etag):
+            return web.Response(status=304, headers=headers)
+        return web.Response(body=served.body, content_type="application/json", headers=headers)
 
     async def _handle_favicon(self, request: web.Request) -> web.Response:
         return web.Response(body=html_digest.FAVICON.read_bytes(), content_type="image/svg+xml")

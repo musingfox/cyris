@@ -104,6 +104,7 @@ def _cfg(*, backend="d1", html=True, publish=True, pages_project="prune-proj"):
         store=SimpleNamespace(backend=backend),
         html_output=SimpleNamespace(enabled=html, output_dir="/unused"),
         promote=SimpleNamespace(publish_enabled=publish, pages_project=pages_project),
+        digest=SimpleNamespace(output_language="en"),
     )
     return SimpleNamespace(app=app)
 

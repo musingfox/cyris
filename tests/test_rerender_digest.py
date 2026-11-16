@@ -10,6 +10,7 @@ from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.adapters.store.digests import D1DigestStore
 from cyris.bootstrap import Deps
 from cyris.domain.models import DigestContent, UsageStats
+from cyris.i18n import translator
 from cyris.service_layer.run_digest import rerender_digest
 
 pytestmark = pytest.mark.integration
@@ -31,12 +32,14 @@ def _deps(tmp_path: Path, db: RecordingD1, llm: FakeLLM) -> Deps:
     async def discord(webhook_url, content, digest_url="", publish_failed=False, degraded=False):
         raise AssertionError("Discord was called")
 
+    cfg = make_config()
     return Deps(
-        cfg=make_config(),
+        cfg=cfg,
         store=None,
         llm=llm,
         fetch_sources=[],
-        html_writer=HtmlDigestWriter(tmp_path / "html"),
+        # As `build_deps` builds it: the current setting words what an issue does not.
+        html_writer=HtmlDigestWriter(tmp_path / "html", cfg.app.digest.output_language),
         sync_promotions=None,
         log_usage=lambda content: None,
         digest_store=D1DigestStore(db),
@@ -80,6 +83,32 @@ def test_a_rerender_writes_sends_and_calls_nothing(tmp_path: Path) -> None:
     assert db.written_tables() == set()
     assert llm.calls == []
     assert published == []
+
+
+def test_an_old_zh_hant_issue_keeps_its_chinese_ui_under_an_english_setting(
+    tmp_path: Path,
+) -> None:
+    deps = _deps(tmp_path, RecordingD1(), FakeLLM("{}"))
+    assert deps.cfg.app.digest.output_language == "en"
+    deps.digest_store.save(
+        _content().model_copy(update={"output_language": "zh-Hant"}), raw_page=False
+    )
+
+    page = rerender_digest(deps, "2026-10-14", "evening").rendered
+
+    assert '<html lang="zh-Hant">' in page
+    assert f">{translator('zh-Hant')('site.settings')}</a>" in page
+    assert ">Settings</a>" not in page
+
+
+def test_an_issue_stored_with_no_language_takes_the_current_setting(tmp_path: Path) -> None:
+    deps = _deps(tmp_path, RecordingD1(), FakeLLM("{}"))
+    deps = replace(deps, html_writer=HtmlDigestWriter(tmp_path / "html", "zh-Hant"))
+    deps.digest_store.save(_content(), raw_page=False)
+
+    page = rerender_digest(deps, "2026-10-14", "evening").rendered
+
+    assert '<html lang="zh-Hant">' in page
 
 
 def test_a_missing_digest_store_is_an_error(tmp_path: Path) -> None:

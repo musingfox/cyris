@@ -23,6 +23,7 @@
   {"path": "/api/labels", "method": "GET", "kind": "container", "unauth_status": 403, "container_route": "/api/labels"},
   {"path": "/api/labels", "method": "POST", "kind": "container", "unauth_status": 403},
   {"path": "/static/settings.js", "method": "GET", "kind": "container", "unauth_status": 403, "container_route": "/static"},
+  {"path": "/static/i18n/zh-Hant.json", "method": "GET", "kind": "container", "unauth_status": 403, "container_route": "/static/i18n/{tag}.json"},
   {"path": "/api/articles", "method": "GET", "kind": "container", "unauth_status": 403},
   {"path": "/api/build", "method": "GET", "kind": "container", "unauth_status": 403, "container_route": "/api/build"},
   {"path": "/api/stats", "method": "GET", "kind": "container", "unauth_status": 403},

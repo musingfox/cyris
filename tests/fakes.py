@@ -22,7 +22,7 @@ _TEST_VALUES: dict[str, Any] = {
     "digest.scoring_snippet_length": 1000,
     "digest.summarize_snippet_length": 1000,
     "digest.filter_snippet_length": 500,
-    "digest.output_language": "zh-Hant",
+    "digest.output_language": "en",
     "digest.style_prompt": "",
     "digest.type_scale": 1,
     # Off: the model's order, which every test not about the vote order asserts.

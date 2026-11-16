@@ -458,7 +458,8 @@ def build_fixture(kind: str) -> Fixture:
             **common,
         )
         if kind == "writable-largest":
-            server._settings_page = at_largest_type_scale(server._settings_page)
+            render = server._settings_page
+            server._settings_page = lambda language: at_largest_type_scale(render(language))
         return Fixture(
             server._app,
             settings,

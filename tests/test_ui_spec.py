@@ -592,7 +592,7 @@ async def test_settings_opens_with_the_digest_site_bar_marking_settings(
     page = await _served(triage, "/settings")
     assert page.count('<header class="site-bar">') == 1
     assert _site_bar(page) == _site_bar(expected)
-    assert '<script src="/static/settings.js"></script>' in page
+    assert '<script type="module" src="/static/settings.js"></script>' in page
 
 
 def test_onboarding_opens_with_the_digest_site_bar_leading_out_of_the_wizard() -> None:
@@ -1840,10 +1840,11 @@ def test_an_unavailable_choice_dims_everything_but_its_state() -> None:
 
 # Every installation renders these files, so an example in them must suit any reader's
 # deployment: RFC 2606 domains for addresses, and no date from one deployment's history.
+# `static/vendor/` is third-party code as built, with its build notes; it holds no example.
 PRODUCT_FILES = sorted(
     path
     for path in Path(cyris.__file__).parent.rglob("*")
-    if path.is_file() and {"templates", "static"} & set(path.parts)
+    if path.is_file() and {"templates", "static"} & set(path.parts) and "vendor" not in path.parts
 )
 RESERVED_DOMAINS = ("example.com", "example.net", "example.org")
 RESERVED_SUFFIXES = (".example", ".invalid", ".test")

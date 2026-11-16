@@ -500,7 +500,10 @@ def build_deps(
     if cfg.app.html_output.enabled:
         from cyris.adapters.output.html_digest import HtmlDigestWriter
 
-        html_writer = HtmlDigestWriter(Path(cfg.app.html_output.output_dir))
+        html_writer = HtmlDigestWriter(
+            Path(cfg.app.html_output.output_dir),
+            language=cfg.app.digest.output_language if cfg.app.digest else "",
+        )
         if cfg.app.promote.publish_enabled:
             # The site's file list lives in D1, so the archive does not have
             # to live on this machine.

@@ -1380,7 +1380,7 @@ def test_write_raw_groups_by_source_and_escapes(tmp_path):
         _stored("<script>alert(1)</script> & co", "Src B", state=ArticleState.REJECTED),
     ]
 
-    path = writer.write_raw("2026-08-20", "morning", articles)
+    path = writer.write_raw("2026-08-20", "morning", articles, "en")
     html = path.read_text(encoding="utf-8")
 
     assert path == tmp_path / "2026-08-20-morning-raw.html"
@@ -1417,7 +1417,7 @@ def test_an_issue_without_a_raw_page_offers_only_its_digest(tmp_path):
 
 def test_the_archive_links_the_raw_page_under_the_name_write_raw_gave_it(tmp_path):
     writer = HtmlDigestWriter(tmp_path)
-    raw = writer.write_raw("2026-08-20", "morning", [_stored("Article", "Src")])
+    raw = writer.write_raw("2026-08-20", "morning", [_stored("Article", "Src")], "en")
 
     index = writer.render_index(["2026-08-20-morning.html", raw.name])
 
@@ -1429,7 +1429,7 @@ def test_write_raw_renders_vote_buttons(tmp_path):
     writer = HtmlDigestWriter(tmp_path)
     articles = [_stored("Dropped", "Src A", state=ArticleState.REJECTED)]
 
-    html = writer.write_raw("2026-08-20", "morning", articles).read_text(encoding="utf-8")
+    html = writer.write_raw("2026-08-20", "morning", articles, "en").read_text(encoding="utf-8")
 
     assert html.count('class="vote-group"') == 1
     assert 'data-vote="up"' in html and 'data-vote="down"' in html
@@ -1486,7 +1486,7 @@ def test_the_published_page_votes_through_the_app_worker(tmp_path):
     )
 
     digest_html = writer.render(content)
-    raw_html = writer.render_raw("2026-04-15", "evening", [_stored("Article", "Src")])
+    raw_html = writer.render_raw("2026-04-15", "evening", [_stored("Article", "Src")], "en")
 
     # Present on both surfaces, hidden until the capability probe answers
     assert 'class="vote-group"' in digest_html
@@ -1708,7 +1708,7 @@ def _issue_pages(tmp_path) -> dict[str, str]:
     return {
         "index": writer.render_index(["2026-04-15-evening.html", "2026-04-15-evening-raw.html"]),
         "digest": writer.render(content, raw_page=True),
-        "raw": writer.render_raw("2026-04-15", "evening", [_stored("Article", "Src")]),
+        "raw": writer.render_raw("2026-04-15", "evening", [_stored("Article", "Src")], "en"),
     }
 
 
@@ -1922,7 +1922,7 @@ def test_an_issue_links_only_to_its_own_two_views(tmp_path, page):
 
 def test_the_raw_subtitle_leaves_date_and_period_to_the_issue_bar(tmp_path):
     articles = [_stored(f"Article {n}", "Src") for n in range(3)]
-    raw = HtmlDigestWriter(tmp_path).render_raw("2026-04-15", "evening", articles)
+    raw = HtmlDigestWriter(tmp_path).render_raw("2026-04-15", "evening", articles, "en")
 
     assert "3 articles" in raw
     assert "· EVENING ·" not in raw
@@ -1941,7 +1941,7 @@ def test_the_raw_subtitle_leaves_date_and_period_to_the_issue_bar(tmp_path):
 )
 def test_the_raw_page_head_counts_articles_and_sources(tmp_path, articles, label):
     stored = [_stored(title, source) for title, source in articles]
-    raw = HtmlDigestWriter(tmp_path).render_raw("2026-04-15", "evening", stored)
+    raw = HtmlDigestWriter(tmp_path).render_raw("2026-04-15", "evening", stored, "en")
 
     assert label in raw
 
@@ -2202,7 +2202,7 @@ def test_the_archive_card_title_takes_its_leads_language(tmp_path):
 def test_a_raw_title_has_no_reliable_language_so_it_is_unknown(tmp_path):
     scored = _stored("中文標題", "Src").model_copy(update={"language": "zh"})
     unscored = _stored("Unscored title", "Src")
-    html = HtmlDigestWriter(tmp_path).render_raw("2026-04-15", "morning", [scored, unscored])
+    html = HtmlDigestWriter(tmp_path).render_raw("2026-04-15", "morning", [scored, unscored], "en")
     langs = text_langs(html)
 
     assert '<html lang="en">' in html

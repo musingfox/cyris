@@ -1,0 +1,11 @@
+{
+  "email.read_online": {"text": "線上閱讀", "source": "Read online"},
+  "error.no_settings_store": {
+    "text": "這個部署沒有可寫入的設定儲存區",
+    "source": "this deployment has no settings store to write"
+  },
+  "period.evening": {"text": "晚報", "source": "Evening"},
+  "period.morning": {"text": "早報", "source": "Morning"},
+  "settings.checking_discord": {"text": "正在向 Discord 確認…", "source": "Checking with Discord…"},
+  "site.settings": {"text": "設定", "source": "Settings"}
+}

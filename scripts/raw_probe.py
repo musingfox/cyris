@@ -115,7 +115,7 @@ def _articles() -> list[StoredArticle]:
 
 def render_page() -> str:
     with tempfile.TemporaryDirectory(prefix="raw-probe-") as unused:
-        return HtmlDigestWriter(Path(unused)).render_raw(DATE, PERIOD, _articles())
+        return HtmlDigestWriter(Path(unused)).render_raw(DATE, PERIOD, _articles(), "en")
 
 
 def build_fixture(kind: str) -> VoteFixture:
