@@ -5,6 +5,7 @@ import json
 import re
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 from zoneinfo import ZoneInfo
@@ -17,7 +18,10 @@ from pydantic import ValidationError
 
 from cyris.adapters.clef import ClefClient, ClefError
 from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
+from cyris.adapters.mail import send_alert_mail
+from cyris.adapters.notify import send_discord_alert
 from cyris.adapters.output.html_digest import FAVICON, HtmlDigestWriter
+from cyris.adapters.run_alert import alert_message
 from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.adapters.store.topics import D1TopicStore
 from cyris.bootstrap import Deps
@@ -2188,13 +2192,40 @@ def _recording_alert_fakes() -> tuple[list, list, object, object]:
     discord_calls: list[tuple] = []
     mail_calls: list[tuple] = []
 
-    async def discord(webhook_url, subject, text):
-        discord_calls.append((webhook_url, subject, text))
+    async def discord(webhook_url, alert):
+        discord_calls.append((webhook_url, *alert_message(alert)))
 
-    async def mail(recipient, sender, subject, text):
-        mail_calls.append((recipient, sender, subject, text))
+    async def mail(recipient, sender, alert):
+        mail_calls.append((recipient, sender, *alert_message(alert)))
 
     return discord_calls, mail_calls, discord, mail
+
+
+def _real_alert_senders(deps: Deps) -> Deps:
+    """Both channels through the adapters' own senders, mail bound as `build_deps` binds it."""
+    return _with_alert_channels(
+        deps, send_discord_alert, partial(send_alert_mail, account_id="acct", token="tok")
+    )
+
+
+def _unreadable_catalog(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Every alert wording fails as a catalog read would; returns the languages asked for."""
+    asked: list[str] = []
+
+    def translator(language: str):
+        asked.append(language)
+        raise OSError("catalog unreadable")
+
+    monkeypatch.setattr("cyris.adapters.run_alert.translator", translator)
+    return asked
+
+
+def _alert_errors(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelname == "ERROR" and r.name == "cyris.service_layer.run_digest"
+    ]
 
 
 async def test_a_raised_run_names_the_error_on_discord_and_in_mail(tmp_path: Path) -> None:
@@ -2213,6 +2244,23 @@ async def test_a_raised_run_names_the_error_on_discord_and_in_mail(tmp_path: Pat
     assert _FAILED_SUBJECT.match(subject)
     assert text == "RuntimeError: the store is gone"
     assert mail_calls == [("me@example.org", "d@example.org", subject, text)]
+
+
+async def test_a_raised_run_is_headed_in_the_output_language(tmp_path: Path) -> None:
+    discord_calls, mail_calls, discord, mail = _recording_alert_fakes()
+
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps = _with_alert_channels(deps, discord, mail)
+    deps.cfg.app.digest.output_language = "zh-Hant"
+    _exploding_store(deps)
+
+    with pytest.raises(RuntimeError, match="the store is gone"):
+        await run_digest(deps, RunOptions())
+
+    [(_, subject, text)] = discord_calls
+    assert re.match(r"^精選執行失敗: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$", subject)
+    assert text == "RuntimeError: the store is gone"
+    assert mail_calls[0][2:] == (subject, text)
 
 
 async def test_the_failure_alert_names_the_minute_the_run_started(tmp_path: Path) -> None:
@@ -2255,10 +2303,10 @@ async def test_the_failure_alert_is_sent_after_the_run_is_recorded(tmp_path: Pat
     def record(summary: dict) -> None:
         events.append("record")
 
-    async def discord(webhook_url, subject, text):
+    async def discord(webhook_url, alert):
         events.append("discord")
 
-    async def mail(recipient, sender, subject, text):
+    async def mail(recipient, sender, alert):
         events.append("mail")
 
     deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
@@ -2326,12 +2374,15 @@ class OtherBrokenSource(BrokenSource):
     pass
 
 
-async def _fetch_failure_alerts(tmp_path: Path, sources: list) -> tuple[object, list, list]:
+async def _fetch_failure_alerts(
+    tmp_path: Path, sources: list, language: str = "en"
+) -> tuple[object, list, list]:
     discord_calls, mail_calls, discord, mail = _recording_alert_fakes()
 
     deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([]))
     deps = replace(deps, fetch_sources=sources)
     deps = _with_alert_channels(deps, discord, mail)
+    deps.cfg.app.digest.output_language = language
     report = await run_digest(deps, RunOptions())
     return report, discord_calls, mail_calls
 
@@ -2398,6 +2449,21 @@ async def test_a_run_that_fetched_nothing_names_every_failed_source(tmp_path: Pa
 
     assert discord_calls[0][2] == "Failed sources: BrokenSource, OtherBrokenSource"
     assert mail_calls[0][3] == "Failed sources: BrokenSource, OtherBrokenSource"
+
+
+async def test_a_run_that_fetched_nothing_is_worded_in_the_output_language(
+    tmp_path: Path,
+) -> None:
+    _, discord_calls, mail_calls = await _fetch_failure_alerts(
+        tmp_path, [BrokenSource(), OtherBrokenSource()], language="zh-Hant"
+    )
+
+    [(_, subject, text)] = discord_calls
+    assert re.match(
+        r"^精選執行沒有抓到文章: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$", subject
+    )
+    assert text == "失敗的來源：BrokenSource, OtherBrokenSource"
+    assert mail_calls[0][2:] == (subject, text)
 
 
 async def test_a_healthy_empty_source_is_left_off_the_failed_fetch_alert(tmp_path: Path) -> None:
@@ -2510,11 +2576,11 @@ async def test_a_run_cancelled_by_sigterm_sends_no_failure_alert(tmp_path: Path)
 async def test_a_broken_discord_alert_still_sends_the_mail(tmp_path: Path) -> None:
     mail_calls: list[tuple] = []
 
-    async def discord(webhook_url, subject, text):
+    async def discord(webhook_url, alert):
         raise ValueError("discord broke")
 
-    async def mail(recipient, sender, subject, text):
-        mail_calls.append((recipient, sender, subject, text))
+    async def mail(recipient, sender, alert):
+        mail_calls.append((recipient, sender, *alert_message(alert)))
 
     deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
     deps = _with_alert_channels(deps, discord, mail)
@@ -2557,6 +2623,41 @@ async def test_a_broken_alert_does_not_replace_the_runs_exception(tmp_path: Path
         if r.levelname == "ERROR" and r.name == "cyris.service_layer.run_digest"
     ]
     assert sum("alert broke" in m for m in errors) == 2
+
+
+@respx.mock
+async def test_an_alert_that_cannot_be_worded_does_not_replace_the_runs_exception(
+    tmp_path: Path, caplog, monkeypatch
+) -> None:
+    asked = _unreadable_catalog(monkeypatch)
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps = _real_alert_senders(deps)
+    _exploding_store(deps)
+
+    with pytest.raises(RuntimeError, match="the store is gone") as caught:
+        await run_digest(deps, RunOptions())
+
+    assert type(caught.value) is RuntimeError
+    assert asked == ["en", "en"]
+    assert respx.calls.call_count == 0
+    assert [m for m in _alert_errors(caplog) if "catalog unreadable" in m] == [
+        "Failure alert: Discord skipped: catalog unreadable",
+        "Failure alert: mail skipped: catalog unreadable",
+    ]
+
+
+@respx.mock
+async def test_a_run_that_sends_no_alert_words_none(tmp_path: Path, caplog, monkeypatch) -> None:
+    asked = _unreadable_catalog(monkeypatch)
+    deps, notifications = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps = _real_alert_senders(deps)
+
+    report = await run_digest(deps, RunOptions())
+
+    assert report.status == "ok"
+    assert notifications == ["discord"]
+    assert asked == []
+    assert _alert_errors(caplog) == []
 
 
 async def test_a_broken_alert_does_not_fail_a_run_that_fetched_nothing(tmp_path: Path) -> None:
@@ -2992,7 +3093,7 @@ _SIMILARITY_WARNING_SUBJECT = re.compile(
 
 
 async def _similarity_failure_run(
-    tmp_path: Path, failure: Exception | None = None, *, embedder=None, **fakes
+    tmp_path: Path, failure: Exception | None = None, *, embedder=None, language="en", **fakes
 ):
     discord_calls, mail_calls, discord, mail = _recording_alert_fakes()
     deps, contents, recorded = _voting_deps(tmp_path, lambda *args: None)
@@ -3001,6 +3102,7 @@ async def _similarity_failure_run(
         fakes.get("discord", discord),
         fakes.get("mail", mail),
     )
+    deps.cfg.app.digest.output_language = language
 
     report = await run_digest(deps, RunOptions())
 
@@ -3027,6 +3129,39 @@ async def test_a_rejected_embedding_key_warns_each_channel_and_the_digest_still_
     [summary] = recorded
     assert summary["status"] == "ok"
     assert summary["vote_similarity_skipped"].startswith("embedding failed: 401")
+
+
+async def test_the_english_warning_says_why_votes_did_nothing_and_what_to_fix(
+    tmp_path: Path,
+) -> None:
+    _, _, _, discord_calls, _ = await _similarity_failure_run(
+        tmp_path, EmbeddingRejectedError(403, "Forbidden")
+    )
+
+    [(_, _, text)] = discord_calls
+    assert text == (
+        "Vote similarity did not run this period, so reader votes had no effect on this "
+        "digest. The digest was published unfiltered. The embedding API refused the request: "
+        "HTTP 403 Forbidden. This repeats every run until the embedding key or its "
+        "permissions are fixed."
+    )
+
+
+async def test_a_rejected_embedding_key_warns_in_the_output_language(tmp_path: Path) -> None:
+    _, _, _, discord_calls, mail_calls = await _similarity_failure_run(
+        tmp_path, EmbeddingRejectedError(403, "Forbidden"), language="zh-Hant"
+    )
+
+    [(_, subject, text)] = discord_calls
+    assert re.match(
+        r"^投票相似度沒有執行: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$", subject
+    )
+    assert text == (
+        "這一期沒有執行投票相似度，所以讀者的投票對這份精選沒有作用。精選已直接發布，"
+        "沒有經過過濾。嵌入 API 拒絕了請求：HTTP 403 Forbidden。在嵌入金鑰或其權限修好之前，"
+        "每次執行都會再發出這則警示。"
+    )
+    assert mail_calls[0][2:] == (subject, text)
 
 
 @respx.mock
@@ -3105,22 +3240,27 @@ async def test_a_dry_run_with_a_rejected_key_sends_no_warning(tmp_path: Path) ->
     assert mail_calls == []
 
 
+@respx.mock
 async def test_a_warning_that_cannot_be_composed_is_logged_and_the_run_stays_ok(
     tmp_path: Path, caplog, monkeypatch
 ) -> None:
-    def broken() -> dict:
-        raise OSError("wording unreadable")
+    asked = _unreadable_catalog(monkeypatch)
 
-    monkeypatch.setattr(run_digest_module, "alert_messages", broken)
-
-    report, contents, _, discord_calls, _ = await _similarity_failure_run(
-        tmp_path, EmbeddingRejectedError(401, "Unauthorized")
+    report, contents, _, _, _ = await _similarity_failure_run(
+        tmp_path,
+        EmbeddingRejectedError(401, "Unauthorized"),
+        discord=send_discord_alert,
+        mail=partial(send_alert_mail, account_id="acct", token="tok"),
     )
 
     assert report.status == "ok"
     assert len(contents) == 1
-    assert discord_calls == []
-    assert "wording unreadable" in caplog.text
+    assert asked == ["en", "en"]
+    assert respx.calls.call_count == 0
+    assert [m for m in _alert_errors(caplog) if "catalog unreadable" in m] == [
+        "Failure alert: Discord skipped: catalog unreadable",
+        "Failure alert: mail skipped: catalog unreadable",
+    ]
 
 
 async def test_a_warning_that_cannot_be_sent_is_logged_and_the_run_stays_ok(

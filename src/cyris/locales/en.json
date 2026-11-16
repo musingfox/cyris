@@ -1,4 +1,10 @@
 {
+  "alert.could_not_start_headline": "Digest run could not start",
+  "alert.fetched_nothing_body": "Failed sources: {$sources}",
+  "alert.fetched_nothing_headline": "Digest run fetched nothing",
+  "alert.run_failed_headline": "Digest run failed",
+  "alert.vote_similarity_body": "Vote similarity did not run this period, so reader votes had no effect on this digest. The digest was published unfiltered. The embedding API refused the request: HTTP {$status} {$detail}. This repeats every run until the embedding key or its permissions are fixed.",
+  "alert.vote_similarity_headline": "Vote similarity did not run",
   "area_status.active": "active",
   "area_status.dismissed": "dismissed",
   "area_status.merged": "merged",

@@ -1,5 +1,6 @@
 """`build_deps` binds the run recorder to D1, stamped with the image's sha."""
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
@@ -10,6 +11,7 @@ from fakes import SqliteD1, make_config
 from cyris import bootstrap
 from cyris.config import AgentVaultConfig, Config
 from cyris.domain.models import DigestContent, UsageStats
+from cyris.service_layer.alerts import RunAlert
 
 pytestmark = pytest.mark.integration
 
@@ -110,7 +112,16 @@ async def test_failure_mail_uses_the_account_token_not_the_ai_or_embedding_ones(
     )
 
     await bootstrap.build_deps(_sqlite_config(tmp_path)).send_email_alert(
-        "me@example.org", "d@example.org", "S", "B"
+        "me@example.org",
+        "d@example.org",
+        RunAlert(
+            kind="run_failed",
+            period="morning",
+            started_at=datetime(2026, 11, 16, 0, 5, tzinfo=UTC),
+            timezone="Asia/Taipei",
+            language="en",
+            error="B",
+        ),
     )
 
     assert route.call_count == 1

@@ -6,11 +6,8 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from functools import cache
-from importlib.resources import files
 from pathlib import Path
 from typing import TYPE_CHECKING
-from zoneinfo import ZoneInfo
 
 from cyris.domain.areas import AreaCatalog
 from cyris.domain.models import (
@@ -24,6 +21,7 @@ from cyris.domain.models import (
 from cyris.domain.selection import count_dead_links, digest_urls
 from cyris.domain.suppression import Suppression, suppression_until
 from cyris.domain.triage import RejectReason
+from cyris.service_layer.alerts import AlertKind, RunAlert
 from cyris.service_layer.area_stamp import stamp_areas
 from cyris.service_layer.digest_pipeline import DigestPipeline
 from cyris.service_layer.fetching import fetch_all_articles
@@ -349,37 +347,38 @@ async def _send_failure_alert(
     """
     if options.dry_run:
         return
-    messages = alert_messages()
     if failure is not None:
-        headline = messages["run_failed"]["headline"]
-        text = failure_alert_text(failure)
+        alert = _run_alert(
+            deps, options, started_at, "run_failed", error=failure_alert_text(failure)
+        )
     else:
         failed = summary.get("failed_sources") or []
         if summary.get("fetched") != 0 or not failed:
             return
-        headline = messages["fetched_nothing"]["headline"]
-        text = messages["fetched_nothing"]["text"].format(sources=", ".join(failed))
-    await _send_run_alert(deps, options, started_at, headline, text)
+        alert = _run_alert(deps, options, started_at, "fetched_nothing", sources=tuple(failed))
+    await _send_run_alert(deps, alert)
 
 
-@cache
-def alert_messages() -> dict[str, dict[str, str]]:
-    """The wording of every alert (`alert_messages.json`), without its comment."""
-    raw = (files(__package__) / "alert_messages.json").read_text(encoding="utf-8")
-    return {k: v for k, v in json.loads(raw).items() if not k.startswith("_")}
-
-
-async def _send_run_alert(
-    deps: "Deps", options: RunOptions, started_at: datetime, headline: str, text: str
-) -> None:
-    """`headline` and `text` to each configured channel, the subject naming the run."""
-    tz = deps.cfg.app.general.timezone
-    subject = (
-        f"{headline}: {options.period}, {started_at.astimezone(ZoneInfo(tz)):%Y-%m-%d %H:%M} {tz}"
+def _run_alert(
+    deps: "Deps",
+    options: RunOptions,
+    started_at: datetime,
+    kind: AlertKind,
+    **values: str | tuple[str, ...],
+) -> RunAlert:
+    """The alert about this run, in the current `digest.output_language` (ADR-0027)."""
+    return RunAlert(
+        kind=kind,
+        period=options.period,
+        started_at=started_at,
+        timezone=deps.cfg.app.general.timezone,
+        language=deps.cfg.app.digest.output_language,
+        **values,
     )
-    await send_alert(
-        deps.cfg.app.notify, deps.send_discord_alert, deps.send_email_alert, subject, text
-    )
+
+
+async def _send_run_alert(deps: "Deps", alert: RunAlert) -> None:
+    await send_alert(deps.cfg.app.notify, deps.send_discord_alert, deps.send_email_alert, alert)
 
 
 async def _warn_vote_similarity_rejected(
@@ -394,29 +393,31 @@ async def _warn_vote_similarity_rejected(
     if options.dry_run:
         return
     try:
-        message = alert_messages()["vote_similarity_rejected"]
-        await _send_run_alert(
+        alert = _run_alert(
             deps,
             options,
             started_at,
-            message["headline"],
-            message["text"].format(status=rejection.status_code, detail=rejection.detail),
+            "vote_similarity_rejected",
+            status=str(rejection.status_code),
+            detail=rejection.detail,
         )
+        await _send_run_alert(deps, alert)
     except Exception as e:
         logger.error("Failed to send the vote similarity warning: %s", e)
 
 
-async def send_alert(notify, send_discord_alert, send_email_alert, subject: str, text: str) -> None:
-    """`subject` and `text` to each channel `notify` configures.
+async def send_alert(notify, send_discord_alert, send_email_alert, alert: RunAlert) -> None:
+    """`alert` to each channel `notify` configures; each sender words it as it sends.
 
-    Empty configuration does not call the sender. Each call has its own guard so
-    one channel's failure still leaves the other its attempt.
+    Empty configuration does not call the sender, so nothing is worded. Each call has
+    its own guard so one channel's failure, wording included, still leaves the other
+    its attempt.
     """
     if not notify.discord_webhook_url:
         logger.info("Failure alert: no webhook set, skipping Discord")
     else:
         try:
-            await send_discord_alert(notify.discord_webhook_url, subject, text)
+            await send_discord_alert(notify.discord_webhook_url, alert)
         except Exception as e:
             logger.error("Failure alert: Discord skipped: %s", e)
     if not notify.email_to:
@@ -428,7 +429,7 @@ async def send_alert(notify, send_discord_alert, send_email_alert, subject: str,
         )
     else:
         try:
-            await send_email_alert(notify.email_to, notify.email_from, subject, text)
+            await send_email_alert(notify.email_to, notify.email_from, alert)
         except Exception as e:
             logger.error("Failure alert: mail skipped: %s", e)
 
