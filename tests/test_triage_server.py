@@ -75,8 +75,8 @@ class TestTheDeckIsNotServed:
 
         assert '<th class="label">Lane</th>' in html
         assert (
-            '<select class="select" id="e-lane" name="lane"><option>skim</option>'
-            "<option>read</option><option>follow</option></select>"
+            '<select class="select" id="e-lane" name="lane"><option value="skim">skim</option>'
+            '<option value="read">read</option><option value="follow">follow</option></select>'
         ) in html
 
     async def test_the_favicon_the_settings_page_links_is_served(self, client: TestClient) -> None:
