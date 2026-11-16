@@ -191,7 +191,7 @@ function render() {
       <input type="radio" name="provider" value="${esc(p.name)}"
              ${p.name === values["llm_provider.provider"] && p.configured ? "checked" : ""}
              ${p.configured ? "" : "disabled"}>
-      <span class="name">${p.name === "none" ? "None — plain excerpts" : esc(p.name)}</span>
+      <span class="name">${esc(p.name === "none" ? t("provider.none") : p.name)}</span>
       ${p.name === "none" ? `<span class="label">No key needed</span>`
         : p.configured ? `<span class="label">Key ready</span>`
         : `<span class="label key-missing">${esc(p.env_var)} missing</span>`}
@@ -708,7 +708,7 @@ function renderSources() {
       <tr class="src-row" data-name="${esc(s.name)}" tabindex="0">
         <td class="name">${esc(s.name)}${feedProblem(s)}</td>
         <td><span class="label">${esc(s.type)}</span></td>
-        <td><span class="pill">${esc(s.lane)}</span></td>
+        <td><span class="pill">${esc(t(`lane.${s.lane}`))}</span></td>
         <td class="target">${esc(s.url || s.email_match || "—")}</td>
         <td class="small">${esc((s.tags || []).join(", ") || "—")}</td>
       </tr>`).join("")
@@ -1120,7 +1120,7 @@ function renderAreas() {
     : areasLoaded ? `<tr><td colspan="2" class="small">No proposals yet.</td></tr>` : "";
   $("closed-list").innerHTML = closed.length
     ? closed.map((area) => `<li>${esc(area.name)} — ${area.status === "merged"
-      ? `merged into ${esc(areaNameOf(area.merged_into))}` : "dismissed"}</li>`).join("")
+      ? `merged into ${esc(areaNameOf(area.merged_into))}` : esc(t(`area_status.${area.status}`))}</li>`).join("")
     : areasLoaded ? "<li>No closed areas.</li>" : "";
   $("threshold-hint").hidden = birthThreshold !== null;
   $("save-order").disabled = !areasWritable || !orderDirty();

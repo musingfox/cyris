@@ -48,7 +48,7 @@
                 <thead><tr><th>Tag</th><th>Up</th><th>Down</th><th>Polarity</th><th>Days left</th></tr></thead>
                 <tbody>
                 {% for node in graph.nodes %}
-                <tr><td lang="">{{ node.tag }}</td><td>{{ node.up }}</td><td>{{ node.down }}</td><td>{{ node.polarity }}</td><td>{{ "%.1f" | format(node.brightness * clock_days) }}</td></tr>
+                <tr><td lang="">{{ node.tag }}</td><td>{{ node.up }}</td><td>{{ node.down }}</td><td>{{ t("polarity." ~ node.polarity) }}</td><td>{{ "%.1f" | format(node.brightness * clock_days) }}</td></tr>
                 {% endfor %}
                 </tbody>
             </table>

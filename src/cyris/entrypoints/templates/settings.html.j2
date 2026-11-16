@@ -413,7 +413,7 @@
             <div class="seg" role="group" aria-label="Type"><button type="button" data-type="rss">RSS</button><button type="button" data-type="newsletter">Newsletter</button></div>
           </div>
           <div class="field"><label class="label" for="e-lane">Lane</label>
-            <select class="select" id="e-lane" name="lane"><option>skim</option><option>read</option><option>follow</option></select>
+            <select class="select" id="e-lane" name="lane"><option value="skim">{{ t("lane.skim") }}</option><option value="read">{{ t("lane.read") }}</option><option value="follow">{{ t("lane.follow") }}</option></select>
           </div>
         </div>
         <div class="field" data-for="rss"><label class="label" for="e-url">Feed URL</label><input class="input" id="e-url" name="url" type="text" autocomplete="off"></div>

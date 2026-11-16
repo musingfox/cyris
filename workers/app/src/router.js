@@ -192,7 +192,8 @@ async function handleVote(request, env, deps) {
   }
   const promoteUrl = env.CYRIS_PROMOTE_WORKER_URL;
   if (!promoteUrl) {
-    return json({ error: "promote worker not configured" }, 503);
+    // A page matches the code; the error is for whoever reads the response.
+    return json({ error: "promote worker not configured", code: "promote_not_configured" }, 503);
   }
   try {
     const body = await request.json();

@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="dark">
-    <title>CYRIS // {{ date }} · {{ period }} · Raw</title>
+    <title>CYRIS // {{ date }} · {{ period | period_name }} · Raw</title>
     <meta name="description" content="Every article the {{ date }} {{ period }} issue of a Cyris digest judged, grouped by source.">
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -88,7 +88,7 @@
             <div class="panel-head"><span class="source-name">{{ group.name }}</span><span class="label">{{ group.articles | length }}</span></div>
             {% for a in group.articles %}
             <div class="list-row raw-row">
-                <span class="state {{ a.state }}">{{ a.state }}</span>
+                <span class="state {{ a.state }}">{{ t("article_state." ~ a.state) }}</span>
                 <span class="score">{{ "%.2f" | format(a.score) if a.score is not none else "—" }}</span>
                 <a href="{{ a.url }}" target="_blank" rel="noopener" lang="">{{ a.title }}</a>
                 <span class="vote-group" data-urls='{{ [a.url] | tojson }}'><button class="btn sm secondary promote-btn" data-vote="up" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn sm secondary promote-btn" data-vote="down" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>

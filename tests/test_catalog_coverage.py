@@ -2,7 +2,8 @@
 
 Each check reads the catalog files and the source under `src/cyris/`. A key is used where
 `t("key")` appears in a Python module, a template or a page script; a key built from a value,
-`t(f"prefix.{value}")` in a Python module, is used for every value of its declared range in
+`t(f"prefix.{value}")` in a Python module, `t("prefix." ~ value)` in a template or
+``t(`prefix.${value}`)`` in a page script, is used for every value of its declared range in
 `FAMILIES`. Any other first argument to `t(` is a key no check can see, so it fails.
 """
 
@@ -11,6 +12,7 @@ import asyncio
 import json
 import re
 from pathlib import Path
+from typing import get_args, get_type_hints
 
 import jinja2
 import jinja2.nodes
@@ -26,6 +28,9 @@ from messageformat2.datamodel import (
 )
 
 import cyris
+from cyris.domain.areas import AreaStatus
+from cyris.domain.interest_graph import InterestNode
+from cyris.domain.models import ArticleState, Lane
 from cyris.entrypoints.triage_server import (
     BROWSER_MESSAGES,
     STATIC_DIR,
@@ -45,7 +50,14 @@ ENGLISH = "en"
 # The functions both formatters ship as Stable and on by default.
 FUNCTIONS = {"string", "number", "integer"}
 # Each key family built from a value, with the value's closed range.
-FAMILIES: dict[str, tuple[str, ...]] = {"period.": PERIOD_ORDER}
+FAMILIES: dict[str, tuple[str, ...]] = {
+    "period.": PERIOD_ORDER,
+    "issue_period.": PERIOD_ORDER,
+    "article_state.": tuple(map(str, ArticleState)),
+    "lane.": tuple(map(str, Lane)),
+    "area_status.": get_args(AreaStatus),
+    "polarity.": get_args(get_type_hints(InterestNode)["polarity"]),
+}
 RENDERERS = {
     "settings.html.j2": render_settings_page,
     "labels.html.j2": render_labels_page,
@@ -55,6 +67,7 @@ RENDERERS = {
 JS_CALL = re.compile(r"(?<![\w$])t\(")
 JS_FUNCTION_NAME = re.compile(r"\bfunction\s+$")
 JS_LITERAL_ARG = re.compile(r"""\s*(["'])([^"'\\\n]+)\1\s*[,)]""")
+JS_FAMILY_ARG = re.compile(r"\s*`([\w.]*\.)\$\{[^{}`]+\}`\s*[,)]")
 SCRIPT_SRC = re.compile(r"""<script\b[^>]*\bsrc="/static/([\w./-]+\.js)\"""")
 IMPORT = re.compile(r"""^\s*import\b[^;]*?\bfrom\s+["']\./([\w./-]+\.js)["']""", re.MULTILINE)
 CATALOG_META = re.compile(r'<meta name="i18n-catalog" content="([^"]+)">')
@@ -124,6 +137,10 @@ def _sources() -> list[Path]:
     )
 
 
+def _family(prefix: str) -> set[str]:
+    return {f"{prefix}{value}" for value in FAMILIES[prefix]}
+
+
 def _python_calls(text: str) -> list[tuple[int, set[str] | None]]:
     calls = []
     for node in ast.walk(ast.parse(text)):
@@ -146,8 +163,7 @@ def _python_calls(text: str) -> list[tuple[int, set[str] | None]]:
             and isinstance(first.values[1], ast.FormattedValue)
             and first.values[0].value in FAMILIES
         ):
-            prefix = first.values[0].value
-            keys = {f"{prefix}{value}" for value in FAMILIES[prefix]}
+            keys = _family(first.values[0].value)
         calls.append((node.lineno, keys))
     return calls
 
@@ -158,8 +174,17 @@ def _template_calls(text: str) -> list[tuple[int, set[str] | None]]:
         if not (isinstance(node.node, jinja2.nodes.Name) and node.node.name == "t"):
             continue
         first = node.args[0] if node.args else None
-        is_literal = isinstance(first, jinja2.nodes.Const) and isinstance(first.value, str)
-        calls.append((node.lineno, {first.value} if is_literal else None))
+        keys = None
+        if isinstance(first, jinja2.nodes.Const) and isinstance(first.value, str):
+            keys = {first.value}
+        elif (
+            isinstance(first, jinja2.nodes.Concat)
+            and len(first.nodes) == 2
+            and isinstance(first.nodes[0], jinja2.nodes.Const)
+            and first.nodes[0].value in FAMILIES
+        ):
+            keys = _family(first.nodes[0].value)
+        calls.append((node.lineno, keys))
     return calls
 
 
@@ -168,9 +193,13 @@ def _script_calls(text: str) -> list[tuple[int, set[str] | None]]:
     for call in JS_CALL.finditer(text):
         if JS_FUNCTION_NAME.search(text[: call.start()]):
             continue
-        arg = JS_LITERAL_ARG.match(text, call.end())
         line = text.count("\n", 0, call.start()) + 1
-        calls.append((line, {arg[2]} if arg else None))
+        keys = None
+        if arg := JS_LITERAL_ARG.match(text, call.end()):
+            keys = {arg[2]}
+        elif (arg := JS_FAMILY_ARG.match(text, call.end())) and arg[1] in FAMILIES:
+            keys = _family(arg[1])
+        calls.append((line, keys))
     return calls
 
 
@@ -315,13 +344,18 @@ def test_every_t_call_takes_a_literal_key_or_a_declared_family(path) -> None:
         (_template_calls, "{{ t('a.b', n=1) | safe }}", {"a.b"}),
         (_template_calls, "{{ x|format(1) }}", set()),
         (_template_calls, "{{ t(key) }}", None),
-        (_template_calls, '{{ t("lane." ~ x) }}', None),
+        (_template_calls, '{{ t("period." ~ p) }}', {f"period.{p}" for p in PERIOD_ORDER}),
+        (_template_calls, '{{ t("nowhere." ~ x) }}', None),
+        (_template_calls, '{{ t("period." ~ p ~ ".x") }}', None),
         (_template_calls, '{{ t("a" if x else "b") }}', None),
         (_script_calls, 't("a.b")', {"a.b"}),
         (_script_calls, "t('a.b', { n })", {"a.b"}),
         (_script_calls, "x.split(','); post(1); format(2)", set()),
         (_script_calls, "export function t(key, values = {}) {", set()),
         (_script_calls, "t(`a.b`)", None),
+        (_script_calls, "t(`period.${p}`)", {f"period.{p}" for p in PERIOD_ORDER}),
+        (_script_calls, "t(`nowhere.${x}`)", None),
+        (_script_calls, "t(`period.${p}.x`)", None),
         (_script_calls, "t(key)", None),
         (_script_calls, "t('lane.' + x)", None),
         (_script_calls, "t(cond ? 'a' : 'b')", None),
@@ -335,6 +369,25 @@ def test_a_t_call_is_read_for_the_key_it_names(finder, source, keys) -> None:
 
 def test_a_call_is_reported_at_its_line() -> None:
     assert _script_calls("a;\n\n  t(`x`)") == [(3, None)]
+
+
+def _family_keys_missing_from(english: dict[str, str], families: dict) -> dict[str, list[str]]:
+    """Each family's keys, one per value of its range, that `english` lacks."""
+    return {
+        prefix: missing
+        for prefix in families
+        if (missing := sorted({f"{prefix}{value}" for value in families[prefix]} - english.keys()))
+    }
+
+
+def test_every_value_of_a_family_has_an_english_key() -> None:
+    assert _family_keys_missing_from(_english(), FAMILIES) == {}
+
+
+def test_a_value_its_family_has_no_key_for_is_found() -> None:
+    families = {**FAMILIES, "period.": (*PERIOD_ORDER, "noon")}
+
+    assert _family_keys_missing_from(_english(), families) == {"period.": ["period.noon"]}
 
 
 # ---- cheaper checks beside them ----------------------------------------------------------

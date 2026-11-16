@@ -20,8 +20,14 @@ from cyris.adapters.store.d1 import MAX_BOUND_PARAMS
 from cyris.adapters.store.feed_health import FeedHealth
 from cyris.config import SETTINGS_FIELDS, STARTING_VALUES, DigestConfig
 from cyris.diagnostics.doctor import LLM_PROBE_TIMEOUT_SECONDS, probe_discord, probe_embedder
-from cyris.domain.areas import Area, AreaCatalog, is_unplaced_label, meets_birth_threshold
-from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, SourceConfig, TrackedTopic
+from cyris.domain.areas import (
+    Area,
+    AreaCatalog,
+    AreaStatus,
+    is_unplaced_label,
+    meets_birth_threshold,
+)
+from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, Lane, SourceConfig, TrackedTopic
 from cyris.i18n import ENGLISH, accept_language, browser_file, catalogs, resolve, translator
 from cyris.service_layer import area_llm
 
@@ -144,7 +150,12 @@ TOPIC_REFUSALS = {
 
 # Every catalog key a container page script formats, all pages' scripts together:
 # `tests/test_catalog_coverage.py` holds it equal to what those scripts call `t` with.
-BROWSER_MESSAGES: tuple[str, ...] = ("settings.checking_discord",)
+BROWSER_MESSAGES: tuple[str, ...] = (
+    "settings.checking_discord",
+    "provider.none",
+    *(f"lane.{lane}" for lane in Lane),
+    *(f"area_status.{status}" for status in get_args(AreaStatus)),
+)
 # One file per catalog, under `/static/` so the app Worker forwards it to this server,
 # which is what serves `/static/` in both editions. A page names its own in a meta tag;
 # the route registering this path is a literal, so the Worker's route table can read it.

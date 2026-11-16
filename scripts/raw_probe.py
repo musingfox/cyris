@@ -163,7 +163,10 @@ def build_fixture(kind: str) -> VoteFixture:
         if kind == "vote-signed-out":
             raise web.HTTPFound(ACCESS_LOGIN)
         if kind == "vote-unconfigured":
-            return web.json_response({"error": "promote worker not configured"}, status=503)
+            return web.json_response(
+                {"error": "promote worker not configured", "code": "promote_not_configured"},
+                status=503,
+            )
         if kind == "promote-503":
             return web.json_response({"error": "unavailable"}, status=503)
         refused = kind == "vote-fails" or (kind == "fails-once" and len(fixture.posts) == 1)
