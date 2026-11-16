@@ -179,15 +179,18 @@ def _email_api_credentials() -> tuple[str, str] | None:
     return account_id, token
 
 
-def build_send_email() -> Callable[..., Any] | None:
-    """The digest mail bound to this account's Email Sending API, or None without it."""
+def build_send_email(language: str = "") -> Callable[..., Any] | None:
+    """The digest mail bound to this account's Email Sending API, or None without it.
+
+    `language` is the current `digest.output_language`, which words an issue stored with none.
+    """
     from cyris.adapters.mail import send_digest_mail
 
     credentials = _email_api_credentials()
     if credentials is None:
         return None
     account_id, token = credentials
-    return partial(send_digest_mail, account_id=account_id, token=token)
+    return partial(send_digest_mail, account_id=account_id, token=token, language=language)
 
 
 def build_send_email_alert() -> Callable[..., Any] | None:
@@ -478,6 +481,8 @@ def build_deps(
     d1 = build_d1_client(cfg)
     store = build_store(cfg, d1)
     vote = cfg.app.vote_similarity
+    # The current setting: the archive's language, and an issue's when it stored none.
+    language = cfg.app.digest.output_language if cfg.app.digest else ""
 
     fetch_sources: list[FetchSource] = []
     if cfg.app.newsletter.worker_url and cfg.app.newsletter.token:
@@ -500,10 +505,7 @@ def build_deps(
     if cfg.app.html_output.enabled:
         from cyris.adapters.output.html_digest import HtmlDigestWriter
 
-        html_writer = HtmlDigestWriter(
-            Path(cfg.app.html_output.output_dir),
-            language=cfg.app.digest.output_language if cfg.app.digest else "",
-        )
+        html_writer = HtmlDigestWriter(Path(cfg.app.html_output.output_dir), language=language)
         if cfg.app.promote.publish_enabled:
             # The site's file list lives in D1, so the archive does not have
             # to live on this machine.
@@ -558,7 +560,8 @@ def build_deps(
         digest_store=D1DigestStore(d1),
         digest_input_store=D1DigestInputStore(d1),
         worker_domains=build_worker_domains(),
-        send_email=build_send_email(),
+        send_discord=partial(send_discord, language=language),
+        send_email=build_send_email(language),
         send_email_alert=build_send_email_alert(),
         ask_clef=build_ask_clef(),
         lengthen_articles=lengthen_articles,

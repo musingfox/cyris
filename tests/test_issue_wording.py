@@ -15,6 +15,9 @@ import pytest
 from jinja2.utils import htmlsafe_json_dumps
 from markupsafe import escape
 
+from cyris.adapters.mail import build_digest_mail
+from cyris.adapters.notify import build_discord_payload
+from cyris.adapters.output.email_digest import render_digest_email
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.domain.interest_graph import InterestEdge, InterestGraph, InterestNode
 from cyris.domain.models import (
@@ -467,3 +470,205 @@ def test_the_interest_maps_notes_and_empty_state_are_worded(language, tmp_path) 
 
 def test_a_zh_hant_interest_map_says_nothing_in_english(tmp_path) -> None:
     assert _english_words(_interest("zh-Hant", tmp_path)) == set()
+
+
+# ---- the mail --------------------------------------------------------------------------
+
+ONLINE = "https://digest.test/2026-01-02-morning"
+MODEL = "claude-sonnet-4-6"
+RAW = "https://digest.test/2026-01-02-morning-raw"
+
+
+def _priced(language: str, **overrides) -> DigestContent:
+    """An issue whose model has a rate card, so the mail and Discord show its cost."""
+    usage = UsageStats(input_tokens=1000, output_tokens=500, api_calls=3, model=MODEL)
+    return _content(language, usage=usage, **overrides)
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_the_html_mail_is_worded_in_its_issues_language(language) -> None:
+    t = translator(language)
+
+    html = render_digest_email(_priced(language), ONLINE, raw_page=True, degraded=True)
+
+    assert _html_lang(html) == language
+    for text in [
+        t("email.read_online"),
+        t("issue.all_articles"),
+        t("issue.degraded"),
+        t("layer.tracking"),
+        t("layer.stories"),
+        t("layer.topics"),
+        t("mail.kept_of", included=10, received=20),
+        f"Cyris · {t('period.morning')} · 2026-01-02",
+    ]:
+        assert _shows(html, text), text
+    link = {"link": ("a", {"href": "https://cyris.musingfox.com/"})}
+    assert t("mail.stats", sources=5, received=20, included=10, elements={"b": ("b", {})}) in html
+    assert t("mail.generated_by_cost", tokens=1500, calls=3, cost="0.0105", elements=link) in html
+    sites = {
+        "archive": ("a", {"href": "https://digest.test/"}),
+        "settings": ("a", {"href": "https://digest.test/settings"}),
+    }
+    assert t("mail.footer_links", elements=sites) in html
+
+
+def test_a_zh_hant_html_mail_says_nothing_in_english() -> None:
+    html = render_digest_email(_priced("zh-Hant"), ONLINE, raw_page=True, degraded=True)
+
+    assert _english_words(html) == set()
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_an_html_mail_that_could_not_publish_says_so(language) -> None:
+    html = render_digest_email(_content(language), publish_failed=True)
+
+    assert str(escape(translator(language)("mail.publish_failed"))) in html
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_an_empty_html_mail_links_its_raw_page_inside_the_sentence(language) -> None:
+    content = _content(language, articles_included=0, featured_articles=[], news_clusters=[])
+
+    html = render_digest_email(content, ONLINE, raw_page=True)
+
+    link = {"link": ("a", {"href": RAW})}
+    assert translator(language)("issue.empty_raw", received=20, elements=link) in html
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_the_text_mail_and_its_subject_are_worded_in_its_issues_language(language) -> None:
+    t = translator(language)
+
+    subject, text = build_digest_mail(_content(language), ONLINE, degraded=True)
+
+    assert subject == t("mail.subject", period=t("period.morning"), date="2026-01-02")
+    assert text.startswith(subject)
+    for line in [
+        t("mail.read_online_at", url=ONLINE),
+        t("issue.degraded"),
+        t("mail.kept", included=10, received=20, sources=5),
+        t("layer.tracking"),
+        t("layer.stories"),
+        t("layer.topics"),
+    ]:
+        assert f"\n{line}\n" in text, line
+
+
+def test_a_zh_hant_text_mail_says_nothing_in_english() -> None:
+    subject, text = build_digest_mail(_content("zh-Hant"), ONLINE, degraded=True)
+
+    assert subject == "早報摘要 2026-01-02"
+    words = set(re.findall(r"[A-Za-z]+", re.sub(r"https://\S+", "", text))) - NAMES
+    assert words == set()
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_an_empty_text_mail_names_its_raw_page(language) -> None:
+    content = _content(language, articles_included=0, featured_articles=[], news_clusters=[])
+
+    _, text = build_digest_mail(content, ONLINE, raw_page=True)
+    _, alone = build_digest_mail(content, publish_failed=True)
+
+    t = translator(language)
+    assert t("mail.empty_raw_at", received=20, url=RAW) in text
+    assert t("issue.empty", received=20) in alone
+    assert t("mail.publish_failed_text") in alone
+
+
+def test_an_issue_mailed_with_no_language_is_worded_in_the_current_setting() -> None:
+    content = _content("zh-Hant", output_language="")
+
+    subject, text = build_digest_mail(content, ONLINE, language="zh-Hant")
+    html = render_digest_email(content, ONLINE, language="zh-Hant")
+
+    assert subject == "早報摘要 2026-01-02"
+    assert "報導" in text
+    assert _html_lang(html) == "zh-Hant"
+
+
+def test_an_issue_mailed_with_its_own_language_keeps_it_whatever_the_setting() -> None:
+    subject, _ = build_digest_mail(_content("zh-Hant"), ONLINE, language="en")
+
+    assert subject == "早報摘要 2026-01-02"
+
+
+# ---- Discord ---------------------------------------------------------------------------
+
+
+def _discord_text(payload: dict) -> str:
+    embeds = [f"{e['title']}\n{e['description']}" for e in payload["embeds"]]
+    return "\n".join([payload.get("content", ""), *embeds])
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_the_discord_message_is_worded_in_its_issues_language(language) -> None:
+    t = translator(language)
+    content = _priced(language, synthetic_url_count=2, dead_link_count=1)
+
+    payload = build_discord_payload(content, ONLINE, degraded=True)
+
+    titles = [e["title"] for e in payload["embeds"]]
+    assert titles == [
+        t("layer.tracking"),
+        t("layer.stories"),
+        t("layer.topics"),
+        f"{t('period.morning')} 2026-01-02",
+    ]
+    stats = payload["embeds"][-1]["description"]
+    for line in [
+        f"📖 [{t('email.read_online')}]({ONLINE})",
+        f"📊 {t('notify.stat_sources')} **5**",
+        f"📥 {t('notify.stat_articles')} **20**",
+        f"✅ {t('notify.stat_kept')} **10** (50.0%)",
+        f"⚠️ {t('notify.link_health', synthetic=2, dead=1)}",
+        f"💰 {t('notify.stat_cost')} **$0.0105**",
+    ]:
+        assert line in stats.split("\n"), line
+    assert payload["content"] == f"⚠️ {t('notify.degraded_model', model=MODEL)}"
+
+
+def test_a_zh_hant_discord_message_says_nothing_in_english() -> None:
+    content = _priced("zh-Hant", synthetic_url_count=2, dead_link_count=1)
+
+    text = _discord_text(build_discord_payload(content, ONLINE, degraded=True))
+
+    words = set(re.findall(r"[A-Za-z]+", re.sub(r"https://\S+", "", text))) - NAMES
+    assert words == {"claude", "sonnet"}
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_a_discord_message_that_could_not_publish_says_so(language) -> None:
+    t = translator(language)
+    no_model = _content(language, usage=UsageStats(model="none"), articles_received=0)
+
+    payload = build_discord_payload(no_model, publish_failed=True, degraded=True)
+
+    stats = payload["embeds"][-1]["description"]
+    assert f"⚠️ {t('notify.publish_failed')}" in stats
+    assert f"({t('notify.no_share')})" in stats
+    assert payload["content"] == f"⚠️ {t('notify.degraded')}"
+
+
+@pytest.mark.parametrize("language", LANGUAGES)
+def test_a_cut_discord_section_ends_in_its_languages_marker(language) -> None:
+    long = [
+        DigestItem(title=f"{n}" * 60, summary="字" * 300, sources=[], urls=[f"https://l.test/{n}"])
+        for n in range(40)
+    ]
+    content = _content(
+        language, filtered_headlines=[], featured_articles=[DigestSection(heading="h", items=long)]
+    )
+
+    text = _discord_text(build_discord_payload(content, ONLINE))
+
+    assert f"*{translator(language)('notify.more_online')}*" in text
+
+
+def test_an_issue_sent_with_no_language_is_worded_in_the_current_setting() -> None:
+    content = _content("zh-Hant", output_language="")
+
+    payload = build_discord_payload(content, ONLINE, language="zh-Hant")
+
+    assert payload["embeds"][-1]["title"] == "早報 2026-01-02"
+    assert "線上閱讀" in payload["embeds"][-1]["description"]

@@ -612,7 +612,7 @@ class TestDiscordPayloadLimitsInBytes:
         stats = {"title": "Evening 2026-10-30", "description": "x", "color": 0}
         embed = {"title": "標" * 100, "description": "內容", "color": 0}
 
-        title = _fit_embeds([embed, stats])[0]["title"]
+        title = _fit_embeds([embed, stats], "*…*")[0]["title"]
 
         assert _bytes(title) <= 256
         assert title == "標" * 85

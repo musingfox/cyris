@@ -819,10 +819,11 @@ def check_grouped_top_story(r: Receipts) -> None:
     ]
     assert [c.one("p", "summary").text() for c in cards] == [OWN_SUMMARIES[k] for k in TOP_STORY]
     # The mail and Discord open their Stories with the same cards, under no group heading.
-    (stories,) = [e["description"] for e in r.discord()["embeds"] if e["title"] == "Stories"]
+    heading = translator("zh-Hant")("layer.stories")
+    (stories,) = [e["description"] for e in r.discord()["embeds"] if e["title"] == heading]
     mail = r.mail()
     lines = mail["text"].splitlines()
-    at = lines.index("Stories")
+    at = lines.index(heading)
     for n, key in enumerate(TOP_STORY):
         assert stories.split("\n### ")[n].lstrip("# ").startswith(f"[{TITLE[key]}]({URL[key]})")
         assert f"- {TITLE[key]} — {URL[key]}" in lines[at:], key
@@ -958,7 +959,8 @@ def test_discord_and_mail_each_receive_the_issue_once(receipts) -> None:
     # Stories and Topics in the page's order, then the stats; the scenario tracks no topic,
     # and the Headlines layer is left to the page.
     stories, topics, stats = receipts.discord()["embeds"]
-    assert [e["title"] for e in (stories, topics)] == ["Stories", "Topics"]
+    zh = translator("zh-Hant")
+    assert [e["title"] for e in (stories, topics)] == [zh("layer.stories"), zh("layer.topics")]
     assert UNLINKED_TITLE in stories["description"]
     for key in (*TOP_STORY, *FEATURES):
         assert f"[{TITLE[key]}]({URL[key]})" in stories["description"], key
@@ -970,13 +972,12 @@ def test_discord_and_mail_each_receive_the_issue_once(receipts) -> None:
     for count in ("**4**", "**13**", "**12**"):
         assert count in stats["description"], count
     assert stats["title"].endswith(receipts.date)
-    # The issue is zh-Hant, so Discord names its period from that catalog; the mail stays English.
-    assert stats["title"].split()[0] == translator("zh-Hant")("period.morning")
+    # The issue is zh-Hant, so Discord and the mail name its period from that catalog.
+    assert stats["title"].split()[0] == zh("period.morning")
     assert all(e["title"] for e in (stories, topics, stats))
     mail = receipts.mail()
     assert (mail["to"], mail["from"]) == ("reader@e2e.test", "digest@e2e.test")
-    words = mail["subject"].split()
-    assert (words[0], words[-1]) == ("Morning", receipts.date)
+    assert mail["subject"] == zh("mail.subject", period=zh("period.morning"), date=receipts.date)
     assert receipts.digest_url in mail["text"]
     assert receipts.digest_url in parse_html(mail["html"]).hrefs()
     for key in SHOWN - {"n1", "n2"} - set(WATER):
@@ -1010,7 +1011,8 @@ def test_a_full_issue_reaches_discord_within_its_embed_total(full_issue) -> None
     assert post["status"] == 204, post["status"]
     embeds = json_body(post)["embeds"]
     assert sum(len(e["title"]) + len(e["description"]) for e in embeds) <= 6000
-    assert f"[Read online]({full_issue.digest_url})" in embeds[-1]["description"]
+    read_online = translator("zh-Hant")("email.read_online")
+    assert f"[{read_online}]({full_issue.digest_url})" in embeds[-1]["description"]
 
 
 # ---- self-tests: the checks above can fail ----------------------------------
