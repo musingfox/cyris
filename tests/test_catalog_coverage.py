@@ -27,7 +27,7 @@ from messageformat2.datamodel import (
 )
 
 import cyris
-from cyris.domain.models import ArticleState
+from cyris.domain.models import ArticleState, Lane
 from cyris.entrypoints.triage_server import (
     BROWSER_MESSAGES,
     STATIC_DIR,
@@ -50,6 +50,7 @@ FUNCTIONS = {"string", "number", "integer"}
 FAMILIES: dict[str, tuple[str, ...]] = {
     "period.": PERIOD_ORDER,
     "article_state.": tuple(map(str, ArticleState)),
+    "lane.": tuple(map(str, Lane)),
 }
 RENDERERS = {
     "settings.html.j2": render_settings_page,

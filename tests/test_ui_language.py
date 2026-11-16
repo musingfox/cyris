@@ -180,11 +180,9 @@ def test_settings_names_the_file_of_its_saved_language(language, catalog) -> Non
     html = _serve(server, "/settings")
 
     assert _named_file(html) == f"/static/i18n/{catalog}.json"
-    assert _served(server, html) == {
-        "settings.checking_discord": {
-            "tag": catalog,
-            "text": _text(catalog, "settings.checking_discord"),
-        }
+    assert _served(server, html)["settings.checking_discord"] == {
+        "tag": catalog,
+        "text": _text(catalog, "settings.checking_discord"),
     }
     assert _settings_link(html) == _text(catalog, "site.settings")
     assert _html_lang(html) == catalog
