@@ -237,7 +237,7 @@ def build_discord_embeds(
     Returns a list of embed dicts, uncapped in total: `build_discord_payload` holds them
     to Discord's limits.
     The embeds follow the page (docs/design/ui-language.md §6 *digest*): Tracking, then
-    Stories and Topics of `layer_by_lane`, an empty one left out. The Headlines layer is
+    Stories and Topics of `layer_by_lane`, an empty one left out. The Glance layer is
     left to the page, to keep the message short. The stats come last. A layer longer than
     one embed's description continues in embeds of the same title, so that `_fit_embeds`,
     which cuts from the end, takes the Topics first and the Stories last when the message

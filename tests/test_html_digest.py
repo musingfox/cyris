@@ -118,7 +118,7 @@ SECTION_LABELS = (
     "Tracking",
     "Stories",
     "Topics",
-    "Headlines",
+    "Glance",
 )
 
 EMPTY_SENTENCE = "this run judged the 7 articles it received and kept none"
@@ -2092,7 +2092,7 @@ PASSED_THROUGH_TEXT = [
 DIGEST_CHROME_TEXT = [
     "Stories",
     "Topics",
-    "Headlines",
+    "Glance",
     "Sources",
     "Included",
     "3 articles",
@@ -2688,7 +2688,7 @@ def test_the_layers_are_drawn_by_script_alone_so_without_it_every_layer_shows() 
     for drawn_by_script in ("layered", "layer-dock", "layer-edge", "read-progress", "layer-in"):
         assert drawn_by_script not in markup
     assert " hidden" not in markup.split("<main>", 1)[1]
-    assert _markers(markup) == ["Tracking", "Stories", "Topics", "Headlines"]
+    assert _markers(markup) == ["Tracking", "Stories", "Topics", "Glance"]
 
 
 def test_tracking_sits_above_the_pebbles_and_lists_links_without_votes() -> None:
@@ -2703,7 +2703,7 @@ def test_tracking_sits_above_the_pebbles_and_lists_links_without_votes() -> None
     assert _by_class(tracking, "meta") == []
     assert '<a href="https://tracked.example.test/hit" target="_blank"' in html
     assert "SRC-TRACKED" not in html
-    assert _markers(html) == ["Tracking", "Stories", "Topics", "Headlines"]
+    assert _markers(html) == ["Tracking", "Stories", "Topics", "Glance"]
 
 
 def test_a_sand_vote_is_cast_for_every_member_url_under_its_story_id() -> None:
@@ -2892,4 +2892,4 @@ def test_a_legacy_cluster_stored_without_members_renders_as_sand_and_votes_on_it
 def test_the_page_names_no_area(tmp_path):
     html = HtmlDigestWriter(tmp_path).render(_areas_issue(["Tech", "Health"]))
 
-    assert _markers(html) == ["Stories", "Topics", "Headlines"]
+    assert _markers(html) == ["Stories", "Topics", "Glance"]

@@ -267,7 +267,7 @@ class TestDiscordEmbeds:
         assert "Publishing the online edition failed" not in quiet["description"]
 
     def test_filtered_headlines_get_no_embed(self):
-        """The Headlines layer is left to the page: only the stats are sent."""
+        """The Glance layer is left to the page: only the stats are sent."""
         content = DigestContent(
             date="2026-04-10",
             period="morning",

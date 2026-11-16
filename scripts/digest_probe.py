@@ -268,7 +268,7 @@ def no_layer_content() -> DigestContent:
 
 
 def one_layer_content() -> DigestContent:
-    """An issue whose one layer is Headlines, after Tracking."""
+    """An issue whose one layer is Glance, after Tracking."""
     issue = content()
     issue.featured_articles = []
     issue.news_clusters = []
@@ -1185,7 +1185,7 @@ def _layer_counts() -> list[tuple[str, int]]:
     return [
         ("Stories", len(layers.pebbles)),
         ("Topics", len(layers.sand)),
-        ("Headlines", len(layers.water)),
+        ("Glance", len(layers.water)),
     ]
 
 
@@ -1478,7 +1478,7 @@ _CHECKS += [
             width=width,
             act="await layered();" + ("" if when == "on-load" else ' location.hash = "#topic-2";'),
             script=f"""
-                const name = {json.dumps("Headlines" if when == "on-load" else "Topics")};
+                const name = {json.dumps("Glance" if when == "on-load" else "Topics")};
                 await waitFor(() => same(shownLayers(), [name]), `the ${{name}} layer shown`);
                 await frames();
                 expectShown(name);

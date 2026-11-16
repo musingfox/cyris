@@ -174,7 +174,7 @@ class TestDigestMail:
 
         _, text = build_digest_mail(content)
 
-        labels = {"Tracking", "Stories", "Topics", "Headlines"}
+        labels = {"Tracking", "Stories", "Topics", "Glance"}
         assert [line for line in text.splitlines() if line in labels] == ["Stories"]
 
     def test_no_source_is_named(self):

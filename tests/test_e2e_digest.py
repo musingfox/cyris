@@ -957,7 +957,7 @@ def test_ids_the_model_rewrote_still_match_by_position(receipts) -> None:
 
 def test_discord_and_mail_each_receive_the_issue_once(receipts) -> None:
     # Stories and Topics in the page's order, then the stats; the scenario tracks no topic,
-    # and the Headlines layer is left to the page.
+    # and the Glance layer is left to the page.
     stories, topics, stats = receipts.discord()["embeds"]
     zh = translator("zh-Hant")
     assert [e["title"] for e in (stories, topics)] == [zh("layer.stories"), zh("layer.topics")]

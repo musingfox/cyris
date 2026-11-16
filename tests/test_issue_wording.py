@@ -203,7 +203,7 @@ def test_the_digest_page_is_worded_in_its_issues_language(language, tmp_path) ->
         t("layer.tracking"),
         t("layer.stories"),
         t("layer.topics"),
-        t("layer.headlines"),
+        t("layer.glance"),
         t("digest.close"),
         t("digest.topic_articles", count=2),
         t("digest.pull_to_close"),
@@ -251,7 +251,7 @@ def test_each_layer_carries_its_words_for_the_layer_script(tmp_path) -> None:
     html = _digest("zh-Hant", tmp_path)
 
     words = [json.loads(w) for w in re.findall(r"data-layer-words='([^']*)'", html)]
-    assert [w["count"] for w in words] == ["1 篇報導", "1 個主題", "2 則快訊"]
+    assert [w["count"] for w in words] == ["1 篇報導", "1 個主題", "2 則速覽"]
     assert words[1]["skip"] == '<span class="skip-words">跳到 </span>1 個主題 ↓'
     assert words[0]["back"] == "回到報導"
 

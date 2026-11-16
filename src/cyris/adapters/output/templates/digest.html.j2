@@ -693,8 +693,8 @@
             {#- Water: one row per topic of one article and per headline. -#}
             {%- if layers.water %}
 
-            <section class="section" data-layer-words='{{ layer_words(t("layer.headlines"), t("digest.count_headlines", count=layers.water | length)) }}'>
-                <h2 class="section-tag"><span class="label">{{ t("layer.headlines") }}</span></h2>
+            <section class="section" data-layer-words='{{ layer_words(t("layer.glance"), t("digest.count_glance", count=layers.water | length)) }}'>
+                <h2 class="section-tag"><span class="label">{{ t("layer.glance") }}</span></h2>
                 <div class="headlines-compact" lang="{{ content_lang }}">
                     {% for water in layers.water %}{% set item = water.item %}
                     <div class="headline-item" id="headline-{{ loop.index }}"{% if water.untranslated %} lang=""{% endif %}>
