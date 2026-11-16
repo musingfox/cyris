@@ -11,6 +11,7 @@ import pytest
 
 from cyris.adapters.output.email_digest import render_digest_email
 from cyris.adapters.output.html_digest import HtmlDigestWriter
+from cyris.domain.interest_graph import InterestEdge, InterestGraph, InterestNode
 from cyris.domain.models import DigestContent, DigestItem
 
 pytestmark = pytest.mark.unit
@@ -83,3 +84,35 @@ def test_the_third_layer_is_glance(language, name, one, many, tmp_path) -> None:
     assert alone["count"] == one
     for old in ("Headline", "快訊"):
         assert old not in html
+
+
+# ---- a suppression on the interest map -------------------------------------------------
+
+
+def _interest(language: str, tmp_path, *, lit: float, holds: bool) -> str:
+    nodes = [InterestNode("代理", 2, 0, "up", lit), InterestNode("晶片", 0, 2, "down", 0.0)]
+    graph = InterestGraph(nodes=nodes, edges=[InterestEdge("代理", "晶片")])
+    return HtmlDigestWriter(tmp_path, language=language).render_interest(
+        graph, holds_active=holds, generated_at="2026-11-17T08:00:00+08:00", clock_days=7
+    )
+
+
+def test_a_suppression_is_not_interested_in_zh_hant(tmp_path) -> None:
+    lit = _interest("zh-Hant", tmp_path, lit=1.0, holds=True)
+    elsewhere = _interest("zh-Hant", tmp_path, lit=0.0, holds=True)
+    none = _interest("zh-Hant", tmp_path, lit=0.0, holds=False)
+
+    assert "亮：標為沒興趣；越暗：剩餘時間越少；淡色：未標為沒興趣。" in lit
+    assert "並標出每項沒興趣標記還剩多少時間。" in lit
+    assert "目前有標為沒興趣的文章，但都不在這張地圖的標籤附近。" in elsewhere
+    assert "目前沒有標為沒興趣的文章。" in none
+    for page in (lit, elsewhere, none):
+        assert "排除" not in page
+        assert "壓制" not in page
+
+
+def test_a_suppression_keeps_its_english_name(tmp_path) -> None:
+    lit = _interest("en", tmp_path, lit=1.0, holds=True)
+
+    assert "Lit = suppressed now; dimmer = less time left; half colour = not suppressed." in lit
+    assert "No suppression is active." in _interest("en", tmp_path, lit=0.0, holds=False)
