@@ -2119,18 +2119,15 @@ class TriageServer:
         """The interest map, drawn from D1 as it is now."""
         from cyris.service_layer.interest_page import render_interest_page
 
+        t = translator(self._ui_language(request))
         if self._interest_reader is None:
-            return web.Response(
-                text="The interest map reads votes and holds from the SQL store: this "
-                'deployment\'s [store] backend is neither "sqlite" nor "d1".',
-                status=409,
-            )
+            return web.Response(text=t("interest.no_store"), status=409)
         try:
-            writer = html_digest.HtmlDigestWriter(Path("."), language=self._ui_language(request))
+            writer = html_digest.HtmlDigestWriter(Path("."), language=t.tag)
             page = render_interest_page(self._interest_reader, writer, self._clock())
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             logger.error("Failed to render the interest map: %s", e)
-            return web.Response(text=f"Could not draw the interest map: {e}", status=500)
+            return web.Response(text=t("interest.failed", reason=str(e)), status=500)
         return web.Response(text=page, content_type="text/html")
 
     async def _handle_browser_messages(self, request: web.Request) -> web.Response:

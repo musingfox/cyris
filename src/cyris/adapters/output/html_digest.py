@@ -9,8 +9,6 @@ from urllib.parse import urlsplit
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from cyris.domain.area_layout import AreaSection
-from cyris.domain.areas import UNPLACED_SECTION_LABEL
 from cyris.domain.graph_layout import layout
 from cyris.domain.interest_graph import InterestGraph
 from cyris.domain.layers import layer_by_lane
@@ -34,11 +32,6 @@ INTEREST_MAP_HEIGHT = 360
 # A copy of website/assets/favicon.svg, because the image ships `src/` only.
 FAVICON = Path(__file__).parent / "favicon.svg"
 TEMPLATES = Path(__file__).parent / "templates"
-
-
-def section_label(section: AreaSection) -> str | None:
-    """The marker above an area section: its area's name, "Other", or none for the unnamed one."""
-    return UNPLACED_SECTION_LABEL if section.role == "unplaced" else section.label
 
 
 def _hostname(url: str) -> str:
@@ -78,11 +71,6 @@ def _html_lang(value: str) -> str:
     return value if value and _LANGUAGE_TAG.fullmatch(value) else ""
 
 
-def _plural(n: int, noun: str) -> str:
-    """'1 issue', '2 issues': the one English plural the templates need."""
-    return f"{n} {noun}{'' if n == 1 else 's'}"
-
-
 def issue_period(period: str, t: Translator) -> str:
     """How an issue's pages name its period, in `t`'s catalog; one outside `PERIOD_ORDER` as it is.
 
@@ -105,9 +93,7 @@ def _environment(tag: str, search_path: tuple[Path, ...]) -> Environment:
         # template unescaped — feed-controlled titles and URLs went out raw.
         autoescape=select_autoescape(["html", "xml"], default=True),
     )
-    env.filters["plural"] = _plural
     env.filters["hostname"] = _hostname
-    env.filters["section_label"] = section_label
     env.filters["paragraph_links"] = paragraph_links
     env.globals["project_url"] = PROJECT_URL
     env.globals["t"] = translator(tag)

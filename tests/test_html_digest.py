@@ -22,6 +22,7 @@ from cyris.domain.models import (
     UsageStats,
 )
 from cyris.domain.selection import digest_urls
+from cyris.i18n import translator
 
 pytestmark = pytest.mark.unit
 
@@ -919,10 +920,13 @@ def test_the_archive_checks_an_absent_field_one_way():
     assert [c for c in conditions if not c.endswith(" is not none")] == []
 
 
-@pytest.mark.parametrize(("n", "said"), [(0, "0 issues"), (1, "1 issue"), (2, "2 issues")])
-def test_the_templates_count_in_english_plurals(n, said):
-    env = HtmlDigestWriter("unused").env
-    assert env.from_string('{{ n | plural("issue") }}').render(n=n) == said
+@pytest.mark.parametrize(
+    ("language", "n", "said"),
+    [("en", 0, "0 issues"), ("en", 1, "1 issue"), ("en", 2, "2 issues"), ("zh-Hant", 1, "1 期")],
+)
+def test_the_archive_counts_issues_by_its_catalogs_plural(language, n, said):
+    env = HtmlDigestWriter("unused", language=language).env
+    assert env.from_string('{{ t("index.issues", count=n) }}').render(n=n) == said
 
 
 def test_no_template_spells_its_own_plural():
@@ -1842,7 +1846,10 @@ def test_the_vote_names_the_access_refusal_and_the_redirect(tmp_path):
     templates = Path(html_digest.__file__).parent / "templates"
     script = (templates / "_promote_script.html.j2").read_text()
 
-    assert "accessNotSetUp: 'Access is not set up for this deployment." in script
+    assert 'accessNotSetUp: {{ t("vote.access_not_set_up") | tojson }},' in script
+    assert translator("en")("vote.access_not_set_up").startswith(
+        "Access is not set up for this deployment."
+    )
     assert "if (resp.status === 403) return VOTE_FAILED.accessNotSetUp;" in script
     assert "if (resp.type === 'opaqueredirect') return VOTE_FAILED.signedOut;" in script
 

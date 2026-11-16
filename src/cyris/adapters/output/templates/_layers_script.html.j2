@@ -42,14 +42,13 @@
             const last = items[items.length - 1];
             h2.tabIndex = -1;
             last.tabIndex = -1;
-            return {s, h2, last, name: h2.textContent.trim(), count: items.length};
+            return {s, h2, last, name: h2.textContent.trim(), count: items.length, words: JSON.parse(s.dataset.layerWords)};
         });
         const lastLayer = layered[layered.length - 1];
         // The masthead and every block above the first layer belong to it; the footer, and
         // anything else after the last layer, to the last.
         const first = [$('.masthead'), ...[...main.children].filter((e) => e.compareDocumentPosition(layered[0]) & Node.DOCUMENT_POSITION_FOLLOWING)];
         const after = [...[...main.children].filter((e) => e.compareDocumentPosition(lastLayer) & Node.DOCUMENT_POSITION_PRECEDING), $('.footer')];
-        const counted = (l) => `${l.count} ${l.name}`;
         const dock = make('<div class="layer-dock"><div class="layer-dock-inner"><button type="button" class="btn secondary sm layer-back"></button><span class="label layer-where"></span><button type="button" class="btn secondary sm layer-skip"></button></div></div>');
         const edge = (dir) => make(`<div class="layer-edge ${dir}" aria-hidden="true"><div class="layer-edge-inner"><div class="layer-pull" hidden><span class="label"></span><i><b></b></i></div></div></div>`);
         const up = edge('up'), down = edge('down');
@@ -86,7 +85,7 @@
             const row = $('.layer-pull', el), shown = next && atEdge(dir) && (armed === dir || pushed === dir || pullDir === dir);
             row.hidden = !shown;
             if (!shown) return;
-            $('.label', row).textContent = armed === dir ? `Press ${dir > 0 ? '↓' : '↑'} again for ${counted(next)}` : `Keep scrolling for ${counted(next)}`;
+            $('.label', row).textContent = armed === dir ? next.words[dir > 0 ? 'press_down' : 'press_up'] : next.words.keep_scrolling;
             $('b', row).style.width = `${pullDir === dir ? Math.min(1, pull / PULL) * 100 : 0}%`;
         };
         const render = () => {
@@ -96,14 +95,12 @@
             view.classList.toggle('has-next', !!next);
             where.textContent = `${layers[cur].name} · ${layers[cur].count}`;
             back.hidden = !prev;
-            if (prev) { back.textContent = `↑ ${prev.name}`; back.setAttribute('aria-label', `Back to ${prev.name}`); }
+            if (prev) { back.textContent = `↑ ${prev.name}`; back.setAttribute('aria-label', prev.words.back); }
             skip.hidden = !next;
             if (next) {
-                const words = document.createElement('span');
-                words.className = 'skip-words';
-                words.textContent = 'Skip to ';
-                skip.replaceChildren(words, `${counted(next)} ↓`);
-                skip.setAttribute('aria-label', `Skip to ${counted(next)}`);
+                // The page's own words, escaped where it was rendered: its one markup is the span.
+                skip.innerHTML = next.words.skip;
+                skip.setAttribute('aria-label', next.words.skip_label);
             }
             root.style.setProperty('--edge-top', `${barsBottom()}px`);
             const p = Math.min(1, pull / PULL);

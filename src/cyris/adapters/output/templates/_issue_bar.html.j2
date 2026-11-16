@@ -1,9 +1,9 @@
     <div class="issue-bar">
         <div class="issue-bar-inner">
             <div class="issue-id"><span class="data">{{ date }}</span><span class="label">{{ period | period_name }}</span></div>
-            <nav class="seg" aria-label="Issue views">
-                <a href="{{ date }}-{{ period }}.html"{% if view == "digest" %} aria-current="page"{% endif %}>Digest</a>
-                {% if view == "raw" or raw_page %}<a href="{{ date }}-{{ period }}-raw.html"{% if view == "raw" %} aria-current="page"{% endif %}>All articles</a>{% endif %}
+            <nav class="seg" aria-label="{{ t("issue.views") }}">
+                <a href="{{ date }}-{{ period }}.html"{% if view == "digest" %} aria-current="page"{% endif %}>{{ t("issue.digest") }}</a>
+                {% if view == "raw" or raw_page %}<a href="{{ date }}-{{ period }}-raw.html"{% if view == "raw" %} aria-current="page"{% endif %}>{{ t("issue.all_articles") }}</a>{% endif %}
             </nav>
         </div>
     </div>

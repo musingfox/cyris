@@ -68,7 +68,7 @@ def test_an_unpriced_run_still_renders_a_digest(tmp_path):
     )
     rendered = HtmlDigestWriter(tmp_path).render(content)
 
-    assert "2000000 tokens" in rendered  # tokens are still real and still reported
+    assert "2,000,000 tokens" in rendered  # tokens are still real and still reported
 
 
 def test_an_unpriced_run_still_builds_a_discord_payload():

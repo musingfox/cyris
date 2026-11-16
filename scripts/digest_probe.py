@@ -53,6 +53,7 @@ from cyris.domain.models import (
     DigestSection,
     UsageStats,
 )
+from cyris.i18n import translator
 
 DATE = "2026-01-02"
 PERIOD = "morning"
@@ -1189,7 +1190,8 @@ def _layer_counts() -> list[tuple[str, int]]:
 
 
 LAYERS = _layer_counts()
-NEXT_LAYER = f"{LAYERS[1][1]} {LAYERS[1][0]}"
+# The fixture's catalog counts a layer as the layer script shows it: "1 Topic", "2 Topics".
+NEXT_LAYER = translator("en")("digest.count_topics", count=LAYERS[1][1])
 
 
 def _ignored(event: str, when: str = "true") -> str:

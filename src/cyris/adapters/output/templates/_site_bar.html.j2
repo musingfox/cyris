@@ -1,10 +1,10 @@
     <header class="site-bar">
         <div class="site-bar-inner">
             <a class="brand" {{ "data-gated-href" if current in ("settings", "labels", "onboarding") else "href" }}="index.html"><span class="brand-mark"></span><span class="brand-name">CYRIS</span></a>
-            <nav class="site-nav" aria-label="Site">
-                <a class="label{{ " archive-link" if current in ("settings", "labels", "onboarding") }}" href="index.html"{% if current in ("settings", "labels", "onboarding") %} hidden{% endif %}{% if current is not defined or current == "archive" %} aria-current="page"{% endif %}>Archive</a>
+            <nav class="site-nav" aria-label="{{ t("site.nav") }}">
+                <a class="label{{ " archive-link" if current in ("settings", "labels", "onboarding") }}" href="index.html"{% if current in ("settings", "labels", "onboarding") %} hidden{% endif %}{% if current is not defined or current == "archive" %} aria-current="page"{% endif %}>{{ t("site.archive") }}</a>
                 <a class="label settings-link" href="/settings{{ "?from=onboarding" if current == "onboarding" }}"{% if current == "settings" %} aria-current="page"{% endif %}>{{ t("site.settings") }}</a>
-                <a class="label signin-link" href="/login" hidden>Sign in</a>
+                <a class="label signin-link" href="/login" hidden>{{ t("site.sign_in") }}</a>
             </nav>
         </div>
     </header>

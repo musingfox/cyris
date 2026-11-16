@@ -1,8 +1,12 @@
 {% macro promote_btn(item, story_id=None) -%}
-{% if item.urls %}<span class="vote-group"{% if story_id %} data-story-id="{{ story_id }}"{% endif %} data-urls='{{ item.urls | tojson }}' lang="en"><button class="btn sm secondary promote-btn" data-vote="up" title="More like this" aria-label="More like this" aria-pressed="false">↑</button><button class="btn sm secondary promote-btn" data-vote="down" title="Less like this" aria-label="Less like this" aria-pressed="false">↓</button></span>{% endif %}
+{% if item.urls %}<span class="vote-group"{% if story_id %} data-story-id="{{ story_id }}"{% endif %} data-urls='{{ item.urls | tojson }}' lang="{{ ui_lang }}"><button class="btn sm secondary promote-btn" data-vote="up" title="{{ t("vote.more") }}" aria-label="{{ t("vote.more") }}" aria-pressed="false">↑</button><button class="btn sm secondary promote-btn" data-vote="down" title="{{ t("vote.less") }}" aria-label="{{ t("vote.less") }}" aria-pressed="false">↓</button></span>{% endif %}
 {%- endmacro -%}
 {% macro title_link(item) -%}
 {% if item.link %}<a href="{{ item.link }}" target="_blank" rel="noopener">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}
+{%- endmacro -%}
+{#- Each layer's words for the layer script, worded here because a static page formats nothing. -#}
+{% macro layer_words(name, counted) -%}
+{{ {"count": counted, "back": t("digest.layer_back_label", layer=name), "skip": t("digest.layer_skip", layer=counted, elements={"words": ("span", {"class": "skip-words"})}), "skip_label": t("digest.layer_skip_label", layer=counted), "press_down": t("digest.layer_press_down", layer=counted), "press_up": t("digest.layer_press_up", layer=counted), "keep_scrolling": t("digest.layer_keep_scrolling", layer=counted)} | tojson }}
 {%- endmacro -%}
 {% macro tag_pills(tags) -%}
 {% if tags %}<div class="tags">{% for tag in tags %}<span class="pill" lang="">{{ tag }}</span>{% endfor %}</div>{% endif %}
@@ -14,7 +18,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="dark">
     <title>CYRIS // {{ date }} · {{ period | period_name }}</title>
-    <meta name="description" content="The {{ date }} {{ period }} issue of a Cyris digest: {{ articles_included | plural('article') }} selected from {{ articles_received }}.">
+    <meta name="description" content="{{ t("digest.description", date=date, period=period | period_name, included=articles_included, received=articles_received) }}">
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -567,21 +571,21 @@
                 <h1 class="issue-title">Signal<em>/</em>Noise</h1>
                 <aside class="stats-card">
                     <div class="row">
-                        <span class="label">Sources</span>
+                        <span class="label">{{ t("digest.stat_sources") }}</span>
                         <span class="value">{{ sources_processed }}</span>
                     </div>
                     <div class="row">
-                        <span class="label">Received</span>
+                        <span class="label">{{ t("digest.stat_received") }}</span>
                         <span class="value">{{ articles_received }}</span>
                     </div>
                     <div class="row">
-                        <span class="label">Included</span>
+                        <span class="label">{{ t("digest.stat_included") }}</span>
                         <span class="value hl">{{ articles_included }}</span>
                     </div>
                     {% if triage_pending_count %}
                     <div class="row">
-                        <span class="label">Triage</span>
-                        <span class="value">{{ triage_pending_count }} awaiting triage</span>
+                        <span class="label">{{ t("digest.stat_triage") }}</span>
+                        <span class="value">{{ t("digest.awaiting_triage", count=triage_pending_count) }}</span>
                     </div>
                     {% endif %}
                 </aside>
@@ -590,10 +594,10 @@
 
         <main>
             {% if degraded %}
-            <p class="notice err issue-note">Some or all of this issue is unscored or plain excerpts: the configured LLM could not be used for every step this run. Check the provider and its key on Settings.</p>
+            <p class="notice err issue-note">{{ t("issue.degraded") }}</p>
             {% endif %}
             {% if not articles_included %}
-            <p class="small issue-note">Nothing is in this issue: this run judged the {{ articles_received }} articles it received and kept none.{% if raw_page %} <a href="{{ date }}-{{ period }}-raw.html">All articles</a> lists each one with its verdict.{% endif %}</p>
+            <p class="small issue-note">{% if raw_page %}{{ t("issue.empty_raw", received=articles_received, elements={"link": ("a", {"href": date ~ "-" ~ period ~ "-raw.html"})}) }}{% else %}{{ t("issue.empty", received=articles_received) }}{% endif %}</p>
             {% endif %}
             {#- Above the layers because a topic is something the reader asked to see. Its
                 hits are links only: a hit is a view of the run's candidates, not an item of
@@ -602,7 +606,7 @@
             {%- if layers.tracking %}
 
             <section class="section">
-                <h2 class="section-tag"><span class="label">Tracking</span></h2>
+                <h2 class="section-tag"><span class="label">{{ t("layer.tracking") }}</span></h2>
                 {% for topic in layers.tracking %}
                 <div class="thematic-block" lang="">
                     <h3 class="item-title lg">{{ topic.heading }}</h3>
@@ -619,8 +623,8 @@
             {#- Pebble: one card per read or follow article, the one place a source is named. -#}
             {%- if layers.pebbles %}
 
-            <section class="section">
-                <h2 class="section-tag"><span class="label">Stories</span></h2>
+            <section class="section" data-layer-words='{{ layer_words(t("layer.stories"), t("digest.count_stories", count=layers.pebbles | length)) }}'>
+                <h2 class="section-tag"><span class="label">{{ t("layer.stories") }}</span></h2>
                 <div class="featured-grid" lang="{{ content_lang }}">
                     {% for pebble in layers.pebbles %}{% set item = pebble.item %}
                     <article class="featured-item" id="story-{{ loop.index }}"{% if pebble.untranslated %} lang=""{% endif %}>
@@ -644,8 +648,8 @@
                 the dialog repeats the card's vote, so either one votes on the same topic. -#}
             {%- if layers.sand %}
 
-            <section class="section">
-                <h2 class="section-tag"><span class="label">Topics</span></h2>
+            <section class="section" data-layer-words='{{ layer_words(t("layer.topics"), t("digest.count_topics", count=layers.sand | length)) }}'>
+                <h2 class="section-tag"><span class="label">{{ t("layer.topics") }}</span></h2>
                 <div class="sand-grid">
                 {% for sand in layers.sand %}
                 <div class="news-cluster" id="topic-{{ loop.index }}" lang="{{ content_lang }}">
@@ -663,12 +667,12 @@
                 <dialog class="topic-dialog" id="topic-{{ loop.index }}-dialog" aria-labelledby="topic-{{ loop.index }}-dialog-title" lang="{{ content_lang }}">
                     <div class="topic-dialog-head">
                         <h2 class="topic-dialog-title" id="topic-{{ loop.index }}-dialog-title">{{ sand.heading }}</h2>
-                        <button type="button" class="btn secondary sm topic-dialog-close" commandfor="topic-{{ loop.index }}-dialog" command="close" lang="en">Close</button>
+                        <button type="button" class="btn secondary sm topic-dialog-close" commandfor="topic-{{ loop.index }}-dialog" command="close" lang="{{ ui_lang }}">{{ t("digest.close") }}</button>
                     </div>
                     <div class="topic-dialog-body">
                         {% if sand.line %}<p class="topic-dialog-line"{% if sand.line_untranslated %} lang=""{% endif %}>{{ sand.line }}</p>{% endif %}
                         <div class="meta">
-                            <span lang="en">{{ sand.members | length | plural('article') }}</span>
+                            <span lang="{{ ui_lang }}">{{ t("digest.topic_articles", count=sand.members | length) }}</span>
                             {{ promote_btn(sand.vote, sand.story_id) }}
                         </div>
                         <ol class="topic-members" lang="">
@@ -689,8 +693,8 @@
             {#- Water: one row per topic of one article and per headline. -#}
             {%- if layers.water %}
 
-            <section class="section">
-                <h2 class="section-tag"><span class="label">Headlines</span></h2>
+            <section class="section" data-layer-words='{{ layer_words(t("layer.headlines"), t("digest.count_headlines", count=layers.water | length)) }}'>
+                <h2 class="section-tag"><span class="label">{{ t("layer.headlines") }}</span></h2>
                 <div class="headlines-compact" lang="{{ content_lang }}">
                     {% for water in layers.water %}{% set item = water.item %}
                     <div class="headline-item" id="headline-{{ loop.index }}"{% if water.untranslated %} lang=""{% endif %}>
@@ -705,7 +709,7 @@
         </main>
 
         <footer class="footer">
-            <div>// Generated by <a href="{{ project_url }}">Cyris</a> &middot; {{ usage.total_tokens }} tokens &middot; {{ usage.api_calls }} api calls</div>
+            <div>// {{ t("issue.generated_by", tokens=usage.total_tokens, calls=usage.api_calls, elements={"link": ("a", {"href": project_url})}) }}</div>
         </footer>
     </div>
     {% include "_promote_script.html.j2" %}
