@@ -1,0 +1,8 @@
+{
+  "email.read_online": "Read online",
+  "error.no_settings_store": "this deployment has no settings store to write",
+  "period.evening": "Evening",
+  "period.morning": "Morning",
+  "settings.checking_discord": "Checking with Discord…",
+  "site.settings": "Settings"
+}
