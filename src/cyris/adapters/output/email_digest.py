@@ -13,35 +13,21 @@ import re
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markupsafe import Markup
 
 from cyris.adapters.notify import period_label
 from cyris.adapters.output.html_digest import (
-    PROJECT_URL,
+    TEMPLATES,
     HtmlDigestWriter,
-    _hostname,
     _html_lang,
-    paragraph_links,
-    section_label,
+    environment,
 )
 from cyris.domain.layers import layer_by_lane
 from cyris.domain.models import DigestContent
+from cyris.i18n import ENGLISH, translator
 
-TEMPLATES = Path(__file__).parent / "templates"
 PALETTE_FILE = Path(__file__).parent / "email_palette.json"
 LIGHT_PALETTE: dict[str, str] = json.loads(PALETTE_FILE.read_text(encoding="utf-8"))["light"]
-
-_env = Environment(
-    loader=FileSystemLoader(TEMPLATES),
-    # default=True for the reason `HtmlDigestWriter` gives: the .j2 suffix would
-    # otherwise leave feed-controlled titles and URLs unescaped.
-    autoescape=select_autoescape(["html", "xml"], default=True),
-)
-_env.filters["hostname"] = _hostname
-_env.filters["section_label"] = section_label
-_env.filters["paragraph_links"] = paragraph_links
-_env.globals["project_url"] = PROJECT_URL
 
 
 @functools.cache
@@ -67,7 +53,10 @@ def render_digest_email(
     publish_failed: bool = False,
     degraded: bool = False,
 ) -> str:
-    """The issue as one self-contained HTML document with absolute links only."""
+    """The issue as one self-contained HTML document with absolute links only.
+
+    Worded in the issue's `output_language`, which a run always sets on the content it mails.
+    """
     site = ""
     if digest_url:
         parts = urlsplit(digest_url)
@@ -77,10 +66,11 @@ def render_digest_email(
     # Our own tokens, not feed text: escaping would turn a font stack's quotes into
     # entities, which a <style> block does not decode.
     dark = {name: Markup(value) for name, value in tokens().items()}
-    return _env.get_template("email.html.j2").render(
+    template = environment(content.output_language).get_template("email.html.j2")
+    return template.render(
         content=content,
         content_lang=_html_lang(content.output_language),
-        period_label=period_label(content.period),
+        period_label=period_label(content.period, translator(ENGLISH)),
         layers=layer_by_lane(content),
         digest_url=digest_url,
         raw_url=raw_url,

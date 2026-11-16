@@ -1,5 +1,6 @@
 """HTML digest output writer for newspaper-style rendering."""
 
+import functools
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ from cyris.domain.models import (
     NewsParagraph,
     StoredArticle,
 )
+from cyris.i18n import resolve, translator
 from cyris.service_layer.schedule import PERIOD_ORDER
 
 # The upstream project, not this deployment: a fork's pages still credit it, so no
@@ -31,6 +33,7 @@ INTEREST_MAP_WIDTH = 480
 INTEREST_MAP_HEIGHT = 360
 # A copy of website/assets/favicon.svg, because the image ships `src/` only.
 FAVICON = Path(__file__).parent / "favicon.svg"
+TEMPLATES = Path(__file__).parent / "templates"
 
 
 def section_label(section: AreaSection) -> str | None:
@@ -78,6 +81,42 @@ def _html_lang(value: str) -> str:
 def _plural(n: int, noun: str) -> str:
     """'1 issue', '2 issues': the one English plural the templates need."""
     return f"{n} {noun}{'' if n == 1 else 's'}"
+
+
+def issue_language(content: DigestContent, current: str) -> str:
+    """The language an issue's own pages are worded in: its stored one, else the current setting."""
+    return content.output_language or current
+
+
+@functools.cache
+def _environment(tag: str, search_path: tuple[Path, ...]) -> Environment:
+    env = Environment(
+        loader=FileSystemLoader([*search_path, TEMPLATES]),
+        # default=True matters: select_autoescape matches on the template's own
+        # extension, and these are named *.html.j2, so the .j2 suffix left every
+        # template unescaped — feed-controlled titles and URLs went out raw.
+        autoescape=select_autoescape(["html", "xml"], default=True),
+    )
+    # A page's i18n-catalog block: a CJK character as UTF-8 is half the bytes of its \u escape.
+    # `tojson` still escapes <, >, & and ', so the block cannot close its <script>.
+    env.policies["json.dumps_kwargs"] = {"sort_keys": True, "ensure_ascii": False}
+    env.filters["plural"] = _plural
+    env.filters["hostname"] = _hostname
+    env.filters["section_label"] = section_label
+    env.filters["paragraph_links"] = paragraph_links
+    env.globals["project_url"] = PROJECT_URL
+    env.globals["t"] = translator(tag)
+    env.globals["ui_lang"] = tag
+    return env
+
+
+def environment(language: str, *search_path: Path) -> Environment:
+    """The one Jinja environment for pages worded in `language`, its `t` bound to that catalog.
+
+    Cached by the catalog `language` resolves to, not the raw tag. `search_path` is read before
+    this module's templates, which is how the container pages reach the site bar partial.
+    """
+    return _environment(resolve(language), search_path)
 
 
 @dataclass(frozen=True)
@@ -173,7 +212,7 @@ class HtmlDigestWriter:
         """The raw page's file name; the archive links to it only under this name."""
         return f"{date}-{period}-raw.html"
 
-    def __init__(self, output_dir: Path):
+    def __init__(self, output_dir: Path, language: str = ""):
         """Initialize writer with output directory.
 
         The promote Worker's URL and bearer used to be constructor arguments,
@@ -185,19 +224,16 @@ class HtmlDigestWriter:
 
         Args:
             output_dir: Directory to write HTML digests
+            language: The current `digest.output_language`: the archive and the interest
+                page are worded in it, and so is an issue stored with none
         """
         self.output_dir = Path(output_dir)
+        self.language = language
 
-        template_dir = Path(__file__).parent / "templates"
-        self.env = Environment(
-            loader=FileSystemLoader(template_dir),
-            # default=True matters: select_autoescape matches on the template's own
-            # extension, and these are named *.html.j2, so the .j2 suffix left every
-            # template unescaped — feed-controlled titles and URLs went out raw.
-            autoescape=select_autoescape(["html", "xml"], default=True),
-        )
-        self.env.filters["plural"] = _plural
-        self.env.globals["project_url"] = PROJECT_URL
+    @property
+    def env(self) -> Environment:
+        """The environment of the pages about the deployment, worded in the current setting."""
+        return environment(self.language)
 
     @staticmethod
     def site_assets() -> dict[str, bytes]:
@@ -220,7 +256,9 @@ class HtmlDigestWriter:
         Raises:
             jinja2.TemplateNotFound: If template is missing
         """
-        template = self.env.get_template("digest.html.j2")
+        template = environment(issue_language(content, self.language)).get_template(
+            "digest.html.j2"
+        )
 
         return template.render(
             date=content.date,
@@ -383,7 +421,9 @@ class HtmlDigestWriter:
         index_path.write_text(html, encoding="utf-8")
         return index_path
 
-    def write_raw(self, date: str, period: str, articles: list[StoredArticle]) -> Path:
+    def write_raw(
+        self, date: str, period: str, articles: list[StoredArticle], language: str
+    ) -> Path:
         """Render this run's judged and still-pending articles, grouped by source.
 
         Args:
@@ -391,18 +431,24 @@ class HtmlDigestWriter:
             period: Digest period (``morning``/``evening``).
             articles: What this run judged, plus whatever is still pending. Rows an
                 earlier run in the overlapping window judged are the caller's to drop.
+            language: The issue's `output_language`, passed to `render_raw`.
 
         Returns:
             Path to the written raw page.
         """
-        html = self.render_raw(date, period, articles)
+        html = self.render_raw(date, period, articles, language)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         file_path = self.output_dir / self.raw_filename(date, period)
         file_path.write_text(html, encoding="utf-8")
         return file_path
 
-    def render_raw(self, date: str, period: str, articles: list[StoredArticle]) -> str:
-        """The companion page's HTML: the given articles, grouped by source."""
+    def render_raw(
+        self, date: str, period: str, articles: list[StoredArticle], language: str
+    ) -> str:
+        """The companion page's HTML: the given articles, grouped by source.
+
+        Worded in `language`, the issue's `output_language`; "" is the current setting.
+        """
         groups: dict[str, list[StoredArticle]] = {}
         for a in articles:
             groups.setdefault(a.source_name, []).append(a)
@@ -416,11 +462,15 @@ class HtmlDigestWriter:
             for name, items in sorted(groups.items(), key=lambda kv: (-len(kv[1]), kv[0]))
         ]
 
-        return self.env.get_template("raw.html.j2").render(
-            date=date,
-            period=period,
-            total=len(articles),
-            groups=rendered_groups,
+        return (
+            environment(language or self.language)
+            .get_template("raw.html.j2")
+            .render(
+                date=date,
+                period=period,
+                total=len(articles),
+                groups=rendered_groups,
+            )
         )
 
     def render_interest(

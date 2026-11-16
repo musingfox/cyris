@@ -15,6 +15,8 @@ from cyris.domain.models import (
     DigestSection,
     NewsParagraph,
 )
+from cyris.i18n import Translator, translator
+from cyris.service_layer.schedule import PERIOD_ORDER
 
 logger = logging.getLogger(__name__)
 
@@ -73,9 +75,12 @@ def redact_webhook_tokens(text: str) -> str:
 UNNAMED_SECTION_TITLE = "Digest"
 
 
-def period_label(period: str) -> str:
-    """How a message names the period: `morning` reads as `Morning`."""
-    return {"morning": "Morning", "evening": "Evening"}.get(period, period)
+def period_label(period: str, t: Translator) -> str:
+    """How a message names the period, in `t`'s catalog; a label outside `PERIOD_ORDER` as it is.
+
+    Display only: `morning` and `evening` stay the stored value and the file names.
+    """
+    return t(f"period.{period}") if period in PERIOD_ORDER else period
 
 
 def _render_section_embed(section: DigestSection) -> str:
@@ -243,7 +248,7 @@ def build_discord_embeds(
     embeds of the same title, so that `_fit_embeds`, which cuts from the end, takes the
     Headlines first and the Stories last when the message runs out of room.
     """
-    label = period_label(content.period)
+    label = period_label(content.period, translator(content.output_language))
     layers = layer_by_lane(content)
     blocks = [
         ("Tracking", [_render_tracking(topic) for topic in layers.tracking], 0xE67E22),

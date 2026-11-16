@@ -1,3 +1,5 @@
+import { t } from "./i18n.js";
+
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0)};`);
 let state = null;
@@ -596,7 +598,7 @@ $("notify-form").addEventListener("submit", async (e) => {
   unrefuse(form);
   if (changed(DISCORD_PART)) {
     const url = sent["discord-webhook"];
-    show("busy", "Checking with Discord…", "notify-result");
+    show("busy", t("settings.checking_discord"), "notify-result");
     try {
       const data = await post("/api/settings/notify", {discord_webhook_url: url});
       state.values["notify.discord_webhook_url"] = data.discord_webhook_url;

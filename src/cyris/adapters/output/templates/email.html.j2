@@ -41,7 +41,7 @@
 {% endfor %}
 {%- endmacro -%}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ ui_lang }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -96,7 +96,7 @@
         <h1 class="issue-title">Signal<em>/</em>Noise</h1>
         <p class="stats">{{ content.sources_processed }} sources · {{ content.articles_received }} received · <b>{{ content.articles_included }} included</b></p>
         {% if digest_url %}
-        <p class="actions"><a class="btn primary" href="{{ digest_url }}">Read online</a>{% if raw_url %}<a class="btn secondary" href="{{ raw_url }}">All articles</a>{% endif %}</p>
+        <p class="actions"><a class="btn primary" href="{{ digest_url }}">{{ t("email.read_online") }}</a>{% if raw_url %}<a class="btn secondary" href="{{ raw_url }}">All articles</a>{% endif %}</p>
         {% elif publish_failed %}
         <p class="notice">Publishing the online edition failed, so this issue has no page to open.</p>
         {% endif %}

@@ -233,7 +233,10 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
         )
         return 1
 
-    writer = HtmlDigestWriter(Path(cfg.app.html_output.output_dir))
+    writer = HtmlDigestWriter(
+        Path(cfg.app.html_output.output_dir),
+        language=cfg.app.digest.output_language if cfg.app.digest else "",
+    )
     try:
         archive_counts = D1ArchiveMeta(d1).article_counts()
     except Exception as e:

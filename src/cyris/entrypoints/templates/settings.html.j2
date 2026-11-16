@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ ui_lang }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -492,7 +492,8 @@
     </div></td></tr>
   </template>
 
-<script src="/static/settings.js"></script>
+<script type="application/json" id="i18n-catalog">{{ i18n_catalog | tojson }}</script>
+<script type="module" src="/static/settings.js"></script>
 {% include "_probe_script.html.j2" %}
 </body>
 </html>

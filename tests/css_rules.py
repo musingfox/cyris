@@ -730,5 +730,6 @@ def receipt_fixtures() -> tuple[str, str, str]:
             _raw_article("Pending Article", "Source A", ArticleState.PENDING, None),
             _raw_article("Rejected Article", "Source B", ArticleState.REJECTED, 0.2),
         ],
+        "en",
     )
     return index_html, digest_html, raw_html

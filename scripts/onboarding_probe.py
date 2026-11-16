@@ -565,7 +565,8 @@ def build_fixture(kind: str) -> Fixture:
         clock=(lambda: EARLY) if kind == "first-issue-early" else (lambda: BETWEEN),
     )
     if kind.endswith("-largest"):
-        server._onboarding_page = at_largest_type_scale(server._onboarding_page)
+        render = server._onboarding_page
+        server._onboarding_page = lambda language: at_largest_type_scale(render(language))
 
     fixture = Fixture(server._app, settings, settings.calls, store, articles)
 

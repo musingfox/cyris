@@ -38,6 +38,7 @@ from e2e.receipts import (
 from cyris.bootstrap import default_model
 from cyris.domain.models import ArticleState, Lane, SourceConfig, StoredArticle, UsageStats
 from cyris.domain.triage import RejectReason
+from cyris.i18n import translator
 from cyris.service_layer.prompts import language_wording
 
 pytestmark = pytest.mark.e2e
@@ -968,7 +969,8 @@ def test_discord_and_mail_each_receive_the_issue_once(receipts) -> None:
     for count in ("**4**", "**13**", "**12**"):
         assert count in stats["description"], count
     assert stats["title"].endswith(receipts.date)
-    assert stats["title"].split()[0] == "Morning"
+    # The issue is zh-Hant, so Discord names its period from that catalog; the mail stays English.
+    assert stats["title"].split()[0] == translator("zh-Hant")("period.morning")
     assert all(e["title"] for e in (stories, topics, headlines, stats))
     mail = receipts.mail()
     assert (mail["to"], mail["from"]) == ("reader@e2e.test", "digest@e2e.test")

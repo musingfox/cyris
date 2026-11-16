@@ -18,6 +18,7 @@ from cyris.adapters.output.html_digest import Story, citation_links
 from cyris.domain.area_layout import AreaSection
 from cyris.domain.layers import Sand, layer_by_lane
 from cyris.domain.models import DigestContent, DigestItem, DigestSection, NewsParagraph
+from cyris.i18n import ENGLISH, translator
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +99,7 @@ def build_digest_mail(
     degraded: bool = False,
 ) -> tuple[str, str]:
     """The subject and plain-text body: Tracking and the three layers, as the HTML part has them."""
-    title = f"{period_label(content.period)} digest {content.date}"
+    title = f"{period_label(content.period, translator(ENGLISH))} digest {content.date}"
     lines = [title, ""]
     if digest_url:
         lines.append(f"Read online: {digest_url}")

@@ -592,7 +592,7 @@ async def test_settings_opens_with_the_digest_site_bar_marking_settings(
     page = await _served(triage, "/settings")
     assert page.count('<header class="site-bar">') == 1
     assert _site_bar(page) == _site_bar(expected)
-    assert '<script src="/static/settings.js"></script>' in page
+    assert '<script type="module" src="/static/settings.js"></script>' in page
 
 
 def test_onboarding_opens_with_the_digest_site_bar_leading_out_of_the_wizard() -> None:
