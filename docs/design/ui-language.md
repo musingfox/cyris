@@ -406,7 +406,7 @@ The body is four sections in a fixed order: Tracking, then the three layers of A
 (pebble), Topics (sand) and Headlines (water). `domain.layers.layer_by_lane` decides each item's layer by
 its lane and its member count in this issue alone, never by a score or an area: every `read` or `follow`
 article is a pebble, a news topic of two or more articles is sand, and a topic of one article or a kept
-headline is water. Areas do not divide the page, and the mail and Discord take the same four sections in
+headline is water. Areas do not divide the page, and the mail and Discord take the first three sections in
 the same order (§6 *email*). Nothing the run kept is cut from the page: there is no output cap. Empty sections are left
 out. Each section is one `<section class="section">`, and its name is printed once, by its section marker
 (§4), an `h2`, with no number and no repeated large section title.
@@ -850,28 +850,30 @@ by value, from `_tokens.css.j2` and the §2 light palette (`adapters/output/emai
   `color-scheme: light dark` so Apple Mail does not re-tint either. Gmail ignores the media query and
   inverts the light message itself, which stays legible; an inverted dark one would not.
 - **One column.** `--measure` wide, `--s-4` gutters, no breakpoint. The sections are the page's, in its
-  order and under its names (§6 *digest*): Tracking, Stories, Topics and Headlines, from
-  `layer_by_lane`, an empty one left out. There is no lead panel; every item is separated by a
+  order and under its names (§6 *digest*), without its last: Tracking, Stories and Topics, from
+  `layer_by_lane`, an empty one left out. The Headlines layer is left to the page, to keep a
+  notification short (owner, 2026-11-16); `Read online` is how a reader reaches it. There is no lead panel; every item is separated by a
   `--border` hairline.
 - **Each block says what it says on the page, unfolded.** A Tracking topic is its name and each hit's
-  title link. A pebble is its title link, its summary and its source name, with no story image: a
+  title link. A pebble is its title link and its summary, with no story image: a
   mail client may block a remote image, and one it loads tells the image's host who opened the
-  mail. The mail shows every layer at once, as the page does without script. A sand block is its
-  heading, its line, with no story image for the same reason, then each member's title link with its source name, listed open because a mail
-  client runs no script and cannot be trusted with `<details>` or `<dialog>`; that list is the only place outside a pebble where a
-  source is named. No item shows a score pill, as on the page. A legacy news paragraph takes the layers its units take on the page. The
+  mail. The mail shows its layers at once, as the page does without script. A sand block is its
+  heading, its line, with no story image for the same reason, then each member's title link, listed open because a mail
+  client runs no script and cannot be trusted with `<details>` or `<dialog>`. The mail and Discord name no
+  source anywhere, to keep a notification short (owner, 2026-11-16); the page names them (§6 *digest*). No item shows a score pill, as on the page. A legacy news paragraph takes the layers its units take on the page, so a unit that is water there is not sent. The
   plain-text part holds the same blocks, each item a `- title — link` line with its text indented
   below it.
-- **A Headlines row keeps its sentence.** Its summary follows its title as on the page, in the small role in
-  the HTML part, breaking an unbroken run as the page does, and on its own indented line in the
-  plain-text part; a row with no summary is its title alone. A row names no source.
 - **Discord follows the same order.** The notification is one embed per non-empty section, titled as
   the mail's, then the stats; a section longer than one embed's 4096 UTF-8 bytes continues in embeds of
   the same title. Discord refuses a message over 6000 UTF-8 bytes or 10 embeds whole, so the embeds are
-  cut from the end: Headlines lose rows first and Stories last.
+  cut from the end: Topics are cut first and Stories last.
 - **No script, no vote, absolute links only.** The issue links to its page, its raw page when one was
   published, the archive and Settings, all on the digest link's own host; a failed publish shows a
-  `--warn` notice instead. The footer's project link (§4) is the one link off that host.
+  `--warn` notice instead. The footer's project link (§4) is the one link off that host. A published
+  issue repeats its primary `Read online` button after the last section, above the footer, so a reader
+  who reached the end need not scroll back; the footer's generation line ends with the run's estimated
+  cost, `cost $0.0000`, left out when no call was made or the model has no known price, as Discord's
+  stats do.
 - **Empty and degraded as on the page.** The empty sentence and the degraded notice (§6 *digest*) come
   after the buttons, the empty sentence in the small role with its `All articles` link only when the raw
   page was published.

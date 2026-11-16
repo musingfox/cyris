@@ -9,7 +9,7 @@ import respx
 from layered_issue import UNNAMED_SOURCES, four_layer_issue
 
 from cyris.adapters.mail import build_digest_mail, send_alert_mail, send_digest_mail, send_mail
-from cyris.domain.models import DigestContent, DigestItem
+from cyris.domain.models import DigestContent
 
 pytestmark = pytest.mark.unit
 
@@ -145,7 +145,7 @@ class TestDigestMail:
         assert "Publishing the online edition failed" in text
         assert "http" not in text
 
-    def test_the_text_part_is_tracking_then_the_three_layers(self):
+    def test_the_text_part_is_tracking_then_stories_and_topics(self):
         _, text = build_digest_mail(four_layer_issue())
 
         lines = text.splitlines()
@@ -157,21 +157,13 @@ class TestDigestMail:
             "Stories",
             "- A long read — https://pebble.example.test/read",
             "  Why it matters.",
-            "  SRC-PEBBLE",
             "- A followed post — https://fan.example.test/post",
-            "  SRC-FAN",
             "",
             "Topics",
             "- Two reports of one event",
             "  Excerpt a",
-            "  - Report a — https://wire-a.example.test/a (SRC-WIRE-a)",
-            "  - Report b — https://wire-b.example.test/b (SRC-WIRE-b)",
-            "",
-            "Headlines",
-            "- One report — https://lone.example.test/1",
-            "  Its summary.",
-            "- A headline — https://headline.example.test/1",
-            "  The filter's sentence.",
+            "  - Report a — https://wire-a.example.test/a",
+            "  - Report b — https://wire-b.example.test/b",
         ]
 
     def test_an_empty_layer_has_no_label(self):
@@ -180,33 +172,19 @@ class TestDigestMail:
         _, text = build_digest_mail(content)
 
         labels = {"Tracking", "Stories", "Topics", "Headlines"}
-        assert [line for line in text.splitlines() if line in labels] == ["Stories", "Headlines"]
+        assert [line for line in text.splitlines() if line in labels] == ["Stories"]
 
-    def test_no_source_is_named_outside_a_pebble_or_a_sand_member(self):
+    def test_no_source_is_named(self):
         _, text = build_digest_mail(four_layer_issue())
-        outside = [line for line in text.splitlines() if not line.startswith("  - Report")]
 
         for source in UNNAMED_SOURCES:
-            assert not any(source in line for line in outside), source
+            assert source not in text, source
 
-    def test_the_text_part_puts_a_wire_rows_summary_on_the_line_below_it(self):
-        content = _content()
-        content.filtered_headlines = [
-            DigestItem(
-                title="Wire One", summary="One sentence.", sources=["W"], urls=["https://w.test/1"]
-            ),
-            DigestItem(title="Wire Two", summary="", sources=["W"], urls=["https://w.test/2"]),
-        ]
+    def test_the_headlines_layer_is_left_to_the_page(self):
+        _, text = build_digest_mail(four_layer_issue())
 
-        _, text = build_digest_mail(content, "https://digest.example.org/x")
-
-        lines = text.splitlines()
-        at = lines.index("- Wire One — https://w.test/1")
-        assert lines[at:] == [
-            "- Wire One — https://w.test/1",
-            "  One sentence.",
-            "- Wire Two — https://w.test/2",
-        ]
+        for line in ("One report", "A headline", "The filter's sentence."):
+            assert line not in text, line
 
     @respx.mock
     async def test_it_sends_through_the_rest_api(self):
@@ -493,6 +471,6 @@ def test_the_plain_text_part_takes_a_legacy_paragraphs_layers_from_its_units() -
     _, body = build_digest_mail(_paragraph_issue())
     assert body.endswith(
         "Topics\n- Quake\n  A quake struck; a letter followed.\n"
-        "  - Wire A — https://a.test/quake\n  - Wire B — https://b.test/quake\n"
-        "\nHeadlines\n- Letter"
+        "  - Wire A — https://a.test/quake\n  - Wire B — https://b.test/quake"
     )
+    assert "Letter" not in body

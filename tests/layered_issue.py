@@ -6,8 +6,16 @@ topic and a headline (water). Each source name is unique, so a test can tell whe
 
 from cyris.domain.models import DigestContent, DigestItem, DigestSection
 
-# The sources the page names only inside a sand block's member list, or nowhere.
-UNNAMED_SOURCES = ("SRC-WIRE-a", "SRC-WIRE-b", "SRC-LONE", "SRC-HEADLINE", "SRC-TRACKED")
+# Every source in the issue: the mail and Discord name none of them.
+UNNAMED_SOURCES = (
+    "SRC-PEBBLE",
+    "SRC-FAN",
+    "SRC-WIRE-a",
+    "SRC-WIRE-b",
+    "SRC-LONE",
+    "SRC-HEADLINE",
+    "SRC-TRACKED",
+)
 
 
 def four_layer_issue() -> DigestContent:

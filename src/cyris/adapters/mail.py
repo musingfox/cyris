@@ -98,7 +98,7 @@ def build_digest_mail(
     raw_page: bool = False,
     degraded: bool = False,
 ) -> tuple[str, str]:
-    """The subject and plain-text body: Tracking and the three layers, as the HTML part has them."""
+    """The subject and plain-text body: Tracking, Stories and Topics, as the HTML part has them."""
     title = f"{period_label(content.period, translator(ENGLISH))} digest {content.date}"
     lines = [title, ""]
     if digest_url:
@@ -128,7 +128,6 @@ def build_digest_mail(
         ("Tracking", [line for topic in layers.tracking for line in _tracking_lines(topic)]),
         ("Stories", [line for pebble in layers.pebbles for line in _pebble_lines(pebble.item)]),
         ("Topics", [line for sand in layers.sand for line in _sand_lines(sand)]),
-        ("Headlines", [line for water in layers.water for line in _wire_lines(water.item)]),
     ]
     for label, entries in blocks:
         if entries:
@@ -141,19 +140,13 @@ def _tracking_lines(topic: DigestSection) -> list[str]:
 
 
 def _pebble_lines(item: DigestItem) -> list[str]:
-    """A pebble's title and link, its summary, then its source: the one layer naming it."""
-    return [
-        _line(item),
-        *([f"  {item.summary}"] if item.summary else []),
-        *([f"  {', '.join(item.sources)}"] if item.sources else []),
-    ]
+    """A pebble's title and link, then its summary; no source, as in the HTML part."""
+    return [_line(item), *([f"  {item.summary}"] if item.summary else [])]
 
 
 def _sand_lines(sand: Sand) -> list[str]:
-    """A topic's heading and line, then each article with its source, as the page's fold."""
-    members = [
-        f"  {_line(m)}" + (f" ({', '.join(m.sources)})" if m.sources else "") for m in sand.members
-    ]
+    """A topic's heading and line, then each article's title and link; no source."""
+    members = [f"  {_line(m)}" for m in sand.members]
     return [f"- {sand.heading}", *([f"  {sand.line}"] if sand.line else []), *members]
 
 

@@ -955,15 +955,16 @@ def test_ids_the_model_rewrote_still_match_by_position(receipts) -> None:
 
 
 def test_discord_and_mail_each_receive_the_issue_once(receipts) -> None:
-    # The page's layers in its order, then the stats; the scenario tracks no topic.
-    stories, topics, headlines, stats = receipts.discord()["embeds"]
-    assert [e["title"] for e in (stories, topics, headlines)] == ["Stories", "Topics", "Headlines"]
+    # Stories and Topics in the page's order, then the stats; the scenario tracks no topic,
+    # and the Headlines layer is left to the page.
+    stories, topics, stats = receipts.discord()["embeds"]
+    assert [e["title"] for e in (stories, topics)] == ["Stories", "Topics"]
     assert UNLINKED_TITLE in stories["description"]
     for key in (*TOP_STORY, *FEATURES):
         assert f"[{TITLE[key]}]({URL[key]})" in stories["description"], key
     assert CLUSTER["heading"] in topics["description"]
     for key in WATER:
-        assert f"({URL[key]})" in headlines["description"], key
+        assert URL[key] not in json.dumps(receipts.discord()), key
     assert f"({receipts.digest_url})" in stats["description"]
     # 4 sources, 13 articles received, 12 kept: the topic of two counts as two.
     for count in ("**4**", "**13**", "**12**"):
@@ -971,15 +972,17 @@ def test_discord_and_mail_each_receive_the_issue_once(receipts) -> None:
     assert stats["title"].endswith(receipts.date)
     # The issue is zh-Hant, so Discord names its period from that catalog; the mail stays English.
     assert stats["title"].split()[0] == translator("zh-Hant")("period.morning")
-    assert all(e["title"] for e in (stories, topics, headlines, stats))
+    assert all(e["title"] for e in (stories, topics, stats))
     mail = receipts.mail()
     assert (mail["to"], mail["from"]) == ("reader@e2e.test", "digest@e2e.test")
     words = mail["subject"].split()
     assert (words[0], words[-1]) == ("Morning", receipts.date)
     assert receipts.digest_url in mail["text"]
     assert receipts.digest_url in parse_html(mail["html"]).hrefs()
-    for key in SHOWN - {"n1", "n2"}:
+    for key in SHOWN - {"n1", "n2"} - set(WATER):
         assert TITLE[key] in mail["text"], key
+    for key in WATER:
+        assert TITLE[key] not in mail["text"] and URL[key] not in mail["html"], key
     assert CLUSTER["heading"] in mail["text"]
 
 

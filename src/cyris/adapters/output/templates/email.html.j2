@@ -3,9 +3,9 @@
     tokens under prefers-color-scheme. Layout rules take `tok`, the same tokens. -#}
 {% macro palette(c) -%}
         body, .body { background: {{ c['bg'] }}; color: {{ c['text'] }}; }
-        .brand, .section-tag, .meta, .idx, .footer { color: {{ c['text-dim'] }}; }
+        .brand, .section-tag, .meta, .footer { color: {{ c['text-dim'] }}; }
         .mark, .rule { background: {{ c['accent'] }}; }
-        .issue-title, .title, .title a, .lead-title, .lead-title a, .wire a { color: {{ c['text'] }}; }
+        .issue-title, .title, .title a, .lead-title, .lead-title a { color: {{ c['text'] }}; }
         .issue-title em, .stats b { color: {{ c['accent'] }}; }
         .stats, .summary, .desc, .desc a, .meta a, .footer a { color: {{ c['text-dim'] }}; }
         .btn.primary { background: {{ c['accent'] }}; border-color: {{ c['accent'] }}; color: {{ c['bg'] }}; }
@@ -13,7 +13,7 @@
         .notice { border-left-color: {{ c['warn'] }}; background: {{ c['warn-tint'] }}; color: {{ c['text'] }}; }
         .lead { background: {{ c['surface'] }}; border-color: {{ c['border-strong'] }}; }
         .pill { color: {{ c['accent'] }}; border-color: {{ c['accent-dim'] }}; background: {{ c['accent-tint'] }}; }
-        .item, .wire li, .footer { border-color: {{ c['border'] }}; }
+        .item, .footer { border-color: {{ c['border'] }}; }
 {%- endmacro -%}
 {#- A cluster's sources, one link per article: the page's own labelling rule. -#}
 {% macro source_links(item) -%}
@@ -54,7 +54,7 @@
         body, .body { margin: 0; padding: 0; -webkit-text-size-adjust: 100%; }
         .wrap { max-width: {{ tok['measure'] }}; margin: 0 auto; padding: {{ tok['s-8'] }} {{ tok['s-4'] }} {{ tok['s-12'] }}; font-family: {{ tok['font-sans'] }}; }
         .preheader { display: none; max-height: 0; overflow: hidden; mso-hide: all; font-size: 1px; line-height: 1px; opacity: 0; }
-        .brand, .section-tag, .meta, .btn, .idx { font-family: {{ tok['font-mono'] }}; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
+        .brand, .section-tag, .meta, .btn { font-family: {{ tok['font-mono'] }}; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .1em; }
         .brand { margin: 0 0 {{ tok['s-5'] }}; }
         .mark { display: inline-block; width: 12px; height: 12px; vertical-align: -1px; margin-right: {{ tok['s-3'] }}; }
         .issue-title { font-family: {{ tok['font-serif'] }}; font-weight: 400; font-size: 56px; line-height: .92; letter-spacing: -.04em; margin: 0 0 {{ tok['s-5'] }}; }
@@ -71,17 +71,13 @@
         .pill { display: inline-block; padding: 2px 10px; border: 1px solid; border-radius: {{ tok['r-tag'] }}; font-family: {{ tok['font-mono'] }}; font-size: 12px; letter-spacing: .04em; margin: 0 0 {{ tok['s-3'] }}; }
         .lead-title { font-size: 24px; font-weight: 600; line-height: 1.3; letter-spacing: -.015em; margin: 0 0 {{ tok['s-3'] }}; }
         .title { font-size: 18px; font-weight: 600; line-height: 1.3; margin: 0 0 {{ tok['s-2'] }}; }
-        .title a, .lead-title a, .wire a { text-decoration: none; }
+        .title a, .lead-title a { text-decoration: none; }
         .summary { font-size: 18px; line-height: 1.65; margin: 0 0 {{ tok['s-3'] }}; }
         .desc { font-size: 14px; line-height: 1.5; margin: 0 0 {{ tok['s-3'] }}; }
         .meta { margin: 0; line-height: 1.6; }
         .desc a, .meta a, .footer a { text-decoration: underline; }
         .item { padding: {{ tok['s-5'] }} 0; border-top: 1px solid; }
         .member { margin: {{ tok['s-3'] }} 0 0; }
-        .wire { list-style: none; margin: 0; padding: 0; }
-        .wire li { padding: {{ tok['s-3'] }} 0; border-top: 1px solid; font-size: 16px; line-height: 1.5; }
-        .wire .summary { font-size: 14px; line-height: 1.5; margin: {{ tok['s-1'] }} 0 0; overflow-wrap: anywhere; }
-        .idx { margin-right: {{ tok['s-3'] }}; }
         .footer { margin: {{ tok['s-12'] }} 0 0; padding: {{ tok['s-5'] }} 0 0; border-top: 1px solid; font-family: {{ tok['font-mono'] }}; font-size: 12px; line-height: 1.8; }
 {{ palette(light) }}
         @media (prefers-color-scheme: dark) {
@@ -90,7 +86,7 @@
     </style>
 </head>
 <body class="body">
-    <div class="preheader">{% if layers.pebbles %}<span lang="">{{ layers.pebbles[0].item.title }}</span>{% elif layers.sand %}<span lang="{{ content_lang }}">{{ layers.sand[0].heading }}</span>{% elif layers.water %}<span lang="{{ '' if layers.water[0].untranslated else content_lang }}">{{ layers.water[0].item.title }}</span>{% endif %} · Kept {{ content.articles_included }} of {{ content.articles_received }}</div>
+    <div class="preheader">{% if layers.pebbles %}<span lang="">{{ layers.pebbles[0].item.title }}</span>{% elif layers.sand %}<span lang="{{ content_lang }}">{{ layers.sand[0].heading }}</span>{% endif %} · Kept {{ content.articles_included }} of {{ content.articles_received }}</div>
     <div class="wrap">
         <p class="brand"><span class="mark"></span>Cyris · {{ period_label }} · {{ content.date }}</p>
         <h1 class="issue-title">Signal<em>/</em>Noise</h1>
@@ -128,7 +124,6 @@
             <article class="item" lang="{{ '' if pebble.untranslated else content_lang }}">
                 <h3 class="title" lang="">{{ title_link(item) }}</h3>
                 {% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}
-                <p class="meta" lang="">{{ item.sources | join(' · ') }}</p>
             </article>
             {% endfor %}
         </section>
@@ -141,25 +136,17 @@
             <article class="item" lang="{{ content_lang }}">
                 <h3 class="title">{{ sand.heading }}</h3>
                 {% if sand.line %}<p class="summary"{% if sand.line_untranslated %} lang=""{% endif %}>{{ sand.line }}</p>{% endif %}
-                <p class="desc" lang="">{% for member in sand.members %}{{ title_link(member) }}{% if member.sources %} · {{ member.sources | join(' · ') }}{% endif %}{% if not loop.last %}<br>{% endif %}{% endfor %}</p>
+                <p class="desc" lang="">{% for member in sand.members %}{{ title_link(member) }}{% if not loop.last %}<br>{% endif %}{% endfor %}</p>
             </article>
             {% endfor %}
         </section>
         {% endif %}
 
-        {% if layers.water %}
-        <section class="section">
-            <h2 class="section-tag"><span class="rule"></span>Headlines</h2>
-            <ol class="wire" lang="{{ content_lang }}">
-                {% for water in layers.water %}{% set item = water.item %}
-                <li lang="{{ '' if water.untranslated else content_lang }}"><span class="idx">{{ "%03d" | format(loop.index) }}</span>{{ title_link(item) }}{% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}</li>
-                {% endfor %}
-            </ol>
-        </section>
+        {% if digest_url %}
+        <p class="actions"><a class="btn primary" href="{{ digest_url }}">{{ t("email.read_online") }}</a></p>
         {% endif %}
-
         <footer class="footer">
-            <div>// Generated by <a href="{{ project_url }}">Cyris</a> · {{ content.usage.total_tokens }} tokens · {{ content.usage.api_calls }} api calls</div>
+            <div>// Generated by <a href="{{ project_url }}">Cyris</a> · {{ content.usage.total_tokens }} tokens · {{ content.usage.api_calls }} api calls{% if content.usage.api_calls and content.usage.estimated_cost is not none %} · cost ${{ "%.4f" | format(content.usage.estimated_cost) }}{% endif %}</div>
             {% if site %}<div><a href="{{ site }}/">Archive</a> · <a href="{{ site }}/settings">Settings</a> — mail goes to the address set on Settings</div>{% endif %}
         </footer>
     </div>

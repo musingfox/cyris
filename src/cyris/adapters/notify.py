@@ -7,7 +7,7 @@ import httpx
 
 from cyris.adapters.output.html_digest import Story, citation_links
 from cyris.domain.area_layout import AreaSection
-from cyris.domain.layers import Pebble, Sand, Water, layer_by_lane
+from cyris.domain.layers import Pebble, Sand, layer_by_lane
 from cyris.domain.models import (
     NO_LLM_MODEL,
     DigestContent,
@@ -185,37 +185,23 @@ def _render_tracking(topic: DigestSection) -> str:
 
 
 def _render_pebble(pebble: Pebble) -> str:
-    """A pebble's card: its title link, its summary, then its source, the one layer naming it."""
+    """A pebble's card: its title link, then its summary; no source, to keep the message short."""
     item = pebble.item
     lines = [f"### {_linked(item.title, item.link)}"]
     if item.summary:
         lines.append(item.summary)
-    if item.sources:
-        lines.append(f"*{', '.join(item.sources)}*")
     lines.append("")
     return "\n".join(lines)
 
 
 def _render_sand(sand: Sand) -> str:
-    """A topic block: its heading, its line, then its articles, where their sources are named."""
+    """A topic block: its heading, its line, then each article's title link; no source."""
     lines = [f"### {sand.heading}"]
     if sand.line:
         lines.append(sand.line)
-    for member in sand.members:
-        source = f" · *{', '.join(member.sources)}*" if member.sources else ""
-        lines.append(f"- {_linked(member.title, member.link)}{source}")
+    lines += [f"- {_linked(member.title, member.link)}" for member in sand.members]
     lines.append("")
     return "\n".join(lines)
-
-
-def _render_water(water: Water) -> list[str]:
-    """A row: its title link, then its sentence cut short; no source, as on the page."""
-    item = water.item
-    lines = [f"- **{_linked(item.title, item.link)}**"]
-    if item.summary:
-        summary = item.summary if len(item.summary) <= 80 else item.summary[:80] + "…"
-        lines.append(f"  {summary}")
-    return lines
 
 
 def _continued(parts: list[str]) -> list[str]:
@@ -243,10 +229,11 @@ def build_discord_embeds(
     Returns a list of embed dicts, uncapped in total: `build_discord_payload` holds them
     to Discord's limits.
     The embeds follow the page (docs/design/ui-language.md §6 *digest*): Tracking, then
-    the three layers of `layer_by_lane`, Stories, Topics and Headlines, an empty one left
-    out. The stats come last. A layer longer than one embed's description continues in
-    embeds of the same title, so that `_fit_embeds`, which cuts from the end, takes the
-    Headlines first and the Stories last when the message runs out of room.
+    Stories and Topics of `layer_by_lane`, an empty one left out. The Headlines layer is
+    left to the page, to keep the message short. The stats come last. A layer longer than
+    one embed's description continues in embeds of the same title, so that `_fit_embeds`,
+    which cuts from the end, takes the Topics first and the Stories last when the message
+    runs out of room.
     """
     label = period_label(content.period, translator(content.output_language))
     layers = layer_by_lane(content)
@@ -254,7 +241,6 @@ def build_discord_embeds(
         ("Tracking", [_render_tracking(topic) for topic in layers.tracking], 0xE67E22),
         ("Stories", [_render_pebble(pebble) for pebble in layers.pebbles], 0xF1C40F),
         ("Topics", [_render_sand(sand) for sand in layers.sand], 0x5865F2),
-        ("Headlines", ["\n".join(_render_water(water)) for water in layers.water], 0x5865F2),
     ]
     embeds: list[dict] = []
     for title, parts, color in blocks:

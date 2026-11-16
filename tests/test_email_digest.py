@@ -111,14 +111,17 @@ class TestWhatAMailClientKeeps:
         assert [h for h in hrefs if not h.startswith(("https://", "http://"))] == []
 
     def test_a_synthetic_url_is_never_a_link(self):
-        html = render_digest_email(_full(), DIGEST_URL)
+        content = _full()
+        content.fan_sections[0].items[0].urls = ["newsletter:abc"]
+
+        html = render_digest_email(content, DIGEST_URL)
 
         assert "newsletter:abc" not in html
-        assert "No Link" in html
+        assert "Fan Item" in html
 
     def test_feed_text_is_escaped(self):
         content = _full()
-        content.filtered_headlines[0].title = "<script>alert(1)</script>"
+        content.featured_articles[0].items[0].title = "<script>alert(1)</script>"
 
         html = render_digest_email(content, DIGEST_URL)
 
@@ -135,15 +138,21 @@ def _section(html: str, label: str) -> str:
 
 
 class TestSections:
-    def test_tracking_then_stories_topics_and_headlines_as_on_the_page(self):
+    def test_tracking_then_stories_and_topics_in_the_pages_order(self):
         html = render_digest_email(four_layer_issue(), DIGEST_URL)
 
-        assert MARKER.findall(html) == ["Tracking", "Stories", "Topics", "Headlines"]
+        assert MARKER.findall(html) == ["Tracking", "Stories", "Topics"]
+
+    def test_the_headlines_layer_is_left_to_the_page(self):
+        html = render_digest_email(four_layer_issue(), DIGEST_URL)
+
+        for text in ("One report", "A headline", "The filter's sentence.", "headline.example"):
+            assert text not in html, text
 
     def test_an_empty_layer_has_no_marker(self):
         content = four_layer_issue().model_copy(update={"news_clusters": [], "tracked_topics": []})
 
-        assert MARKER.findall(render_digest_email(content, DIGEST_URL)) == ["Stories", "Headlines"]
+        assert MARKER.findall(render_digest_email(content, DIGEST_URL)) == ["Stories"]
 
     def test_an_empty_issue_has_no_section_marker(self):
         html = render_digest_email(_issue(), DIGEST_URL)
@@ -158,51 +167,37 @@ class TestSections:
         assert '<a href="https://tracked.example.test/hit">A tracked hit</a>' in tracking
         assert "Not shown." not in tracking and "SRC-TRACKED" not in tracking
 
-    def test_a_pebble_is_its_title_link_summary_and_source(self):
+    def test_a_pebble_is_its_title_link_and_summary(self):
         stories = _section(render_digest_email(four_layer_issue(), DIGEST_URL), "Stories")
 
         assert '<a href="https://pebble.example.test/read">A long read</a>' in stories
         assert '<p class="summary">Why it matters.</p>' in stories
-        assert '<p class="meta" lang="">SRC-PEBBLE</p>' in stories
-        assert '<p class="meta" lang="">SRC-FAN</p>' in stories
+        assert '<a href="https://fan.example.test/post">A followed post</a>' in stories
 
-    def test_a_sand_block_is_its_heading_its_line_and_each_member_with_its_source(self):
+    def test_a_sand_block_is_its_heading_its_line_and_each_member_link(self):
         topics = _section(render_digest_email(four_layer_issue(), DIGEST_URL), "Topics")
 
         assert ">Two reports of one event</h3>" in topics
         assert '<p class="summary" lang="">Excerpt a</p>' in topics
         assert (
-            '<a href="https://wire-a.example.test/a">Report a</a> · SRC-WIRE-a<br>'
-            '<a href="https://wire-b.example.test/b">Report b</a> · SRC-WIRE-b</p>'
+            '<a href="https://wire-a.example.test/a">Report a</a><br>'
+            '<a href="https://wire-b.example.test/b">Report b</a></p>'
         ) in topics
         assert "The model's cluster summary." not in topics
 
-    def test_no_source_is_named_outside_a_pebble_or_a_sand_member_list(self):
+    def test_no_source_is_named(self):
         html = render_digest_email(four_layer_issue(), DIGEST_URL)
-        members = re.search(r'<p class="desc" lang="">.*?</p>', _section(html, "Topics")).group()
-        outside = html.replace(members, "")
 
         for source in UNNAMED_SOURCES:
-            assert source not in outside, source
+            assert source not in html, source
 
     def test_every_item_carries_its_link(self):
         html = render_digest_email(_full(), DIGEST_URL)
 
-        for url in ["https://lead.test/a", "https://news.test/2", "https://wire.test/1"]:
+        for url in ["https://lead.test/a", "https://news.test/2", "https://fan.test/1"]:
             assert f'href="{url}"' in html
 
-    def test_a_wire_row_carries_its_summary_and_one_without_is_its_title_alone(self):
-        content = _full()
-        content.filtered_headlines[1].summary = ""
-
-        html = render_digest_email(content, DIGEST_URL)
-        wire = html.split('<ol class="wire"', 1)[1].split("</ol>", 1)[0]
-
-        title = '<a href="https://wire.test/1">Wire One</a>'
-        assert f'{title}<p class="summary">Wire One summary.</p></li>' in wire
-        assert '<li lang=""><span class="idx">002</span>No Link</li>' in wire
-
-    def test_a_radar_pebble_is_untranslated_and_a_headline_row_takes_the_output_language(self):
+    def test_a_radar_pebble_is_untranslated(self):
         content = DigestContent(
             date="2026-09-27",
             period="morning",
@@ -214,13 +209,11 @@ class TestSections:
             attention_sections=[
                 DigestSection(heading="Radar", items=[_item("Radar Row", "https://r.test/", "Src")])
             ],
-            filtered_headlines=[_item("Wire Row", "https://w.test/", "Src")],
         )
 
         html = render_digest_email(content, DIGEST_URL)
 
         assert re.findall(r'<article class="item" lang="([^"]*)"', html) == [""]
-        assert re.findall(r'<li lang="([^"]*)"', html) == ["en"]
 
 
 class TestLanguage:
@@ -228,8 +221,6 @@ class TestLanguage:
         "Lead Story summary.",
         "A Cluster",
         "Cluster summary.",
-        "Wire One",
-        "Wire One summary.",
     ]
     PASSED_THROUGH = ["Fan Item"]
     TITLES = ["Lead Story", "Second Feature"]
@@ -269,10 +260,10 @@ class TestLanguage:
         return content
 
     def test_an_excerpt_fallback_leaves_its_language_unknown_beside_written_text(self):
-        content = self._passed_through("Second Feature", "Wire One")
+        content = self._passed_through("Second Feature")
         langs = text_langs(render_digest_email(content, DIGEST_URL))
 
-        fallback = ["Second Feature", "Second Feature summary.", "Wire One", "Wire One summary."]
+        fallback = ["Second Feature", "Second Feature summary."]
         written = ["Lead Story summary.", "A Cluster", "Cluster summary."]
         assert {text: langs[text] for text in fallback} == dict.fromkeys(fallback, "")
         assert {text: langs[text] for text in written} == dict.fromkeys(written, "ja")
@@ -282,10 +273,7 @@ class TestLanguage:
 
         lead = ["Lead Story", "Lead Story summary."]
         assert {text: langs[text] for text in lead} == dict.fromkeys(lead, "")
-        assert {text: langs[text] for text in ["Second Feature summary.", "Wire One"]} == {
-            "Second Feature summary.": "ja",
-            "Wire One": "ja",
-        }
+        assert langs["Second Feature summary."] == "ja"
 
     def test_untranslated_sections_leave_their_language_unknown(self):
         content = _full().model_copy(update={"output_language": "ja"})
@@ -367,6 +355,31 @@ class TestSiteLinks:
 
         footer = html[html.index('<footer class="footer">') :]
         assert f'// Generated by <a href="{PROJECT_URL}">Cyris</a>' in footer
+
+    def test_a_read_online_button_closes_the_issue_above_the_footer(self):
+        html = render_digest_email(_full(), DIGEST_URL)
+
+        button = f'<a class="btn primary" href="{DIGEST_URL}">Read online</a>'
+        assert html.count(button) == 2
+        assert html.index("Topics</h2>") < html.rindex(button) < html.index("<footer")
+
+    def test_a_failed_publish_has_no_read_online_button(self):
+        assert "Read online" not in render_digest_email(_full(), "", publish_failed=True)
+
+    def test_the_footer_gives_the_runs_cost(self):
+        content = _full()
+        content.usage = UsageStats(
+            input_tokens=1_000_000, output_tokens=200_000, api_calls=3, model="claude-haiku-4-5"
+        )
+
+        html = render_digest_email(content, DIGEST_URL)
+
+        assert "3 api calls · cost $2.0000</div>" in html[html.index("<footer") :]
+
+    def test_the_footer_gives_no_cost_for_a_model_with_no_known_price(self):
+        html = render_digest_email(_full(), DIGEST_URL)
+
+        assert "cost" not in html[html.index("<footer") :]
 
 
 def _issue(articles_included: int = 0) -> DigestContent:
@@ -465,11 +478,6 @@ class TestPalettes:
 
 
 class TestLayout:
-    def test_a_wire_summary_breaks_an_unbroken_token(self):
-        style = _style(render_digest_email(_full(), DIGEST_URL))
-
-        assert re.search(r"\.wire \.summary \{[^}]*overflow-wrap: anywhere;", style)
-
     def test_every_spacing_length_is_on_the_scale(self):
         style = _style(render_digest_email(_full(), DIGEST_URL, raw_page=True))
         # The pill's padding is the one value the spec sets outside the scale (§4).
@@ -563,4 +571,4 @@ def test_a_legacy_news_paragraph_in_the_mail_takes_the_layers_of_its_units() -> 
         '<a href="https://a.test/quake">Wire A</a><br><a href="https://b.test/quake">Wire B</a>'
         in topics
     )
-    assert '<span class="idx">001</span>Letter</li>' in _section(html, "Headlines")
+    assert "Letter" not in html

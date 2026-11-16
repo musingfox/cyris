@@ -115,7 +115,7 @@ class TestDiscordEmbeds:
         embeds = build_discord_embeds(content)
         titles = [e["title"] for e in embeds]
 
-        assert titles == ["Stories", "Headlines", "Morning 2026-04-10"]
+        assert titles == ["Stories", "Morning 2026-04-10"]
 
     def test_featured_articles_embed(self):
         """Featured articles embed has heading with link and summary."""
@@ -146,7 +146,7 @@ class TestDiscordEmbeds:
         assert featured["color"] == 0xF1C40F
         assert "[API 橫切關注點](https://bytebytego.com/article)" in featured["description"]
         assert "深入探討 cross-cutting concerns" in featured["description"]
-        assert "*ByteByteGo*" in featured["description"]
+        assert "ByteByteGo" not in featured["description"]
 
     def test_attention_sections_embed(self):
         """Attention sections embed renders correctly."""
@@ -175,7 +175,7 @@ class TestDiscordEmbeds:
         digest = next(e for e in embeds if e["title"] == "Stories")
 
         assert "[Interview Analysis](https://stratechery.com/interview)" in digest["description"]
-        assert "*Stratechery*" in digest["description"]
+        assert "Stratechery" not in digest["description"]
         assert "NYT CEO interview" in digest["description"]
 
     def test_discord_embeds_with_news_clusters(self):
@@ -263,8 +263,8 @@ class TestDiscordEmbeds:
         quiet = build_discord_embeds(content)[-1]
         assert "Publishing the online edition failed" not in quiet["description"]
 
-    def test_filtered_headlines_with_links(self):
-        """Filtered headlines include clickable links and truncated summaries."""
+    def test_filtered_headlines_get_no_embed(self):
+        """The Headlines layer is left to the page: only the stats are sent."""
         content = DigestContent(
             date="2026-04-10",
             period="morning",
@@ -288,12 +288,9 @@ class TestDiscordEmbeds:
         )
 
         embeds = build_discord_embeds(content)
-        digest = next(e for e in embeds if e["title"] == "Headlines")
 
-        assert "[Short Title](https://example.com/1)" in digest["description"]
-        assert "Brief summary" in digest["description"]
-        # Long summary should be truncated
-        assert "…" in digest["description"]
+        assert [e["title"] for e in embeds] == ["Morning 2026-04-10"]
+        assert "Short Title" not in embeds[0]["description"]
 
     def test_stats_embed_always_last(self):
         """Stats embed is always the last embed."""
@@ -508,7 +505,6 @@ class TestDiscordPayloadLimits:
         assert [e["title"] for e in embeds] == [
             "Stories",
             "Stories",
-            "Headlines",
             full[-1]["title"],
         ]
         assert all(_bytes(e["description"]) <= 4096 for e in embeds)
@@ -527,7 +523,7 @@ class TestDiscordPayloadLimits:
         assert {e["title"] for e in embeds[:-1]} == {"Stories"}
         assert "Headline 0" not in json.dumps(embeds)
 
-    def test_pebbles_and_sand_stay_whole_when_the_rows_overflow_the_total(self):
+    def test_pebbles_stay_whole_when_the_topics_overflow_the_total(self):
         content = four_layer_issue()
         pebble = content.featured_articles[0].items[0]
         content.featured_articles[0].items = [
@@ -535,36 +531,25 @@ class TestDiscordPayloadLimits:
             for n in range(5)
         ]
         cluster = content.news_clusters[0]
-        cluster.members = [
-            m.model_copy(update={"summary": "Excerpt " * 40}) for m in cluster.members
-        ] * 4
-        content.filtered_headlines = [
-            DigestItem(
-                title=f"Headline {n} " + "x" * 60,
-                summary="One line about it " * 5,
-                sources=["Wire"],
-                urls=[f"https://wire.example/{n}"],
-            )
-            for n in range(120)
-        ]
+        cluster.members = cluster.members * 40
         full = build_discord_embeds(content, ONLINE)
-        rows_at = [e["title"] for e in full].index("Headlines")
-        # Above one embed's 4096 before the rows, so only the 6000 total can cut them.
-        assert sum(len(e["description"]) for e in full[:rows_at]) > 4096
+        topics_at = [e["title"] for e in full].index("Topics")
+        # Each layer fits one embed's 4096, so only the 6000 total can cut the topics.
+        assert all(_bytes(e["description"]) <= 4096 for e in full)
         assert sum(_counted(e) for e in full) > 6000
 
         embeds = build_discord_payload(content, digest_url=ONLINE)["embeds"]
 
         assert sum(_counted(e) for e in embeds) <= 6000
-        assert embeds[:rows_at] == full[:rows_at]
-        assert [e["title"] for e in embeds[rows_at:]] == ["Headlines", full[-1]["title"]]
-        *kept, marker = embeds[rows_at]["description"].split("\n")
+        assert embeds[:topics_at] == full[:topics_at]
+        assert [e["title"] for e in embeds[topics_at:]] == ["Topics", full[-1]["title"]]
+        *kept, marker = embeds[topics_at]["description"].split("\n")
         assert "more in the online edition" in marker
-        assert kept == full[rows_at]["description"].split("\n")[: len(kept)]
+        assert kept == full[topics_at]["description"].split("\n")[: len(kept)]
 
 
 def _chinese_issue() -> DigestContent:
-    """A mostly Chinese issue near 2026-10-30's: under 6000 characters in pebbles, over in bytes."""
+    """A mostly Chinese issue, as 2026-10-30's was: under 6000 characters, over in bytes."""
     features = [
         DigestSection(
             heading=f"長文 {n}",
@@ -577,26 +562,15 @@ def _chinese_issue() -> DigestContent:
                 )
             ],
         )
-        for n in range(6)
+        for n in range(12)
     ]
-    issue = _issue(features, headlines=0)
-    issue.filtered_headlines = [
-        DigestItem(
-            title=f"新聞標題第 {n} 則",
-            summary="一句話說明這則新聞。",
-            sources=["通訊社"],
-            urls=[f"https://wire.example/zh/{n}"],
-        )
-        for n in range(40)
-    ]
-    issue.articles_included = 46
-    return issue
+    return _issue(features, headlines=0)
 
 
 class TestDiscordPayloadLimitsInBytes:
     """Discord's 413 on 2026-10-30 counted a Chinese issue's embeds in bytes, not characters."""
 
-    def test_a_chinese_issue_fits_in_bytes_and_keeps_its_pebbles(self):
+    def test_a_chinese_issue_fits_in_bytes_and_keeps_its_first_pebbles(self):
         content = _chinese_issue()
         full = build_discord_embeds(content, ONLINE)
         chars = sum(len(e["title"]) + len(e["description"]) for e in full)
@@ -612,14 +586,14 @@ class TestDiscordPayloadLimitsInBytes:
             assert f"[長文標題 {n}](https://ex.com/zh/{n})" in stories
         assert embeds[-1] == full[-1]
 
-    def test_the_headlines_are_cut_first_at_a_line(self):
+    def test_the_last_embed_is_cut_first_at_a_line(self):
         content = _chinese_issue()
         full = build_discord_embeds(content, ONLINE)
 
         embeds = build_discord_payload(content, digest_url=ONLINE)["embeds"]
 
-        assert [e["title"] for e in full[:-1]] == ["Stories", "Headlines"]
-        assert [e["title"] for e in embeds[:-1]] == ["Stories", "Headlines"]
+        assert [e["title"] for e in full[:-1]] == ["Stories", "Stories"]
+        assert [e["title"] for e in embeds[:-1]] == ["Stories", "Stories"]
         assert embeds[0] == full[0]
         *kept, marker = embeds[1]["description"].split("\n")
         assert "more in the online edition" in marker
@@ -1026,13 +1000,11 @@ PAGE_ORDER = [
     "A long read",
     "A followed post",
     "Two reports of one event",
-    "One report",
-    "A headline",
 ]
 
 
 class TestEverySurfaceShowsThePagesOrder:
-    """Discord and the mail (HTML and text) draw Tracking, pebble, sand, water as the page does."""
+    """Discord and the mail (HTML and text) draw Tracking, pebble and sand in the page's order."""
 
     @staticmethod
     def _in_order(text: str) -> bool:
@@ -1057,25 +1029,20 @@ class TestEverySurfaceShowsThePagesOrder:
         assert self._in_order(build_digest_mail(four_layer_issue())[1])
 
 
-def _outside_member_lists(text: str) -> str:
-    """An embed's text without its member lines, the one place sand names a source."""
-    return "\n".join(line for line in text.split("\n") if not line.startswith("- [Report"))
-
-
 class TestDiscordThreeLayers:
-    """The embeds follow the page: Tracking, Stories, Topics and Headlines, then the stats."""
+    """The embeds follow the page: Tracking, Stories and Topics, then the stats."""
 
-    def test_the_embeds_are_tracking_then_the_three_layers_then_the_stats(self):
+    def test_the_embeds_are_tracking_stories_and_topics_then_the_stats(self):
         titles = [e["title"] for e in build_discord_embeds(four_layer_issue())]
 
-        assert titles == ["Tracking", "Stories", "Topics", "Headlines", "Morning 2026-10-29"]
+        assert titles == ["Tracking", "Stories", "Topics", "Morning 2026-10-29"]
 
     def test_an_empty_layer_has_no_embed(self):
         content = four_layer_issue().model_copy(update={"news_clusters": [], "tracked_topics": []})
 
         titles = [e["title"] for e in build_discord_embeds(content)]
 
-        assert titles == ["Stories", "Headlines", "Morning 2026-10-29"]
+        assert titles == ["Stories", "Morning 2026-10-29"]
 
     def test_tracking_lists_each_hit_as_a_link_alone(self):
         (tracking, *_) = build_discord_embeds(four_layer_issue())
@@ -1084,41 +1051,35 @@ class TestDiscordThreeLayers:
             "### Tracked topic\n- [A tracked hit](https://tracked.example.test/hit)"
         )
 
-    def test_a_pebble_is_its_title_link_summary_and_source(self):
+    def test_a_pebble_is_its_title_link_and_summary(self):
         stories = build_discord_embeds(four_layer_issue())[1]
 
         assert stories["description"] == (
             "### [A long read](https://pebble.example.test/read)\n"
             "Why it matters.\n"
-            "*SRC-PEBBLE*\n"
             "\n"
-            "### [A followed post](https://fan.example.test/post)\n"
-            "*SRC-FAN*"
+            "### [A followed post](https://fan.example.test/post)"
         )
 
-    def test_sand_is_its_heading_its_line_and_each_member_with_its_source(self):
+    def test_sand_is_its_heading_its_line_and_each_member_link(self):
         topics = build_discord_embeds(four_layer_issue())[2]
 
         assert topics["description"] == (
             "### Two reports of one event\n"
             "Excerpt a\n"
-            "- [Report a](https://wire-a.example.test/a) · *SRC-WIRE-a*\n"
-            "- [Report b](https://wire-b.example.test/b) · *SRC-WIRE-b*"
+            "- [Report a](https://wire-a.example.test/a)\n"
+            "- [Report b](https://wire-b.example.test/b)"
         )
 
-    def test_water_rows_are_a_title_link_and_a_sentence_with_no_source(self):
-        headlines = build_discord_embeds(four_layer_issue())[3]
+    def test_the_headlines_layer_is_left_to_the_page(self):
+        body = json.dumps(build_discord_embeds(four_layer_issue()))
 
-        assert headlines["description"] == (
-            "- **[One report](https://lone.example.test/1)**\n"
-            "  Its summary.\n"
-            "- **[A headline](https://headline.example.test/1)**\n"
-            "  The filter's sentence."
-        )
+        for text in ("One report", "A headline", "The filter's sentence."):
+            assert text not in body, text
 
-    def test_no_source_is_named_outside_a_pebble_or_a_sand_member(self):
+    def test_no_source_is_named(self):
         embeds = build_discord_embeds(four_layer_issue())
-        text = _outside_member_lists("\n".join(e["description"] for e in embeds[:4]))
+        text = "\n".join(e["description"] for e in embeds[:-1])
 
         for source in UNNAMED_SOURCES:
             assert source not in text, source
@@ -1175,11 +1136,12 @@ def _paragraph_issue():
 
 
 def test_a_legacy_news_paragraph_in_discord_takes_the_layers_of_its_units() -> None:
-    topics, headlines, _ = build_discord_embeds(_paragraph_issue())
+    embeds = build_discord_embeds(_paragraph_issue())
+    topics, _ = embeds
     assert topics["description"] == (
         "### Quake\n"
         "A quake struck; a letter followed.\n"
         "- [Wire A](https://a.test/quake)\n"
         "- [Wire B](https://b.test/quake)"
     )
-    assert headlines["description"] == "- **Letter**"
+    assert "Letter" not in json.dumps(embeds)
