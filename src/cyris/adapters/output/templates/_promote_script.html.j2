@@ -64,7 +64,7 @@
         // The app Worker passes the promote Worker's own status through, a 503 included.
         if (resp.status === 503) {
             const body = await resp.json().catch(() => ({}));
-            if (body.error === 'promote worker not configured') return VOTE_FAILED.notConfigured;
+            if (body.code === 'promote_not_configured') return VOTE_FAILED.notConfigured;
         }
         return VOTE_FAILED.refused(resp.status);
     }

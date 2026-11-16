@@ -1011,7 +1011,11 @@ async def test_the_raw_probe_fixture_can_refuse_every_vote_or_only_the_first():
     ("kind", "status", "body"),
     [
         ("vote-signed-out", 302, None),
-        ("vote-unconfigured", 503, {"error": "promote worker not configured"}),
+        (
+            "vote-unconfigured",
+            503,
+            {"error": "promote worker not configured", "code": "promote_not_configured"},
+        ),
         ("promote-503", 503, {"error": "unavailable"}),
     ],
 )

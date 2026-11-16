@@ -480,6 +480,7 @@ describe("VotePostRequiresJwtOffAccessHost", () => {
       makeDeps(),
     );
     expect(resp.status).toBe(503);
+    expect((await resp.json()).code).toBe("promote_not_configured");
   });
 
   it("PUT /api/vote with no JWT on a non-Access host is 403", async () => {
