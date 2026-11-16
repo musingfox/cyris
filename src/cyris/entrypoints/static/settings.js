@@ -1120,7 +1120,7 @@ function renderAreas() {
     : areasLoaded ? `<tr><td colspan="2" class="small">No proposals yet.</td></tr>` : "";
   $("closed-list").innerHTML = closed.length
     ? closed.map((area) => `<li>${esc(area.name)} — ${area.status === "merged"
-      ? `merged into ${esc(areaNameOf(area.merged_into))}` : "dismissed"}</li>`).join("")
+      ? `merged into ${esc(areaNameOf(area.merged_into))}` : esc(t(`area_status.${area.status}`))}</li>`).join("")
     : areasLoaded ? "<li>No closed areas.</li>" : "";
   $("threshold-hint").hidden = birthThreshold !== null;
   $("save-order").disabled = !areasWritable || !orderDirty();

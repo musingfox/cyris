@@ -1,4 +1,8 @@
 {
+  "area_status.active": "active",
+  "area_status.dismissed": "dismissed",
+  "area_status.merged": "merged",
+  "area_status.proposed": "proposed",
   "article_state.accepted": "accepted",
   "article_state.awaiting_triage": "awaiting_triage",
   "article_state.pending": "pending",

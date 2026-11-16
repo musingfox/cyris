@@ -12,6 +12,7 @@ import asyncio
 import json
 import re
 from pathlib import Path
+from typing import get_args
 
 import jinja2
 import jinja2.nodes
@@ -27,6 +28,7 @@ from messageformat2.datamodel import (
 )
 
 import cyris
+from cyris.domain.areas import AreaStatus
 from cyris.domain.models import ArticleState, Lane
 from cyris.entrypoints.triage_server import (
     BROWSER_MESSAGES,
@@ -51,6 +53,7 @@ FAMILIES: dict[str, tuple[str, ...]] = {
     "period.": PERIOD_ORDER,
     "article_state.": tuple(map(str, ArticleState)),
     "lane.": tuple(map(str, Lane)),
+    "area_status.": get_args(AreaStatus),
 }
 RENDERERS = {
     "settings.html.j2": render_settings_page,
