@@ -22,6 +22,7 @@ import dataclasses
 import json
 import tempfile
 from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -57,6 +58,9 @@ from cyris.i18n import translator
 
 DATE = "2026-01-02"
 PERIOD = "morning"
+# The minute each fixture issue's run started, which names it on every page.
+STARTED = datetime(2026, 1, 2, 8, 5, tzinfo=timezone(timedelta(hours=8)))
+EARLIER = ("2026-01-01", "evening")
 PAGE = f"/{HtmlDigestWriter.digest_filename(DATE, PERIOD)}"
 ARCHIVE = "/index.html"
 
@@ -164,6 +168,7 @@ def content() -> DigestContent:
     return DigestContent(
         date=DATE,
         period=PERIOD,
+        started_at=STARTED,
         sources_processed=12,
         articles_received=40,
         articles_included=20,
@@ -286,11 +291,12 @@ ISSUES = {
 
 def render_archive() -> str:
     """The archive of this issue and the one before it: a headline card and one row."""
-    issues = [(DATE, PERIOD), ("2026-01-01", "evening")]
+    issues = [(DATE, PERIOD), EARLIER]
     files = (HtmlDigestWriter.digest_filename, HtmlDigestWriter.raw_filename)
     names = [name(*issue) for issue in issues for name in files]
+    starts = {EARLIER: STARTED - timedelta(hours=12)}
     with tempfile.TemporaryDirectory(prefix="digest-probe-") as unused:
-        return HtmlDigestWriter(Path(unused)).render_index(names, content=content())
+        return HtmlDigestWriter(Path(unused)).render_index(names, content=content(), starts=starts)
 
 
 def build_fixture(kind: str) -> VoteFixture:

@@ -111,7 +111,11 @@ def _render_site(
     if collected:
         raw = "/" + writer.raw_filename(content.date, content.period)
         pages[raw] = writer.render_raw(
-            content.date, content.period, collected, content.output_language
+            content.date,
+            content.period,
+            collected,
+            content.output_language,
+            started_at=content.started_at,
         )
     # The archive leads with this run's issue: its title and count come from memory.
     return _with_archive(deps, pages, lead=content)
@@ -132,7 +136,15 @@ def _with_archive(deps: "Deps", pages: dict[str, str], *, lead) -> dict[str, byt
     except Exception as e:
         logger.error("Failed to read the archive's article counts: %s", e)
         counts = {}
-    pages = {**pages, "/index.html": writer.render_index(known, content=lead, counts=counts)}
+    # The same for each issue's start: a row without one is named by its date.
+    starts = {}
+    if deps.archive_starts is not None:
+        try:
+            starts = deps.archive_starts()
+        except Exception as e:
+            logger.error("Failed to read the archive's issue starts: %s", e)
+    index = writer.render_index(known, content=lead, counts=counts, starts=starts)
+    pages = {**pages, "/index.html": index}
     # Every deploy, not only the first: a manifest rebuilt from the archive's
     # anchors would not name it.
     assets = {f"/{name}": data for name, data in writer.site_assets().items()}
@@ -156,10 +168,31 @@ def _raw_page_for(deps: "Deps", key: tuple[str, str], stored) -> tuple[bool, dic
             return False, {}
         writer = deps.html_writer
         path = "/" + writer.raw_filename(*key)
-        return True, {path: writer.render_raw(*key, rows, stored.content.output_language)}
+        html = writer.render_raw(
+            *key, rows, stored.content.output_language, started_at=stored.content.started_at
+        )
+        return True, {path: html}
     except Exception as e:
         logger.error("Failed to rebuild the raw page for %s %s: %s", *key, e)
         return False, {}
+
+
+def _issue_start(deps: "Deps", options: RunOptions, started_at: datetime) -> datetime | None:
+    """The minute the issue is named by: this run's start, or the one a rerun's issue has.
+
+    A rerun replaces its issue rather than adding one, so the issue keeps its name; one stored
+    without a start stays without, and so does one whose stored row cannot be read.
+    """
+    if options.rerun_of is None:
+        return started_at
+    if deps.digest_store is None:
+        return None
+    try:
+        stored = deps.digest_store.load(options.rerun_of, options.period)
+    except Exception as e:
+        logger.error("Failed to read the start of the issue being rerun: %s", e)
+        return None
+    return stored.content.started_at if stored is not None else None
 
 
 def _rerun_rows(deps: "Deps", options: RunOptions, summary: dict) -> list[StoredArticle]:
@@ -805,6 +838,9 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         recent_expires=recent_expires,
     )
     content = result.content
+    content.started_at = _issue_start(
+        deps, options, datetime.fromisoformat(summary["started_at"]).astimezone(now.tzinfo)
+    )
     summary["preference_rank_applied"] = result.preference_moves is not None
     if result.preference_moves is None:
         summary["preference_rank_skipped"] = order.receipt.skipped
@@ -926,7 +962,11 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             # a broken raw page must not cost the digest its publish.
             try:
                 raw = deps.html_writer.write_raw(
-                    content.date, content.period, collected, content.output_language
+                    content.date,
+                    content.period,
+                    collected,
+                    content.output_language,
+                    started_at=content.started_at,
                 )
                 progress(f"Raw page written to {raw}")
             except Exception as e:

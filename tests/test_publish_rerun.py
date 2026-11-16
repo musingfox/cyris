@@ -2,7 +2,7 @@
 
 import json
 from dataclasses import replace
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -305,3 +305,30 @@ async def test_the_newest_is_judged_by_date_and_period_not_by_when_it_was_saved(
 
     assert older.status == "not_latest"
     assert newer.status == "ok"
+
+
+async def test_a_rerun_keeps_the_minute_its_issue_is_named_by(tmp_path: Path) -> None:
+    a = _article(1, "Kept one")
+    deps, _, site, _, _, _, _, _ = _setup(tmp_path, [a], replies=[_scores([a]), _sections([a])])
+    started = datetime(2026, 10, 14, 20, 5, tzinfo=timezone(timedelta(hours=8)))
+    stored = _content("2026-10-14", "evening").model_copy(update={"started_at": started})
+    deps.digest_store.save(stored, raw_page=False)
+
+    await run_digest(deps, RunOptions(dry_run=False, rerun_of=RERUN, period="evening"))
+
+    assert deps.digest_store.load(RERUN, "evening").content.started_at == started
+    assert '<span class="label">20:05</span>' in site.live[f"/{SLUG}.html"].decode()
+
+
+async def test_a_rerun_of_an_issue_stored_without_a_start_names_it_by_its_date(
+    tmp_path: Path,
+) -> None:
+    a = _article(1, "Kept one")
+    deps, _, site, _, _, _, _, _ = _setup(tmp_path, [a], replies=[_scores([a]), _sections([a])])
+    deps.digest_store.save(_content("2026-10-14", "evening"), raw_page=False)
+
+    await run_digest(deps, RunOptions(dry_run=False, rerun_of=RERUN, period="evening"))
+
+    assert deps.digest_store.load(RERUN, "evening").content.started_at is None
+    page = site.live[f"/{SLUG}.html"].decode()
+    assert "<title>CYRIS // 10/14</title>" in page

@@ -15,7 +15,6 @@ from urllib.parse import urlsplit
 
 from markupsafe import Markup
 
-from cyris.adapters.notify import period_label
 from cyris.adapters.output.html_digest import (
     TEMPLATES,
     HtmlDigestWriter,
@@ -25,7 +24,6 @@ from cyris.adapters.output.html_digest import (
 )
 from cyris.domain.layers import layer_by_lane
 from cyris.domain.models import DigestContent
-from cyris.i18n import translator
 
 PALETTE_FILE = Path(__file__).parent / "email_palette.json"
 LIGHT_PALETTE: dict[str, str] = json.loads(PALETTE_FILE.read_text(encoding="utf-8"))["light"]
@@ -75,7 +73,6 @@ def render_digest_email(
     return template.render(
         content=content,
         content_lang=_html_lang(content.output_language),
-        period_label=period_label(content.period, translator(worded_in)),
         layers=layer_by_lane(content),
         digest_url=digest_url,
         raw_url=raw_url,

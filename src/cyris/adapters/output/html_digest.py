@@ -1,9 +1,11 @@
 """HTML digest output writer for newspaper-style rendering."""
 
 import functools
+import logging
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -19,8 +21,10 @@ from cyris.domain.models import (
     NewsParagraph,
     StoredArticle,
 )
-from cyris.i18n import Translator, resolve, translator
+from cyris.i18n import issue_day, issue_name, issue_time, resolve, translator
 from cyris.service_layer.schedule import PERIOD_ORDER
+
+logger = logging.getLogger(__name__)
 
 # The upstream project, not this deployment: a fork's pages still credit it, so no
 # setting changes it (docs/architecture.md §5, grade A).
@@ -71,14 +75,6 @@ def _html_lang(value: str) -> str:
     return value if value and _LANGUAGE_TAG.fullmatch(value) else ""
 
 
-def issue_period(period: str, t: Translator) -> str:
-    """How an issue's pages name its period, in `t`'s catalog; one outside `PERIOD_ORDER` as it is.
-
-    Display only: the period in a file name or a link stays the stored identifier.
-    """
-    return t(f"issue_period.{period}") if period in PERIOD_ORDER else period
-
-
 def issue_language(content: DigestContent, current: str) -> str:
     """The language an issue's own pages are worded in: its stored one, else the current setting."""
     return content.output_language or current
@@ -97,7 +93,11 @@ def _environment(tag: str, search_path: tuple[Path, ...]) -> Environment:
     env.filters["paragraph_links"] = paragraph_links
     env.globals["project_url"] = PROJECT_URL
     env.globals["t"] = translator(tag)
-    env.filters["period_name"] = functools.partial(issue_period, t=env.globals["t"])
+    # An issue is named by its run's start, never by its period, which stays in file names
+    # and links only.
+    env.globals["issue_day"] = functools.partial(issue_day, env.globals["t"])
+    env.globals["issue_time"] = functools.partial(issue_time, env.globals["t"])
+    env.globals["issue_name"] = functools.partial(issue_name, env.globals["t"])
     env.globals["ui_lang"] = tag
     return env
 
@@ -204,7 +204,12 @@ class HtmlDigestWriter:
         """The raw page's file name; the archive links to it only under this name."""
         return f"{date}-{period}-raw.html"
 
-    def __init__(self, output_dir: Path, language: str = ""):
+    def __init__(
+        self,
+        output_dir: Path,
+        language: str = "",
+        starts: Callable[[], Mapping[tuple[str, str], datetime]] | None = None,
+    ):
         """Initialize writer with output directory.
 
         The promote Worker's URL and bearer used to be constructor arguments,
@@ -218,9 +223,12 @@ class HtmlDigestWriter:
             output_dir: Directory to write HTML digests
             language: The current `digest.output_language`: the archive and the interest
                 page are worded in it, and so is an issue stored with none
+            starts: Reads each stored issue's `started_at`; `write_index` names the
+                archive's rows by it
         """
         self.output_dir = Path(output_dir)
         self.language = language
+        self.starts = starts
 
     @property
     def env(self) -> Environment:
@@ -255,6 +263,7 @@ class HtmlDigestWriter:
         return template.render(
             date=content.date,
             period=content.period,
+            started_at=content.started_at,
             sources_processed=content.sources_processed,
             articles_received=content.articles_received,
             articles_included=content.articles_included,
@@ -310,6 +319,7 @@ class HtmlDigestWriter:
         *,
         content: DigestContent | None = None,
         counts: Mapping[tuple[str, str], int] | None = None,
+        starts: Mapping[tuple[str, str], datetime] | None = None,
         period_order: Sequence[str] = PERIOD_ORDER,
     ) -> str:
         """The archive page, from the list of files the site is made of.
@@ -325,6 +335,9 @@ class HtmlDigestWriter:
         The headline card is `content`'s issue when it is listed, so a run's own
         archive leads with it; otherwise the first issue. The rest go in month panels,
         each row showing its article count when `counts` has one for it.
+
+        Each issue is named by its run's start from `starts`, `content`'s own for its
+        issue, and by its date alone when neither has one.
         """
         template = self.env.get_template("index.html.j2")
 
@@ -342,6 +355,7 @@ class HtmlDigestWriter:
                     {
                         "date": date,
                         "period": period,
+                        "started_at": (starts or {}).get((date, period)),
                         "filename": name,
                         # Only an issue whose raw page exists links to it: no dead entries.
                         "raw_filename": raw if raw in present else None,
@@ -362,6 +376,7 @@ class HtmlDigestWriter:
                 # What the card says beyond date and period is known only for the
                 # issue this run is rendering, and only from memory.
                 latest = listed
+                latest["started_at"] = content.started_at
                 features = _features(content)
                 # A cluster's members are its URLs: one item can hold a whole story.
                 largest = sorted(
@@ -405,7 +420,14 @@ class HtmlDigestWriter:
             Path to written index.html
         """
         names = [p.name for p in digest_dir.iterdir() if p.is_file()] if digest_dir.exists() else []
-        html = self.render_index(names, content=content)
+        starts = {}
+        if self.starts is not None:
+            # A failed read costs the rows their times, never the index its issues.
+            try:
+                starts = self.starts()
+            except Exception as e:
+                logger.error("Failed to read the archive's issue starts: %s", e)
+        html = self.render_index(names, content=content, starts=starts)
         index_path = digest_dir / "index.html"
 
         digest_dir.mkdir(parents=True, exist_ok=True)
@@ -414,7 +436,13 @@ class HtmlDigestWriter:
         return index_path
 
     def write_raw(
-        self, date: str, period: str, articles: list[StoredArticle], language: str
+        self,
+        date: str,
+        period: str,
+        articles: list[StoredArticle],
+        language: str,
+        *,
+        started_at: datetime | None = None,
     ) -> Path:
         """Render this run's judged and still-pending articles, grouped by source.
 
@@ -424,22 +452,30 @@ class HtmlDigestWriter:
             articles: What this run judged, plus whatever is still pending. Rows an
                 earlier run in the overlapping window judged are the caller's to drop.
             language: The issue's `output_language`, passed to `render_raw`.
+            started_at: The issue's `started_at`, passed to `render_raw`.
 
         Returns:
             Path to the written raw page.
         """
-        html = self.render_raw(date, period, articles, language)
+        html = self.render_raw(date, period, articles, language, started_at=started_at)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         file_path = self.output_dir / self.raw_filename(date, period)
         file_path.write_text(html, encoding="utf-8")
         return file_path
 
     def render_raw(
-        self, date: str, period: str, articles: list[StoredArticle], language: str
+        self,
+        date: str,
+        period: str,
+        articles: list[StoredArticle],
+        language: str,
+        *,
+        started_at: datetime | None = None,
     ) -> str:
         """The companion page's HTML: the given articles, grouped by source.
 
-        Worded in `language`, the issue's `output_language`; "" is the current setting.
+        Worded in `language`, the issue's `output_language`; "" is the current setting. Named,
+        as the digest page is, by `started_at`, the issue's `started_at`.
         """
         groups: dict[str, list[StoredArticle]] = {}
         for a in articles:
@@ -460,6 +496,7 @@ class HtmlDigestWriter:
             .render(
                 date=date,
                 period=period,
+                started_at=started_at,
                 total=len(articles),
                 groups=rendered_groups,
             )

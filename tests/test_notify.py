@@ -9,6 +9,7 @@ import httpx
 import pytest
 from layered_issue import UNNAMED_SOURCES, four_layer_issue
 
+from cyris.adapters import notify
 from cyris.adapters.notify import (
     _fit_embeds,
     build_discord_embeds,
@@ -118,7 +119,7 @@ class TestDiscordEmbeds:
         embeds = build_discord_embeds(content)
         titles = [e["title"] for e in embeds]
 
-        assert titles == ["Stories", "Morning 2026-04-10"]
+        assert titles == ["Stories", "4/10"]
 
     def test_featured_articles_embed(self):
         """Featured articles embed has heading with link and summary."""
@@ -292,7 +293,7 @@ class TestDiscordEmbeds:
 
         embeds = build_discord_embeds(content)
 
-        assert [e["title"] for e in embeds] == ["Morning 2026-04-10"]
+        assert [e["title"] for e in embeds] == ["4/10"]
         assert "Short Title" not in embeds[0]["description"]
 
     def test_stats_embed_always_last(self):
@@ -306,7 +307,7 @@ class TestDiscordEmbeds:
         )
 
         embeds = build_discord_embeds(content)
-        assert embeds[-1]["title"] == "Evening 2026-04-10"
+        assert embeds[-1]["title"] == "4/10"
         assert embeds[-1]["color"] == 0x57F287
         assert "Sources **3**" in embeds[-1]["description"]
 
@@ -322,7 +323,7 @@ class TestDiscordEmbeds:
 
         embeds = build_discord_embeds(content)
         assert len(embeds) == 1
-        assert embeds[0]["title"] == "Morning 2026-04-10"
+        assert embeds[0]["title"] == "4/10"
 
     def test_stats_embed_link_health_line_when_counts_present(self):
         content = DigestContent(
@@ -413,7 +414,7 @@ class TestDiscordPayload:
         payload = build_discord_payload(content, degraded=True)
 
         assert payload["embeds"] == build_discord_embeds(content)
-        assert payload["embeds"][-1]["title"] == "Morning 2026-04-10"
+        assert payload["embeds"][-1]["title"] == "4/10"
 
     def test_default_usage_has_only_embeds(self):
         content = DigestContent(
@@ -612,7 +613,7 @@ class TestDiscordPayloadLimitsInBytes:
         assert all(_bytes(e["description"]) <= 4096 for e in embeds)
 
     def test_a_long_title_is_cut_in_bytes_without_splitting_a_character(self):
-        stats = {"title": "Evening 2026-10-30", "description": "x", "color": 0}
+        stats = {"title": "10/30", "description": "x", "color": 0}
         embed = {"title": "標" * 100, "description": "內容", "color": 0}
 
         title = _fit_embeds([embed, stats], "*…*")[0]["title"]
@@ -863,7 +864,7 @@ _ALERT = RunAlert(
     language="en",
     error="B",
 )
-_SUBJECT = "Digest run failed: morning, 2026-11-16 08:05 Asia/Taipei"
+_SUBJECT = "Digest run failed: 11/16, 08:05 Asia/Taipei"
 
 
 class TestSendDiscordAlert:
@@ -896,8 +897,7 @@ class TestSendDiscordAlert:
         await send_discord_alert("https://discord.com/api/webhooks/123/s3cr3t-token", alert)
 
         assert json.loads(requests[0].content) == {
-            "content": "精選沒抓到任何文章: morning, 2026-11-16 08:05 Asia/Taipei\n"
-            "抓取失敗的來源：Feed"
+            "content": "精選沒抓到任何文章：11/16 08:05 Asia/Taipei\n抓取失敗的來源：Feed"
         }
 
     async def test_truncates_content_to_discord_limit(self, monkeypatch):
@@ -1003,10 +1003,10 @@ class TestDiscordAlertRedaction:
             return httpx.Response(204)
 
         _discord_transport(monkeypatch, handler)
+        # No field of today's subject can carry one; the redaction holds if a later one can.
+        monkeypatch.setattr(notify, "alert_message", lambda alert: (_LEAK, "B"))
 
-        await send_discord_alert(
-            "https://discord.com/api/webhooks/123/s3cr3t-token", replace(_ALERT, period=_LEAK)
-        )
+        await send_discord_alert("https://discord.com/api/webhooks/123/s3cr3t-token", _ALERT)
 
         assert len(requests) == 1
         body = requests[0].content.decode()
@@ -1072,14 +1072,14 @@ class TestDiscordThreeLayers:
     def test_the_embeds_are_tracking_stories_and_topics_then_the_stats(self):
         titles = [e["title"] for e in build_discord_embeds(four_layer_issue())]
 
-        assert titles == ["Tracking", "Stories", "Topics", "Morning 2026-10-29"]
+        assert titles == ["Tracking", "Stories", "Topics", "10/29"]
 
     def test_an_empty_layer_has_no_embed(self):
         content = four_layer_issue().model_copy(update={"news_clusters": [], "tracked_topics": []})
 
         titles = [e["title"] for e in build_discord_embeds(content)]
 
-        assert titles == ["Stories", "Morning 2026-10-29"]
+        assert titles == ["Stories", "10/29"]
 
     def test_tracking_lists_each_hit_as_a_link_alone(self):
         (tracking, *_) = build_discord_embeds(four_layer_issue())

@@ -130,6 +130,9 @@ async def test_a_zh_hant_issue_stores_english_identifiers(
         {"source_lane": "follow", "state": "accepted"},
     ]
     assert issue["period"] == json.loads(issue["content"])["period"] == "evening"
+    assert datetime.fromisoformat(json.loads(issue["content"])["started_at"]).utcoffset() == (
+        timedelta(hours=8)
+    )
 
 
 async def test_a_zh_hant_issue_is_filed_and_linked_by_its_english_period(
@@ -152,11 +155,13 @@ async def test_a_zh_hant_issue_shows_the_names_of_its_identifiers(
     tmp_path: Path, every_key_translated
 ) -> None:
     db, pages = await _run(tmp_path)
-    [date] = [row["date"] for row in db.query("SELECT date FROM digests").rows]
+    [row] = db.query("SELECT date, content FROM digests").rows
+    date = row["date"]
+    started = datetime.fromisoformat(json.loads(row["content"])["started_at"])
     digest = pages[f"/{date}-evening.html"].decode()
     raw = pages[f"/{date}-evening-raw.html"].decode()
-    period = _translation("issue_period.evening")
     accepted = _translation("article_state.accepted")
 
-    assert f'<span class="label">{period}</span>' in digest
+    assert f'<span class="label">{started:%H:%M}</span>' in digest
+    assert "evening" not in digest.split('<div class="issue-id">', 1)[1].split("</div>", 1)[0]
     assert f'<span class="state accepted">{accepted}</span>' in raw

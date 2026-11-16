@@ -1,9 +1,10 @@
 """Each converted surface, rendered in English and in zh-Hant, says what that catalog says.
 
 The skeleton of ADR-0027 converts one string on each of five surfaces: the site bar's
-Settings on the digest page, the mail's Read online, the Discord message's period, the
+Settings on the digest page, the mail's Read online, the Discord message's title, the
 /settings script's Discord check, and the triage server's refusal of a settings write with
-no store. Every expected text is read from the catalog files, never from `cyris.i18n`.
+no store. Every expected text is read from the catalog files, never from `cyris.i18n`; the
+Discord title names the issue by its minute, which no catalog words, as CLDR formats it.
 
 A container page's script formats from one file per catalog, which the page names and the
 server serves under `/static/i18n/`.
@@ -15,6 +16,7 @@ import os
 import re
 import shutil
 import subprocess
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -38,7 +40,6 @@ LANGUAGES = [("en", "en"), ("ja", "en"), ("zh-Hant", "zh-Hant")]
 SURFACE_KEYS = [
     "site.settings",
     "email.read_online",
-    "period.morning",
     "settings.checking_discord",
     "error.no_settings_store",
 ]
@@ -161,17 +162,21 @@ def test_the_mails_design_tokens_still_reach_its_layout() -> None:
     assert "{{" not in html
 
 
-@pytest.mark.parametrize(("language", "catalog"), LANGUAGES)
-def test_the_discord_period_follows_the_issue(language, catalog) -> None:
-    stats = build_discord_embeds(_content(language), digest_url=DIGEST_URL)[-1]
+@pytest.mark.parametrize(
+    ("language", "title"),
+    [("en", "11/16, 08:05"), ("ja", "11/16, 08:05"), ("zh-Hant", "11/16 08:05")],
+)
+def test_the_discord_title_follows_the_issue(language, title) -> None:
+    started = datetime(2026, 11, 16, 8, 5, tzinfo=timezone(timedelta(hours=8)))
+    content = _content(language).model_copy(update={"started_at": started})
 
-    assert stats["title"] == f"{_text(catalog, 'period.morning')} {DATE}"
+    assert build_discord_embeds(content, digest_url=DIGEST_URL)[-1]["title"] == title
 
 
-def test_the_discord_period_outside_the_schedules_labels_shows_as_stored() -> None:
+def test_the_discord_title_never_shows_the_period() -> None:
     content = _content("zh-Hant").model_copy(update={"period": "noon"})
 
-    assert build_discord_embeds(content)[-1]["title"] == f"noon {DATE}"
+    assert build_discord_embeds(content)[-1]["title"] == "11/16"
 
 
 @pytest.mark.parametrize(("language", "catalog"), LANGUAGES)

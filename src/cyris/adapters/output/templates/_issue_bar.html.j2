@@ -1,6 +1,6 @@
     <div class="issue-bar">
         <div class="issue-bar-inner">
-            <div class="issue-id"><span class="data">{{ date }}</span><span class="label">{{ period | period_name }}</span></div>
+            <div class="issue-id"><span class="data">{{ issue_day(date, started_at) }}</span>{% if started_at %}<span class="label">{{ issue_time(started_at) }}</span>{% endif %}</div>
             <nav class="seg" aria-label="{{ t("issue.views") }}">
                 <a href="{{ date }}-{{ period }}.html"{% if view == "digest" %} aria-current="page"{% endif %}>{{ t("issue.digest") }}</a>
                 {% if view == "raw" or raw_page %}<a href="{{ date }}-{{ period }}-raw.html"{% if view == "raw" %} aria-current="page"{% endif %}>{{ t("issue.all_articles") }}</a>{% endif %}

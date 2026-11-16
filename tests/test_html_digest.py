@@ -2,7 +2,7 @@
 
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -456,14 +456,17 @@ def test_the_newer_month_panel_comes_first(tmp_path):
     assert '<span class="data">2026-07</span><span class="label">2 issues</span>' in html
 
 
-def test_an_archive_row_holds_date_period_and_the_issues_two_views(tmp_path):
+def test_an_archive_row_holds_its_day_its_minute_and_the_issues_two_views(tmp_path):
     names = ["2026-08-31-morning.html", "2026-08-31-morning-raw.html", "2026-09-02-morning.html"]
+    started = datetime(2026, 8, 31, 8, 5, tzinfo=timezone(timedelta(hours=8)))
 
-    html = _tight(HtmlDigestWriter(tmp_path).render_index(names))
+    html = _tight(
+        HtmlDigestWriter(tmp_path).render_index(names, starts={("2026-08-31", "morning"): started})
+    )
 
     assert (
-        '<div class="list-row archive-row"><span class="date">2026-08-31</span>'
-        '<span class="label">morning</span><span class="actions">'
+        '<div class="list-row archive-row"><span class="date">8/31</span>'
+        '<span class="label">08:05</span><span class="actions">'
         '<a class="btn secondary sm digest-link" href="2026-08-31-morning.html">Digest</a>'
         '<a class="btn secondary sm" href="2026-08-31-morning-raw.html">All articles</a>'
         "</span></div>"
@@ -501,10 +504,8 @@ def _card(html: str) -> str:
 
 
 def _card_line(date: str, period: str) -> str:
-    return (
-        f'<div class="line"><span class="label latest">Latest</span>'
-        f'<span class="date">{date}</span><span class="label">{period}</span></div>'
-    )
+    """The card's link to its issue's digest page: the stored date and period, not the name."""
+    return f'<a class="btn secondary sm digest-link" href="{date}-{period}.html">'
 
 
 SAME_DAY = ["2026-04-15-morning.html", "2026-04-15-evening.html", "2026-04-15-evening-raw.html"]
@@ -520,7 +521,7 @@ def test_the_newest_issue_is_the_headline_card_not_a_row(tmp_path):
     tight = _tight(html)
     assert '<span class="data">2026-04</span><span class="label">1 issue</span>' in tight
     panel = tight[tight.index('<section class="panel">') :]
-    assert '<span class="date">2026-04-15</span><span class="label">morning</span>' in panel
+    assert 'href="2026-04-15-morning.html"' in panel
     assert 'href="2026-04-15-evening.html"' not in panel
 
 
@@ -531,7 +532,7 @@ def test_this_runs_issue_is_the_headline_card_when_the_renderer_is_told(tmp_path
 
     assert _card_line("2026-04-15", "morning") in _card(html)
     panel = _tight(html)[_tight(html).index('<section class="panel">') :]
-    assert '<span class="label">evening</span>' in panel
+    assert 'href="2026-04-15-evening.html"' in panel
     assert 'href="2026-04-15-morning.html"' not in panel
 
 
@@ -762,12 +763,12 @@ def test_the_card_topics_are_escaped(tmp_path):
 
 
 def _row_classes(html: str) -> list[tuple[str, str]]:
-    """(date and period, class attribute) of every archive row, in page order."""
+    """(date and period its digest link names, class attribute) of every archive row, in order."""
     return [
         (f"{date} {period}", cls)
         for cls, date, period in re.findall(
-            r'<div class="(list-row archive-row[^"]*)"><span class="date">([^<]+)</span>'
-            r'<span class="label">([^<]+)</span>',
+            r'<div class="(list-row archive-row[^"]*)">.*?'
+            r'digest-link" href="(\d{4}-\d{2}-\d{2})-([^"]+)\.html"',
             _tight(html),
         )
     ]
@@ -836,9 +837,9 @@ def test_a_row_shows_its_recorded_article_count(tmp_path, n, shown):
 
     (row,) = _rows(html)
     assert (
-        f'<span class="label">morning</span><span class="small">{shown}</span>'
-        '<span class="actions">'
-    ) in row
+        f'<span class="label"></span><span class="small">{shown}</span><span class="actions">'
+        in (row)
+    )
 
 
 def test_a_row_without_a_record_shows_no_count(tmp_path):
@@ -897,7 +898,13 @@ def test_the_local_archive_leads_with_this_runs_issue(tmp_path):
 
 def _card_of(card: html_digest.HeadlineCard) -> str:
     """The headline card the archive template draws from `card` alone."""
-    issue = {"date": "2026-04-16", "period": "morning", "filename": "x.html", "raw_filename": None}
+    issue = {
+        "date": "2026-04-16",
+        "period": "morning",
+        "started_at": None,
+        "filename": "x.html",
+        "raw_filename": None,
+    }
     template = HtmlDigestWriter("unused").env.get_template("index.html.j2")
     return _card(template.render(digests=[issue], latest=issue, card=card, months=[]))
 
@@ -1700,21 +1707,28 @@ def test_the_issue_bar_switch_is_never_gated(tmp_path):
     assert '<nav class="seg" aria-label="Issue views">' in raw
 
 
+EVENING_START = datetime(2026, 4, 15, 20, 5, tzinfo=timezone(timedelta(hours=8)))
+
+
 def _issue_pages(tmp_path) -> dict[str, str]:
     """Archive, digest and raw for one 2026-04-15 evening issue."""
     writer = HtmlDigestWriter(tmp_path)
     content = DigestContent(
         date="2026-04-15",
         period="evening",
+        started_at=EVENING_START,
         sources_processed=1,
         articles_received=1,
         articles_included=1,
         usage=UsageStats(),
     )
+    raw = writer.render_raw(
+        "2026-04-15", "evening", [_stored("Article", "Src")], "en", started_at=EVENING_START
+    )
     return {
         "index": writer.render_index(["2026-04-15-evening.html", "2026-04-15-evening-raw.html"]),
         "digest": writer.render(content, raw_page=True),
-        "raw": writer.render_raw("2026-04-15", "evening", [_stored("Article", "Src")], "en"),
+        "raw": raw,
     }
 
 
@@ -1876,7 +1890,7 @@ def test_the_old_masthead_brand_and_meta_strip_are_gone(tmp_path):
 def test_the_digest_switches_to_its_raw_page_from_the_issue_bar(tmp_path):
     digest = _issue_pages(tmp_path)["digest"]
 
-    assert '<span class="data">2026-04-15</span><span class="label">evening</span>' in digest
+    assert '<span class="data">4/15</span><span class="label">20:05</span>' in digest
     assert '<a href="2026-04-15-evening.html" aria-current="page">Digest</a>' in digest
     assert '<a href="2026-04-15-evening-raw.html">All articles</a>' in digest
 
@@ -1902,7 +1916,7 @@ def test_a_digest_without_a_raw_page_offers_no_all_articles(tmp_path):
 def test_the_raw_page_switches_back_to_its_digest_from_the_issue_bar(tmp_path):
     raw = _issue_pages(tmp_path)["raw"]
 
-    assert '<span class="data">2026-04-15</span><span class="label">evening</span>' in raw
+    assert '<span class="data">4/15</span><span class="label">20:05</span>' in raw
     assert '<a href="2026-04-15-evening.html">Digest</a>' in raw
     assert '<a href="2026-04-15-evening-raw.html" aria-current="page">All articles</a>' in raw
 
@@ -2197,7 +2211,7 @@ def test_the_archive_card_carries_its_issues_language(tmp_path):
 
     assert '<html lang="en">' in html
     assert langs["Cluster heading"] == "ko"
-    assert langs["Latest"] == langs["2026-04-14"] == "en"
+    assert langs["Latest"] == langs["4/14"] == "en"
 
 
 def test_the_archive_card_title_takes_its_leads_language(tmp_path):

@@ -47,7 +47,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
     <meta name="supported-color-schemes" content="light dark">
-    <title>CYRIS // {{ content.date }} · {{ content.period | period_name }}</title>
+    <title>CYRIS // {{ issue_name(content.date, content.started_at) }}</title>
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
     <style>
         :root { color-scheme: light dark; supported-color-schemes: light dark; }
@@ -88,7 +88,7 @@
 <body class="body">
     <div class="preheader">{% if layers.pebbles %}<span lang="">{{ layers.pebbles[0].item.title }}</span>{% elif layers.sand %}<span lang="{{ content_lang }}">{{ layers.sand[0].heading }}</span>{% endif %} · {{ t("mail.kept_of", included=content.articles_included, received=content.articles_received) }}</div>
     <div class="wrap">
-        <p class="brand"><span class="mark"></span>Cyris · {{ period_label }} · {{ content.date }}</p>
+        <p class="brand"><span class="mark"></span>Cyris · {{ issue_name(content.date, content.started_at) }}</p>
         <h1 class="issue-title">Signal<em>/</em>Noise</h1>
         <p class="stats">{{ t("mail.stats", sources=content.sources_processed, received=content.articles_received, included=content.articles_included, elements={"b": ("b", {})}) }}</p>
         {% if digest_url %}

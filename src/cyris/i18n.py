@@ -12,10 +12,12 @@ import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 
 import langcodes
 from babel import Locale
+from babel.dates import format_skeleton
 from langcodes.tag_parser import LanguageTagError
 from markupsafe import Markup, escape
 from messageformat2 import Message
@@ -23,6 +25,11 @@ from messageformat2 import Message
 LOCALES = Path(__file__).parent / "locales"
 # The fallback of every lookup, and the catalog each other catalog's `source` repeats.
 ENGLISH = "en"
+# An issue is named by the minute its run started, never by its period, since a day may hold any
+# number of issues (owner, 2026-11-17). CLDR skeletons, so each catalog's locale orders and
+# punctuates the month, the day and the clock: `11/17, 08:00` in English, `11/17 08:00` in zh-Hant.
+ISSUE_DAY = "Md"
+ISSUE_TIME = "Hm"
 
 # What a caller supplies for a message's markup: each markup name's element and attributes,
 # as `{"link": ("a", {"href": url})}` for `{#link}…{/link}`. The catalog never holds HTML.
@@ -200,3 +207,36 @@ def browser_file(tag: str, keys: tuple[str, ...]) -> BrowserFile:
     body = json.dumps(messages, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     encoded = body.encode()
     return BrowserFile(encoded, f'"{hashlib.sha256(encoded).hexdigest()[:32]}"')
+
+
+def _locale(t: Translator) -> Locale:
+    return catalogs()[t.tag].locale
+
+
+def issue_day(t: Translator, day: str, started_at: datetime | None) -> str:
+    """The day an issue is named by: its run's start, else its stored date `day`, or `day` as it is.
+
+    `started_at` carries the offset of `general.timezone` when the run started, and is shown in it.
+    """
+    if started_at is not None:
+        return format_skeleton(ISSUE_DAY, started_at, tzinfo=started_at.tzinfo, locale=_locale(t))
+    try:
+        stored = date.fromisoformat(day)
+    except ValueError:
+        return day
+    return format_skeleton(ISSUE_DAY, stored, locale=_locale(t))
+
+
+def issue_time(t: Translator, started_at: datetime | None) -> str:
+    """The minute an issue's run started, or "" for an issue stored without it."""
+    if started_at is None:
+        return ""
+    return format_skeleton(ISSUE_TIME, started_at, tzinfo=started_at.tzinfo, locale=_locale(t))
+
+
+def issue_name(t: Translator, day: str, started_at: datetime | None) -> str:
+    """An issue's name: its day and minute joined as the locale joins them, else its day alone."""
+    named = issue_day(t, day, started_at)
+    if started_at is None:
+        return named
+    return _locale(t).datetime_formats["short"].format(issue_time(t, started_at), named)

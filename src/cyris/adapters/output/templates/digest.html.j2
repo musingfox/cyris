@@ -17,8 +17,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="dark">
-    <title>CYRIS // {{ date }} · {{ period | period_name }}</title>
-    <meta name="description" content="{{ t("digest.description", date=date, period=period | period_name, included=articles_included, received=articles_received) }}">
+    <title>CYRIS // {{ issue_name(date, started_at) }}</title>
+    <meta name="description" content="{{ t("digest.description", issue=issue_name(date, started_at), included=articles_included, received=articles_received) }}">
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

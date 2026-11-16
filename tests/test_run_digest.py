@@ -942,6 +942,7 @@ def test_the_published_archive_links_this_runs_raw_page_when_there_is_one(
         html_writer=HtmlDigestWriter(tmp_path),
         site_filenames=lambda: [],
         archive_counts=lambda: {},
+        archive_starts=None,
     )
     content = DigestContent(
         date="2026-04-15",
@@ -989,21 +990,28 @@ def _run_content(date: str, period: str, lead: str, included: int) -> DigestCont
     )
 
 
+EVENING = "2026-04-15T20:05:00+08:00"
+
+
 def test_the_published_archive_leads_with_this_runs_issue(tmp_path: Path) -> None:
     deps = SimpleNamespace(
         html_writer=HtmlDigestWriter(tmp_path),
         site_filenames=lambda: ["2026-04-15-evening.html"],
         archive_counts=lambda: {},
+        archive_starts=lambda: {("2026-04-15", "evening"): datetime.fromisoformat(EVENING)},
     )
 
     index = _published_index(deps, _run_content("2026-04-16", "evening", "Run lead", 7))
 
     card = index[index.index('<article class="front-card">') :].split("</article>", 1)[0]
-    assert '<span class="date">2026-04-16</span>' in card
+    assert '<span class="date">4/16</span>' in card
     assert '<h2 lang="">Run lead</h2>' in card
     assert '<span class="data">7 articles</span>' in card
     panels = index[index.index('<section class="panel">') :]
     assert 'href="2026-04-15-evening.html"' in panels
+    assert (
+        '<span class="date">4/15</span>\n                <span class="label">20:05</span>' in panels
+    )
 
 
 def test_the_published_digest_is_keyed_by_the_writers_file_name(tmp_path: Path, monkeypatch):
@@ -1014,6 +1022,7 @@ def test_the_published_digest_is_keyed_by_the_writers_file_name(tmp_path: Path, 
         html_writer=HtmlDigestWriter(tmp_path),
         site_filenames=lambda: [],
         archive_counts=lambda: {},
+        archive_starts=None,
     )
 
     pages = _render_site(
@@ -1029,6 +1038,7 @@ def test_every_published_site_carries_the_favicon(tmp_path: Path) -> None:
         html_writer=HtmlDigestWriter(tmp_path),
         site_filenames=lambda: ["2026-04-15-evening.html", "favicon.svg"],
         archive_counts=lambda: {},
+        archive_starts=None,
     )
 
     pages = _render_site(
@@ -1043,6 +1053,7 @@ def test_the_published_archive_rows_carry_the_recorded_counts(tmp_path: Path) ->
         html_writer=HtmlDigestWriter(tmp_path),
         site_filenames=lambda: ["2026-04-15-evening.html"],
         archive_counts=lambda: {("2026-04-15", "evening"): 12},
+        archive_starts=None,
     )
 
     index = _published_index(deps, _run_content("2026-04-16", "morning", "Lead", 3))
@@ -1062,6 +1073,7 @@ def test_a_failed_count_read_still_publishes_every_issue(tmp_path: Path, caplog)
         html_writer=HtmlDigestWriter(tmp_path),
         site_filenames=lambda: ["2026-04-15-evening.html"],
         archive_counts=down,
+        archive_starts=None,
     )
 
     with caplog.at_level("ERROR"):
@@ -1977,6 +1989,23 @@ async def test_the_stored_digest_is_the_final_content(tmp_path: Path, caplog) ->
     assert loaded.usage.api_calls == _run_summary(caplog)["llm"]["api_calls"]
 
 
+async def test_the_stored_digest_is_named_by_the_minute_its_run_started(
+    tmp_path: Path, caplog
+) -> None:
+    deps, _ = make_deps(tmp_path, _notify_llm(), FakeSource([_notify_article()]))
+    deps, store, db = _stored_digests(deps)
+
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        await run_digest(deps, RunOptions())
+
+    [row] = db.query("SELECT date, period FROM digests").rows
+    started = store.load(row["date"], row["period"]).content.started_at
+    run_start = datetime.fromisoformat(_run_summary(caplog)["started_at"])
+    assert started == run_start
+    assert started.utcoffset() == ZoneInfo("Asia/Taipei").utcoffset(run_start)
+    assert row["period"] == "morning"
+
+
 class _ExplodingDigestStore:
     def __init__(self) -> None:
         self.calls = 0
@@ -2167,9 +2196,7 @@ async def test_the_stored_digest_renders_the_written_page(
         assert on_disk != deps.html_writer.render(row.content, raw_page=True)
 
 
-_FAILED_SUBJECT = re.compile(
-    r"^Digest run failed: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$"
-)
+_FAILED_SUBJECT = re.compile(r"^Digest run failed: \d{1,2}/\d{1,2}, \d{2}:\d{2} Asia/Taipei$")
 _ALERT_WEBHOOK = "https://discord.com/api/webhooks/1/alert"
 
 
@@ -2180,12 +2207,12 @@ def _with_alert_channels(deps: Deps, discord, mail) -> Deps:
     return replace(deps, send_discord_alert=discord, send_email_alert=mail)
 
 
-def _subject_minute(subject: str) -> datetime:
-    found = re.search(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2})", subject)
+def _subject_minute(subject: str, year: int) -> datetime:
+    """The minute an English subject names, `11/16, 08:05`, in `year`, which it leaves out."""
+    found = re.search(r"(\d{1,2})/(\d{1,2}), (\d{2}):(\d{2})", subject)
     assert found is not None
-    return datetime.strptime(found.group(1), "%Y-%m-%d %H:%M").replace(
-        tzinfo=ZoneInfo("Asia/Taipei")
-    )
+    month, day, hour, minute = map(int, found.groups())
+    return datetime(year, month, day, hour, minute, tzinfo=ZoneInfo("Asia/Taipei"))
 
 
 def _recording_alert_fakes() -> tuple[list, list, object, object]:
@@ -2258,7 +2285,7 @@ async def test_a_raised_run_is_headed_in_the_output_language(tmp_path: Path) -> 
         await run_digest(deps, RunOptions())
 
     [(_, subject, text)] = discord_calls
-    assert re.match(r"^精選產生失敗: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$", subject)
+    assert re.match(r"^精選產生失敗：\d{1,2}/\d{1,2} \d{2}:\d{2} Asia/Taipei$", subject)
     assert text == "RuntimeError: the store is gone"
     assert mail_calls[0][2:] == (subject, text)
 
@@ -2293,7 +2320,7 @@ async def test_the_failure_alert_names_the_minute_the_run_started(tmp_path: Path
         await run_digest(deps, RunOptions())
 
     after = now_in_timezone("Asia/Taipei")
-    when = _subject_minute(discord_calls[0][1])
+    when = _subject_minute(discord_calls[0][1], before.year)
     assert before <= when <= after
 
 
@@ -2376,7 +2403,7 @@ async def test_an_error_with_no_message_is_named_by_its_type_alone(tmp_path: Pat
 
 
 _FETCH_SUBJECT = re.compile(
-    r"^Digest run fetched nothing: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$"
+    r"^Digest run fetched nothing: \d{1,2}/\d{1,2}, \d{2}:\d{2} Asia/Taipei$"
 )
 
 
@@ -2477,9 +2504,7 @@ async def test_a_run_that_fetched_nothing_is_worded_in_the_output_language(
     )
 
     [(_, subject, text)] = discord_calls
-    assert re.match(
-        r"^精選沒抓到任何文章: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$", subject
-    )
+    assert re.match(r"^精選沒抓到任何文章：\d{1,2}/\d{1,2} \d{2}:\d{2} Asia/Taipei$", subject)
     assert text == "抓取失敗的來源：BrokenSource, OtherBrokenSource"
     assert mail_calls[0][2:] == (subject, text)
 
@@ -3106,7 +3131,7 @@ class _FailingEmbedder(_TitleEmbedder):
 
 
 _SIMILARITY_WARNING_SUBJECT = re.compile(
-    r"^Vote similarity did not run: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$"
+    r"^Vote similarity did not run: \d{1,2}/\d{1,2}, \d{2}:\d{2} Asia/Taipei$"
 )
 
 
@@ -3171,9 +3196,7 @@ async def test_a_rejected_embedding_key_warns_in_the_output_language(tmp_path: P
     )
 
     [(_, subject, text)] = discord_calls
-    assert re.match(
-        r"^投票相似度未執行: morning, \d{4}-\d{2}-\d{2} \d{2}:\d{2} Asia/Taipei$", subject
-    )
+    assert re.match(r"^投票相似度未執行：\d{1,2}/\d{1,2} \d{2}:\d{2} Asia/Taipei$", subject)
     assert text == (
         "本期未執行投票相似度，讀者的投票沒有作用，精選未經過濾就直接發布。嵌入 API "
         "拒絕了請求：HTTP 403 Forbidden。在嵌入金鑰或其權限修好之前，每次產生精選都會"

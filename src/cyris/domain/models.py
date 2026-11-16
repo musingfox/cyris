@@ -276,6 +276,9 @@ class DigestContent(BaseModel):
 
     date: str
     period: str
+    # When the run that made the issue started, at the offset of `general.timezone` then: what a
+    # reader knows the issue by. None on an issue stored before it was kept.
+    started_at: datetime | None = None
     sources_processed: int
     articles_received: int
     articles_included: int

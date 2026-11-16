@@ -16,9 +16,8 @@ from cyris.domain.models import (
     DigestSection,
     NewsParagraph,
 )
-from cyris.i18n import Translator, translator
+from cyris.i18n import issue_name, translator
 from cyris.service_layer.alerts import RunAlert
-from cyris.service_layer.schedule import PERIOD_ORDER
 
 logger = logging.getLogger(__name__)
 
@@ -75,14 +74,6 @@ def redact_webhook_tokens(text: str) -> str:
 
 # The embed of the area section that has no area: a digest whose area order is empty.
 UNNAMED_SECTION_TITLE = "Digest"
-
-
-def period_label(period: str, t: Translator) -> str:
-    """How a message names the period, in `t`'s catalog; a label outside `PERIOD_ORDER` as it is.
-
-    Display only: `morning` and `evening` stay the stored value and the file names.
-    """
-    return t(f"period.{period}") if period in PERIOD_ORDER else period
 
 
 def _render_section_embed(section: DigestSection) -> str:
@@ -244,7 +235,6 @@ def build_discord_embeds(
     runs out of room.
     """
     t = translator(issue_language(content, language))
-    label = period_label(content.period, t)
     layers = layer_by_lane(content)
     blocks = [
         (t("layer.tracking"), [_render_tracking(topic) for topic in layers.tracking], 0xE67E22),
@@ -284,7 +274,7 @@ def build_discord_embeds(
 
     embeds.append(
         {
-            "title": f"{label} {content.date}",
+            "title": issue_name(t, content.date, content.started_at),
             "description": "\n".join(stats_lines),
             "color": 0x57F287,
         }

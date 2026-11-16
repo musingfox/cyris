@@ -7,6 +7,8 @@ live index lists — so a missing count is shown as no count, never as no row.
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from cyris.adapters.store.d1 import D1Queryable
 
 
@@ -27,3 +29,16 @@ class D1ArchiveMeta:
             " WHERE digest_date IS NOT NULL AND period IS NOT NULL ORDER BY logged_at"
         ).rows
         return {(row["digest_date"], row["period"]): row["articles_included"] for row in rows}
+
+    def issue_starts(self) -> dict[tuple[str, str], datetime]:
+        """`{(date, period): started_at}` from each stored issue's content in `digests`.
+
+        An issue stored before its content kept the start has no entry.
+        """
+        rows = self._db.query(
+            "SELECT date, period, json_extract(content, '$.started_at') AS started_at"
+            " FROM digests WHERE json_extract(content, '$.started_at') IS NOT NULL"
+        ).rows
+        return {
+            (row["date"], row["period"]): datetime.fromisoformat(row["started_at"]) for row in rows
+        }

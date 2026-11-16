@@ -12,14 +12,14 @@ import logging
 import httpx
 
 from cyris.adapters.cloudflare import API_ROOT, TIMEOUT_SECONDS
-from cyris.adapters.notify import period_label, redact_webhook_tokens
+from cyris.adapters.notify import redact_webhook_tokens
 from cyris.adapters.output.email_digest import raw_page_url, render_digest_email
 from cyris.adapters.output.html_digest import Story, citation_links, issue_language
 from cyris.adapters.run_alert import alert_message
 from cyris.domain.area_layout import AreaSection
 from cyris.domain.layers import Sand, layer_by_lane
 from cyris.domain.models import DigestContent, DigestItem, DigestSection, NewsParagraph
-from cyris.i18n import translator
+from cyris.i18n import issue_name, translator
 from cyris.service_layer.alerts import RunAlert
 
 logger = logging.getLogger(__name__)
@@ -107,7 +107,7 @@ def build_digest_mail(
     Worded as the HTML part is: in the issue's language, else `language`, the current setting.
     """
     t = translator(issue_language(content, language))
-    title = t("mail.subject", period=period_label(content.period, t), date=content.date)
+    title = t("mail.subject", issue=issue_name(t, content.date, content.started_at))
     lines = [title, ""]
     if digest_url:
         lines.append(t("mail.read_online_at", url=digest_url))

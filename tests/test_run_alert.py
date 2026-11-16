@@ -12,7 +12,8 @@ from cyris.service_layer.alerts import AlertKind, RunAlert
 pytestmark = pytest.mark.unit
 
 STARTED = datetime(2026, 11, 16, 0, 5, tzinfo=UTC)
-SUFFIX = ": morning, 2026-11-16 08:05 Asia/Taipei"
+# The issue the alert is about, named as every surface names it, in each catalog's punctuation.
+SUFFIX = {"en": ": 11/16, 08:05 Asia/Taipei", "zh-Hant": "：11/16 08:05 Asia/Taipei"}
 
 
 def _alert(kind: AlertKind, language: str = "en", **values) -> RunAlert:
@@ -39,18 +40,19 @@ def _alert(kind: AlertKind, language: str = "en", **values) -> RunAlert:
         ("vote_similarity_rejected", "zh-Hant", "投票相似度未執行"),
     ],
 )
-def test_the_subject_is_the_headline_the_period_and_the_minute_in_the_timezone(
+def test_the_subject_is_the_headline_and_the_minute_in_the_timezone(
     kind, language, headline
 ) -> None:
     subject, _ = alert_message(_alert(kind, language))
 
-    assert subject == headline + SUFFIX
+    assert subject == headline + SUFFIX[language]
+    assert "morning" not in subject
 
 
 def test_every_kind_has_a_headline_in_every_catalog() -> None:
     for kind in get_args(AlertKind):
         for language in ("en", "zh-Hant"):
-            assert alert_message(_alert(kind, language))[0].endswith(SUFFIX)
+            assert alert_message(_alert(kind, language))[0].endswith(SUFFIX[language])
 
 
 @pytest.mark.parametrize("kind", ["run_failed", "could_not_start"])
@@ -101,5 +103,5 @@ def test_a_rejected_embedding_names_its_status_ungrouped_and_its_detail(language
 def test_a_regional_tag_reaches_its_catalog_and_an_unknown_one_is_english() -> None:
     alert = _alert("run_failed")
 
-    assert alert_message(replace(alert, language="zh-TW"))[0] == "精選產生失敗" + SUFFIX
-    assert alert_message(replace(alert, language="ja"))[0] == "Digest run failed" + SUFFIX
+    assert alert_message(replace(alert, language="zh-TW"))[0] == "精選產生失敗" + SUFFIX["zh-Hant"]
+    assert alert_message(replace(alert, language="ja"))[0] == "Digest run failed" + SUFFIX["en"]

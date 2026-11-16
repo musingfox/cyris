@@ -1,5 +1,6 @@
-"""The archive's per-issue article counts, read from D1 `usage_log`."""
+"""The archive's per-issue article counts, read from D1 `usage_log`, and each issue's start."""
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -7,7 +8,9 @@ from fakes import CompoundSelectLimitedD1, SqliteD1, make_config
 
 from cyris import bootstrap
 from cyris.adapters.store.archive_meta import D1ArchiveMeta
+from cyris.adapters.store.digests import D1DigestStore
 from cyris.config import AgentVaultConfig, Config
+from cyris.domain.models import DigestContent
 
 pytestmark = pytest.mark.integration
 
@@ -88,3 +91,49 @@ def test_a_d1_deployment_reads_counts_from_its_usage_log(tmp_path: Path, monkeyp
     deps = bootstrap.build_deps(_config(tmp_path))
 
     assert deps.archive_counts() == {("2026-09-01", "evening"): 9}
+
+
+STARTED = datetime(2026, 11, 17, 8, 5, tzinfo=timezone(timedelta(hours=8)))
+
+
+def _issue(date: str, period: str, started_at: datetime | None) -> DigestContent:
+    return DigestContent(
+        date=date,
+        period=period,
+        started_at=started_at,
+        sources_processed=1,
+        articles_received=1,
+        articles_included=1,
+    )
+
+
+def test_each_stored_issue_is_read_with_its_start_at_its_offset() -> None:
+    db = SqliteD1()
+    D1DigestStore(db).save(_issue("2026-11-17", "morning", STARTED), raw_page=False)
+
+    [(key, started)] = D1ArchiveMeta(db).issue_starts().items()
+
+    assert key == ("2026-11-17", "morning")
+    assert started == STARTED
+    assert started.utcoffset() == timedelta(hours=8)
+
+
+def test_an_issue_stored_without_a_start_has_none() -> None:
+    db = SqliteD1()
+    D1DigestStore(db).save(_issue("2026-11-16", "evening", None), raw_page=False)
+
+    assert D1ArchiveMeta(db).issue_starts() == {}
+
+
+def test_a_d1_deployment_reads_starts_from_its_digests(tmp_path: Path, monkeypatch) -> None:
+    db = SqliteD1()
+    D1DigestStore(db).save(_issue("2026-11-17", "morning", STARTED), raw_page=False)
+    monkeypatch.setattr(bootstrap, "build_d1_client", lambda _cfg: db)
+
+    cfg = _config(tmp_path)
+    cfg.app.html_output.enabled = True
+
+    deps = bootstrap.build_deps(cfg)
+
+    assert deps.archive_starts() == {("2026-11-17", "morning"): STARTED}
+    assert deps.html_writer.starts() == {("2026-11-17", "morning"): STARTED}

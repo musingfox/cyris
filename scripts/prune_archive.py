@@ -242,7 +242,14 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     except Exception as e:
         logger.error("Failed to read the archive's article counts: %s", e)
         archive_counts = {}
-    index = writer.render_index(sorted(p.lstrip("/") for p in remaining), counts=archive_counts)
+    try:
+        issue_starts = D1ArchiveMeta(d1).issue_starts()
+    except Exception as e:
+        logger.error("Failed to read the archive's issue starts: %s", e)
+        issue_starts = {}
+    index = writer.render_index(
+        sorted(p.lstrip("/") for p in remaining), counts=archive_counts, starts=issue_starts
+    )
     index_bytes = index.encode("utf-8")
     new_files = {
         "/index.html": index_bytes,

@@ -8,7 +8,7 @@ zh-Hant render, its content Chinese too, holds no English word outside the produ
 
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from html.parser import HTMLParser
 
 import pytest
@@ -29,7 +29,7 @@ from cyris.domain.models import (
     StoredArticle,
     UsageStats,
 )
-from cyris.i18n import translator
+from cyris.i18n import issue_name, translator
 
 pytestmark = pytest.mark.unit
 
@@ -52,6 +52,10 @@ NAMES = {
 }
 
 
+# The minute the issue's run started, in the deployment's timezone.
+STARTED = datetime(2026, 1, 2, 8, 5, tzinfo=timezone(timedelta(hours=8)))
+
+
 def _content(language: str, **overrides) -> DigestContent:
     """An issue with every layer, its content in `language` as the summarize step writes it."""
     zh = language != "en"
@@ -65,6 +69,7 @@ def _content(language: str, **overrides) -> DigestContent:
     fields = {
         "date": "2026-01-02",
         "period": "morning",
+        "started_at": STARTED,
         "sources_processed": 5,
         "articles_received": 20,
         "articles_included": 10,
@@ -194,7 +199,7 @@ def test_the_digest_page_is_worded_in_its_issues_language(language, tmp_path) ->
         t("site.sign_in"),
         t("issue.digest"),
         t("issue.all_articles"),
-        t("issue_period.morning"),
+        issue_name(t, "2026-01-02", STARTED),
         t("digest.stat_sources"),
         t("digest.stat_received"),
         t("digest.stat_included"),
@@ -213,8 +218,7 @@ def test_the_digest_page_is_worded_in_its_issues_language(language, tmp_path) ->
         t("vote.unanswered"),
         t(
             "digest.description",
-            date="2026-01-02",
-            period=t("issue_period.morning"),
+            issue=issue_name(t, "2026-01-02", STARTED),
             included=10,
             received=20,
         ),
@@ -222,12 +226,11 @@ def test_the_digest_page_is_worded_in_its_issues_language(language, tmp_path) ->
         assert _shows(html, text), text
 
 
-def test_the_digest_pages_description_names_the_period_not_its_identifier(tmp_path) -> None:
+def test_the_digest_pages_description_names_the_issue_by_its_minute(tmp_path) -> None:
     html = _digest("zh-Hant", tmp_path)
 
     description = re.search(r'<meta name="description" content="([^"]*)">', html)[1]
-    assert "早報" in description
-    assert "morning" not in description
+    assert description == "Cyris 1/2 08:05 精選：從 20 篇文章選出 10 篇。"
 
 
 def test_the_digest_pages_footer_links_the_project_inside_its_sentence(tmp_path) -> None:
@@ -310,7 +313,7 @@ def _raw(language: str, tmp_path, current: str = "en") -> str:
         _article("略過的文章" if zh else "Cut", "來源乙" if zh else "B", ArticleState.REJECTED),
     ]
     return HtmlDigestWriter(tmp_path, language=current).render_raw(
-        "2026-01-02", "evening", articles, language
+        "2026-01-02", "evening", articles, language, started_at=STARTED
     )
 
 
@@ -323,7 +326,7 @@ def test_the_raw_page_is_worded_in_its_issues_language(language, tmp_path) -> No
     assert _html_lang(html) == language
     for text in [
         t("raw.title"),
-        t("raw.description", date="2026-01-02", period=t("issue_period.evening")),
+        t("raw.description", issue=issue_name(t, "2026-01-02", STARTED)),
         t("raw.label", articles=3, sources=2),
         t("raw.intro"),
         t("raw.views"),
@@ -368,7 +371,10 @@ def test_the_raw_pages_label_counts_each_noun_by_its_own_plural(articles, source
 def _index(current: str, tmp_path, content: DigestContent | None = None) -> str:
     names = ["2026-01-02-morning.html", "2026-01-02-morning-raw.html", "2026-01-01-evening.html"]
     return HtmlDigestWriter(tmp_path, language=current).render_index(
-        names, content=content, counts={("2026-01-01", "evening"): 4}
+        names,
+        content=content,
+        counts={("2026-01-01", "evening"): 4},
+        starts={("2026-01-01", "evening"): STARTED - timedelta(hours=12)},
     )
 
 
@@ -389,7 +395,7 @@ def test_the_archive_is_worded_in_the_current_setting(language, tmp_path) -> Non
         t("index.issues", count=2),
         t("issue.digest"),
         t("issue.all_articles"),
-        t("issue_period.evening"),
+        "20:05",
     ]:
         assert _shows(html, text), text
     assert t("index.heading", elements={"em": ("em", {})}) in html
@@ -500,7 +506,7 @@ def test_the_html_mail_is_worded_in_its_issues_language(language) -> None:
         t("layer.stories"),
         t("layer.topics"),
         t("mail.kept_of", included=10, received=20),
-        f"Cyris · {t('period.morning')} · 2026-01-02",
+        f"Cyris · {issue_name(t, '2026-01-02', STARTED)}",
     ]:
         assert _shows(html, text), text
     link = {"link": ("a", {"href": "https://cyris.musingfox.com/"})}
@@ -542,7 +548,7 @@ def test_the_text_mail_and_its_subject_are_worded_in_its_issues_language(languag
 
     subject, text = build_digest_mail(_content(language), ONLINE, degraded=True)
 
-    assert subject == t("mail.subject", period=t("period.morning"), date="2026-01-02")
+    assert subject == t("mail.subject", issue=issue_name(t, "2026-01-02", STARTED))
     assert text.startswith(subject)
     for line in [
         t("mail.read_online_at", url=ONLINE),
@@ -558,7 +564,7 @@ def test_the_text_mail_and_its_subject_are_worded_in_its_issues_language(languag
 def test_a_zh_hant_text_mail_says_nothing_in_english() -> None:
     subject, text = build_digest_mail(_content("zh-Hant"), ONLINE, degraded=True)
 
-    assert subject == "早報精選 2026-01-02"
+    assert subject == "1/2 08:05 精選"
     words = set(re.findall(r"[A-Za-z]+", re.sub(r"https://\S+", "", text))) - NAMES
     assert words == set()
 
@@ -582,7 +588,7 @@ def test_an_issue_mailed_with_no_language_is_worded_in_the_current_setting() -> 
     subject, text = build_digest_mail(content, ONLINE, language="zh-Hant")
     html = render_digest_email(content, ONLINE, language="zh-Hant")
 
-    assert subject == "早報精選 2026-01-02"
+    assert subject == "1/2 08:05 精選"
     assert "報導" in text
     assert _html_lang(html) == "zh-Hant"
 
@@ -590,7 +596,7 @@ def test_an_issue_mailed_with_no_language_is_worded_in_the_current_setting() -> 
 def test_an_issue_mailed_with_its_own_language_keeps_it_whatever_the_setting() -> None:
     subject, _ = build_digest_mail(_content("zh-Hant"), ONLINE, language="en")
 
-    assert subject == "早報精選 2026-01-02"
+    assert subject == "1/2 08:05 精選"
 
 
 # ---- Discord ---------------------------------------------------------------------------
@@ -613,7 +619,7 @@ def test_the_discord_message_is_worded_in_its_issues_language(language) -> None:
         t("layer.tracking"),
         t("layer.stories"),
         t("layer.topics"),
-        f"{t('period.morning')} 2026-01-02",
+        issue_name(t, "2026-01-02", STARTED),
     ]
     stats = payload["embeds"][-1]["description"]
     for line in [
@@ -670,7 +676,7 @@ def test_an_issue_sent_with_no_language_is_worded_in_the_current_setting() -> No
 
     payload = build_discord_payload(content, ONLINE, language="zh-Hant")
 
-    assert payload["embeds"][-1]["title"] == "早報 2026-01-02"
+    assert payload["embeds"][-1]["title"] == "1/2 08:05"
     assert "線上閱讀" in payload["embeds"][-1]["description"]
 
 

@@ -23,7 +23,7 @@ import dataclasses
 import json
 import tempfile
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 from aiohttp import web
@@ -51,6 +51,8 @@ from cyris.domain.models import ArticleState, Lane, StoredArticle
 DATE = "2026-01-02"
 PERIOD = "morning"
 PAGE = f"/{DATE}-{PERIOD}-raw.html"
+# The minute the fixture issue's run started, which names it in the issue bar.
+STARTED = datetime(2026, 1, 2, 8, 5, tzinfo=timezone(timedelta(hours=8)))
 
 ACCESS_LOGIN = "https://access.example.test/cdn-cgi/access/login"
 
@@ -115,7 +117,9 @@ def _articles() -> list[StoredArticle]:
 
 def render_page() -> str:
     with tempfile.TemporaryDirectory(prefix="raw-probe-") as unused:
-        return HtmlDigestWriter(Path(unused)).render_raw(DATE, PERIOD, _articles(), "en")
+        return HtmlDigestWriter(Path(unused)).render_raw(
+            DATE, PERIOD, _articles(), "en", started_at=STARTED
+        )
 
 
 def build_fixture(kind: str) -> VoteFixture:

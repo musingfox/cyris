@@ -10,6 +10,7 @@ import pytest
 import respx
 from layered_issue import UNNAMED_SOURCES, four_layer_issue
 
+from cyris.adapters import mail
 from cyris.adapters.mail import build_digest_mail, send_alert_mail, send_digest_mail, send_mail
 from cyris.domain.models import DigestContent
 from cyris.service_layer.alerts import RunAlert
@@ -138,7 +139,7 @@ class TestDigestMail:
             _content(), "https://digest.example.org/2026-09-27-morning"
         )
 
-        assert subject == "Morning digest 2026-09-27"
+        assert subject == "Digest for 9/27"
         assert "https://digest.example.org/2026-09-27-morning" in text
         assert "Kept 15 of 300 articles from 12 sources" in text
 
@@ -207,7 +208,7 @@ class TestDigestMail:
         assert route.call_count == 1
         assert route.calls.last.request.headers["Authorization"] == "Bearer tok"
         sent = json.loads(route.calls.last.request.content)
-        assert sent["subject"] == "Morning digest 2026-09-27"
+        assert sent["subject"] == "Digest for 9/27"
         assert "https://digest.example.org/x" in sent["text"]
         assert sent["html"].startswith("<!DOCTYPE html>")
         assert 'href="https://digest.example.org/x"' in sent["html"]
@@ -387,7 +388,7 @@ class TestAlertMail:
         assert json.loads(route.calls.last.request.content) == {
             "to": "me@example.org",
             "from": "digest@example.org",
-            "subject": "Digest run failed: evening, 2026-11-16 20:05 Asia/Taipei",
+            "subject": "Digest run failed: 11/16, 20:05 Asia/Taipei",
             "text": "B",
         }
 
@@ -410,7 +411,7 @@ class TestAlertMail:
 
         assert route.call_count == 1
         sent = json.loads(route.calls.last.request.content)
-        assert sent["subject"] == "投票相似度未執行: evening, 2026-11-16 20:05 Asia/Taipei"
+        assert sent["subject"] == "投票相似度未執行：11/16 20:05 Asia/Taipei"
         assert "讀者的投票沒有作用" in sent["text"]
         assert "HTTP 401 Unauthorized" in sent["text"]
 
@@ -444,7 +445,7 @@ class TestAlertMail:
         assert "tok-secret" not in caplog.text
 
     @respx.mock
-    async def test_subject_and_text_redact_webhook_tokens(self):
+    async def test_subject_and_text_redact_webhook_tokens(self, monkeypatch):
         route = respx.post(SEND_URL).mock(
             return_value=httpx.Response(200, json=_result(delivered=["me@example.org"]))
         )
@@ -453,11 +454,13 @@ class TestAlertMail:
             "'https://discord.com/api/webhooks/999/s3cr3t-token'"
         )
         masked = "https://discord.com/api/webhooks/999/\u2022\u2022\u2022\u2022"
+        # No field of today's subject can carry one; the redaction holds if a later one can.
+        monkeypatch.setattr(mail, "alert_message", lambda alert: (leak, alert.error))
 
         await send_alert_mail(
             "me@example.org",
             "digest@example.org",
-            replace(_ALERT, period=leak, error=leak),
+            replace(_ALERT, error=leak),
             account_id=ACCOUNT,
             token="tok",
         )

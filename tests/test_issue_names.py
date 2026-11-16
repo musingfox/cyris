@@ -6,13 +6,19 @@ period, the file names and the links, keeps its English identifier.
 
 import json
 import re
+from datetime import UTC, datetime, timedelta, timezone
+from html.parser import HTMLParser
 
 import pytest
 
+from cyris.adapters.mail import build_digest_mail
+from cyris.adapters.notify import build_discord_embeds
 from cyris.adapters.output.email_digest import render_digest_email
 from cyris.adapters.output.html_digest import HtmlDigestWriter
+from cyris.adapters.run_alert import alert_message
 from cyris.domain.interest_graph import InterestEdge, InterestGraph, InterestNode
-from cyris.domain.models import DigestContent, DigestItem
+from cyris.domain.models import ArticleState, DigestContent, DigestItem, Lane, StoredArticle
+from cyris.service_layer.alerts import RunAlert
 
 pytestmark = pytest.mark.unit
 
@@ -116,3 +122,209 @@ def test_a_suppression_keeps_its_english_name(tmp_path) -> None:
 
     assert "Lit = suppressed now; dimmer = less time left; half colour = not suppressed." in lit
     assert "No suppression is active." in _interest("en", tmp_path, lit=0.0, holds=False)
+
+
+# ---- an issue is named by the minute its run started -----------------------------------
+
+# 00:05 UTC is 08:05 in Asia/Taipei, the offset a run stores its start at.
+STARTED = datetime(2026, 11, 17, 8, 5, tzinfo=timezone(timedelta(hours=8)))
+NAMES = {"en": "11/17, 08:05", "zh-Hant": "11/17 08:05"}
+# The words a reader once knew an issue's period by, in every catalog.
+PERIOD_WORDS = re.compile(r"morning|evening|早報|晚報", re.IGNORECASE)
+
+
+def _raw_article() -> StoredArticle:
+    at = datetime(2026, 11, 17, tzinfo=UTC)
+    return StoredArticle(
+        url="https://r.test/1",
+        original_id=1,
+        title="Kept",
+        content="x",
+        published_at=at,
+        source_name="A",
+        source_lane=Lane.SKIM,
+        state=ArticleState.ACCEPTED,
+        first_seen_at=at,
+    )
+
+
+def _pages(language: str, tmp_path, started_at: datetime | None) -> dict[str, str]:
+    """Every page and message that names one issue, worded in `language`."""
+    content = _content(language, started_at=started_at)
+    writer = HtmlDigestWriter(tmp_path, language=language)
+    subject, text = build_digest_mail(content, ONLINE, raw_page=True)
+    return {
+        "digest": writer.render(content, raw_page=True),
+        "raw": writer.render_raw(
+            content.date, content.period, [_raw_article()], language, started_at=started_at
+        ),
+        "archive": writer.render_index(
+            ["2026-11-17-morning.html", "2026-11-17-morning-raw.html", "2026-11-16-evening.html"],
+            content=content,
+            starts={("2026-11-16", "evening"): STARTED - timedelta(hours=12)},
+        ),
+        "mail": render_digest_email(content, ONLINE, raw_page=True),
+        "subject": subject,
+        "text": text,
+        "discord": build_discord_embeds(content, ONLINE)[-1]["title"],
+    }
+
+
+@pytest.mark.parametrize("language", ["en", "zh-Hant"])
+def test_every_surface_names_the_issue_by_its_minute(language, tmp_path) -> None:
+    name = NAMES[language]
+
+    pages = _pages(language, tmp_path, STARTED)
+
+    assert f"<title>CYRIS // {name}</title>" in pages["digest"]
+    assert f"<title>CYRIS // {name} · " in pages["raw"]
+    for page in ("digest", "raw"):
+        assert '<span class="data">11/17</span><span class="label">08:05</span>' in pages[page]
+    assert '<span class="date">11/17</span><span class="label">08:05</span>' in pages["archive"]
+    assert (
+        '<span class="date">11/16</span>\n                <span class="label">20:05</span>'
+        in (pages["archive"])
+    )
+    assert f"<title>CYRIS // {name}</title>" in pages["mail"]
+    assert f"Cyris · {name}</p>" in pages["mail"]
+    assert pages["discord"] == name
+
+
+def test_the_issue_is_named_in_each_catalogs_sentences(tmp_path) -> None:
+    en, zh = _pages("en", tmp_path, STARTED), _pages("zh-Hant", tmp_path, STARTED)
+
+    assert (
+        'content="The 11/17, 08:05 issue of a Cyris digest: 1 article selected from 3."'
+        in en["digest"]
+    )
+    assert 'content="Cyris 11/17 08:05 精選：從 3 篇文章選出 1 篇。"' in zh["digest"]
+    assert (
+        'content="Every article the 11/17, 08:05 issue of a Cyris digest judged, grouped by'
+        ' source."' in en["raw"]
+    )
+    assert 'content="Cyris 11/17 08:05 精選評選過的所有文章，依來源分組。"' in zh["raw"]
+    assert en["subject"] == "Digest for 11/17, 08:05"
+    assert zh["subject"] == "11/17 08:05 精選"
+
+
+@pytest.mark.parametrize("language", ["en", "zh-Hant"])
+def test_an_issue_stored_without_its_start_is_named_by_its_date_alone(language, tmp_path) -> None:
+    pages = _pages(language, tmp_path, None)
+
+    assert "<title>CYRIS // 11/17</title>" in pages["digest"]
+    assert '<span class="data">11/17</span></div>' in pages["digest"]
+    assert '<span class="date">11/17</span></div>' in pages["archive"]
+    assert "Cyris · 11/17</p>" in pages["mail"]
+    assert pages["discord"] == "11/17"
+    assert pages["subject"] == {"en": "Digest for 11/17", "zh-Hant": "11/17 精選"}[language]
+
+
+def _alert(language: str) -> RunAlert:
+    return RunAlert(
+        kind="run_failed",
+        period="evening",
+        started_at=datetime(2026, 11, 17, 12, 5, tzinfo=UTC),
+        timezone="Asia/Taipei",
+        language=language,
+        error="RuntimeError: x",
+    )
+
+
+def test_a_run_alert_names_its_issue_in_its_catalogs_punctuation() -> None:
+    assert alert_message(_alert("en"))[0] == "Digest run failed: 11/17, 20:05 Asia/Taipei"
+    assert alert_message(_alert("zh-Hant"))[0] == "精選產生失敗：11/17 20:05 Asia/Taipei"
+
+
+class _Read(HTMLParser):
+    """What a reader reads or hears on a page: text outside scripts and styles, the worded
+    attributes, the description and the layer script's words. Never a link."""
+
+    WORDED = {"title", "aria-label", "alt", "content", "data-layer-words"}
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.runs: list[str] = []
+        self.inside: list[str] = []
+
+    def handle_starttag(self, tag, attrs) -> None:
+        self.runs += [value for name, value in attrs if name in self.WORDED and value]
+        if tag in ("script", "style"):
+            self.inside.append(tag)
+
+    def handle_endtag(self, tag) -> None:
+        if self.inside and tag == self.inside[-1]:
+            self.inside.pop()
+
+    def handle_data(self, data) -> None:
+        if not self.inside:
+            self.runs.append(data)
+
+
+def _read(page: str) -> str:
+    if not page.lstrip().startswith("<"):
+        return re.sub(r"https://\S+", "", page)
+    parser = _Read()
+    parser.feed(page)
+    return "\n".join(parser.runs)
+
+
+@pytest.mark.parametrize("started_at", [STARTED, None], ids=["with-start", "without"])
+@pytest.mark.parametrize("language", ["en", "zh-Hant"])
+def test_no_surface_shows_a_reader_the_period(language, started_at, tmp_path) -> None:
+    pages = _pages(language, tmp_path, started_at)
+    alert, _ = alert_message(_alert(language))
+
+    shown = {name: PERIOD_WORDS.findall(_read(page)) for name, page in pages.items()}
+
+    assert shown == dict.fromkeys(pages, [])
+    assert PERIOD_WORDS.findall(alert) == []
+
+
+def test_the_period_word_check_finds_one_on_a_page() -> None:
+    assert PERIOD_WORDS.findall(_read('<p>Evening</p><a href="x-morning.html">晚報</a>')) == [
+        "Evening",
+        "晚報",
+    ]
+
+
+# ---- what the code stores keeps its English identifier ---------------------------------
+
+
+@pytest.mark.parametrize("language", ["en", "zh-Hant"])
+def test_the_period_still_files_and_links_the_issue(language, tmp_path) -> None:
+    content = _content(language, started_at=STARTED)
+    pages = _pages(language, tmp_path, STARTED)
+
+    assert HtmlDigestWriter.digest_filename(content.date, content.period) == (
+        "2026-11-17-morning.html"
+    )
+    assert HtmlDigestWriter.raw_filename(content.date, content.period) == (
+        "2026-11-17-morning-raw.html"
+    )
+    for page in ("digest", "raw"):
+        assert '<a href="2026-11-17-morning.html"' in pages[page]
+        assert '<a href="2026-11-17-morning-raw.html"' in pages[page]
+    assert 'href="2026-11-17-morning.html"' in pages["archive"]
+    assert 'href="2026-11-16-evening.html"' in pages["archive"]
+    assert "https://digest.test/2026-11-17-morning-raw" in pages["mail"]
+    stored = json.loads(content.model_dump_json())
+    assert stored["period"] == "morning"
+    assert stored["started_at"] == "2026-11-17T08:05:00+08:00"
+    assert DigestContent.model_validate_json(content.model_dump_json()).started_at == STARTED
+
+
+def test_an_issue_stored_before_its_start_was_kept_still_loads() -> None:
+    older = json.dumps(
+        {
+            "date": "2026-11-16",
+            "period": "evening",
+            "sources_processed": 1,
+            "articles_received": 1,
+            "articles_included": 1,
+        }
+    )
+
+    loaded = DigestContent.model_validate_json(older)
+
+    assert loaded.started_at is None
+    assert loaded.period == "evening"

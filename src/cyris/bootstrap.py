@@ -4,6 +4,7 @@ import json
 import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from functools import cache, partial
 from importlib.resources import files
 from pathlib import Path
@@ -360,6 +361,8 @@ class Deps:
     suppressions: Any | None = None
     # `{(date, period): articles_included}` for the archive's history rows.
     archive_counts: Callable[[], dict[tuple[str, str], int]] = field(default_factory=lambda: dict)
+    # `{(date, period): started_at}`, the minute each archived issue is named by.
+    archive_starts: Callable[[], dict[tuple[str, str], datetime]] | None = None
     # Keeps each issue's final content in D1.
     digest_store: Any | None = None
     # Each publishing run's input URLs, the record a rerun rebuilds from.
@@ -505,7 +508,11 @@ def build_deps(
     if cfg.app.html_output.enabled:
         from cyris.adapters.output.html_digest import HtmlDigestWriter
 
-        html_writer = HtmlDigestWriter(Path(cfg.app.html_output.output_dir), language=language)
+        html_writer = HtmlDigestWriter(
+            Path(cfg.app.html_output.output_dir),
+            language=language,
+            starts=D1ArchiveMeta(d1).issue_starts,
+        )
         if cfg.app.promote.publish_enabled:
             # The site's file list lives in D1, so the archive does not have
             # to live on this machine.
@@ -557,6 +564,7 @@ def build_deps(
         record_similarity=D1SimilarityShadow(d1, embedding_model(vote.provider, vote.model)).record,
         suppressions=D1Suppressions(d1, embedding_model(vote.provider, vote.model)),
         archive_counts=D1ArchiveMeta(d1).article_counts,
+        archive_starts=D1ArchiveMeta(d1).issue_starts,
         digest_store=D1DigestStore(d1),
         digest_input_store=D1DigestInputStore(d1),
         worker_domains=build_worker_domains(),
