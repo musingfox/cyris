@@ -503,10 +503,13 @@ source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "anthropic" },
+    { name = "babel" },
     { name = "blake3" },
     { name = "feedparser" },
     { name = "httpx" },
     { name = "jinja2" },
+    { name = "langcodes" },
+    { name = "messageformat2" },
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "trafilatura" },
@@ -526,10 +529,13 @@ dev = [
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.10" },
     { name = "anthropic", specifier = ">=0.52" },
+    { name = "babel", specifier = ">=2.18" },
     { name = "blake3", specifier = ">=1.0.9" },
     { name = "feedparser", specifier = ">=6.0.14" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "jinja2", specifier = ">=3.1" },
+    { name = "langcodes", specifier = "==3.5.1" },
+    { name = "messageformat2", specifier = "==1.1.0" },
     { name = "pydantic", specifier = ">=2.10" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "tomli", marker = "python_full_version < '3.11'", specifier = ">=2.2" },
@@ -853,6 +859,15 @@ wheels = [
 ]
 
 [[package]]
+name = "langcodes"
+version = "3.5.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a9/75/f9edc5d72945019312f359e69ded9f82392a81d49c5051ed3209b100c0d2/langcodes-3.5.1.tar.gz", hash = "sha256:40bff315e01b01d11c2ae3928dd4f5cbd74dd38f9bd912c12b9a3606c143f731", size = 191084, upload-time = "2025-12-02T16:22:01.627Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dd/c1/d10b371bcba7abce05e2b33910e39c33cfa496a53f13640b7b8e10bb4d2b/langcodes-3.5.1-py3-none-any.whl", hash = "sha256:b6a9c25c603804e2d169165091d0cdb23934610524a21d226e4f463e8e958a72", size = 183050, upload-time = "2025-12-02T16:21:59.954Z" },
+]
+
+[[package]]
 name = "lxml"
 version = "6.1.3"
 source = { registry = "https://pypi.org/simple" }
@@ -1061,6 +1076,19 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d6/54/cfe61301667036ec958cb99bd3efefba235e65cdeb9c84d24a8293ba1d90/mdurl-0.1.2.tar.gz", hash = "sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba", size = 8729, upload-time = "2022-08-14T12:40:10.846Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b3/38/89ba8ad64ae25be8de66a6d463314cf1eb366222074cfda9ee839c56a4b4/mdurl-0.1.2-py3-none-any.whl", hash = "sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8", size = 9979, upload-time = "2022-08-14T12:40:09.779Z" },
+]
+
+[[package]]
+name = "messageformat2"
+version = "1.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "babel" },
+    { name = "click" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/16/8d/1cde8a5135ee3a124acdfaac69461c52716a5aabcb6600a1f4c559d7c11a/messageformat2-1.1.0.tar.gz", hash = "sha256:81750770e7dac7264e74a4c83a0aecd44c1600f13b8f3bed3e2600714a4c5e43", size = 114612, upload-time = "2026-11-04T23:08:29.684Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4a/7b/329be5198b6c591f091fc78b1c395a409e2ea1161070ac360d1aa853ae99/messageformat2-1.1.0-py3-none-any.whl", hash = "sha256:879abeeabfa31656de6e67278f6d362751b5c9f798f963e78fe7866719154e74", size = 30821, upload-time = "2026-11-04T23:08:27.34Z" },
 ]
 
 [[package]]
