@@ -1840,10 +1840,11 @@ def test_an_unavailable_choice_dims_everything_but_its_state() -> None:
 
 # Every installation renders these files, so an example in them must suit any reader's
 # deployment: RFC 2606 domains for addresses, and no date from one deployment's history.
+# `static/vendor/` is third-party code as built, with its build notes; it holds no example.
 PRODUCT_FILES = sorted(
     path
     for path in Path(cyris.__file__).parent.rglob("*")
-    if path.is_file() and {"templates", "static"} & set(path.parts)
+    if path.is_file() and {"templates", "static"} & set(path.parts) and "vendor" not in path.parts
 )
 RESERVED_DOMAINS = ("example.com", "example.net", "example.org")
 RESERVED_SUFFIXES = (".example", ".invalid", ".test")
