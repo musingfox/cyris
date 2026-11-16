@@ -5,7 +5,8 @@ composition root supply bodies, so it imports neither `adapters` nor
 `bootstrap`. `doctor` was the one module that broke this — it built Worker
 sources and asked `bootstrap.build_store` what the wiring had resolved to. That
 is not pipeline logic, it is a question *about* the wiring, so it moved into
-`diagnostics/` rather than earning an exception here.
+`diagnostics/` rather than earning an exception here. `cyris.i18n` reads the UI
+catalogs, so the core hands its senders an alert as structure and the adapters word it (§8).
 
 §2: `diagnostics/` may import anything below it; nothing below it may import
 `diagnostics`. A layer only entrypoints reach is a layer that can be deleted
@@ -21,7 +22,7 @@ pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
 SRC = Path("src/cyris")
 CORE = (SRC / "service_layer", SRC / "domain")
-NOT_IN_CORE = ("cyris.adapters", "cyris.bootstrap")
+NOT_IN_CORE = ("cyris.adapters", "cyris.bootstrap", "cyris.i18n")
 BELOW_DIAGNOSTICS = (
     SRC / "service_layer",
     SRC / "domain",
