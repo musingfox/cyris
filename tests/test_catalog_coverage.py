@@ -1,0 +1,428 @@
+"""The UI catalogs agree with themselves and with the code that words from them (ADR-0027).
+
+Each check reads the catalog files and the source under `src/cyris/`. A key is used where
+`t("key")` appears in a Python module, a template or a page script; a key built from a value,
+`t(f"prefix.{value}")` in a Python module, is used for every value of its declared range in
+`FAMILIES`. Any other first argument to `t(` is a key no check can see, so it fails.
+"""
+
+import ast
+import json
+import re
+from pathlib import Path
+
+import jinja2
+import jinja2.nodes
+import langcodes
+import pytest
+from messageformat2 import Message
+from messageformat2.datamodel import (
+    DataModelVisitor,
+    FunctionAnnotation,
+    LocalDeclaration,
+    VariableRef,
+)
+
+import cyris
+from cyris.entrypoints.triage_server import (
+    SCRIPT_MESSAGES,
+    STATIC_DIR,
+    TEMPLATES_DIR,
+    render_labels_page,
+    render_onboarding_page,
+    render_settings_page,
+)
+from cyris.service_layer.schedule import PERIOD_ORDER
+
+pytestmark = [pytest.mark.unit, pytest.mark.guard]
+
+SRC = Path(cyris.__file__).parent
+LOCALES = SRC / "locales"
+ENGLISH = "en"
+# The functions both formatters ship as Stable and on by default.
+FUNCTIONS = {"string", "number", "integer"}
+# Each key family built from a value, with the value's closed range.
+FAMILIES: dict[str, tuple[str, ...]] = {"period.": PERIOD_ORDER}
+RENDERERS = {
+    "settings.html.j2": render_settings_page,
+    "labels.html.j2": render_labels_page,
+    "onboarding.html.j2": render_onboarding_page,
+}
+
+JS_CALL = re.compile(r"(?<![\w$])t\(")
+JS_FUNCTION_NAME = re.compile(r"\bfunction\s+$")
+JS_LITERAL_ARG = re.compile(r"""\s*(["'])([^"'\\\n]+)\1\s*[,)]""")
+SCRIPT_SRC = re.compile(r"""<script\b[^>]*\bsrc="/static/([\w./-]+\.js)\"""")
+IMPORT = re.compile(r"""^\s*import\b[^;]*?\bfrom\s+["']\./([\w./-]+\.js)["']""", re.MULTILINE)
+CATALOG_BLOCK = re.compile(
+    r'<script type="application/json" id="i18n-catalog">(.*?)</script>', re.DOTALL
+)
+
+
+def _catalogs() -> dict[str, dict]:
+    return {
+        path.stem: json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted(LOCALES.glob("*.json"))
+    }
+
+
+def _english() -> dict[str, str]:
+    return _catalogs()[ENGLISH]
+
+
+def _texts(tag: str, entries: dict) -> dict[str, str]:
+    return entries if tag == ENGLISH else {key: entry["text"] for key, entry in entries.items()}
+
+
+def _every_message() -> list[tuple[str, str, str]]:
+    return [
+        (tag, key, text)
+        for tag, entries in _catalogs().items()
+        for key, text in _texts(tag, entries).items()
+    ]
+
+
+class _Reads(DataModelVisitor):
+    """The functions a message calls, the variables it reads, and the ones `.local` declares."""
+
+    def __init__(self) -> None:
+        self.functions: set[str] = set()
+        self.variables: set[str] = set()
+        self.locals: set[str] = set()
+
+    def visit(self, node) -> None:
+        if isinstance(node, FunctionAnnotation):
+            self.functions.add(node.name)
+        elif isinstance(node, VariableRef):
+            self.variables.add(node.name)
+        elif isinstance(node, LocalDeclaration):
+            self.locals.add(node.name)
+        self.generic_visit(node)
+
+
+def _reads(text: str) -> _Reads:
+    reads = _Reads()
+    reads.visit(Message(text).datamodel)
+    return reads
+
+
+def _inputs(text: str) -> set[str]:
+    reads = _reads(text)
+    return reads.variables - reads.locals
+
+
+def _sources() -> list[Path]:
+    """Every file under `src/cyris/` a `t` call can sit in, vendored code aside."""
+    return sorted(
+        path
+        for pattern in ("*.py", "*.j2", "*.js")
+        for path in SRC.rglob(pattern)
+        if "vendor" not in path.parts
+    )
+
+
+def _python_calls(text: str) -> list[tuple[int, set[str] | None]]:
+    calls = []
+    for node in ast.walk(ast.parse(text)):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (
+            (isinstance(func, ast.Name) and func.id == "t")
+            or (isinstance(func, ast.Attribute) and func.attr == "t")
+        ):
+            continue
+        first = node.args[0] if node.args else None
+        keys = None
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            keys = {first.value}
+        elif (
+            isinstance(first, ast.JoinedStr)
+            and len(first.values) == 2
+            and isinstance(first.values[0], ast.Constant)
+            and isinstance(first.values[1], ast.FormattedValue)
+            and first.values[0].value in FAMILIES
+        ):
+            prefix = first.values[0].value
+            keys = {f"{prefix}{value}" for value in FAMILIES[prefix]}
+        calls.append((node.lineno, keys))
+    return calls
+
+
+def _template_calls(text: str) -> list[tuple[int, set[str] | None]]:
+    calls = []
+    for node in jinja2.Environment().parse(text).find_all(jinja2.nodes.Call):
+        if not (isinstance(node.node, jinja2.nodes.Name) and node.node.name == "t"):
+            continue
+        first = node.args[0] if node.args else None
+        is_literal = isinstance(first, jinja2.nodes.Const) and isinstance(first.value, str)
+        calls.append((node.lineno, {first.value} if is_literal else None))
+    return calls
+
+
+def _script_calls(text: str) -> list[tuple[int, set[str] | None]]:
+    calls = []
+    for call in JS_CALL.finditer(text):
+        if JS_FUNCTION_NAME.search(text[: call.start()]):
+            continue
+        arg = JS_LITERAL_ARG.match(text, call.end())
+        line = text.count("\n", 0, call.start()) + 1
+        calls.append((line, {arg[2]} if arg else None))
+    return calls
+
+
+CALL_FINDERS = {".py": _python_calls, ".j2": _template_calls, ".js": _script_calls}
+
+
+def _calls(path: Path) -> list[tuple[int, set[str] | None]]:
+    """Each `t(` call in `path` with its line, and the keys it names; None where it names none."""
+    return CALL_FINDERS[path.suffix](path.read_text(encoding="utf-8"))
+
+
+def _keys_in(path: Path) -> set[str]:
+    """The keys `path` calls `t` with, each one a literal or a family `FAMILIES` declares."""
+    calls = _calls(path)
+    opaque = [f"{path.relative_to(SRC)}:{line}" for line, keys in calls if keys is None]
+    assert not opaque, f"t( takes a quoted literal or a declared f-string family: {opaque}"
+    return set().union(*(keys for _, keys in calls))
+
+
+def _used_keys() -> dict[str, set[Path]]:
+    used: dict[str, set[Path]] = {}
+    for path in _sources():
+        for key in _keys_in(path):
+            used.setdefault(key, set()).add(path)
+    return used
+
+
+def _script_keys(script: Path) -> set[str]:
+    """The keys a page script formats, through the modules it imports from `static/` too."""
+    keys = _keys_in(script)
+    for imported in IMPORT.findall(script.read_text(encoding="utf-8")):
+        if "vendor" not in Path(imported).parts:
+            keys |= _script_keys(script.parent / imported)
+    return keys
+
+
+def _page_scripts(template: str) -> list[Path]:
+    return [
+        STATIC_DIR / name
+        for name in SCRIPT_SRC.findall((TEMPLATES_DIR / template).read_text(encoding="utf-8"))
+    ]
+
+
+def _carried(page: str) -> dict[str, dict]:
+    block = CATALOG_BLOCK.search(page)
+    return json.loads(block[1]) if block else {}
+
+
+# ---- the five checks ADR-0027 names ----------------------------------------------------
+
+
+@pytest.mark.parametrize(("tag", "key", "text"), _every_message(), ids=lambda v: str(v)[:40])
+def test_every_message_parses_and_calls_only_the_shared_functions(tag, key, text) -> None:
+    functions = _reads(text).functions
+
+    assert functions <= FUNCTIONS, f"{tag} {key} calls {functions - FUNCTIONS}"
+
+
+def test_every_key_the_code_uses_is_in_english() -> None:
+    missing = {
+        key: sorted(str(path.relative_to(SRC)) for path in paths)
+        for key, paths in _used_keys().items()
+    }
+    for key in _english():
+        missing.pop(key, None)
+
+    assert missing == {}
+
+
+def test_every_translation_repeats_the_current_english_as_its_source() -> None:
+    english = _english()
+    stale = {
+        (tag, key): entry["source"]
+        for tag, entries in _catalogs().items()
+        if tag != ENGLISH
+        for key, entry in entries.items()
+        if key in english and entry["source"] != english[key]
+    }
+
+    assert stale == {}
+
+
+def test_every_translation_reads_the_inputs_its_english_reads() -> None:
+    english = _english()
+    differ = {
+        (tag, key): (sorted(_inputs(entry["text"])), sorted(_inputs(english[key])))
+        for tag, entries in _catalogs().items()
+        if tag != ENGLISH
+        for key, entry in entries.items()
+        if key in english and _inputs(entry["text"]) != _inputs(english[key])
+    }
+
+    assert differ == {}
+
+
+@pytest.mark.parametrize("tag", sorted(_catalogs()))
+@pytest.mark.parametrize("template", sorted(SCRIPT_MESSAGES))
+def test_every_page_carries_each_message_its_script_formats(template, tag) -> None:
+    needed = set().union(*map(_script_keys, _page_scripts(template)))
+
+    carried = _carried(RENDERERS[template](tag))
+
+    assert needed - set(carried) == set()
+
+
+@pytest.mark.parametrize("path", _sources(), ids=lambda path: str(path.relative_to(SRC)))
+def test_every_t_call_takes_a_literal_key_or_a_declared_family(path) -> None:
+    assert [line for line, keys in _calls(path) if keys is None] == []
+
+
+@pytest.mark.parametrize(
+    ("finder", "source", "keys"),
+    [
+        (_python_calls, 't("a.b")', {"a.b"}),
+        (_python_calls, "t('a.b', n=1)", {"a.b"}),
+        (_python_calls, 't(f"period.{p}")', {f"period.{p}" for p in PERIOD_ORDER}),
+        (_python_calls, "x.split(1)\nrequests.post(2)", set()),
+        (_python_calls, "t(key)", None),
+        (_python_calls, 't("lane." + x)', None),
+        (_python_calls, 't(f"nowhere.{x}")', None),
+        (_python_calls, "t()", None),
+        (_template_calls, '{{ t("a.b") }}', {"a.b"}),
+        (_template_calls, "{{ t('a.b', n=1) | safe }}", {"a.b"}),
+        (_template_calls, "{{ x|format(1) }}", set()),
+        (_template_calls, "{{ t(key) }}", None),
+        (_template_calls, '{{ t("lane." ~ x) }}', None),
+        (_template_calls, '{{ t("a" if x else "b") }}', None),
+        (_script_calls, 't("a.b")', {"a.b"}),
+        (_script_calls, "t('a.b', { n })", {"a.b"}),
+        (_script_calls, "x.split(','); post(1); format(2)", set()),
+        (_script_calls, "export function t(key, values = {}) {", set()),
+        (_script_calls, "t(`a.b`)", None),
+        (_script_calls, "t(key)", None),
+        (_script_calls, "t('lane.' + x)", None),
+        (_script_calls, "t(cond ? 'a' : 'b')", None),
+    ],
+)
+def test_a_t_call_is_read_for_the_key_it_names(finder, source, keys) -> None:
+    calls = finder(source)
+
+    assert [call_keys for _, call_keys in calls] == ([] if keys == set() else [keys])
+
+
+def test_a_call_is_reported_at_its_line() -> None:
+    assert _script_calls("a;\n\n  t(`x`)") == [(3, None)]
+
+
+# ---- cheaper checks beside them ----------------------------------------------------------
+
+
+@pytest.mark.parametrize("template", sorted(SCRIPT_MESSAGES))
+def test_a_page_carries_no_message_its_script_does_not_format(template) -> None:
+    needed = set().union(*map(_script_keys, _page_scripts(template)))
+
+    assert set(SCRIPT_MESSAGES[template]) == needed
+
+
+@pytest.mark.parametrize("template", sorted(SCRIPT_MESSAGES))
+def test_each_page_loads_one_script(template) -> None:
+    assert len(_page_scripts(template)) == 1
+
+
+@pytest.mark.parametrize("tag", sorted(_catalogs()))
+def test_a_carried_message_is_its_catalogs_text_under_its_catalogs_tag(tag) -> None:
+    catalogs = {t: _texts(t, entries) for t, entries in _catalogs().items()}
+    for template, render in RENDERERS.items():
+        for key, message in _carried(render(tag)).items():
+            assert set(message) == {"tag", "text"}, (template, key)
+            assert message["tag"] in (tag, ENGLISH), (template, key)
+            assert message["text"] == catalogs[message["tag"]][key], (template, key)
+
+
+def test_every_english_key_is_used() -> None:
+    assert set(_english()) - set(_used_keys()) == set()
+
+
+def test_every_translated_key_is_an_english_key() -> None:
+    english = set(_english())
+    extra = {tag: set(entries) - english for tag, entries in _catalogs().items()}
+
+    assert {tag: keys for tag, keys in extra.items() if keys} == {}
+
+
+@pytest.mark.parametrize("tag", sorted(_catalogs()))
+def test_a_catalog_is_named_by_its_canonical_tag(tag) -> None:
+    assert langcodes.standardize_tag(tag) == tag
+
+
+def _templates() -> list[Path]:
+    return sorted(SRC.rglob("*.j2"))
+
+
+@pytest.mark.parametrize("path", _templates(), ids=lambda path: path.name)
+def test_no_template_binds_t(path) -> None:
+    tree = jinja2.Environment().parse(path.read_text(encoding="utf-8"))
+    bound = [
+        node.lineno
+        for node in tree.find_all(jinja2.nodes.Name)
+        if node.name == "t" and node.ctx in ("store", "param")
+    ]
+
+    assert bound == []
+
+
+def _render_calls_passing_t(source: str) -> list[int]:
+    """The lines of each Jinja render call in `source` that binds `t` by keyword."""
+    lines = []
+    for node in ast.walk(ast.parse(source)):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+            continue
+        if node.func.attr not in ("render", "render_async", "stream", "generate"):
+            continue
+        names = {keyword.arg for keyword in node.keywords}
+        for keyword in node.keywords:
+            if keyword.arg is None and isinstance(keyword.value, ast.Dict):
+                names |= {k.value for k in keyword.value.keys if isinstance(k, ast.Constant)}
+        if "t" in names:
+            lines.append(node.lineno)
+    return lines
+
+
+def test_a_render_call_passing_t_is_found() -> None:
+    assert _render_calls_passing_t("env.render(a=1, t=2)\nx.render(**{'t': 1})") == [1, 2]
+
+
+def test_no_render_call_passes_t() -> None:
+    passing = {
+        str(path.relative_to(SRC)): lines
+        for path in SRC.rglob("*.py")
+        if (lines := _render_calls_passing_t(path.read_text(encoding="utf-8")))
+    }
+
+    assert passing == {}
+
+
+def test_only_the_environment_factory_binds_t() -> None:
+    binders = [
+        str(path.relative_to(SRC))
+        for path in SRC.rglob("*.py")
+        if 'globals["t"] =' in path.read_text(encoding="utf-8")
+    ]
+
+    assert binders == ["adapters/output/html_digest.py"]
+
+
+@pytest.mark.parametrize("path", _templates(), ids=lambda path: path.name)
+def test_tojson_never_sits_in_a_double_quoted_attribute(path) -> None:
+    assert re.findall(r'="[^"]*\|\s*tojson', path.read_text(encoding="utf-8")) == []
+
+
+@pytest.mark.parametrize("path", _templates(), ids=lambda path: path.name)
+def test_a_message_marked_safe_has_no_placeholder(path) -> None:
+    english = _english()
+    marked = re.findall(
+        r"""\bt\(\s*["']([^"']+)["'][^)]*\)\s*\|\s*safe""", path.read_text(encoding="utf-8")
+    )
+
+    assert [key for key in marked if _inputs(english[key])] == []
