@@ -15,7 +15,7 @@ pytestmark = pytest.mark.unit
 def shipped():
     """Each test starts and ends with the shipped catalogs read fresh."""
     yield
-    for cached in (i18n.catalogs, i18n._message, i18n._translator):
+    for cached in (i18n.catalogs, i18n._message, i18n._translator, i18n.browser_file):
         cached.cache_clear()
 
 
@@ -27,7 +27,7 @@ def locales(tmp_path: Path, monkeypatch, shipped):
         for tag, entries in catalogs.items():
             (tmp_path / f"{tag}.json").write_text(json.dumps(entries), encoding="utf-8")
         monkeypatch.setattr(i18n, "LOCALES", tmp_path)
-        for cached in (i18n.catalogs, i18n._message, i18n._translator):
+        for cached in (i18n.catalogs, i18n._message, i18n._translator, i18n.browser_file):
             cached.cache_clear()
 
     return write
@@ -161,3 +161,30 @@ def test_browser_messages_carry_each_text_with_its_catalogs_tag_and_no_source(lo
         "a.one": {"tag": "zh-Hant", "text": "一"},
         "a.two": {"tag": "en", "text": "Two"},
     }
+
+
+def test_the_browser_file_fills_a_key_its_catalog_lacks_from_english_tagged_en(locales) -> None:
+    locales(
+        {
+            "en": {"a.one": "One", "a.two": "Two"},
+            "zh-Hant": {"a.one": {"text": "一", "source": "One"}},
+        }
+    )
+
+    served = i18n.browser_file("zh-Hant", ("a.one", "a.two"))
+
+    assert json.loads(served.body) == {
+        "a.one": {"tag": "zh-Hant", "text": "一"},
+        "a.two": {"tag": "en", "text": "Two"},
+    }
+
+
+def test_the_browser_files_etag_is_strong_and_changes_with_its_content(locales) -> None:
+    locales({"en": {"a.one": "One"}})
+    before = i18n.browser_file("en", ("a.one",))
+
+    locales({"en": {"a.one": "Won"}})
+    after = i18n.browser_file("en", ("a.one",))
+
+    assert before.etag.startswith('"') and before.etag.endswith('"')
+    assert after.etag != before.etag

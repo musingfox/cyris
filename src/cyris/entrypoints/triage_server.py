@@ -22,7 +22,7 @@ from cyris.config import SETTINGS_FIELDS, STARTING_VALUES, DigestConfig
 from cyris.diagnostics.doctor import LLM_PROBE_TIMEOUT_SECONDS, probe_discord, probe_embedder
 from cyris.domain.areas import Area, AreaCatalog, is_unplaced_label, meets_birth_threshold
 from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, SourceConfig, TrackedTopic
-from cyris.i18n import ENGLISH, accept_language, browser_messages, resolve, translator
+from cyris.i18n import ENGLISH, accept_language, browser_file, catalogs, resolve, translator
 from cyris.service_layer import area_llm
 
 logger = logging.getLogger(__name__)
@@ -142,13 +142,13 @@ TOPIC_REFUSALS = {
 }
 
 
-# The catalog keys each page's one script formats, carried in the page's `i18n-catalog`
-# block; `tests/test_catalog_coverage.py` holds each list to what its script calls `t` with.
-SCRIPT_MESSAGES: dict[str, tuple[str, ...]] = {
-    "settings.html.j2": ("settings.checking_discord",),
-    "labels.html.j2": (),
-    "onboarding.html.j2": (),
-}
+# Every catalog key a container page script formats, all pages' scripts together:
+# `tests/test_catalog_coverage.py` holds it equal to what those scripts call `t` with.
+BROWSER_MESSAGES: tuple[str, ...] = ("settings.checking_discord",)
+# One file per catalog, under `/static/` so the app Worker forwards it to this server,
+# which is what serves `/static/` in both editions. A page names its own in a meta tag;
+# the route registering this path is a literal, so the Worker's route table can read it.
+BROWSER_MESSAGES_URL = "/static/i18n/{tag}.json"
 
 
 def _render_page(template: str, language: str) -> str:
@@ -158,8 +158,14 @@ def _render_page(template: str, language: str) -> str:
     environment also reads the digest templates, where the site bar partial is.
     """
     env = html_digest.environment(language, TEMPLATES_DIR)
-    messages = browser_messages(env.globals["t"], SCRIPT_MESSAGES[template])
-    return env.get_template(template).render(i18n_catalog=messages)
+    url = BROWSER_MESSAGES_URL.format(tag=env.globals["ui_lang"])
+    return env.get_template(template).render(i18n_catalog=url)
+
+
+def _etag_matches(if_none_match: str, etag: str) -> bool:
+    """Whether an `If-None-Match` header names `etag`, by RFC 9110 §13.1.2's weak comparison."""
+    tags = {tag.strip() for tag in if_none_match.split(",")}
+    return "*" in tags or etag in tags or f"W/{etag}" in tags
 
 
 def render_settings_page(language: str = ENGLISH) -> str:
@@ -473,6 +479,9 @@ class TriageServer:
         # Production never reaches this: the app Worker sends /favicon.svg to Pages.
         # A local `cyris triage-ui` has no Pages behind it.
         self._app.router.add_get("/favicon.svg", self._handle_favicon)
+        # aiohttp tries the longest path prefix first and then registration order, so
+        # this route answers `/static/i18n/` and add_static never looks in STATIC_DIR for it.
+        self._app.router.add_get("/static/i18n/{tag}.json", self._handle_browser_messages)
         self._app.router.add_static("/static", STATIC_DIR)
         # A fixed path outranks these in aiohttp's resolver, so a page cannot take a route's path.
         self._app.router.add_get("/", self._handle_index)
@@ -2112,6 +2121,21 @@ class TriageServer:
             logger.error("Failed to render the interest map: %s", e)
             return web.Response(text=f"Could not draw the interest map: {e}", status=500)
         return web.Response(text=page, content_type="text/html")
+
+    async def _handle_browser_messages(self, request: web.Request) -> web.Response:
+        """One catalog's browser messages, merged with English's for each key it lacks.
+
+        `no-cache`, as for every `/static/` file: the browser keeps its copy and asks
+        each time, and a matching `If-None-Match` is answered 304 with no body.
+        """
+        tag = request.match_info["tag"]
+        if tag not in catalogs():
+            raise web.HTTPNotFound()
+        served = browser_file(tag, BROWSER_MESSAGES)
+        headers = {"ETag": served.etag, "Cache-Control": "no-cache"}
+        if _etag_matches(request.headers.get("If-None-Match", ""), served.etag):
+            return web.Response(status=304, headers=headers)
+        return web.Response(body=served.body, content_type="application/json", headers=headers)
 
     async def _handle_favicon(self, request: web.Request) -> web.Response:
         return web.Response(body=html_digest.FAVICON.read_bytes(), content_type="image/svg+xml")

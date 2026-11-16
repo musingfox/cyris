@@ -4,6 +4,9 @@ The skeleton of ADR-0027 converts one string on each of five surfaces: the site 
 Settings on the digest page, the mail's Read online, the Discord message's period, the
 /settings script's Discord check, and the triage server's refusal of a settings write with
 no store. Every expected text is read from the catalog files, never from `cyris.i18n`.
+
+A container page's script formats from one file per catalog, which the page names and the
+server serves under `/static/i18n/`.
 """
 
 import asyncio
@@ -15,6 +18,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
 
 import cyris
@@ -64,9 +68,29 @@ def _settings_link(html: str) -> str:
     return re.search(r'<a class="label settings-link"[^>]*>([^<]*)</a>', html)[1]
 
 
-def _page_catalog(html: str) -> dict:
-    block = re.search(r'<script type="application/json" id="i18n-catalog">(.*?)</script>', html)
-    return json.loads(block[1])
+def _named_file(html: str) -> str:
+    return re.search(r'<meta name="i18n-catalog" content="([^"]*)">', html)[1]
+
+
+def _fetch(server: TriageServer, url: str, headers: dict[str, str] | None = None):
+    """The server's answer to a GET of `url`, routed by its own router."""
+
+    async def get():
+        router = server._app.router
+        match = await router.resolve(make_mocked_request("GET", url))
+        request = make_mocked_request("GET", url, headers=headers or {}, match_info=match)
+        try:
+            return await match.handler(request)
+        except web.HTTPException as refusal:
+            return refusal
+
+    return asyncio.run(get())
+
+
+def _served(server: TriageServer, html: str) -> dict:
+    response = _fetch(server, _named_file(html))
+    assert response.status == 200
+    return json.loads(response.body)
 
 
 def _serve(server: TriageServer, path: str, headers: dict[str, str] | None = None) -> str:
@@ -151,10 +175,12 @@ def test_the_discord_period_outside_the_schedules_labels_shows_as_stored() -> No
 
 
 @pytest.mark.parametrize(("language", "catalog"), LANGUAGES)
-def test_settings_carries_its_scripts_message_in_the_saved_language(language, catalog) -> None:
-    html = _serve(TriageServer(values={"digest.output_language": language}), "/settings")
+def test_settings_names_the_file_of_its_saved_language(language, catalog) -> None:
+    server = TriageServer(values={"digest.output_language": language})
+    html = _serve(server, "/settings")
 
-    assert _page_catalog(html) == {
+    assert _named_file(html) == f"/static/i18n/{catalog}.json"
+    assert _served(server, html) == {
         "settings.checking_discord": {
             "tag": catalog,
             "text": _text(catalog, "settings.checking_discord"),
@@ -162,6 +188,46 @@ def test_settings_carries_its_scripts_message_in_the_saved_language(language, ca
     }
     assert _settings_link(html) == _text(catalog, "site.settings")
     assert _html_lang(html) == catalog
+
+
+@pytest.mark.parametrize("catalog", ["en", "zh-Hant"])
+def test_the_file_is_json_revalidated_by_a_strong_etag(catalog) -> None:
+    response = _fetch(TriageServer(), f"/static/i18n/{catalog}.json")
+
+    assert response.status == 200
+    assert response.content_type == "application/json"
+    assert response.headers["Cache-Control"] == "no-cache"
+    assert re.fullmatch(r'"[^"]+"', response.headers["ETag"])
+
+
+@pytest.mark.parametrize("if_none_match", ["{etag}", "W/{etag}", '"other", {etag}', "*"], ids=str)
+def test_the_file_answers_a_matching_if_none_match_with_304(if_none_match) -> None:
+    server = TriageServer()
+    url = "/static/i18n/zh-Hant.json"
+    etag = _fetch(server, url).headers["ETag"]
+
+    response = _fetch(server, url, {"If-None-Match": if_none_match.format(etag=etag)})
+
+    assert response.status == 304
+    assert response.body is None
+    assert response.headers["ETag"] == etag
+    assert response.headers["Cache-Control"] == "no-cache"
+
+
+def test_the_file_answers_a_stale_if_none_match_in_full() -> None:
+    response = _fetch(TriageServer(), "/static/i18n/en.json", {"If-None-Match": '"stale"'})
+
+    assert response.status == 200
+    assert "settings.checking_discord" in json.loads(response.body)
+
+
+@pytest.mark.parametrize("tag", ["ja", "zh-TW", "zh-hant", "EN"])
+def test_a_tag_with_no_catalog_of_its_own_has_no_file(tag) -> None:
+    assert _fetch(TriageServer(), f"/static/i18n/{tag}.json").status == 404
+
+
+def test_the_static_files_beside_the_messages_are_still_served() -> None:
+    assert _fetch(TriageServer(), "/static/i18n.js").status == 200
 
 
 @pytest.mark.parametrize(("language", "catalog"), LANGUAGES)
@@ -182,7 +248,8 @@ def test_with_no_saved_language_settings_follows_the_browser(header, catalog) ->
 
     assert _html_lang(html) == catalog
     assert _settings_link(html) == _text(catalog, "site.settings")
-    assert _page_catalog(html)["settings.checking_discord"]["tag"] == catalog
+    assert _named_file(html) == f"/static/i18n/{catalog}.json"
+    assert _served(server, html)["settings.checking_discord"]["tag"] == catalog
     assert _refusal(server, headers)["error"] == _text(catalog, "error.no_settings_store")
 
 
@@ -215,16 +282,30 @@ def test_a_saved_language_takes_effect_on_the_next_request() -> None:
 
     assert _html_lang(_serve(server, "/labels")) == "zh-Hant"
     assert _html_lang(_serve(server, "/settings")) == "zh-Hant"
+    assert _named_file(_serve(server, "/labels")) == "/static/i18n/zh-Hant.json"
 
 
-# The browser formatter, run as the page runs it: `static/i18n.js` reads the page's block.
+# The browser formatter, run as the page runs it: `static/i18n.js` fetches the file the
+# page's meta names, answered here with `status` and `catalog`, before `t` is exported.
 RUNNER = """
 import { pathToFileURL } from "node:url";
-const [module, catalog, calls] = process.argv.slice(2);
+const [module, url, status, catalog, calls] = process.argv.slice(2);
+const fetched = [];
 globalThis.document = {
-  getElementById: (id) => (id === "i18n-catalog" ? { textContent: catalog } : null),
+  querySelector: (selector) =>
+    selector === 'meta[name="i18n-catalog"]' ? { content: url } : null,
 };
-const { t } = await import(pathToFileURL(module).href);
+globalThis.fetch = async (input) => {
+  fetched.push(String(input));
+  return new Response(catalog, { status: Number(status) });
+};
+let t;
+try {
+  ({ t } = await import(pathToFileURL(module).href));
+} catch (error) {
+  console.log(JSON.stringify({ fetched, error: String(error.message) }));
+  process.exit(0);
+}
 const results = JSON.parse(calls).map(([key, values]) => {
   try {
     return { text: t(key, values) };
@@ -232,36 +313,54 @@ const results = JSON.parse(calls).map(([key, values]) => {
     return { error: String(error.message) };
   }
 });
-console.log(JSON.stringify(results));
+console.log(JSON.stringify({ fetched, results }));
 """
+URL = "/static/i18n/en.json"
 
 
-def _format_in_browser(tmp_path: Path, catalog: dict, calls: list) -> list[dict]:
+def _in_browser(
+    tmp_path: Path, catalog: dict, calls: list, url: str = URL, status: int = 200
+) -> dict:
     bun = shutil.which("bun")
     if bun is None:
         assert not os.environ.get("CI"), "CI must provide bun, which scripts/check.sh runs"
         pytest.skip("bun is not installed")
     runner = tmp_path / "runner.mjs"
     runner.write_text(RUNNER, encoding="utf-8")
+    module = STATIC_DIR / "i18n.js"
+    args = [url, str(status), json.dumps(catalog), json.dumps(calls)]
     result = subprocess.run(
-        [bun, str(runner), str(STATIC_DIR / "i18n.js"), json.dumps(catalog), json.dumps(calls)],
-        capture_output=True,
-        text=True,
-        check=False,
+        [bun, str(runner), str(module), *args], capture_output=True, text=True, check=False
     )
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)
+
+
+def _format_in_browser(tmp_path: Path, catalog: dict, calls: list, url: str = URL) -> list[dict]:
+    answer = _in_browser(tmp_path, catalog, calls, url)
+    assert answer["fetched"] == [url]
+    return answer["results"]
 
 
 @pytest.mark.parametrize(("language", "catalog"), LANGUAGES)
 def test_the_settings_script_formats_its_message_as_python_words_it(
     tmp_path, language, catalog
 ) -> None:
-    html = _serve(TriageServer(values={"digest.output_language": language}), "/settings")
+    server = TriageServer(values={"digest.output_language": language})
+    html = _serve(server, "/settings")
 
-    results = _format_in_browser(tmp_path, _page_catalog(html), [["settings.checking_discord", {}]])
+    results = _format_in_browser(
+        tmp_path, _served(server, html), [["settings.checking_discord", {}]], _named_file(html)
+    )
 
     assert results == [{"text": _text(catalog, "settings.checking_discord")}]
+
+
+def test_the_browser_formatter_throws_when_the_file_is_not_served(tmp_path) -> None:
+    answer = _in_browser(tmp_path, {}, [], status=404)
+
+    assert answer["fetched"] == [URL]
+    assert "404" in answer["error"]
 
 
 def test_the_browser_formatter_throws_on_a_missing_variable_and_isolates_nothing(

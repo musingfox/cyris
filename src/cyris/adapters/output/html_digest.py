@@ -97,9 +97,6 @@ def _environment(tag: str, search_path: tuple[Path, ...]) -> Environment:
         # template unescaped — feed-controlled titles and URLs went out raw.
         autoescape=select_autoescape(["html", "xml"], default=True),
     )
-    # A page's i18n-catalog block: a CJK character as UTF-8 is half the bytes of its \u escape.
-    # `tojson` still escapes <, >, & and ', so the block cannot close its <script>.
-    env.policies["json.dumps_kwargs"] = {"sort_keys": True, "ensure_ascii": False}
     env.filters["plural"] = _plural
     env.filters["hostname"] = _hostname
     env.filters["section_label"] = section_label

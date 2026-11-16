@@ -7,6 +7,7 @@ matching, one tag at a time, and anything that matches none is worded in English
 """
 
 import functools
+import hashlib
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -135,7 +136,7 @@ def translator(language: str) -> Translator:
 
 
 def browser_messages(t: Translator, keys: tuple[str, ...]) -> dict[str, dict[str, str]]:
-    """The messages a page's script formats: each key's MF2 text and its catalog's tag.
+    """The messages a browser script formats: each key's MF2 text and its catalog's tag.
 
     No `source`: the browser formats, it never checks a translation.
     """
@@ -144,3 +145,24 @@ def browser_messages(t: Translator, keys: tuple[str, ...]) -> dict[str, dict[str
         tag = t.origin(key)
         messages[key] = {"tag": tag, "text": catalogs()[tag].texts[key]}
     return messages
+
+
+@dataclass(frozen=True)
+class BrowserFile:
+    """One catalog's browser messages as served: the JSON body and its strong ETag."""
+
+    body: bytes
+    etag: str
+
+
+@functools.cache
+def browser_file(tag: str, keys: tuple[str, ...]) -> BrowserFile:
+    """The browser messages for catalog `tag`, English filling each key it lacks.
+
+    One file per catalog, so the browser keeps one copy for every page and revalidates it.
+    The ETag is the body's hash: it changes exactly when a message or its tag does.
+    """
+    messages = browser_messages(_translator(tag), keys)
+    body = json.dumps(messages, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    encoded = body.encode()
+    return BrowserFile(encoded, f'"{hashlib.sha256(encoded).hexdigest()[:32]}"')

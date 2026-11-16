@@ -7,6 +7,7 @@ Each check reads the catalog files and the source under `src/cyris/`. A key is u
 """
 
 import ast
+import asyncio
 import json
 import re
 from pathlib import Path
@@ -15,6 +16,7 @@ import jinja2
 import jinja2.nodes
 import langcodes
 import pytest
+from aiohttp.test_utils import make_mocked_request
 from messageformat2 import Message
 from messageformat2.datamodel import (
     DataModelVisitor,
@@ -25,9 +27,10 @@ from messageformat2.datamodel import (
 
 import cyris
 from cyris.entrypoints.triage_server import (
-    SCRIPT_MESSAGES,
+    BROWSER_MESSAGES,
     STATIC_DIR,
     TEMPLATES_DIR,
+    TriageServer,
     render_labels_page,
     render_onboarding_page,
     render_settings_page,
@@ -54,9 +57,9 @@ JS_FUNCTION_NAME = re.compile(r"\bfunction\s+$")
 JS_LITERAL_ARG = re.compile(r"""\s*(["'])([^"'\\\n]+)\1\s*[,)]""")
 SCRIPT_SRC = re.compile(r"""<script\b[^>]*\bsrc="/static/([\w./-]+\.js)\"""")
 IMPORT = re.compile(r"""^\s*import\b[^;]*?\bfrom\s+["']\./([\w./-]+\.js)["']""", re.MULTILINE)
-CATALOG_BLOCK = re.compile(
-    r'<script type="application/json" id="i18n-catalog">(.*?)</script>', re.DOTALL
-)
+CATALOG_META = re.compile(r'<meta name="i18n-catalog" content="([^"]+)">')
+# Any element naming the catalog: the page's one meta, or an inline block it must not carry.
+NAMES_CATALOG = re.compile(r"<(\w+)\b[^>]*\bi18n-catalog\b")
 
 
 def _catalogs() -> dict[str, dict]:
@@ -211,9 +214,22 @@ def _page_scripts(template: str) -> list[Path]:
     ]
 
 
-def _carried(page: str) -> dict[str, dict]:
-    block = CATALOG_BLOCK.search(page)
-    return json.loads(block[1]) if block else {}
+def _named_file(page: str) -> str:
+    return CATALOG_META.search(page)[1]
+
+
+async def _get(url: str) -> dict[str, dict]:
+    """The browser messages a bare server answers `url` with, through its own router."""
+    router = TriageServer()._app.router
+    match = await router.resolve(make_mocked_request("GET", url))
+    response = await match.handler(make_mocked_request("GET", url, match_info=match))
+    assert response.status == 200, url
+    return json.loads(response.body)
+
+
+def _served(page: str) -> dict[str, dict]:
+    """The messages in the file `page` names, as the server serves it."""
+    return asyncio.run(_get(_named_file(page)))
 
 
 # ---- the five checks ADR-0027 names ----------------------------------------------------
@@ -264,13 +280,19 @@ def test_every_translation_reads_the_inputs_its_english_reads() -> None:
 
 
 @pytest.mark.parametrize("tag", sorted(_catalogs()))
-@pytest.mark.parametrize("template", sorted(SCRIPT_MESSAGES))
-def test_every_page_carries_each_message_its_script_formats(template, tag) -> None:
+@pytest.mark.parametrize("template", sorted(RENDERERS))
+def test_the_file_a_page_names_carries_each_message_its_scripts_format(template, tag) -> None:
     needed = set().union(*map(_script_keys, _page_scripts(template)))
 
-    carried = _carried(RENDERERS[template](tag))
+    served = _served(RENDERERS[template](tag))
 
-    assert needed - set(carried) == set()
+    assert needed - set(served) == set()
+
+
+@pytest.mark.parametrize("tag", sorted(_catalogs()))
+@pytest.mark.parametrize("template", sorted(RENDERERS))
+def test_no_page_carries_messages_inline(template, tag) -> None:
+    assert NAMES_CATALOG.findall(RENDERERS[template](tag)) == ["meta"]
 
 
 @pytest.mark.parametrize("path", _sources(), ids=lambda path: str(path.relative_to(SRC)))
@@ -318,26 +340,31 @@ def test_a_call_is_reported_at_its_line() -> None:
 # ---- cheaper checks beside them ----------------------------------------------------------
 
 
-@pytest.mark.parametrize("template", sorted(SCRIPT_MESSAGES))
-def test_a_page_carries_no_message_its_script_does_not_format(template) -> None:
-    needed = set().union(*map(_script_keys, _page_scripts(template)))
+def test_the_file_carries_no_message_no_page_script_formats() -> None:
+    needed = set().union(
+        *(_script_keys(script) for template in RENDERERS for script in _page_scripts(template))
+    )
 
-    assert set(SCRIPT_MESSAGES[template]) == needed
+    assert sorted(BROWSER_MESSAGES) == sorted(needed)
 
 
-@pytest.mark.parametrize("template", sorted(SCRIPT_MESSAGES))
+@pytest.mark.parametrize("template", sorted(RENDERERS))
 def test_each_page_loads_one_script(template) -> None:
     assert len(_page_scripts(template)) == 1
 
 
 @pytest.mark.parametrize("tag", sorted(_catalogs()))
-def test_a_carried_message_is_its_catalogs_text_under_its_catalogs_tag(tag) -> None:
+def test_every_page_in_one_language_names_one_file(tag) -> None:
+    assert len({_named_file(render(tag)) for render in RENDERERS.values()}) == 1
+
+
+@pytest.mark.parametrize("tag", sorted(_catalogs()))
+def test_a_served_message_is_its_catalogs_text_under_its_catalogs_tag(tag) -> None:
     catalogs = {t: _texts(t, entries) for t, entries in _catalogs().items()}
-    for template, render in RENDERERS.items():
-        for key, message in _carried(render(tag)).items():
-            assert set(message) == {"tag", "text"}, (template, key)
-            assert message["tag"] in (tag, ENGLISH), (template, key)
-            assert message["text"] == catalogs[message["tag"]][key], (template, key)
+    for key, message in _served(render_settings_page(tag)).items():
+        assert set(message) == {"tag", "text"}, key
+        assert message["tag"] in (tag, ENGLISH), key
+        assert message["text"] == catalogs[message["tag"]][key], key
 
 
 def test_every_english_key_is_used() -> None:
