@@ -87,7 +87,7 @@ def render_digest_email(
         site=site,
         publish_failed=publish_failed,
         degraded=degraded,
-        t=dark,
+        tok=dark,
         light={**dark, **{name: Markup(value) for name, value in LIGHT_PALETTE.items()}},
         dark=dark,
     )
