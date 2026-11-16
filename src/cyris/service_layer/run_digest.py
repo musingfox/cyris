@@ -366,13 +366,17 @@ def _run_alert(
     kind: AlertKind,
     **values: str | tuple[str, ...],
 ) -> RunAlert:
-    """The alert about this run, in the current `digest.output_language` (ADR-0027)."""
+    """The alert about this run, in the current `digest.output_language` (ADR-0027).
+
+    A rerun may load settings with no `digest` table; its alert still goes out, in English.
+    """
+    digest = deps.cfg.app.digest
     return RunAlert(
         kind=kind,
         period=options.period,
         started_at=started_at,
         timezone=deps.cfg.app.general.timezone,
-        language=deps.cfg.app.digest.output_language,
+        language=digest.output_language if digest else "",
         **values,
     )
 

@@ -2263,6 +2263,24 @@ async def test_a_raised_run_is_headed_in_the_output_language(tmp_path: Path) -> 
     assert mail_calls[0][2:] == (subject, text)
 
 
+async def test_a_raised_run_with_no_digest_settings_still_alerts_in_english(
+    tmp_path: Path,
+) -> None:
+    discord_calls, mail_calls, discord, mail = _recording_alert_fakes()
+
+    deps, _ = make_deps(tmp_path, FakeLLM(), FakeSource([_notify_article()]))
+    deps = _with_alert_channels(deps, discord, mail)
+    deps.cfg.app.digest = None
+    _exploding_store(deps)
+
+    with pytest.raises(RuntimeError, match="the store is gone"):
+        await run_digest(deps, RunOptions())
+
+    [(_, subject, _)] = discord_calls
+    assert subject.startswith("Digest run failed: ")
+    assert len(mail_calls) == 1
+
+
 async def test_the_failure_alert_names_the_minute_the_run_started(tmp_path: Path) -> None:
     discord_calls, _, discord, mail = _recording_alert_fakes()
 
