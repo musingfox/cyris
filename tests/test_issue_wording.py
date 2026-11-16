@@ -558,7 +558,7 @@ def test_the_text_mail_and_its_subject_are_worded_in_its_issues_language(languag
 def test_a_zh_hant_text_mail_says_nothing_in_english() -> None:
     subject, text = build_digest_mail(_content("zh-Hant"), ONLINE, degraded=True)
 
-    assert subject == "早報摘要 2026-01-02"
+    assert subject == "早報精選 2026-01-02"
     words = set(re.findall(r"[A-Za-z]+", re.sub(r"https://\S+", "", text))) - NAMES
     assert words == set()
 
@@ -582,7 +582,7 @@ def test_an_issue_mailed_with_no_language_is_worded_in_the_current_setting() -> 
     subject, text = build_digest_mail(content, ONLINE, language="zh-Hant")
     html = render_digest_email(content, ONLINE, language="zh-Hant")
 
-    assert subject == "早報摘要 2026-01-02"
+    assert subject == "早報精選 2026-01-02"
     assert "報導" in text
     assert _html_lang(html) == "zh-Hant"
 
@@ -590,7 +590,7 @@ def test_an_issue_mailed_with_no_language_is_worded_in_the_current_setting() -> 
 def test_an_issue_mailed_with_its_own_language_keeps_it_whatever_the_setting() -> None:
     subject, _ = build_digest_mail(_content("zh-Hant"), ONLINE, language="en")
 
-    assert subject == "早報摘要 2026-01-02"
+    assert subject == "早報精選 2026-01-02"
 
 
 # ---- Discord ---------------------------------------------------------------------------
