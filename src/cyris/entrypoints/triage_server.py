@@ -1156,8 +1156,9 @@ class TriageServer:
         try:
             feed = await self._feed_checker.check(url, taken)
         except FeedCheckError as e:
+            t = translator(self._ui_language(request))
             return web.json_response(
-                {"ok": False, "error": str(e), "name": e.name},
+                {"ok": False, "error": t(f"feed_check.{e.code}", **e.fields), "name": e.name},
                 status=409 if e.name else 422,
             )
         logger.info("Feed check passed: %s", feed.url)

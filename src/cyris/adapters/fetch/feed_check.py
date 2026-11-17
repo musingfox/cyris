@@ -5,8 +5,9 @@ One fetch of the address, through `GuardedHttp`, parsed with feedparser as
 `<link rel="alternate">` is followed once to that feed and parsed in turn. The
 feed passes when it has at least one entry, and is named by its own title.
 
-The words matched and the refusals shown are `feed_check.json`'s; the order of
-the fetches and the attributes read are here.
+The words matched are `feed_check.json`'s, and each refusal is a code the UI
+catalogs word as `feed_check.<code>` (ADR-0027); the order of the fetches and
+the attributes read are here.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from dataclasses import dataclass
 from functools import cache
 from html.parser import HTMLParser
 from importlib.resources import files
+from typing import Literal
 from urllib.parse import urljoin, urlsplit
 
 import feedparser
@@ -44,15 +46,28 @@ CHECK_DEADLINE_SECONDS = 60
 
 Resolver = Callable[[str], Awaitable[list[str]]]
 
+# Every refusal the check makes. `url` is the address that failed, which after a home
+# page is the feed it linked; the catalogs' `feed_check.` messages read the fields each
+# refusal is raised with.
+FeedRefusal = Literal[
+    "not_a_url",
+    "unreachable",
+    "http_status",
+    "not_a_feed",
+    "no_feed_link",
+    "no_articles",
+    "already_listed",
+    "not_public",
+    "too_many_redirects",
+    "too_large",
+    "encoded",
+]
+
 
 @cache
 def _vocabulary() -> dict:
     raw = (files(__package__) / "feed_check.json").read_text(encoding="utf-8")
     return {k: v for k, v in json.loads(raw).items() if not k.startswith("_")}
-
-
-def _message(key: str, **fields: object) -> str:
-    return _vocabulary()["messages"][key].format(**fields)
 
 
 def _parse(content: bytes) -> feedparser.FeedParserDict:
@@ -65,11 +80,14 @@ def _media_type(value: str | None) -> str:
 
 
 class FeedCheckError(Exception):
-    """A refusal, worded for the reader; `name` is set when the feed is already listed."""
+    """A refusal by its code and the fields its message reads; `name` is set when the feed
+    is already listed."""
 
-    def __init__(self, message: str, *, name: str | None = None) -> None:
-        super().__init__(message)
-        self.name = name
+    def __init__(self, code: FeedRefusal, **fields: str) -> None:
+        super().__init__(code, fields)
+        self.code = code
+        self.fields = fields
+        self.name = fields.get("name") if code == "already_listed" else None
 
 
 @dataclass(frozen=True)
@@ -172,7 +190,7 @@ async def _public_addresses(host: str, resolve: Resolver, url: str) -> list[str]
         except OSError as e:
             raise httpx.ConnectError(f"cannot resolve {host}") from e
     if not addresses or not all(_is_public(a) for a in addresses):
-        raise FeedCheckError(_message("not_public", url=url))
+        raise FeedCheckError("not_public", url=url)
     return addresses
 
 
@@ -255,12 +273,12 @@ class GuardedHttp:
                 # Asked for identity; an answer encoded anyway could inflate past any cap.
                 encoding = response.headers.get("content-encoding", "").strip().lower()
                 if encoding not in ("", "identity"):
-                    raise FeedCheckError(_message("encoded", url=url))
+                    raise FeedCheckError("encoded", url=url)
                 body = bytearray()
                 async for chunk in response.aiter_raw():
                     body += chunk
                     if len(body) > MAX_BYTES:
-                        raise FeedCheckError(_message("too_large", url=url))
+                        raise FeedCheckError("too_large", url=url)
             finally:
                 await response.aclose()
             # Read whole already, so the copy drops the headers that describe the wire form.
@@ -272,7 +290,7 @@ class GuardedHttp:
             return httpx.Response(
                 response.status_code, headers=headers, content=bytes(body), request=response.request
             )
-        raise FeedCheckError(_message("too_many_redirects", url=url))
+        raise FeedCheckError("too_many_redirects", url=url)
 
     async def _admit(self, url: str) -> None:
         await _public_addresses(urlsplit(url).hostname or "", self._resolve, url)
@@ -296,15 +314,15 @@ class FeedChecker:
         """
         pasted = url.strip()
         if (name := listed_as([pasted], taken)) is not None:
-            raise FeedCheckError(_message("already_listed", name=name), name=name)
+            raise FeedCheckError("already_listed", name=name)
         try:
             async with asyncio.timeout(CHECK_DEADLINE_SECONDS):
                 title, final, linked = await self._read(pasted)
         except TimeoutError as e:
             reason = f"no answer within {CHECK_DEADLINE_SECONDS} seconds"
-            raise FeedCheckError(_message("unreachable", url=pasted, reason=reason)) from e
+            raise FeedCheckError("unreachable", url=pasted, reason=reason) from e
         if (name := listed_as([a for a in (linked, final) if a], taken)) is not None:
-            raise FeedCheckError(_message("already_listed", name=name), name=name)
+            raise FeedCheckError("already_listed", name=name)
         return CheckedFeed(name=unique_name(title, final, [n for n, _ in taken]), url=final)
 
     async def _read(self, url: str) -> tuple[str, str, str | None]:
@@ -315,27 +333,27 @@ class FeedChecker:
         except ValueError:
             web = False
         if not web:
-            raise FeedCheckError(_message("not_a_url"))
+            raise FeedCheckError("not_a_url")
 
         linked = None
         response = await self._get(url)
         parsed = await asyncio.to_thread(_parse, response.content)
         if not parsed.version:
             if _media_type(response.headers.get("content-type")) not in _vocabulary()["html_types"]:
-                raise FeedCheckError(_message("not_a_feed", url=url))
+                raise FeedCheckError("not_a_feed", url=url)
             # Off the event loop, as the feed parse is: the page may be MAX_BYTES of tags.
             page = response
             linked = await asyncio.to_thread(lambda: feed_link(page.text, str(page.url)))
             if linked is None:
-                raise FeedCheckError(_message("no_feed_link", url=url))
+                raise FeedCheckError("no_feed_link", url=url)
             url = linked
             response = await self._get(url)
             parsed = await asyncio.to_thread(_parse, response.content)
             if not parsed.version:
-                raise FeedCheckError(_message("not_a_feed", url=url))
+                raise FeedCheckError("not_a_feed", url=url)
 
         if not parsed.entries:
-            raise FeedCheckError(_message("no_articles", url=url))
+            raise FeedCheckError("no_articles", url=url)
         # The address the feed was read from, after any redirect, is the one a run polls.
         return str(parsed.feed.get("title", "")), str(response.url), linked
 
@@ -351,10 +369,10 @@ class FeedChecker:
         # ValueError covers urllib's (an unclosed `[`) and the IDNA codec's UnicodeError.
         except (httpx.HTTPError, httpx.InvalidURL, ValueError) as e:
             reason = str(e) or type(e).__name__
-            raise FeedCheckError(_message("unreachable", url=url, reason=reason)) from e
+            raise FeedCheckError("unreachable", url=url, reason=reason) from e
         if response.status_code >= 400:
             logger.info("Feed check: %s answered HTTP %d", url, response.status_code)
-            raise FeedCheckError(_message("http_status", url=url, status=response.status_code))
+            raise FeedCheckError("http_status", url=url, status=str(response.status_code))
         return response
 
     async def close(self) -> None:

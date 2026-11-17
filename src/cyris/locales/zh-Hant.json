@@ -36,6 +36,50 @@
     "text": "這個部署沒有可寫入的設定儲存區",
     "source": "this deployment has no settings store to write"
   },
+  "feed_check.already_listed": {
+    "text": "清單中已有這個訂閱源，名稱為「{$name}」。",
+    "source": "This feed is already in the list as {$name}."
+  },
+  "feed_check.encoded": {
+    "text": "{$url} 回應了未要求的壓縮格式。請貼上訂閱源本身的網址。",
+    "source": "{$url} answered in a compressed form the check did not ask for. Paste the feed's own address."
+  },
+  "feed_check.http_status": {
+    "text": "{$url} 回應 HTTP {$status}。請檢查網址，或改貼訂閱源本身的網址。",
+    "source": "{$url} answered HTTP {$status}. Check the address, or paste the feed's own address."
+  },
+  "feed_check.no_articles": {
+    "text": "訂閱源 {$url} 尚無文章，目前沒有內容可讀。",
+    "source": "The feed at {$url} has no articles, so there is nothing to read from it yet."
+  },
+  "feed_check.no_feed_link": {
+    "text": "頁面 {$url} 未連結任何 RSS 或 Atom 訂閱源。請在網站上找到訂閱源本身的網址並貼上。",
+    "source": "The page at {$url} links no RSS or Atom feed. Find the feed's own address on the site and paste that."
+  },
+  "feed_check.not_a_feed": {
+    "text": "{$url} 不是 RSS 或 Atom 訂閱源。請貼上訂閱源的網址，或有連結訂閱源的網站首頁。",
+    "source": "{$url} is not an RSS or Atom feed. Paste a feed's address, or a site's home page that links one."
+  },
+  "feed_check.not_a_url": {
+    "text": "請貼上以 http:// 或 https:// 開頭的網址。",
+    "source": "Paste a web address that starts with http:// or https://."
+  },
+  "feed_check.not_public": {
+    "text": "{$url} 位於私人或本機網路，檢查不會抓取這類網址。請貼上公開訂閱源的網址。",
+    "source": "{$url} is on a private or local network, which this check does not fetch. Paste a public feed's address."
+  },
+  "feed_check.too_large": {
+    "text": "{$url} 回應的內容過大，不可能是訂閱源。請貼上訂閱源本身的網址。",
+    "source": "The answer from {$url} is too large to be a feed. Paste the feed's own address."
+  },
+  "feed_check.too_many_redirects": {
+    "text": "{$url} 重新導向次數過多。請貼上訂閱源本身的網址。",
+    "source": "{$url} redirects too many times. Paste the feed's own address."
+  },
+  "feed_check.unreachable": {
+    "text": "無法連線到 {$url}（{$reason}）。請檢查網址後再試一次。",
+    "source": "Could not reach {$url} ({$reason}). Check the address and try again."
+  },
   "index.articles": {"text": "{$count} 篇文章", "source": ".input {$count :integer}\n.match $count\none {{{$count} article}}\n* {{{$count} articles}}"},
   "index.description": {"text": "Cyris 精選的所有期數，每期從 RSS 和電子報挑出值得讀的文章，由新到舊排列。", "source": "Every issue of a Cyris digest: the articles worth reading from a set of RSS feeds and newsletters, newest first."},
   "index.empty": {"text": "還沒有任何一期精選。執行 {#code}cyris run{/code} 產生第一期。", "source": "No digests yet. Run {#code}cyris run{/code} to generate your first digest."},

@@ -36,7 +36,6 @@ import tempfile
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from importlib.resources import files
 from types import SimpleNamespace
 from unittest import mock
 from zoneinfo import ZoneInfo
@@ -68,6 +67,7 @@ from cyris.entrypoints.triage_server import (
     load_onboarding_feeds,
     load_onboarding_topics,
 )
+from cyris.i18n import translator
 from cyris.service_layer.prompts import _language_names
 
 PAGE = "/onboarding"
@@ -110,13 +110,16 @@ UNKNOWN_TIMEZONE = "Mars/Base"
 BROWSER_ZONE = "America/Halifax"
 # What the `unlisted` deployment stores: a language tag languages.json does not
 # list, which the model is still told as written, and a zone no browser lists.
-UNLISTED_LANGUAGE = "yue-Hant"
+# Like every stored language here, it reaches no UI catalog but English's, so
+# the page the checks read is worded in English (ADR-0027).
+UNLISTED_LANGUAGE = "eo"
 UNLISTED_TIMEZONE = "Cyris/Probe"
 OFFLINE_DETAIL = "cyris-probe: answered offline"
 
 # A deployment whose settings are all stored and whose notifications are not set
 # yet: what the wizard opens on after a first boot. A key the registry adds
-# without a value here fails at import.
+# without a value here fails at import. Its language has no UI catalog of its
+# own, so the page is worded in English, the words the checks read.
 _VALUES = {
     "general.digest_schedule": ["08:00", "20:00"],
     "general.timezone": "Asia/Taipei",
@@ -131,7 +134,7 @@ _VALUES = {
     "digest.scoring_snippet_length": 1000,
     "digest.summarize_snippet_length": 1000,
     "digest.filter_snippet_length": 500,
-    "digest.output_language": "zh-Hant",
+    "digest.output_language": "ja",
     "digest.style_prompt": "",
     "digest.type_scale": 1,
     "digest.rank_by_preference": False,
@@ -305,9 +308,7 @@ BARE_HOME = "https://bare.test/"
 OWN_BODY = {"name": OWN_NAME, "url": OWN_FEED, "tags": []}
 # A listed feed outside ONE_TOPIC: pasting its address checks its row instead.
 LISTED = next(entry for entry in FEEDS if ONE_TOPIC not in entry["topics"])
-NO_FEED_LINK = json.loads(
-    (files("cyris.adapters.fetch") / "feed_check.json").read_text(encoding="utf-8")
-)["messages"]["no_feed_link"].format(url=BARE_HOME)
+NO_FEED_LINK = translator("en")("feed_check.no_feed_link", url=BARE_HOME)
 _OWN_ANSWERS = {
     OWN_HOME: (
         "text/html",

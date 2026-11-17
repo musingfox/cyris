@@ -10,6 +10,7 @@ import asyncio
 import gzip
 import json
 import threading
+from pathlib import Path
 
 import httpcore
 import httpx
@@ -17,6 +18,7 @@ import pytest
 import respx
 from fakes import SqliteD1
 
+import cyris
 from cyris.adapters.fetch import feed_check
 from cyris.adapters.fetch.feed_check import MAX_BYTES, MAX_REDIRECTS, FeedChecker, GuardedHttp
 from cyris.adapters.store.source_store import D1SourceStore
@@ -56,10 +58,11 @@ HTML = {"Content-Type": "text/html; charset=utf-8"}
 
 
 class Request:
-    """What the handler reads of a request: its JSON body."""
+    """What the handler reads of a request: its JSON body, and the languages it asks for."""
 
-    def __init__(self, body) -> None:
+    def __init__(self, body, headers: dict[str, str] | None = None) -> None:
         self._body = body
+        self.headers = headers or {}
 
     async def json(self):
         return self._body
@@ -73,15 +76,22 @@ async def _public(host: str) -> list[str]:
     return [PUBLIC]
 
 
-def _server(sources: list[SourceConfig] = (), resolve=_public) -> TriageServer:
+def _server(
+    sources: list[SourceConfig] = (), resolve=_public, values: dict | None = None
+) -> TriageServer:
     store = D1SourceStore(SqliteD1())
     for source in sources:
         store.upsert(source)
-    return TriageServer(source_store=store, feed_checker=FeedChecker(GuardedHttp(resolve=resolve)))
+    return TriageServer(
+        source_store=store,
+        feed_checker=FeedChecker(GuardedHttp(resolve=resolve)),
+        values=values,
+    )
 
 
-async def _check(server: TriageServer, url: str, taken=()) -> tuple[int, dict]:
-    response = await server._handle_post_feed_check(Request({"url": url, "taken": list(taken)}))
+async def _check(server: TriageServer, url: str, taken=(), headers=None) -> tuple[int, dict]:
+    request = Request({"url": url, "taken": list(taken)}, headers)
+    response = await server._handle_post_feed_check(request)
     return response.status, json.loads(response.text)
 
 
@@ -574,3 +584,58 @@ class TestAFeedAlreadyListed:
         # Its title, then the title with the host, are both taken.
         assert (status, body["name"]) == (200, "Slow Reads (slow.test) 2")
         assert feed.call_count == 1
+
+
+def _catalog_text(catalog: str, key: str) -> str:
+    path = Path(cyris.__file__).parent / "locales" / f"{catalog}.json"
+    entry = json.loads(path.read_text(encoding="utf-8"))[key]
+    return entry if catalog == "en" else entry["text"]
+
+
+class TestARefusalIsWordedInThePagesLanguage:
+    """The check refuses by a code; the server words it as the wizard's page is worded."""
+
+    @pytest.mark.parametrize(
+        ("values", "headers", "catalog"),
+        [
+            ({"digest.output_language": "zh-Hant"}, {}, "zh-Hant"),
+            ({}, {"Accept-Language": "zh-TW,zh;q=0.9"}, "zh-Hant"),
+            ({}, {"Accept-Language": "fr"}, "en"),
+            ({"digest.output_language": "en"}, {"Accept-Language": "zh-TW"}, "en"),
+        ],
+    )
+    async def test_a_refusal_follows_the_saved_language_else_the_browsers(
+        self, values, headers, catalog
+    ) -> None:
+        async with respx.mock:
+            status, body = await _check(_server(values=values), "ftp://slow.test/", (), headers)
+
+        assert status == 422
+        assert body["error"] == _catalog_text(catalog, "feed_check.not_a_url")
+
+    async def test_a_refusals_fields_fill_its_translation(self) -> None:
+        async with respx.mock:
+            home = respx.get("https://slow.test/").mock(
+                return_value=httpx.Response(200, text="<html></html>", headers=HTML)
+            )
+
+            status, body = await _check(
+                _server(values={"digest.output_language": "zh-Hant"}), "https://slow.test/"
+            )
+
+        expected = _catalog_text("zh-Hant", "feed_check.no_feed_link")
+        assert home.call_count == 1
+        assert status == 422
+        assert body["error"] == expected.replace("{$url}", "https://slow.test/")
+
+    async def test_an_already_listed_refusal_still_names_the_listed_feed(self) -> None:
+        listed = [SourceConfig(name="Stored", url="https://slow.test/feed.xml")]
+        async with respx.mock:
+            status, body = await _check(
+                _server(listed, values={"digest.output_language": "zh-Hant"}),
+                "https://slow.test/feed.xml",
+            )
+
+        expected = _catalog_text("zh-Hant", "feed_check.already_listed")
+        assert (status, body["name"]) == (409, "Stored")
+        assert body["error"] == expected.replace("{$name}", "Stored")
