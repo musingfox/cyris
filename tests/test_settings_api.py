@@ -8,8 +8,9 @@ import respx
 from aiohttp.test_utils import TestClient, TestServer
 from fakes import TEST_SETTINGS
 
-from cyris.config import GRADE_D_KEYS, SETTINGS_FIELDS, STARTING_VALUES
+from cyris.config import GRADE_D_KEYS, STARTING_VALUES
 from cyris.entrypoints.triage_server import PLAIN_KEYS, TriageServer
+from cyris.i18n import translator
 from cyris.service_layer.prompts import _language_names
 
 pytestmark = pytest.mark.integration
@@ -1362,7 +1363,7 @@ class TestRefusalsNameTheField:
         assert res.status == 400
         assert body == {
             "ok": False,
-            "error": f"{SETTINGS_FIELDS[key]['label']}: a value is required",
+            "error": f"{translator('en')(f'settings_field.{key}')}: a value is required",
             "field": key,
         }
         assert settings.calls == []

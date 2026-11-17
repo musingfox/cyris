@@ -268,7 +268,7 @@ def test_onboarding_is_worded_in_the_saved_language(catalog) -> None:
     assert heading == re.sub(
         r"\{#em\}(.*?)\{/em\}", r"<em>\1</em>", _text(catalog, "onboarding.title")
     )
-    assert _text(catalog, "onboarding.topic_lifetime_help") in html
+    assert _text(catalog, "settings_help.digest.topic_lifetime_days") in html
 
 
 @pytest.mark.parametrize(("header", "catalog"), [("zh-TW,zh;q=0.9", "zh-Hant"), ("fr", "en")])
@@ -379,7 +379,7 @@ def test_the_wizards_snippet_label_names_the_third_layer_glance(catalog) -> None
     html = _serve(_wizard(values={"digest.output_language": catalog}), "/onboarding")
 
     label = re.search(r'<label class="label" for="o-filter-snippet">([^<]*)</label>', html)[1]
-    assert label == _text(catalog, "onboarding.filter_snippet")
+    assert label == _text(catalog, "settings_field.digest.filter_snippet_length")
     assert _text(catalog, "layer.glance") in label
 
 

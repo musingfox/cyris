@@ -29,6 +29,7 @@ from messageformat2.datamodel import (
 
 import cyris
 from cyris.adapters.fetch.feed_check import FeedRefusal
+from cyris.config import SETTINGS_FIELDS
 from cyris.domain.areas import AreaStatus
 from cyris.domain.interest_graph import InterestNode
 from cyris.domain.models import ArticleState, Lane
@@ -58,6 +59,7 @@ FAMILIES: dict[str, tuple[str, ...]] = {
     "polarity.": get_args(get_type_hints(InterestNode)["polarity"]),
     "feed_check.": get_args(FeedRefusal),
     "onboarding_topic.": tuple(topic["id"] for topic in load_onboarding_topics()),
+    "settings_field.": tuple(SETTINGS_FIELDS),
 }
 # A family's keys, for the checks that a call is read for the keys it names.
 LANE_KEYS = {f"lane.{lane}" for lane in Lane}

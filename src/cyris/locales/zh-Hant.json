@@ -32,10 +32,7 @@
   "digest.stat_triage": {"text": "審閱", "source": "Triage"},
   "digest.topic_articles": {"text": "{$count} 篇文章", "source": ".input {$count :integer}\n.match $count\none {{{$count} article}}\n* {{{$count} articles}}"},
   "email.read_online": {"text": "線上閱讀", "source": "Read online"},
-  "error.no_settings_store": {
-    "text": "這個部署沒有可寫入的設定儲存區",
-    "source": "this deployment has no settings store to write"
-  },
+  "error.no_settings_store": {"text": "本站沒有可寫入的設定儲存區", "source": "this deployment has no settings store to write"},
   "feed_check.already_listed": {
     "text": "清單中已有這個資訊來源，名稱為「{$name}」。",
     "source": "This feed is already in the list as {$name}."
@@ -162,6 +159,9 @@
     "source": "No answer from the server, so the answer may not have been taken. Check your connection, then try again."
   },
   "labels.up": {"text": "多看", "source": "Up"},
+  "lane.follow": {"text": "關注", "source": "follow"},
+  "lane.read": {"text": "必讀", "source": "read"},
+  "lane.skim": {"text": "瀏覽", "source": "skim"},
   "layer.glance": {"text": "速覽", "source": "Glance"},
   "layer.stories": {"text": "報導", "source": "Stories"},
   "layer.topics": {"text": "主題", "source": "Topics"},
@@ -237,38 +237,12 @@
   "onboarding.checking_first_issue": {"text": "正在確認第一期…", "source": "Checking which issue comes first…"},
   "onboarding.checking_provider": {"text": "正在向供應商確認…", "source": "Checking with the provider…"},
   "onboarding.checking_url": {"text": "正在檢查 {$url}…", "source": "Checking {$url}…"},
-  "onboarding.clef_needs": {
-    "text": "Clef 需要 Workers AI 權杖，請設定 CLOUDFLARE_ACCOUNT_ID 和 CLOUDFLARE_AI_TOKEN（或 CLOUDFLARE_EMBEDDING_API_TOKEN）。",
-    "source": "Clef needs a Workers AI token: set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AI_TOKEN (or CLOUDFLARE_EMBEDDING_API_TOKEN)."
-  },
-  "onboarding.discord_webhook": {"text": "Discord webhook", "source": "Discord webhook"},
   "onboarding.discord_webhook_help": {
     "text": "請貼上完整網址，Discord 確認網址存在後才會儲存。",
     "source": "Paste the whole URL; it is saved once Discord confirms it exists."
   },
   "onboarding.elapsed": {"text": "{$minutes} 分 {$seconds} 秒", "source": "{$minutes}m {$seconds}s"},
-  "onboarding.email_from": {"text": "寄件地址", "source": "Email from"},
-  "onboarding.email_from_help": {
-    "text": "請填寫 Email Routing 網域上的地址。",
-    "source": "An address on your Email Routing domain."
-  },
-  "onboarding.email_to": {"text": "收件地址", "source": "Email to"},
-  "onboarding.email_to_help": {
-    "text": "留空就不寄信。必須是 Cloudflare Email Routing 中已驗證的收件地址，測試信寄達後才會儲存。",
-    "source": "Leave it empty to send no mail. It must be a verified destination in Cloudflare Email Routing, and is saved once a test message reaches it."
-  },
   "onboarding.email_to_needed": {"text": "請一併填寫收件地址。", "source": "Enter the address the digest is sent to, too."},
-  "onboarding.embedding_model": {"text": "嵌入模型", "source": "Embedding model"},
-  "onboarding.embedding_model_help": {
-    "text": "開啟投票相似度時，會實際呼叫一次來檢查。",
-    "source": "Checked with one real call when vote similarity is on."
-  },
-  "onboarding.embedding_provider": {"text": "嵌入模型供應商", "source": "Embedding provider"},
-  "onboarding.embedding_provider_help": {
-    "text": "投票相似度用這個嵌入模型比對文章。相似度門檻由模型決定，不在這裡設定。",
-    "source": "The embedder vote similarity compares articles with. Its similarity cutoff comes with the model, so it is not set here."
-  },
-  "onboarding.evening": {"text": "晚上發布", "source": "Evening"},
   "onboarding.feed_count": {
     "text": "{$count} 個資訊來源",
     "source": ".input {$count :integer}\n.match $count\none {{{$count} feed}}\n* {{{$count} feeds}}"
@@ -283,7 +257,6 @@
     "text": "正在從資訊來源抓取最新文章，可能需要一兩分鐘…",
     "source": "Fetching the latest articles from your feeds. This can take a minute or two…"
   },
-  "onboarding.filter_snippet": {"text": "讀取字數（速覽與主題）", "source": "Characters read (Glance and topics)"},
   "onboarding.finish": {"text": "完成", "source": "Finish"},
   "onboarding.first_issue_heading": {"text": "第一期", "source": "First issue"},
   "onboarding.first_issue_lede": {
@@ -321,13 +294,6 @@
   },
   "onboarding.loading_feeds": {"text": "正在載入資訊來源…", "source": "Loading feeds…"},
   "onboarding.loading_settings": {"text": "正在載入設定…", "source": "Loading settings…"},
-  "onboarding.max_articles": {"text": "每期文章數", "source": "Articles per run"},
-  "onboarding.max_articles_help": {
-    "text": "每期從所有來源中，依發布時間取時間範圍內最新的幾篇文章，評分後編入精選。",
-    "source": "How many of the window's newest articles, by publish time, one run scores and digests across all sources."
-  },
-  "onboarding.model": {"text": "模型", "source": "Model"},
-  "onboarding.model_default": {"text": "留空則使用 {$model}", "source": "Empty uses {$model}"},
   "onboarding.model_heading": {"text": "模型", "source": "Model"},
   "onboarding.model_hint_check": {
     "text": "按「下一步」會先實際呼叫供應商一次，打錯字會直接在這裡擋下。",
@@ -342,7 +308,6 @@
     "text": "選擇撰寫標題和摘要的模型，供應商限這台機器有金鑰的。金鑰只存在 .env，不會存在這裡。",
     "source": "The model that writes headlines and summaries, from the providers this machine has a key for. Keys stay in .env, never here."
   },
-  "onboarding.morning": {"text": "早上發布", "source": "Morning"},
   "onboarding.next": {"text": "下一步", "source": "Next"},
   "onboarding.no_key": {
     "text": "這裡沒有任何供應商的金鑰。請在 .env 設定 {$variables} 其中之一，再重新啟動：compose 安裝請執行 docker compose up -d --force-recreate，uv 安裝請重新執行 cyris triage-ui。或維持「不使用」。",
@@ -363,16 +328,9 @@
     "text": "每期精選完成後通知的管道。兩個都留空就不通知。",
     "source": "Where a finished issue is announced. Leave both empty to be notified nowhere."
   },
-  "onboarding.off": {"text": "關閉", "source": "Off"},
-  "onboarding.on": {"text": "開啟", "source": "On"},
   "onboarding.opening_claim": {
     "text": "資訊太多、太快。我先幫你接住；什麼重要，由{#em}你{/em}決定。",
     "source": "Too much, too fast. I’ll hold it for you; {#em}you{/em} say what matters."
-  },
-  "onboarding.output_language": {"text": "輸出語言", "source": "Output language"},
-  "onboarding.output_language_help": {
-    "text": "標題和摘要使用的語言。",
-    "source": "The language headlines and summaries are written in."
   },
   "onboarding.own_added": {
     "text": "「{$name}」已列在「你的資訊來源」並勾選，按「下一步」會和其他資訊來源一起新增。",
@@ -425,19 +383,7 @@
     "text": "今天的發布時間 {$hours}（{$timezone}）都還沒到，屆時產生的精選會取代今天日期那一期；按「產生第一期」會立即開始，日期記為昨天，需要幾分鐘。",
     "source": "Start builds the first issue now, dated yesterday: neither of today's publish hours, {$hours} {$timezone}, has begun, and an issue dated today would be replaced by them. It takes a few minutes."
   },
-  "onboarding.preference_cosine": {"text": "你的主題投票", "source": "Your topic votes"},
-  "onboarding.preference_source": {"text": "排序依據", "source": "Order judged by"},
-  "onboarding.preference_source_help": {
-    "text": "決定哪些項目排在前面：依你的主題投票，或由 Clef 參考與各項目最相近的投票。Clef 無法完整評分的那一期，會改用你的主題投票。",
-    "source": "Who decides which items come first: your topic votes, or Clef reading the votes nearest each item. An issue Clef cannot fully score uses your topic votes."
-  },
   "onboarding.progress": {"text": "第 {$step} 步，共 {$steps} 步", "source": "Step {$step} of {$steps}"},
-  "onboarding.provider": {"text": "供應商", "source": "Provider"},
-  "onboarding.rank_by_preference": {"text": "依投票排序", "source": "Order by your votes"},
-  "onboarding.rank_by_preference_help": {
-    "text": "把你投多看的主題，以及與它們同名的主題排在前面。排序只會調整順序，不會因此移除任何項目。",
-    "source": "Put first the items on topics you voted up, and on topics that share a name with them. The order only moves items; nothing is left out for it."
-  },
   "onboarding.recorded": {"text": "已記錄 · {$vote}", "source": "Recorded · {$vote}"},
   "onboarding.recorded_votes": {
     "text": "已記錄 {$count} 票：多看 {$up} 票，少看 {$down} 票。",
@@ -481,7 +427,6 @@
   "onboarding.saving": {"text": "儲存中…", "source": "Saving…"},
   "onboarding.schedule_heading": {"text": "發布時間", "source": "Publish hours"},
   "onboarding.schedule_lede": {"text": "每天兩期精選的發布時間。", "source": "When each day's two issues are published."},
-  "onboarding.scoring_snippet": {"text": "讀取字數（評分）", "source": "Characters read (Scoring)"},
   "onboarding.sending_test": {"text": "正在寄送測試信…", "source": "Sending a test message…"},
   "onboarding.session_expired": {
     "text": "登入已過期。請重新載入頁面並再次登入。",
@@ -495,10 +440,6 @@
   "onboarding.show_me_how": {"text": "開始設定", "source": "Show me how"},
   "onboarding.skip": {"text": "略過", "source": "Skip"},
   "onboarding.skip_intro": {"text": "略過開場", "source": "Skip intro"},
-  "onboarding.snippet_help": {
-    "text": "模型在各步驟讀取每篇文章的長度；讀得越多，每次呼叫的費用越高。",
-    "source": "How much of each article the model reads at each step; more costs more per call."
-  },
   "onboarding.sources_feeds_lede": {
     "text": "以下是所選主題的資訊來源。請勾選你會讀的；按「上一步」可以更改主題。",
     "source": "The feeds of the topics you picked. Check the ones you read; Back changes the topics."
@@ -523,64 +464,23 @@
   "onboarding.step_schedule": {"text": "發布時間", "source": "Publish hours"},
   "onboarding.step_sources": {"text": "來源", "source": "Sources"},
   "onboarding.step_votes": {"text": "投票", "source": "Votes"},
-  "onboarding.style_prompt": {"text": "風格", "source": "Style"},
-  "onboarding.style_prompt_help": {
-    "text": "用自己的話描述摘要的語氣或重點；留空表示不指定。",
-    "source": "Your tone or focus for the summaries, in your own words; empty means none."
-  },
-  "onboarding.summarize_follow": {"text": "為關注文章寫摘要", "source": "Summarize follow articles"},
-  "onboarding.summarize_follow_help": {
-    "text": "為你關注的來源中每篇文章加上簡短說明，如同精讀文章。關閉時顯示文章本身的開頭。",
-    "source": "Give each article from a source you follow a short explanation of what it is, as read articles get. Off shows the start of its own text."
-  },
-  "onboarding.summarize_snippet": {"text": "讀取字數（摘要）", "source": "Characters read (Summary)"},
-  "onboarding.timezone": {"text": "時區", "source": "Timezone"},
   "onboarding.timezone_detected": {
     "text": "從這個瀏覽器偵測到，尚未儲存；按「下一步」會儲存。",
     "source": "Detected from this browser, and not saved yet: Next saves it."
   },
-  "onboarding.timezone_help": {"text": "發布時間採用的時區。", "source": "The clock the publish hours are read in."},
   "onboarding.title": {"text": "設定 {#em}cyris{/em}", "source": "Set up {#em}cyris{/em}"},
-  "onboarding.top_story_score": {"text": "頭條分數", "source": "Top story score"},
-  "onboarding.top_story_score_help": {
-    "text": "同一主題有兩篇以上文章達到這個分數時，會一起列為頭條。",
-    "source": "Two or more articles on one topic scoring at least this share the Top story."
-  },
-  "onboarding.topic_lifetime": {"text": "主題存續期（天）", "source": "Topic lifetime (days)"},
-  "onboarding.topic_lifetime_help": {
-    "text": "在這個天數內出現過的主題算是現行主題，新文章可以加入；許多主題共用一個名稱時，這個名稱在排序中份量較低。投多看會讓主題較慢離開可加入清單；此效果隨投票半衰期減弱，最長不超過主題最後出現後此天數的三倍。",
-    "source": "Topics seen within this many days are current: new articles can join them, and a name many of them share counts for less in the order. An upvote slows how fast a topic leaves the list new articles can join; the effect fades with the vote half-life, and never lasts past three times this many days after the topic last appeared."
-  },
   "onboarding.topics": {"text": "主題", "source": "Topics"},
   "onboarding.topics_hint": {
     "text": "選擇主題，查看其資訊來源。若一個都不選就按「下一步」，會直接前往新增自己的資訊來源。",
     "source": "Pick topics to see their feeds. Next with none picked goes straight to adding your own feed."
   },
   "onboarding.try_again": {"text": "再試一次", "source": "Try again"},
-  "onboarding.type_default": {"text": "預設", "source": "Default"},
-  "onboarding.type_larger": {"text": "較大", "source": "Larger"},
-  "onboarding.type_scale": {"text": "字級", "source": "Type size"},
-  "onboarding.type_scale_help": {
-    "text": "每個頁面的文字大小。一分鐘內生效，已發布的精選也適用。",
-    "source": "How large the text is on every page. It applies within a minute, to issues already published too."
-  },
-  "onboarding.type_smaller": {"text": "較小", "source": "Smaller"},
   "onboarding.unreachable": {
     "text": "無法連線到 cyris（{$reason}）。請檢查網路連線後再試一次。",
     "source": "Could not reach cyris ({$reason}). Check the connection and try again."
   },
   "onboarding.vote_down": {"text": "少看這類", "source": "Not interested"},
-  "onboarding.vote_half_life": {"text": "投票半衰期（天）", "source": "Vote half-life (days)"},
-  "onboarding.vote_half_life_help": {
-    "text": "每一票經過這個天數後，權重只剩一半；除非再次投票，偏好會逐漸淡去。",
-    "source": "A vote counts half as much after this many days, so a preference fades unless you vote again."
-  },
   "onboarding.vote_on": {"text": "為「{$title}」投票", "source": "Vote on {$title}"},
-  "onboarding.vote_seeds": {"text": "比對票數", "source": "Votes compared"},
-  "onboarding.vote_seeds_help": {
-    "text": "每期比對時，多看和少看各取你最近的幾票。",
-    "source": "How many of your most recent votes on each side a run compares against."
-  },
   "onboarding.vote_similarity_off": {
     "text": "投票相似度仍未開啟，投票暫時沒有作用：{$reason} 請到「設定」的「模型」開啟。",
     "source": "Vote similarity is still off, so votes have no effect yet: {$reason} Turn it on under Model in Settings."
@@ -595,8 +495,6 @@
     "text": "以下是資訊來源中幾篇較舊的文章：請標出會讀和不會讀的，其餘不用管。按「下一步」會把每個標記記為一票，第一期就不會收錄這些文章。",
     "source": "A few older articles from your feeds: mark the ones you would read and the ones you would not, and leave the rest. Next records each mark as a vote, so the first issue leaves those articles out."
   },
-  "onboarding.window_hours": {"text": "時間範圍（小時）", "source": "Window (hours)"},
-  "onboarding.window_hours_help": {"text": "每期往回找多久以內的文章。", "source": "How far back a run looks for articles."},
   "onboarding.your_feeds": {"text": "你的資訊來源", "source": "Your feeds"},
   "onboarding_topic.business": {"text": "商業與經濟", "source": "Business & economy"},
   "onboarding_topic.ideas": {"text": "思想與文化", "source": "Ideas & culture"},
@@ -620,11 +518,253 @@
   "raw.view_list": {"text": "清單", "source": "List"},
   "raw.view_triage": {"text": "審閱", "source": "Triage"},
   "raw.views": {"text": "文章檢視方式", "source": "Article view"},
+  "settings.activate": {"text": "啟用", "source": "Activate"},
+  "settings.add_source": {"text": "+ 新增來源", "source": "+ Add source"},
+  "settings.add_topic": {"text": "+ 新增主題", "source": "+ Add topic"},
+  "settings.area_none": {"text": "無", "source": "None"},
+  "settings.areas_intro": {
+    "text": "模型為每篇文章歸入的領域，以及等你決定的提議。",
+    "source": "The areas the model files each article under, and the proposals waiting for you."
+  },
+  "settings.birth_threshold": {"text": "成立門檻", "source": "Birth threshold"},
+  "settings.cancel": {"text": "取消", "source": "Cancel"},
+  "settings.characters_read": {"text": "讀取字數", "source": "Characters read"},
   "settings.checking_discord": {"text": "正在向 Discord 確認…", "source": "Checking with Discord…"},
+  "settings.clef_needs_votes": {
+    "text": "Clef 需要先在「模型」開啟投票相似度。",
+    "source": "Clef needs vote similarity on, under Model."
+  },
+  "settings.closed": {"text": "已關閉", "source": "Closed"},
+  "settings.col_area": {"text": "領域", "source": "Area"},
+  "settings.col_counts": {"text": "計數", "source": "Counts"},
+  "settings.col_description": {"text": "說明", "source": "Description"},
+  "settings.col_embedding_model": {"text": "嵌入模型", "source": "Embedding model"},
+  "settings.col_lane": {"text": "處理方式", "source": "Lane"},
+  "settings.col_name": {"text": "名稱", "source": "Name"},
+  "settings.col_position": {"text": "順序", "source": "Position"},
+  "settings.col_source": {"text": "來源", "source": "Source"},
+  "settings.col_tags": {"text": "標籤", "source": "Tags"},
+  "settings.col_target": {"text": "資訊來源或寄件者", "source": "Feed or sender"},
+  "settings.col_threshold": {"text": "門檻", "source": "Threshold"},
+  "settings.col_type": {"text": "類型", "source": "Type"},
+  "settings.digest_intro": {
+    "text": "每期何時發布、包含什麼內容，以及文字顯示多大。",
+    "source": "When issues are published, what each one holds, and how large its text reads."
+  },
+  "settings.dismiss": {"text": "駁回", "source": "Dismiss"},
+  "settings.effort_default": {"text": "預設", "source": "Default"},
+  "settings.effort_high": {"text": "高", "source": "High"},
+  "settings.effort_hint": {
+    "text": "模型回答前思考的程度，越高越耗 token 與時間。「預設」沿用各供應商的等級，OpenAI 則用低；Workers AI 一律用低。按「儲存」時會呼叫一次來檢查等級。",
+    "source": "How hard the model thinks before it answers; more costs more tokens and time. Default keeps each provider's own level, except low on OpenAI; Workers AI always runs at low, and Save checks the level with one call."
+  },
+  "settings.effort_low": {"text": "低", "source": "Low"},
+  "settings.effort_medium": {"text": "中", "source": "Medium"},
+  "settings.feed_url": {"text": "資訊來源網址", "source": "Feed URL"},
+  "settings.filter_all": {"text": "全部", "source": "All"},
+  "settings.filter_label": {"text": "依類型篩選", "source": "Filter by type"},
+  "settings.heading": {"text": "cyris 如何{#em}運作{/em}", "source": "How cyris {#em}runs{/em}"},
+  "settings.homepage": {"text": "首頁", "source": "Homepage"},
+  "settings.hours_hint": {
+    "text": "填入 0 到 23 的整點，以下方時區為準；不接受半點。",
+    "source": "Whole hours from 0 to 23, in the timezone below; half hours are refused."
+  },
+  "settings.loading_areas": {"text": "正在載入領域…", "source": "Loading areas…"},
+  "settings.loading_settings": {"text": "正在載入設定…", "source": "Loading settings…"},
+  "settings.loading_sources": {"text": "正在載入來源…", "source": "Loading sources…"},
+  "settings.loading_topics": {"text": "正在載入主題…", "source": "Loading topics…"},
+  "settings.merge": {"text": "合併", "source": "Merge"},
+  "settings.merge_into": {"text": "合併到", "source": "Merge into"},
+  "settings.model_intro": {
+    "text": "下一期會呼叫的模型，以及如何運用你的投票。",
+    "source": "The models the next run calls, and how it uses your votes."
+  },
+  "settings.nav_label": {"text": "設定分類", "source": "Settings sections"},
+  "settings.notifications_intro": {"text": "每期完成後，要在哪裡通知。", "source": "Where a finished issue is announced."},
+  "settings.notify_off_state": {"text": "通知已關閉。", "source": "Notifications are off."},
+  "settings.page_description": {
+    "text": "本站的 Cyris 設定：模型、精選、處理流程、通知、來源與追蹤主題。",
+    "source": "Settings for this Cyris deployment: model, digest, pipeline, notifications, sources and tracked topics."
+  },
+  "settings.page_title": {"text": "Cyris 設定", "source": "Cyris Settings"},
+  "settings.pipeline_intro": {
+    "text": "每期往回找多久、讀多少內容，以及在哪裡截斷。",
+    "source": "How far back each run looks, how much it reads, and where it cuts."
+  },
+  "settings.propose_areas": {"text": "依來源提議領域", "source": "Propose areas from my sources"},
+  "settings.proposed": {"text": "提議中", "source": "Proposed"},
+  "settings.remove": {"text": "移除", "source": "Remove"},
+  "settings.retire": {"text": "停用", "source": "Retire"},
+  "settings.save": {"text": "儲存", "source": "Save"},
+  "settings.save_assignments": {"text": "儲存歸類", "source": "Save assignments"},
+  "settings.save_name": {"text": "儲存名稱", "source": "Save name"},
+  "settings.save_order": {"text": "儲存順序", "source": "Save order"},
+  "settings.save_source": {"text": "儲存來源", "source": "Save source"},
+  "settings.save_topic": {"text": "儲存主題", "source": "Save topic"},
+  "settings.sender_match": {"text": "寄件者比對", "source": "Sender match"},
+  "settings.sender_match_hint": {
+    "text": "把寄件者對應到這個來源；郵件路由本身仍在 Cloudflare 主控台設定。",
+    "source": "Maps a sender to this source; email routing itself stays in the Cloudflare dashboard."
+  },
+  "settings.snippet_filter": {"text": "速覽與主題", "source": "Glance and topics"},
+  "settings.snippet_scoring": {"text": "評分", "source": "Scoring"},
+  "settings.snippet_summary": {"text": "摘要", "source": "Summary"},
+  "settings.sources_intro": {
+    "text": "下一期會讀取的資訊來源與電子報寄件者。",
+    "source": "The feeds and newsletter senders the next run reads."
+  },
+  "settings.suggest": {"text": "建議領域", "source": "Suggest"},
+  "settings.suggested": {"text": "建議", "source": "Suggested"},
+  "settings.tab_areas": {"text": "領域", "source": "Areas"},
+  "settings.tab_digest": {"text": "精選", "source": "Digest"},
+  "settings.tab_model": {"text": "模型", "source": "Model"},
+  "settings.tab_notifications": {"text": "通知", "source": "Notifications"},
+  "settings.tab_pipeline": {"text": "處理流程", "source": "Pipeline"},
+  "settings.tab_sources": {"text": "來源", "source": "Sources"},
+  "settings.tab_tracking": {"text": "追蹤", "source": "Tracking"},
+  "settings.tags_placeholder": {"text": "以逗號分隔", "source": "comma separated"},
+  "settings.threshold_articles": {"text": "文章數", "source": "Articles"},
+  "settings.threshold_issues": {"text": "期數", "source": "Issues"},
+  "settings.threshold_unset": {"text": "尚未設定成立門檻", "source": "Birth threshold not set"},
+  "settings.timezone_detected": {"text": "從這個瀏覽器偵測到，尚未儲存。", "source": "Detected from this browser, and not saved yet."},
+  "settings.topic_description_hint": {
+    "text": "用一句話說明這個主題在講什麼。",
+    "source": "One sentence saying what the topic is about."
+  },
+  "settings.topic_threshold_hint": {
+    "text": "標題須達到的餘弦值，以該模型的尺度計算，沒有預設值。{#code}cyris topic-sim{/code} 會依說明為時間範圍內的標題排名，請選仍切題的最低餘弦值。",
+    "source": "The cosine a title must reach, on that model's scale; there is no default. {#code}cyris topic-sim{/code} ranks the window's titles against the description: pick the lowest cosine still on topic."
+  },
+  "settings.tracking_intro": {
+    "text": "每期會在「追蹤」下列出與這些主題相近的所有文章；為其他嵌入模型設定的主題則略過。",
+    "source": "Topics each issue lists every close article for, under Tracking; a topic set for another embedding model is skipped."
+  },
+  "settings.turn_off": {"text": "關閉通知", "source": "Turn off"},
+  "settings.vote_similarity_hint": {
+    "text": "排除與你投少看的文章相近的候選文章。可用 {#code}cyris vote-sim{/code} 預覽會排除哪些；開啟前會先檢查嵌入模型。",
+    "source": "Drop candidates close to an article you voted down. Preview what it would drop with {#code}cyris vote-sim{/code}; turning it on checks the embedder first."
+  },
+  "settings.webhook_hint": {
+    "text": "如要更改，請貼上完整網址，Discord 確認網址存在後才會儲存。按「關閉通知」會清除網址，之後每期完成時不再發送訊息。",
+    "source": "To change it, paste the whole URL; it is saved once Discord confirms it exists. Turn off clears it: runs then finish without a message."
+  },
+  "settings_field.digest.filter_snippet_length": {
+    "text": "讀取字數（速覽與主題）",
+    "source": "Characters read (Glance and topics)"
+  },
+  "settings_field.digest.max_articles_per_digest": {"text": "每期文章數", "source": "Articles per run"},
+  "settings_field.digest.output_language": {"text": "輸出語言", "source": "Output language"},
+  "settings_field.digest.preference_source": {"text": "排序依據", "source": "Order judged by"},
+  "settings_field.digest.rank_by_preference": {"text": "依投票排序", "source": "Order by your votes"},
+  "settings_field.digest.scoring_snippet_length": {"text": "讀取字數（評分）", "source": "Characters read (Scoring)"},
+  "settings_field.digest.style_prompt": {"text": "風格", "source": "Style"},
+  "settings_field.digest.summarize_follow": {"text": "為關注文章寫摘要", "source": "Summarize follow articles"},
+  "settings_field.digest.summarize_snippet_length": {"text": "讀取字數（摘要）", "source": "Characters read (Summary)"},
+  "settings_field.digest.topic_lifetime_days": {"text": "主題存續期（天）", "source": "Topic lifetime (days)"},
+  "settings_field.digest.type_scale": {"text": "字級", "source": "Type size"},
+  "settings_field.digest.vote_half_life_days": {"text": "投票半衰期（天）", "source": "Vote half-life (days)"},
+  "settings_field.general.digest_schedule": {"text": "發布時間", "source": "Publish hours"},
+  "settings_field.general.digest_window_hours": {"text": "時間範圍（小時）", "source": "Window (hours)"},
+  "settings_field.general.timezone": {"text": "時區", "source": "Timezone"},
+  "settings_field.llm_provider.model": {"text": "模型", "source": "Model"},
+  "settings_field.llm_provider.provider": {"text": "供應商", "source": "Provider"},
+  "settings_field.llm_provider.reasoning_effort": {"text": "推理強度", "source": "Reasoning effort"},
+  "settings_field.notify.discord_webhook_url": {"text": "Discord webhook", "source": "Discord webhook"},
+  "settings_field.notify.email_from": {"text": "寄件地址", "source": "Email from"},
+  "settings_field.notify.email_to": {"text": "收件地址", "source": "Email to"},
+  "settings_field.routing.score_threshold": {"text": "頭條分數", "source": "Top story score"},
+  "settings_field.vote_similarity.enabled": {"text": "投票相似度", "source": "Vote similarity"},
+  "settings_field.vote_similarity.max_seeds": {"text": "比對票數", "source": "Votes compared"},
+  "settings_field.vote_similarity.model": {"text": "嵌入模型", "source": "Embedding model"},
+  "settings_field.vote_similarity.provider": {"text": "嵌入模型供應商", "source": "Embedding provider"},
+  "settings_help.clef_needs_token": {
+    "text": "Clef 需要 Workers AI 權杖，請設定 CLOUDFLARE_ACCOUNT_ID 和 CLOUDFLARE_AI_TOKEN（或 CLOUDFLARE_EMBEDDING_API_TOKEN）。",
+    "source": "Clef needs a Workers AI token: set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AI_TOKEN (or CLOUDFLARE_EMBEDDING_API_TOKEN)."
+  },
+  "settings_help.digest.max_articles_per_digest": {
+    "text": "每期從所有來源中，依發布時間取時間範圍內最新的幾篇文章，評分後編入精選。",
+    "source": "How many of the window's newest articles, by publish time, one run scores and digests across all sources."
+  },
+  "settings_help.digest.output_language": {
+    "text": "標題和摘要使用的語言。",
+    "source": "The language headlines and summaries are written in."
+  },
+  "settings_help.digest.preference_source": {
+    "text": "決定哪些項目排在前面：依你的主題投票，或由 Clef 參考與各項目最相近的投票。Clef 無法完整評分的那一期，會改用你的主題投票。",
+    "source": "Who decides which items come first: your topic votes, or Clef reading the votes nearest each item. An issue Clef cannot fully score uses your topic votes."
+  },
+  "settings_help.digest.rank_by_preference": {
+    "text": "把你投多看的主題，以及與它們同名的主題排在前面。排序只會調整順序，不會因此移除任何項目。",
+    "source": "Put first the items on topics you voted up, and on topics that share a name with them. The order only moves items; nothing is left out for it."
+  },
+  "settings_help.digest.style_prompt": {
+    "text": "用自己的話描述摘要的語氣或重點；留空表示不指定。",
+    "source": "Your tone or focus for the summaries, in your own words; empty means none."
+  },
+  "settings_help.digest.summarize_follow": {
+    "text": "為你關注的來源中每篇文章加上簡短說明，如同精讀文章。關閉時顯示文章本身的開頭。",
+    "source": "Give each article from a source you follow a short explanation of what it is, as read articles get. Off shows the start of its own text."
+  },
+  "settings_help.digest.topic_lifetime_days": {
+    "text": "在這個天數內出現過的主題算是現行主題，新文章可以加入；許多主題共用一個名稱時，這個名稱在排序中份量較低。投多看會讓主題較慢離開可加入清單；此效果隨投票半衰期減弱，最長不超過主題最後出現後此天數的三倍。",
+    "source": "Topics seen within this many days are current: new articles can join them, and a name many of them share counts for less in the order. An upvote slows how fast a topic leaves the list new articles can join; the effect fades with the vote half-life, and never lasts past three times this many days after the topic last appeared."
+  },
+  "settings_help.digest.type_scale": {
+    "text": "每個頁面的文字大小。一分鐘內生效，已發布的精選也適用。",
+    "source": "How large the text is on every page. It applies within a minute, to issues already published too."
+  },
+  "settings_help.digest.vote_half_life_days": {
+    "text": "每一票經過這個天數後，權重只剩一半；除非再次投票，偏好會逐漸淡去。",
+    "source": "A vote counts half as much after this many days, so a preference fades unless you vote again."
+  },
+  "settings_help.general.digest_window_hours": {
+    "text": "每期往回找多久以內的文章。",
+    "source": "How far back a run looks for articles."
+  },
+  "settings_help.general.timezone": {"text": "發布時間採用的時區。", "source": "The clock the publish hours are read in."},
+  "settings_help.notify.email_from": {
+    "text": "請填寫 Email Routing 網域上的地址。",
+    "source": "An address on your Email Routing domain."
+  },
+  "settings_help.notify.email_to": {
+    "text": "留空就不寄信。必須是 Cloudflare Email Routing 中已驗證的收件地址，測試信寄達後才會儲存。",
+    "source": "Leave it empty to send no mail. It must be a verified destination in Cloudflare Email Routing, and is saved once a test message reaches it."
+  },
+  "settings_help.routing.score_threshold": {
+    "text": "同一主題有兩篇以上文章達到這個分數時，會一起列為頭條。",
+    "source": "Two or more articles on one topic scoring at least this share the Top story."
+  },
+  "settings_help.snippet_lengths": {
+    "text": "模型在各步驟讀取每篇文章的長度；讀得越多，每次呼叫的費用越高。",
+    "source": "How much of each article the model reads at each step; more costs more per call."
+  },
+  "settings_help.vote_similarity.max_seeds": {
+    "text": "每期比對時，多看和少看各取你最近的幾票。",
+    "source": "How many of your most recent votes on each side a run compares against."
+  },
+  "settings_help.vote_similarity.model": {
+    "text": "開啟投票相似度時，會實際呼叫一次來檢查。",
+    "source": "Checked with one real call when vote similarity is on."
+  },
+  "settings_help.vote_similarity.provider": {
+    "text": "投票相似度用這個嵌入模型比對文章。相似度門檻由模型決定，不在這裡設定。",
+    "source": "The embedder vote similarity compares articles with. Its similarity cutoff comes with the model, so it is not set here."
+  },
+  "settings_option.model_default": {"text": "留空則使用 {$model}", "source": "Empty uses {$model}"},
+  "settings_option.off": {"text": "關閉", "source": "Off"},
+  "settings_option.on": {"text": "開啟", "source": "On"},
+  "settings_option.preference_cosine": {"text": "你的主題投票", "source": "Your topic votes"},
+  "settings_option.schedule_evening": {"text": "晚上發布", "source": "Evening"},
+  "settings_option.schedule_morning": {"text": "早上發布", "source": "Morning"},
+  "settings_option.type_scale_default": {"text": "預設", "source": "Default"},
+  "settings_option.type_scale_larger": {"text": "較大", "source": "Larger"},
+  "settings_option.type_scale_smaller": {"text": "較小", "source": "Smaller"},
   "site.archive": {"text": "過往精選", "source": "Archive"},
   "site.nav": {"text": "網站導覽", "source": "Site"},
   "site.settings": {"text": "設定", "source": "Settings"},
   "site.sign_in": {"text": "登入", "source": "Sign in"},
+  "source_type.newsletter": {"text": "電子報", "source": "Newsletter"},
+  "source_type.rss": {"text": "RSS", "source": "RSS"},
   "vote.access_not_set_up": {"text": "本站還沒設定 Access。請管理員完成 Cloudflare Access 設定後，重新載入頁面。", "source": "Access is not set up for this deployment. Ask the operator to finish the Cloudflare Access setup, then reload the page."},
   "vote.less": {"text": "少看這類", "source": "Less like this"},
   "vote.more": {"text": "多看這類", "source": "More like this"},

@@ -577,11 +577,8 @@ class TestTheModelStep:
             _fold(page),
         )
 
-        # /settings still names the third layer Headlines until its own conversion renames it;
-        # the wizard already says Glance.
-        pending = {"digest.filter_snippet_length": ENGLISH["onboarding.filter_snippet"]}
         assert fields and {key: label for key, label in fields} == {
-            key: pending.get(key, SETTINGS_FIELDS[key]["label"]) for key, _ in fields
+            key: ENGLISH[f"settings_field.{key}"] for key, _ in fields
         }
 
     def test_the_fold_writes_no_value_of_its_own(self, page) -> None:

@@ -692,7 +692,7 @@ function updateModelHint() {
   const none = p && p.name === "none";
   $("o-model").disabled = !!none;
   if (none) $("o-model").value = "";
-  $("o-model").placeholder = p && !none ? t("onboarding.model_default", {model: p.default_model}) : "";
+  $("o-model").placeholder = p && !none ? t("settings_option.model_default", {model: p.default_model}) : "";
   $("o-model-hint").textContent = !p ? t("onboarding.model_hint_pick")
     : none ? t("onboarding.model_hint_none")
     : t("onboarding.model_hint_check");

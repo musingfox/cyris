@@ -1,7 +1,6 @@
 {
   "llm_provider.provider": {
     "tab": "model",
-    "label": "Provider",
     "controls": [
       "providers"
     ],
@@ -9,7 +8,6 @@
   },
   "llm_provider.model": {
     "tab": "model",
-    "label": "Model",
     "controls": [
       "model-input"
     ],
@@ -17,7 +15,6 @@
   },
   "vote_similarity.provider": {
     "tab": "model",
-    "label": "Embedding provider",
     "controls": [
       "embedding-providers"
     ],
@@ -25,7 +22,6 @@
   },
   "vote_similarity.model": {
     "tab": "model",
-    "label": "Embedding model",
     "controls": [
       "embedding-model-input"
     ],
@@ -33,7 +29,6 @@
   },
   "vote_similarity.enabled": {
     "tab": "model",
-    "label": "Vote similarity",
     "controls": [
       "vote-enabled"
     ],
@@ -41,7 +36,6 @@
   },
   "vote_similarity.max_seeds": {
     "tab": "model",
-    "label": "Votes compared",
     "controls": [
       "vote-seeds"
     ],
@@ -49,7 +43,6 @@
   },
   "general.digest_schedule": {
     "tab": "digest",
-    "label": "Publish hours",
     "controls": [
       "morning",
       "evening"
@@ -58,7 +51,6 @@
   },
   "general.timezone": {
     "tab": "digest",
-    "label": "Timezone",
     "controls": [
       "timezone"
     ],
@@ -67,7 +59,6 @@
   },
   "digest.output_language": {
     "tab": "digest",
-    "label": "Output language",
     "controls": [
       "output-language"
     ],
@@ -76,7 +67,6 @@
   },
   "digest.style_prompt": {
     "tab": "digest",
-    "label": "Style",
     "controls": [
       "style-prompt"
     ],
@@ -84,7 +74,6 @@
   },
   "digest.type_scale": {
     "tab": "digest",
-    "label": "Type size",
     "controls": [
       "type-scale"
     ],
@@ -94,7 +83,6 @@
   },
   "digest.rank_by_preference": {
     "tab": "digest",
-    "label": "Order by your votes",
     "controls": [
       "rank-by-preference"
     ],
@@ -103,7 +91,6 @@
   },
   "digest.preference_source": {
     "tab": "digest",
-    "label": "Order judged by",
     "controls": [
       "preference-source"
     ],
@@ -112,7 +99,6 @@
   },
   "digest.summarize_follow": {
     "tab": "digest",
-    "label": "Summarize follow articles",
     "controls": [
       "summarize-follow"
     ],
@@ -121,7 +107,6 @@
   },
   "digest.vote_half_life_days": {
     "tab": "digest",
-    "label": "Vote half-life (days)",
     "controls": [
       "vote-half-life"
     ],
@@ -129,7 +114,6 @@
   },
   "digest.topic_lifetime_days": {
     "tab": "digest",
-    "label": "Topic lifetime (days)",
     "controls": [
       "topic-lifetime"
     ],
@@ -137,7 +121,6 @@
   },
   "general.digest_window_hours": {
     "tab": "pipeline",
-    "label": "Window (hours)",
     "controls": [
       "window-hours"
     ],
@@ -145,7 +128,6 @@
   },
   "digest.max_articles_per_digest": {
     "tab": "pipeline",
-    "label": "Articles per run",
     "controls": [
       "max-articles"
     ],
@@ -153,7 +135,6 @@
   },
   "routing.score_threshold": {
     "tab": "pipeline",
-    "label": "Top story score",
     "controls": [
       "featured-threshold"
     ],
@@ -161,7 +142,6 @@
   },
   "digest.scoring_snippet_length": {
     "tab": "pipeline",
-    "label": "Characters read (Scoring)",
     "controls": [
       "scoring-snippet"
     ],
@@ -169,7 +149,6 @@
   },
   "digest.summarize_snippet_length": {
     "tab": "pipeline",
-    "label": "Characters read (Summary)",
     "controls": [
       "summarize-snippet"
     ],
@@ -177,7 +156,6 @@
   },
   "digest.filter_snippet_length": {
     "tab": "pipeline",
-    "label": "Characters read (Headlines and topics)",
     "controls": [
       "filter-snippet"
     ],
@@ -185,7 +163,6 @@
   },
   "llm_provider.reasoning_effort": {
     "tab": "pipeline",
-    "label": "Reasoning effort",
     "controls": [
       "reasoning-effort"
     ],
@@ -195,7 +172,6 @@
   },
   "notify.discord_webhook_url": {
     "tab": "notifications",
-    "label": "Discord webhook",
     "controls": [
       "discord-webhook"
     ],
@@ -203,7 +179,6 @@
   },
   "notify.email_to": {
     "tab": "notifications",
-    "label": "Email to",
     "controls": [
       "email-to"
     ],
@@ -211,7 +186,6 @@
   },
   "notify.email_from": {
     "tab": "notifications",
-    "label": "Email from",
     "controls": [
       "email-from"
     ],

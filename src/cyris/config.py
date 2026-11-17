@@ -110,7 +110,8 @@ LOCAL_B_GRADE_ENV_VARS: dict[str, str] = {
 
 
 # Every grade-D setting (docs/architecture.md §5), as `table.field`, with the
-# /settings field that edits it: its category, label, controls and save route.
+# /settings field that edits it: its category, controls and save route. Its label is
+# the UI catalogs' `settings_field.<key>` (ADR-0027).
 # One registry is the settings set, the D1 whitelist and the page's fields, so a
 # key cannot be required without a writer or writable without a reader. An
 # `"optional": true` entry is the exception to required: see OPTIONAL_SETTINGS.

@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark">
   <meta name="i18n-catalog" content="{{ i18n_catalog }}">
-  <title>Cyris Settings</title>
-  <meta name="description" content="Settings for this Cyris deployment: model, digest, pipeline, notifications, sources and tracked topics.">
+  <title>{{ t("settings.page_title") }}</title>
+  <meta name="description" content="{{ t("settings.page_description") }}">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -88,61 +88,61 @@
 {% with current="settings" %}{% include "_site_bar.html.j2" %}{% endwith %}
   <main class="page">
     <div class="page-head">
-      <span class="label">Settings</span>
-      <h1 class="display">How cyris <em>runs</em></h1>
+      <span class="label">{{ t("site.settings") }}</span>
+      <h1 class="display">{{ t("settings.heading", elements={"em": ("em", {})}) }}</h1>
     </div>
 
     <div class="settings">
-      <nav class="settings-nav" aria-label="Settings sections">
-        <a class="label" href="#model" data-tab="model">Model <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
-        <a class="label" href="#digest" data-tab="digest">Digest <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
-        <a class="label" href="#pipeline" data-tab="pipeline">Pipeline <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
-        <a class="label" href="#notifications" data-tab="notifications">Notifications <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
-        <a class="label" href="#sources" data-tab="sources">Sources <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
-        <a class="label" href="#areas" data-tab="areas">Areas <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
-        <a class="label" href="#tracking" data-tab="tracking">Tracking <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+      <nav class="settings-nav" aria-label="{{ t("settings.nav_label") }}">
+        <a class="label" href="#model" data-tab="model">{{ t("settings.tab_model") }} <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+        <a class="label" href="#digest" data-tab="digest">{{ t("settings.tab_digest") }} <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+        <a class="label" href="#pipeline" data-tab="pipeline">{{ t("settings.tab_pipeline") }} <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+        <a class="label" href="#notifications" data-tab="notifications">{{ t("settings.tab_notifications") }} <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+        <a class="label" href="#sources" data-tab="sources">{{ t("settings.tab_sources") }} <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+        <a class="label" href="#areas" data-tab="areas">{{ t("settings.tab_areas") }} <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
+        <a class="label" href="#tracking" data-tab="tracking">{{ t("settings.tab_tracking") }} <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
       </nav>
 
       <div>
         <form class="tab" data-tab="model" id="model-form" novalidate hidden>
           <div class="tab-head">
-            <h2 class="heading">Model</h2>
-            <p class="small">The models the next run calls, and how it uses your votes.</p>
-            <p class="small" data-loading>Loading settings…</p>
+            <h2 class="heading">{{ t("settings.tab_model") }}</h2>
+            <p class="small">{{ t("settings.model_intro") }}</p>
+            <p class="small" data-loading>{{ t("settings.loading_settings") }}</p>
             <div class="notice err" id="model-missing" hidden></div>
           </div>
           <div class="form">
             <div class="field">
-              <span class="label" id="provider-label">Provider</span>
+              <span class="label" id="provider-label">{{ t("settings_field.llm_provider.provider") }}</span>
               <div class="choices" id="providers" role="radiogroup" aria-labelledby="provider-label"></div>
             </div>
             <div class="field">
-              <label class="label" for="model-input">Model</label>
+              <label class="label" for="model-input">{{ t("settings_field.llm_provider.model") }}</label>
               <input class="input" id="model-input" type="text" autocomplete="off">
               <p class="small" id="model-hint"></p>
             </div>
             <div class="field">
-              <span class="label" id="embedding-provider-label">Embedding provider</span>
+              <span class="label" id="embedding-provider-label">{{ t("settings_field.vote_similarity.provider") }}</span>
               <div class="choices" id="embedding-providers" role="radiogroup" aria-labelledby="embedding-provider-label"></div>
-              <p class="small">The embedder vote similarity compares articles with. Its similarity cutoff comes with the model, so it is not set here.</p>
+              <p class="small">{{ t("settings_help.vote_similarity.provider") }}</p>
             </div>
             <div class="field">
-              <label class="label" for="embedding-model-input">Embedding model</label>
+              <label class="label" for="embedding-model-input">{{ t("settings_field.vote_similarity.model") }}</label>
               <input class="input" id="embedding-model-input" type="text" autocomplete="off">
-              <p class="small">Checked with one real call when vote similarity is on.</p>
+              <p class="small">{{ t("settings_help.vote_similarity.model") }}</p>
             </div>
             <div class="field">
-              <label class="label" for="vote-enabled">Vote similarity</label>
-              <select class="select" id="vote-enabled"><option value="false">Off</option><option value="true">On</option></select>
-              <p class="small">Drop candidates close to an article you voted down. Preview what it would drop with <code>cyris vote-sim</code>; turning it on checks the embedder first.</p>
+              <label class="label" for="vote-enabled">{{ t("settings_field.vote_similarity.enabled") }}</label>
+              <select class="select" id="vote-enabled"><option value="false">{{ t("settings_option.off") }}</option><option value="true">{{ t("settings_option.on") }}</option></select>
+              <p class="small">{{ t("settings.vote_similarity_hint", elements={"code": ("code", {})}) }}</p>
             </div>
             <div class="field">
-              <label class="label" for="vote-seeds">Votes compared</label>
+              <label class="label" for="vote-seeds">{{ t("settings_field.vote_similarity.max_seeds") }}</label>
               <input class="input narrow" id="vote-seeds" type="number" min="1" autocomplete="off">
-              <p class="small">How many of your most recent votes on each side a run compares against.</p>
+              <p class="small">{{ t("settings_help.vote_similarity.max_seeds") }}</p>
             </div>
             <div class="actions-line">
-              <button class="btn primary" type="submit" id="save-model" disabled>Save</button>
+              <button class="btn primary" type="submit" id="save-model" disabled>{{ t("settings.save") }}</button>
               <div class="notice" id="model-result" role="status" hidden></div>
             </div>
           </div>
@@ -150,71 +150,71 @@
 
         <form class="tab" data-tab="digest" id="digest-form" novalidate hidden>
           <div class="tab-head">
-            <h2 class="heading">Digest</h2>
-            <p class="small">When issues are published, what each one holds, and how large its text reads.</p>
-            <p class="small" data-loading>Loading settings…</p>
+            <h2 class="heading">{{ t("settings.tab_digest") }}</h2>
+            <p class="small">{{ t("settings.digest_intro") }}</p>
+            <p class="small" data-loading>{{ t("settings.loading_settings") }}</p>
             <div class="notice err" id="digest-missing" hidden></div>
           </div>
           <div class="form">
             <div class="field">
-              <span class="label">Publish hours</span>
+              <span class="label">{{ t("settings_field.general.digest_schedule") }}</span>
               <div class="field-row">
-                <div class="field"><label class="small" for="morning">Morning</label><input class="input narrow" id="morning" type="number" min="0" max="23" autocomplete="off"></div>
-                <div class="field"><label class="small" for="evening">Evening</label><input class="input narrow" id="evening" type="number" min="0" max="23" autocomplete="off"></div>
+                <div class="field"><label class="small" for="morning">{{ t("settings_option.schedule_morning") }}</label><input class="input narrow" id="morning" type="number" min="0" max="23" autocomplete="off"></div>
+                <div class="field"><label class="small" for="evening">{{ t("settings_option.schedule_evening") }}</label><input class="input narrow" id="evening" type="number" min="0" max="23" autocomplete="off"></div>
               </div>
               <div class="notice err" id="hours-error" data-field-error hidden></div>
-              <p class="small">Whole hours from 0 to 23, in the timezone below; half hours are refused.</p>
+              <p class="small">{{ t("settings.hours_hint") }}</p>
             </div>
             <div class="field">
-              <label class="label" for="timezone">Timezone</label>
+              <label class="label" for="timezone">{{ t("settings_field.general.timezone") }}</label>
               <select class="select" id="timezone"></select>
-              <p class="small">The clock the publish hours are read in.</p>
-              <p class="small" id="timezone-detected" hidden>Detected from this browser, and not saved yet.</p>
+              <p class="small">{{ t("settings_help.general.timezone") }}</p>
+              <p class="small" id="timezone-detected" hidden>{{ t("settings.timezone_detected") }}</p>
             </div>
             <div class="field">
-              <label class="label" for="output-language">Output language</label>
+              <label class="label" for="output-language">{{ t("settings_field.digest.output_language") }}</label>
               <select class="select" id="output-language"></select>
-              <p class="small">The language headlines and summaries are written in.</p>
+              <p class="small">{{ t("settings_help.digest.output_language") }}</p>
             </div>
             <div class="field">
-              <label class="label" for="style-prompt">Style</label>
+              <label class="label" for="style-prompt">{{ t("settings_field.digest.style_prompt") }}</label>
               <textarea class="input" id="style-prompt" rows="4"></textarea>
-              <p class="small">Your tone or focus for the summaries, in your own words; empty means none.</p>
+              <p class="small">{{ t("settings_help.digest.style_prompt") }}</p>
             </div>
             <div class="field">
-              <label class="label" for="type-scale">Type size</label>
-              <select class="select" id="type-scale"><option value="0.875">Smaller</option><option value="1">Default</option><option value="1.125">Larger</option></select>
-              <p class="small">How large the text is on every page. It applies within a minute, to issues already published too.</p>
+              <label class="label" for="type-scale">{{ t("settings_field.digest.type_scale") }}</label>
+              <select class="select" id="type-scale"><option value="0.875">{{ t("settings_option.type_scale_smaller") }}</option><option value="1">{{ t("settings_option.type_scale_default") }}</option><option value="1.125">{{ t("settings_option.type_scale_larger") }}</option></select>
+              <p class="small">{{ t("settings_help.digest.type_scale") }}</p>
             </div>
             <div class="field">
-              <label class="label" for="rank-by-preference">Order by your votes</label>
-              <select class="select" id="rank-by-preference"><option value="false">Off</option><option value="true">On</option></select>
-              <p class="small">Put first the items on topics you voted up, and on topics that share a name with them. The order only moves items; nothing is left out for it.</p>
+              <label class="label" for="rank-by-preference">{{ t("settings_field.digest.rank_by_preference") }}</label>
+              <select class="select" id="rank-by-preference"><option value="false">{{ t("settings_option.off") }}</option><option value="true">{{ t("settings_option.on") }}</option></select>
+              <p class="small">{{ t("settings_help.digest.rank_by_preference") }}</p>
             </div>
             <div class="field">
-              <label class="label" for="preference-source">Order judged by</label>
-              <select class="select" id="preference-source"><option value="cosine">Your topic votes</option><option value="clef">Clef</option></select>
-              <p class="small">Who decides which items come first: your topic votes, or Clef reading the votes nearest each item. An issue Clef cannot fully score uses your topic votes.</p>
-              <p class="small" id="clef-needs-votes" hidden>Clef needs vote similarity on, under Model.</p>
-              <p class="small" id="clef-needs" hidden>Clef needs a Workers AI token: set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AI_TOKEN (or CLOUDFLARE_EMBEDDING_API_TOKEN).</p>
+              <label class="label" for="preference-source">{{ t("settings_field.digest.preference_source") }}</label>
+              <select class="select" id="preference-source"><option value="cosine">{{ t("settings_option.preference_cosine") }}</option><option value="clef">Clef</option></select>
+              <p class="small">{{ t("settings_help.digest.preference_source") }}</p>
+              <p class="small" id="clef-needs-votes" hidden>{{ t("settings.clef_needs_votes") }}</p>
+              <p class="small" id="clef-needs" hidden>{{ t("settings_help.clef_needs_token") }}</p>
             </div>
             <div class="field">
-              <label class="label" for="summarize-follow">Summarize follow articles</label>
-              <select class="select" id="summarize-follow"><option value="false">Off</option><option value="true">On</option></select>
-              <p class="small">Give each article from a source you follow a short explanation of what it is, as read articles get. Off shows the start of its own text.</p>
+              <label class="label" for="summarize-follow">{{ t("settings_field.digest.summarize_follow") }}</label>
+              <select class="select" id="summarize-follow"><option value="false">{{ t("settings_option.off") }}</option><option value="true">{{ t("settings_option.on") }}</option></select>
+              <p class="small">{{ t("settings_help.digest.summarize_follow") }}</p>
             </div>
             <div class="field">
-              <label class="label" for="vote-half-life">Vote half-life (days)</label>
+              <label class="label" for="vote-half-life">{{ t("settings_field.digest.vote_half_life_days") }}</label>
               <input class="input narrow" id="vote-half-life" type="number" min="1" max="365" autocomplete="off">
-              <p class="small">A vote counts half as much after this many days, so a preference fades unless you vote again.</p>
+              <p class="small">{{ t("settings_help.digest.vote_half_life_days") }}</p>
             </div>
             <div class="field">
-              <label class="label" for="topic-lifetime">Topic lifetime (days)</label>
+              <label class="label" for="topic-lifetime">{{ t("settings_field.digest.topic_lifetime_days") }}</label>
               <input class="input narrow" id="topic-lifetime" type="number" min="1" max="365" autocomplete="off">
-              <p class="small">Topics seen within this many days are current: new articles can join them, and a name many of them share counts for less in the order. An upvote slows how fast a topic leaves the list new articles can join; the effect fades with the vote half-life, and never lasts past three times this many days after the topic last appeared.</p>
+              <p class="small">{{ t("settings_help.digest.topic_lifetime_days") }}</p>
             </div>
             <div class="actions-line">
-              <button class="btn primary" type="submit" id="save-digest" disabled>Save</button>
+              <button class="btn primary" type="submit" id="save-digest" disabled>{{ t("settings.save") }}</button>
               <div class="notice" id="digest-result" role="status" hidden></div>
             </div>
           </div>
@@ -222,43 +222,43 @@
 
         <form class="tab" data-tab="pipeline" id="pipeline-form" novalidate hidden>
           <div class="tab-head">
-            <h2 class="heading">Pipeline</h2>
-            <p class="small">How far back each run looks, how much it reads, and where it cuts.</p>
-            <p class="small" data-loading>Loading settings…</p>
+            <h2 class="heading">{{ t("settings.tab_pipeline") }}</h2>
+            <p class="small">{{ t("settings.pipeline_intro") }}</p>
+            <p class="small" data-loading>{{ t("settings.loading_settings") }}</p>
             <div class="notice err" id="pipeline-missing" hidden></div>
           </div>
           <div class="form">
             <div class="field">
-              <label class="label" for="window-hours">Window (hours)</label>
+              <label class="label" for="window-hours">{{ t("settings_field.general.digest_window_hours") }}</label>
               <input class="input narrow" id="window-hours" type="number" min="1" max="168" autocomplete="off">
-              <p class="small">How far back a run looks for articles.</p>
+              <p class="small">{{ t("settings_help.general.digest_window_hours") }}</p>
             </div>
             <div class="field">
-              <label class="label" for="max-articles">Articles per run</label>
+              <label class="label" for="max-articles">{{ t("settings_field.digest.max_articles_per_digest") }}</label>
               <input class="input narrow" id="max-articles" type="number" min="1" autocomplete="off">
-              <p class="small">How many of the window's newest articles, by publish time, one run scores and digests across all sources.</p>
+              <p class="small">{{ t("settings_help.digest.max_articles_per_digest") }}</p>
             </div>
             <div class="field">
-              <label class="label" for="featured-threshold">Top story score</label>
+              <label class="label" for="featured-threshold">{{ t("settings_field.routing.score_threshold") }}</label>
               <input class="input narrow" id="featured-threshold" type="number" min="0" max="100" autocomplete="off">
-              <p class="small">Two or more articles on one topic scoring at least this share the Top story.</p>
+              <p class="small">{{ t("settings_help.routing.score_threshold") }}</p>
             </div>
             <div class="field">
-              <span class="label">Characters read</span>
+              <span class="label">{{ t("settings.characters_read") }}</span>
               <div class="field-row">
-                <div class="field"><label class="small" for="scoring-snippet">Scoring</label><input class="input narrow" id="scoring-snippet" type="number" min="1" autocomplete="off"></div>
-                <div class="field"><label class="small" for="summarize-snippet">Summary</label><input class="input narrow" id="summarize-snippet" type="number" min="1" autocomplete="off"></div>
-                <div class="field"><label class="small" for="filter-snippet">Headlines and topics</label><input class="input narrow" id="filter-snippet" type="number" min="1" autocomplete="off"></div>
+                <div class="field"><label class="small" for="scoring-snippet">{{ t("settings.snippet_scoring") }}</label><input class="input narrow" id="scoring-snippet" type="number" min="1" autocomplete="off"></div>
+                <div class="field"><label class="small" for="summarize-snippet">{{ t("settings.snippet_summary") }}</label><input class="input narrow" id="summarize-snippet" type="number" min="1" autocomplete="off"></div>
+                <div class="field"><label class="small" for="filter-snippet">{{ t("settings.snippet_filter") }}</label><input class="input narrow" id="filter-snippet" type="number" min="1" autocomplete="off"></div>
               </div>
-              <p class="small">How much of each article the model reads at each step; more costs more per call.</p>
+              <p class="small">{{ t("settings_help.snippet_lengths") }}</p>
             </div>
             <div class="field">
-              <label class="label" for="reasoning-effort">Reasoning effort</label>
-              <select class="select" id="reasoning-effort"><option value="default">Default</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
-              <p class="small">How hard the model thinks before it answers; more costs more tokens and time. Default keeps each provider's own level, except low on OpenAI; Workers AI always runs at low, and Save checks the level with one call.</p>
+              <label class="label" for="reasoning-effort">{{ t("settings_field.llm_provider.reasoning_effort") }}</label>
+              <select class="select" id="reasoning-effort"><option value="default">{{ t("settings.effort_default") }}</option><option value="low">{{ t("settings.effort_low") }}</option><option value="medium">{{ t("settings.effort_medium") }}</option><option value="high">{{ t("settings.effort_high") }}</option></select>
+              <p class="small">{{ t("settings.effort_hint") }}</p>
             </div>
             <div class="actions-line">
-              <button class="btn primary" type="submit" id="save-pipeline" disabled>Save</button>
+              <button class="btn primary" type="submit" id="save-pipeline" disabled>{{ t("settings.save") }}</button>
               <div class="notice" id="pipeline-result" role="status" hidden></div>
             </div>
           </div>
@@ -266,31 +266,31 @@
 
         <form class="tab" data-tab="notifications" id="notify-form" action="/api/settings/notify" novalidate hidden>
           <div class="tab-head">
-            <h2 class="heading">Notifications</h2>
-            <p class="small">Where a finished issue is announced.</p>
-            <p class="small" data-loading>Loading settings…</p>
+            <h2 class="heading">{{ t("settings.tab_notifications") }}</h2>
+            <p class="small">{{ t("settings.notifications_intro") }}</p>
+            <p class="small" data-loading>{{ t("settings.loading_settings") }}</p>
             <div class="notice err" id="notifications-missing" hidden></div>
           </div>
           <div class="form">
             <div class="field">
-              <label class="label" for="discord-webhook">Discord webhook</label>
+              <label class="label" for="discord-webhook">{{ t("settings_field.notify.discord_webhook_url") }}</label>
               <input class="input" id="discord-webhook" type="text" placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
-              <p class="small">To change it, paste the whole URL; it is saved once Discord confirms it exists. Turn off clears it: runs then finish without a message.</p>
-              <p class="small" id="notify-state" hidden>Notifications are off.</p>
+              <p class="small">{{ t("settings.webhook_hint") }}</p>
+              <p class="small" id="notify-state" hidden>{{ t("settings.notify_off_state") }}</p>
             </div>
             <div class="field">
-              <label class="label" for="email-to">Email to</label>
+              <label class="label" for="email-to">{{ t("settings_field.notify.email_to") }}</label>
               <input class="input" id="email-to" type="email" placeholder="you@example.com" autocomplete="off">
-              <p class="small">Leave it empty to send no mail. It must be a verified destination in Cloudflare Email Routing, and is saved once a test message reaches it.</p>
+              <p class="small">{{ t("settings_help.notify.email_to") }}</p>
             </div>
             <div class="field">
-              <label class="label" for="email-from">Email from</label>
+              <label class="label" for="email-from">{{ t("settings_field.notify.email_from") }}</label>
               <input class="input" id="email-from" type="email" placeholder="digest@your-domain" autocomplete="off">
-              <p class="small">An address on your Email Routing domain.</p>
+              <p class="small">{{ t("settings_help.notify.email_from") }}</p>
             </div>
             <div class="actions-line">
-              <button class="btn primary" type="submit" id="save-notify" disabled>Save</button>
-              <button class="btn danger" type="button" id="notify-off" hidden>Turn off</button>
+              <button class="btn primary" type="submit" id="save-notify" disabled>{{ t("settings.save") }}</button>
+              <button class="btn danger" type="button" id="notify-off" hidden>{{ t("settings.turn_off") }}</button>
               <div class="notice" id="notify-result" role="status" hidden></div>
             </div>
           </div>
@@ -298,104 +298,104 @@
 
         <div class="tab" data-tab="sources" hidden>
           <div class="tab-head">
-            <h2 class="heading">Sources</h2>
-            <p class="small">The feeds and newsletter senders the next run reads.</p>
+            <h2 class="heading">{{ t("settings.tab_sources") }}</h2>
+            <p class="small">{{ t("settings.sources_intro") }}</p>
           </div>
           <div class="toolbar">
-            <div class="seg" role="group" aria-label="Filter by type">
-              <button type="button" data-filter="all" aria-pressed="true">All</button>
-              <button type="button" data-filter="rss" aria-pressed="false">RSS</button>
-              <button type="button" data-filter="newsletter" aria-pressed="false">Newsletter</button>
+            <div class="seg" role="group" aria-label="{{ t("settings.filter_label") }}">
+              <button type="button" data-filter="all" aria-pressed="true">{{ t("settings.filter_all") }}</button>
+              <button type="button" data-filter="rss" aria-pressed="false">{{ t("source_type.rss") }}</button>
+              <button type="button" data-filter="newsletter" aria-pressed="false">{{ t("source_type.newsletter") }}</button>
             </div>
             <div class="actions-line">
               <div class="notice" id="sources-notice" role="status" hidden></div>
-              <button class="btn primary" type="button" id="add-source" disabled>+ Add source</button>
+              <button class="btn primary" type="button" id="add-source" disabled>{{ t("settings.add_source") }}</button>
             </div>
           </div>
           <div class="table-wrap">
             <table class="src">
-              <thead><tr><th class="label">Name</th><th class="label">Type</th><th class="label">Lane</th><th class="label">Feed or sender</th><th class="label">Tags</th></tr></thead>
-              <tbody id="src-body"><tr data-loading><td colspan="5" class="small">Loading sources…</td></tr></tbody>
+              <thead><tr><th class="label">{{ t("settings.col_name") }}</th><th class="label">{{ t("settings.col_type") }}</th><th class="label">{{ t("settings.col_lane") }}</th><th class="label">{{ t("settings.col_target") }}</th><th class="label">{{ t("settings.col_tags") }}</th></tr></thead>
+              <tbody id="src-body"><tr data-loading><td colspan="5" class="small">{{ t("settings.loading_sources") }}</td></tr></tbody>
             </table>
           </div>
         </div>
 
         <div class="tab" data-tab="areas" hidden>
           <div class="tab-head">
-            <h2 class="heading">Areas</h2>
-            <p class="small">The areas the model files each article under, and the proposals waiting for you.</p>
+            <h2 class="heading">{{ t("settings.tab_areas") }}</h2>
+            <p class="small">{{ t("settings.areas_intro") }}</p>
           </div>
           <section class="areas-part" aria-labelledby="areas-active-h">
-            <div class="areas-part-head"><h3 class="label" id="areas-active-h">Areas</h3></div>
+            <div class="areas-part-head"><h3 class="label" id="areas-active-h">{{ t("settings.tab_areas") }}</h3></div>
             <div class="table-wrap">
               <table class="src areas-table">
-                <thead><tr><th class="label">Name</th><th class="label">Position</th></tr></thead>
-                <tbody id="area-body"><tr data-loading><td colspan="2" class="small">Loading areas…</td></tr></tbody>
+                <thead><tr><th class="label">{{ t("settings.col_name") }}</th><th class="label">{{ t("settings.col_position") }}</th></tr></thead>
+                <tbody id="area-body"><tr data-loading><td colspan="2" class="small">{{ t("settings.loading_areas") }}</td></tr></tbody>
               </table>
             </div>
             <div class="actions-line areas-save">
-              <button class="btn primary" type="button" id="save-order" disabled>Save order</button>
+              <button class="btn primary" type="button" id="save-order" disabled>{{ t("settings.save_order") }}</button>
               <div class="notice" id="order-result" role="status" hidden></div>
             </div>
           </section>
           <section class="areas-part" aria-labelledby="areas-proposed-h">
-            <div class="areas-part-head"><h3 class="label" id="areas-proposed-h">Proposed</h3></div>
+            <div class="areas-part-head"><h3 class="label" id="areas-proposed-h">{{ t("settings.proposed") }}</h3></div>
             <div class="table-wrap">
               <table class="src areas-table">
-                <thead><tr><th class="label">Name</th><th class="label">Counts</th></tr></thead>
+                <thead><tr><th class="label">{{ t("settings.col_name") }}</th><th class="label">{{ t("settings.col_counts") }}</th></tr></thead>
                 <tbody id="proposed-body"></tbody>
               </table>
             </div>
           </section>
           <section class="areas-part" aria-labelledby="areas-sources-h">
             <div class="areas-part-head">
-              <h3 class="label" id="areas-sources-h">Sources</h3>
+              <h3 class="label" id="areas-sources-h">{{ t("settings.tab_sources") }}</h3>
               <div class="actions-line">
                 <div class="notice" id="areas-notice" role="status" hidden></div>
-                <button class="btn primary" type="button" id="propose-areas" disabled>Propose areas from my sources</button>
+                <button class="btn primary" type="button" id="propose-areas" disabled>{{ t("settings.propose_areas") }}</button>
               </div>
             </div>
             <div class="table-wrap">
               <table class="src assign">
-                <thead><tr><th class="label">Source</th><th class="label">Area</th></tr></thead>
-                <tbody id="assign-body"><tr data-loading><td colspan="2" class="small">Loading sources…</td></tr></tbody>
+                <thead><tr><th class="label">{{ t("settings.col_source") }}</th><th class="label">{{ t("settings.col_area") }}</th></tr></thead>
+                <tbody id="assign-body"><tr data-loading><td colspan="2" class="small">{{ t("settings.loading_sources") }}</td></tr></tbody>
               </table>
             </div>
             <div class="actions-line areas-save">
-              <button class="btn primary" type="button" id="save-assign" disabled>Save assignments</button>
+              <button class="btn primary" type="button" id="save-assign" disabled>{{ t("settings.save_assignments") }}</button>
               <div class="notice" id="assign-result" role="status" hidden></div>
             </div>
           </section>
           <section class="areas-part" id="threshold-block" aria-labelledby="areas-threshold-h">
-            <div class="areas-part-head"><h3 class="label" id="areas-threshold-h">Birth threshold</h3></div>
+            <div class="areas-part-head"><h3 class="label" id="areas-threshold-h">{{ t("settings.birth_threshold") }}</h3></div>
             <div class="field-row areas-threshold">
-              <div class="field"><label class="label" for="th-articles">Articles</label><input class="input narrow" id="th-articles" type="number" min="1" step="1" autocomplete="off" disabled></div>
-              <div class="field"><label class="label" for="th-issues">Issues</label><input class="input narrow" id="th-issues" type="number" min="1" step="1" autocomplete="off" disabled></div>
+              <div class="field"><label class="label" for="th-articles">{{ t("settings.threshold_articles") }}</label><input class="input narrow" id="th-articles" type="number" min="1" step="1" autocomplete="off" disabled></div>
+              <div class="field"><label class="label" for="th-issues">{{ t("settings.threshold_issues") }}</label><input class="input narrow" id="th-issues" type="number" min="1" step="1" autocomplete="off" disabled></div>
             </div>
             <div class="actions-line areas-save">
-              <button class="btn primary" type="button" id="save-threshold" disabled>Save</button>
+              <button class="btn primary" type="button" id="save-threshold" disabled>{{ t("settings.save") }}</button>
               <div class="notice" id="threshold-result" role="status" hidden></div>
-              <p class="small" id="threshold-hint" hidden>Birth threshold not set</p>
+              <p class="small" id="threshold-hint" hidden>{{ t("settings.threshold_unset") }}</p>
             </div>
           </section>
-          <details class="more areas-part"><summary>Closed</summary>
+          <details class="more areas-part"><summary>{{ t("settings.closed") }}</summary>
             <ul class="small" id="closed-list"></ul>
           </details>
         </div>
 
         <div class="tab" data-tab="tracking" hidden>
           <div class="tab-head">
-            <h2 class="heading">Tracking</h2>
-            <p class="small">Topics each issue lists every close article for, under Tracking; a topic set for another embedding model is skipped.</p>
+            <h2 class="heading">{{ t("settings.tab_tracking") }}</h2>
+            <p class="small">{{ t("settings.tracking_intro") }}</p>
           </div>
           <div class="toolbar">
             <div class="notice" id="topics-notice" role="status" hidden></div>
-            <button class="btn primary" type="button" id="add-topic" disabled>+ Add topic</button>
+            <button class="btn primary" type="button" id="add-topic" disabled>{{ t("settings.add_topic") }}</button>
           </div>
           <div class="table-wrap">
             <table class="src">
-              <thead><tr><th class="label">Name</th><th class="label">Description</th><th class="label">Threshold</th><th class="label">Embedding model</th></tr></thead>
-              <tbody id="topic-body"><tr data-loading><td colspan="4" class="small">Loading topics…</td></tr></tbody>
+              <thead><tr><th class="label">{{ t("settings.col_name") }}</th><th class="label">{{ t("settings.col_description") }}</th><th class="label">{{ t("settings.col_threshold") }}</th><th class="label">{{ t("settings.col_embedding_model") }}</th></tr></thead>
+              <tbody id="topic-body"><tr data-loading><td colspan="4" class="small">{{ t("settings.loading_topics") }}</td></tr></tbody>
             </table>
           </div>
         </div>
@@ -408,36 +408,36 @@
       <h3 class="label editor-title"></h3>
       <div class="form">
         <div class="field-row">
-          <div class="field"><label class="label" for="e-name">Name</label><input class="input" id="e-name" name="name" type="text" autocomplete="off"></div>
-          <div class="field"><span class="label">Type</span>
-            <div class="seg" role="group" aria-label="Type"><button type="button" data-type="rss">RSS</button><button type="button" data-type="newsletter">Newsletter</button></div>
+          <div class="field"><label class="label" for="e-name">{{ t("settings.col_name") }}</label><input class="input" id="e-name" name="name" type="text" autocomplete="off"></div>
+          <div class="field"><span class="label">{{ t("settings.col_type") }}</span>
+            <div class="seg" role="group" aria-label="{{ t("settings.col_type") }}"><button type="button" data-type="rss">{{ t("source_type.rss") }}</button><button type="button" data-type="newsletter">{{ t("source_type.newsletter") }}</button></div>
           </div>
-          <div class="field"><label class="label" for="e-lane">Lane</label>
+          <div class="field"><label class="label" for="e-lane">{{ t("settings.col_lane") }}</label>
             <select class="select" id="e-lane" name="lane"><option value="skim">{{ t("lane.skim") }}</option><option value="read">{{ t("lane.read") }}</option><option value="follow">{{ t("lane.follow") }}</option></select>
           </div>
         </div>
-        <div class="field" data-for="rss"><label class="label" for="e-url">Feed URL</label><input class="input" id="e-url" name="url" type="text" autocomplete="off"></div>
-        <div class="field" data-for="newsletter"><label class="label" for="e-email">Sender match</label><input class="input" id="e-email" name="email_match" type="text" placeholder="from:hi@example.com" autocomplete="off">
-          <p class="small">Maps a sender to this source; email routing itself stays in the Cloudflare dashboard.</p></div>
-        <div class="field" data-for="newsletter"><label class="label" for="e-home">Homepage</label><input class="input" id="e-home" name="homepage" type="text" autocomplete="off"></div>
-        <div class="field"><label class="label" for="e-tags">Tags</label><input class="input" id="e-tags" name="tags" type="text" placeholder="comma separated" autocomplete="off"></div>
+        <div class="field" data-for="rss"><label class="label" for="e-url">{{ t("settings.feed_url") }}</label><input class="input" id="e-url" name="url" type="text" autocomplete="off"></div>
+        <div class="field" data-for="newsletter"><label class="label" for="e-email">{{ t("settings.sender_match") }}</label><input class="input" id="e-email" name="email_match" type="text" placeholder="from:hi@example.com" autocomplete="off">
+          <p class="small">{{ t("settings.sender_match_hint") }}</p></div>
+        <div class="field" data-for="newsletter"><label class="label" for="e-home">{{ t("settings.homepage") }}</label><input class="input" id="e-home" name="homepage" type="text" autocomplete="off"></div>
+        <div class="field"><label class="label" for="e-tags">{{ t("settings.col_tags") }}</label><input class="input" id="e-tags" name="tags" type="text" placeholder="{{ t("settings.tags_placeholder") }}" autocomplete="off"></div>
         <div class="field-row">
-          <div class="field"><label class="label" for="e-area">Area</label>
-            <select class="select" id="e-area" name="area_id"><option value="">None</option></select>
-            <span class="pill" data-suggested hidden>Suggested</span>
+          <div class="field"><label class="label" for="e-area">{{ t("settings.col_area") }}</label>
+            <select class="select" id="e-area" name="area_id"><option value="">{{ t("settings.area_none") }}</option></select>
+            <span class="pill" data-suggested hidden>{{ t("settings.suggested") }}</span>
           </div>
-          <div class="field"><button class="btn secondary" type="button" data-act="suggest">Suggest</button></div>
+          <div class="field"><button class="btn secondary" type="button" data-act="suggest">{{ t("settings.suggest") }}</button></div>
         </div>
         <p class="small" data-suggest-note hidden></p>
       </div>
       <div class="editor-foot">
         <div class="actions-line">
-          <button class="btn primary" type="button" data-act="save" disabled>Save source</button>
-          <button class="btn secondary" type="button" data-act="cancel">Cancel</button>
+          <button class="btn primary" type="button" data-act="save" disabled>{{ t("settings.save_source") }}</button>
+          <button class="btn secondary" type="button" data-act="cancel">{{ t("settings.cancel") }}</button>
           <div class="notice" role="status" hidden></div>
         </div>
         <div class="actions-line">
-          <button class="btn danger" type="button" data-act="retire">Retire</button>
+          <button class="btn danger" type="button" data-act="retire">{{ t("settings.retire") }}</button>
           <div class="notice" role="status" hidden></div>
         </div>
       </div>
@@ -448,19 +448,19 @@
     <tr class="editor"><td colspan="2"><div class="editor-body">
       <h3 class="label editor-title"></h3>
       <div class="form">
-        <div class="field"><label class="label" for="a-name">Name</label><input class="input" id="a-name" name="name" type="text" autocomplete="off"></div>
+        <div class="field"><label class="label" for="a-name">{{ t("settings.col_name") }}</label><input class="input" id="a-name" name="name" type="text" autocomplete="off"></div>
       </div>
       <div class="editor-foot areas-foot">
         <div class="actions-line">
-          <button class="btn primary" type="button" data-act="activate" data-proposed hidden>Activate</button>
-          <button class="btn secondary" type="button" data-act="save" disabled>Save name</button>
-          <button class="btn secondary" type="button" data-act="cancel">Cancel</button>
+          <button class="btn primary" type="button" data-act="activate" data-proposed hidden>{{ t("settings.activate") }}</button>
+          <button class="btn secondary" type="button" data-act="save" disabled>{{ t("settings.save_name") }}</button>
+          <button class="btn secondary" type="button" data-act="cancel">{{ t("settings.cancel") }}</button>
           <div class="notice" role="status" hidden></div>
         </div>
         <div class="actions-line" data-proposed hidden>
-          <button class="btn danger" type="button" data-act="dismiss">Dismiss</button>
-          <div class="field areas-merge"><label class="label" for="a-into">Merge into</label><select class="select" id="a-into" name="into"></select></div>
-          <button class="btn danger" type="button" data-act="merge">Merge</button>
+          <button class="btn danger" type="button" data-act="dismiss">{{ t("settings.dismiss") }}</button>
+          <div class="field areas-merge"><label class="label" for="a-into">{{ t("settings.merge_into") }}</label><select class="select" id="a-into" name="into"></select></div>
+          <button class="btn danger" type="button" data-act="merge">{{ t("settings.merge") }}</button>
         </div>
       </div>
     </div></td></tr>
@@ -470,23 +470,23 @@
     <tr class="editor"><td colspan="4"><div class="editor-body">
       <h3 class="label editor-title"></h3>
       <div class="form">
-        <div class="field"><label class="label" for="t-name">Name</label><input class="input" id="t-name" name="name" type="text" autocomplete="off"></div>
-        <div class="field"><label class="label" for="t-description">Description</label><textarea class="input" id="t-description" name="description" rows="3"></textarea>
-          <p class="small">One sentence saying what the topic is about.</p></div>
+        <div class="field"><label class="label" for="t-name">{{ t("settings.col_name") }}</label><input class="input" id="t-name" name="name" type="text" autocomplete="off"></div>
+        <div class="field"><label class="label" for="t-description">{{ t("settings.col_description") }}</label><textarea class="input" id="t-description" name="description" rows="3"></textarea>
+          <p class="small">{{ t("settings.topic_description_hint") }}</p></div>
         <div class="field-row">
-          <div class="field"><label class="label" for="t-threshold">Threshold</label><input class="input narrow" id="t-threshold" name="threshold" type="number" min="0" max="1" step="0.01" autocomplete="off"></div>
-          <div class="field"><label class="label" for="t-model">Embedding model</label><input class="input" id="t-model" name="model" type="text" autocomplete="off"></div>
+          <div class="field"><label class="label" for="t-threshold">{{ t("settings.col_threshold") }}</label><input class="input narrow" id="t-threshold" name="threshold" type="number" min="0" max="1" step="0.01" autocomplete="off"></div>
+          <div class="field"><label class="label" for="t-model">{{ t("settings.col_embedding_model") }}</label><input class="input" id="t-model" name="model" type="text" autocomplete="off"></div>
         </div>
-        <p class="small">The cosine a title must reach, on that model's scale; there is no default. <code>cyris topic-sim</code> ranks the window's titles against the description: pick the lowest cosine still on topic.</p>
+        <p class="small">{{ t("settings.topic_threshold_hint", elements={"code": ("code", {})}) }}</p>
       </div>
       <div class="editor-foot">
         <div class="actions-line">
-          <button class="btn primary" type="button" data-act="save" disabled>Save topic</button>
-          <button class="btn secondary" type="button" data-act="cancel">Cancel</button>
+          <button class="btn primary" type="button" data-act="save" disabled>{{ t("settings.save_topic") }}</button>
+          <button class="btn secondary" type="button" data-act="cancel">{{ t("settings.cancel") }}</button>
           <div class="notice" role="status" hidden></div>
         </div>
         <div class="actions-line">
-          <button class="btn danger" type="button" data-act="remove">Remove</button>
+          <button class="btn danger" type="button" data-act="remove">{{ t("settings.remove") }}</button>
           <div class="notice" role="status" hidden></div>
         </div>
       </div>

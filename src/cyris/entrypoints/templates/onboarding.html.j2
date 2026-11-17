@@ -97,14 +97,14 @@
         <p class="small" data-loading>{{ t("onboarding.loading_settings") }}</p>
       </div>
       <div class="field">
-        <label class="label" for="o-output-language">{{ t("onboarding.output_language") }}</label>
+        <label class="label" for="o-output-language">{{ t("settings_field.digest.output_language") }}</label>
         <select class="select" id="o-output-language"></select>
-        <p class="small">{{ t("onboarding.output_language_help") }}</p>
+        <p class="small">{{ t("settings_help.digest.output_language") }}</p>
       </div>
       <div class="field">
-        <label class="label" for="o-timezone">{{ t("onboarding.timezone") }}</label>
+        <label class="label" for="o-timezone">{{ t("settings_field.general.timezone") }}</label>
         <select class="select" id="o-timezone"></select>
-        <p class="small">{{ t("onboarding.timezone_help") }}</p>
+        <p class="small">{{ t("settings_help.general.timezone") }}</p>
         <p class="small" id="o-timezone-detected" hidden>{{ t("onboarding.timezone_detected") }}</p>
       </div>
     </section>
@@ -116,11 +116,11 @@
         <p class="small" data-loading>{{ t("onboarding.loading_settings") }}</p>
       </div>
       <div class="field">
-        <label class="label" for="o-morning">{{ t("onboarding.morning") }}</label>
+        <label class="label" for="o-morning">{{ t("settings_option.schedule_morning") }}</label>
         <input class="input" id="o-morning" type="number" min="0" max="23" autocomplete="off">
       </div>
       <div class="field">
-        <label class="label" for="o-evening">{{ t("onboarding.evening") }}</label>
+        <label class="label" for="o-evening">{{ t("settings_option.schedule_evening") }}</label>
         <input class="input" id="o-evening" type="number" min="0" max="23" autocomplete="off">
         <p class="small">{{ t("onboarding.hours_help") }}</p>
       </div>
@@ -185,19 +185,19 @@
         <p class="small" data-loading>{{ t("onboarding.loading_settings") }}</p>
       </div>
       <div class="field">
-        <label class="label" for="o-discord-webhook">{{ t("onboarding.discord_webhook") }}</label>
+        <label class="label" for="o-discord-webhook">{{ t("settings_field.notify.discord_webhook_url") }}</label>
         <input class="input" id="o-discord-webhook" type="text" placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
         <p class="small">{{ t("onboarding.discord_webhook_help") }}</p>
       </div>
       <div class="field">
-        <label class="label" for="o-email-to">{{ t("onboarding.email_to") }}</label>
+        <label class="label" for="o-email-to">{{ t("settings_field.notify.email_to") }}</label>
         <input class="input" id="o-email-to" type="email" placeholder="you@example.com" autocomplete="off">
-        <p class="small">{{ t("onboarding.email_to_help") }}</p>
+        <p class="small">{{ t("settings_help.notify.email_to") }}</p>
       </div>
       <div class="field">
-        <label class="label" for="o-email-from">{{ t("onboarding.email_from") }}</label>
+        <label class="label" for="o-email-from">{{ t("settings_field.notify.email_from") }}</label>
         <input class="input" id="o-email-from" type="email" placeholder="digest@your-domain" autocomplete="off">
-        <p class="small">{{ t("onboarding.email_from_help") }}</p>
+        <p class="small">{{ t("settings_help.notify.email_from") }}</p>
       </div>
     </section>
 
@@ -215,12 +215,12 @@
         <p class="small" data-loading>{{ t("onboarding.loading_settings") }}</p>
       </div>
       <div class="field">
-        <span class="label" id="o-provider-label">{{ t("onboarding.provider") }}</span>
+        <span class="label" id="o-provider-label">{{ t("settings_field.llm_provider.provider") }}</span>
         <div class="choices" id="o-providers" role="radiogroup" aria-labelledby="o-provider-label"></div>
         <p class="small" id="o-no-key" hidden></p>
       </div>
       <div class="field">
-        <label class="label" for="o-model">{{ t("onboarding.model") }}</label>
+        <label class="label" for="o-model">{{ t("settings_field.llm_provider.model") }}</label>
         <input class="input" id="o-model" type="text" autocomplete="off">
         <p class="small" id="o-model-hint"></p>
         <div><button class="btn secondary" type="button" id="o-check" hidden>{{ t("onboarding.check") }}</button></div>
@@ -230,83 +230,83 @@
         <summary>{{ t("onboarding.advanced") }}</summary>
         <div class="fold-fields">
           <div class="field" data-key="vote_similarity.provider">
-            <span class="label" id="o-embedding-provider-label">{{ t("onboarding.embedding_provider") }}</span>
+            <span class="label" id="o-embedding-provider-label">{{ t("settings_field.vote_similarity.provider") }}</span>
             <div class="choices" id="o-embedding-providers" role="radiogroup" aria-labelledby="o-embedding-provider-label"></div>
-            <p class="small">{{ t("onboarding.embedding_provider_help") }}</p>
+            <p class="small">{{ t("settings_help.vote_similarity.provider") }}</p>
           </div>
           <div class="field" data-key="vote_similarity.model">
-            <label class="label" for="o-embedding-model">{{ t("onboarding.embedding_model") }}</label>
+            <label class="label" for="o-embedding-model">{{ t("settings_field.vote_similarity.model") }}</label>
             <input class="input" id="o-embedding-model" type="text" autocomplete="off" data-kind="text">
-            <p class="small">{{ t("onboarding.embedding_model_help") }}</p>
+            <p class="small">{{ t("settings_help.vote_similarity.model") }}</p>
           </div>
           <div class="field" data-key="vote_similarity.max_seeds">
-            <label class="label" for="o-vote-seeds">{{ t("onboarding.vote_seeds") }}</label>
+            <label class="label" for="o-vote-seeds">{{ t("settings_field.vote_similarity.max_seeds") }}</label>
             <input class="input" id="o-vote-seeds" type="number" min="1" autocomplete="off" data-kind="number">
-            <p class="small">{{ t("onboarding.vote_seeds_help") }}</p>
+            <p class="small">{{ t("settings_help.vote_similarity.max_seeds") }}</p>
           </div>
           <div class="field" data-key="general.digest_window_hours">
-            <label class="label" for="o-window-hours">{{ t("onboarding.window_hours") }}</label>
+            <label class="label" for="o-window-hours">{{ t("settings_field.general.digest_window_hours") }}</label>
             <input class="input" id="o-window-hours" type="number" min="1" max="168" autocomplete="off" data-kind="number">
-            <p class="small">{{ t("onboarding.window_hours_help") }}</p>
+            <p class="small">{{ t("settings_help.general.digest_window_hours") }}</p>
           </div>
           <div class="field" data-key="digest.max_articles_per_digest">
-            <label class="label" for="o-max-articles">{{ t("onboarding.max_articles") }}</label>
+            <label class="label" for="o-max-articles">{{ t("settings_field.digest.max_articles_per_digest") }}</label>
             <input class="input" id="o-max-articles" type="number" min="1" autocomplete="off" data-kind="number">
-            <p class="small">{{ t("onboarding.max_articles_help") }}</p>
+            <p class="small">{{ t("settings_help.digest.max_articles_per_digest") }}</p>
           </div>
           <div class="field" data-key="routing.score_threshold">
-            <label class="label" for="o-featured-threshold">{{ t("onboarding.top_story_score") }}</label>
+            <label class="label" for="o-featured-threshold">{{ t("settings_field.routing.score_threshold") }}</label>
             <input class="input" id="o-featured-threshold" type="number" min="0" max="100" autocomplete="off" data-kind="number">
-            <p class="small">{{ t("onboarding.top_story_score_help") }}</p>
+            <p class="small">{{ t("settings_help.routing.score_threshold") }}</p>
           </div>
           <div class="field" data-key="digest.scoring_snippet_length">
-            <label class="label" for="o-scoring-snippet">{{ t("onboarding.scoring_snippet") }}</label>
+            <label class="label" for="o-scoring-snippet">{{ t("settings_field.digest.scoring_snippet_length") }}</label>
             <input class="input" id="o-scoring-snippet" type="number" min="1" autocomplete="off" data-kind="number">
-            <p class="small">{{ t("onboarding.snippet_help") }}</p>
+            <p class="small">{{ t("settings_help.snippet_lengths") }}</p>
           </div>
           <div class="field" data-key="digest.summarize_snippet_length">
-            <label class="label" for="o-summarize-snippet">{{ t("onboarding.summarize_snippet") }}</label>
+            <label class="label" for="o-summarize-snippet">{{ t("settings_field.digest.summarize_snippet_length") }}</label>
             <input class="input" id="o-summarize-snippet" type="number" min="1" autocomplete="off" data-kind="number">
           </div>
           <div class="field" data-key="digest.filter_snippet_length">
-            <label class="label" for="o-filter-snippet">{{ t("onboarding.filter_snippet") }}</label>
+            <label class="label" for="o-filter-snippet">{{ t("settings_field.digest.filter_snippet_length") }}</label>
             <input class="input" id="o-filter-snippet" type="number" min="1" autocomplete="off" data-kind="number">
           </div>
           <div class="field" data-key="digest.style_prompt">
-            <label class="label" for="o-style-prompt">{{ t("onboarding.style_prompt") }}</label>
+            <label class="label" for="o-style-prompt">{{ t("settings_field.digest.style_prompt") }}</label>
             <textarea class="input" id="o-style-prompt" rows="4" data-kind="prose"></textarea>
-            <p class="small">{{ t("onboarding.style_prompt_help") }}</p>
+            <p class="small">{{ t("settings_help.digest.style_prompt") }}</p>
           </div>
           <div class="field" data-key="digest.type_scale">
-            <label class="label" for="o-type-scale">{{ t("onboarding.type_scale") }}</label>
-            <select class="select" id="o-type-scale" data-kind="number"><option value="0.875">{{ t("onboarding.type_smaller") }}</option><option value="1">{{ t("onboarding.type_default") }}</option><option value="1.125">{{ t("onboarding.type_larger") }}</option></select>
-            <p class="small">{{ t("onboarding.type_scale_help") }}</p>
+            <label class="label" for="o-type-scale">{{ t("settings_field.digest.type_scale") }}</label>
+            <select class="select" id="o-type-scale" data-kind="number"><option value="0.875">{{ t("settings_option.type_scale_smaller") }}</option><option value="1">{{ t("settings_option.type_scale_default") }}</option><option value="1.125">{{ t("settings_option.type_scale_larger") }}</option></select>
+            <p class="small">{{ t("settings_help.digest.type_scale") }}</p>
           </div>
           <div class="field" data-key="digest.rank_by_preference">
-            <label class="label" for="o-rank-by-preference">{{ t("onboarding.rank_by_preference") }}</label>
-            <select class="select" id="o-rank-by-preference" data-kind="bool"><option value="false">{{ t("onboarding.off") }}</option><option value="true">{{ t("onboarding.on") }}</option></select>
-            <p class="small">{{ t("onboarding.rank_by_preference_help") }}</p>
+            <label class="label" for="o-rank-by-preference">{{ t("settings_field.digest.rank_by_preference") }}</label>
+            <select class="select" id="o-rank-by-preference" data-kind="bool"><option value="false">{{ t("settings_option.off") }}</option><option value="true">{{ t("settings_option.on") }}</option></select>
+            <p class="small">{{ t("settings_help.digest.rank_by_preference") }}</p>
           </div>
           <div class="field" data-key="digest.preference_source">
-            <label class="label" for="o-preference-source">{{ t("onboarding.preference_source") }}</label>
-            <select class="select" id="o-preference-source" data-kind="text"><option value="cosine">{{ t("onboarding.preference_cosine") }}</option><option value="clef">Clef</option></select>
-            <p class="small">{{ t("onboarding.preference_source_help") }}</p>
-            <p class="small" id="o-clef-needs" hidden>{{ t("onboarding.clef_needs") }}</p>
+            <label class="label" for="o-preference-source">{{ t("settings_field.digest.preference_source") }}</label>
+            <select class="select" id="o-preference-source" data-kind="text"><option value="cosine">{{ t("settings_option.preference_cosine") }}</option><option value="clef">Clef</option></select>
+            <p class="small">{{ t("settings_help.digest.preference_source") }}</p>
+            <p class="small" id="o-clef-needs" hidden>{{ t("settings_help.clef_needs_token") }}</p>
           </div>
           <div class="field" data-key="digest.summarize_follow">
-            <label class="label" for="o-summarize-follow">{{ t("onboarding.summarize_follow") }}</label>
-            <select class="select" id="o-summarize-follow" data-kind="bool"><option value="false">{{ t("onboarding.off") }}</option><option value="true">{{ t("onboarding.on") }}</option></select>
-            <p class="small">{{ t("onboarding.summarize_follow_help") }}</p>
+            <label class="label" for="o-summarize-follow">{{ t("settings_field.digest.summarize_follow") }}</label>
+            <select class="select" id="o-summarize-follow" data-kind="bool"><option value="false">{{ t("settings_option.off") }}</option><option value="true">{{ t("settings_option.on") }}</option></select>
+            <p class="small">{{ t("settings_help.digest.summarize_follow") }}</p>
           </div>
           <div class="field" data-key="digest.vote_half_life_days">
-            <label class="label" for="o-vote-half-life">{{ t("onboarding.vote_half_life") }}</label>
+            <label class="label" for="o-vote-half-life">{{ t("settings_field.digest.vote_half_life_days") }}</label>
             <input class="input" id="o-vote-half-life" type="number" min="1" max="365" autocomplete="off" data-kind="number">
-            <p class="small">{{ t("onboarding.vote_half_life_help") }}</p>
+            <p class="small">{{ t("settings_help.digest.vote_half_life_days") }}</p>
           </div>
           <div class="field" data-key="digest.topic_lifetime_days">
-            <label class="label" for="o-topic-lifetime">{{ t("onboarding.topic_lifetime") }}</label>
+            <label class="label" for="o-topic-lifetime">{{ t("settings_field.digest.topic_lifetime_days") }}</label>
             <input class="input" id="o-topic-lifetime" type="number" min="1" max="365" autocomplete="off" data-kind="number">
-            <p class="small">{{ t("onboarding.topic_lifetime_help") }}</p>
+            <p class="small">{{ t("settings_help.digest.topic_lifetime_days") }}</p>
           </div>
         </div>
       </details>

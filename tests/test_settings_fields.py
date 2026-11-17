@@ -1,14 +1,16 @@
 """One registry of runtime settings: the required set, the page's fields and its routes."""
 
+import json
 import re
 from pathlib import Path
 
 import pytest
-from aiohttp.test_utils import TestClient, TestServer
+from aiohttp.test_utils import TestClient, TestServer, make_mocked_request
 
 import cyris.entrypoints
 from cyris.config import GRADE_D_KEYS, SETTINGS_FIELDS
 from cyris.entrypoints.triage_server import PLAIN_KEYS, TriageServer, render_settings_page
+from cyris.i18n import translator
 
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
@@ -76,7 +78,6 @@ def test_reasoning_effort_is_an_optional_plain_pipeline_field() -> None:
 
     assert SETTINGS_FIELDS[key] == {
         "tab": "pipeline",
-        "label": "Reasoning effort",
         "controls": ["reasoning-effort"],
         "route": "plain",
         "optional": True,
@@ -91,7 +92,34 @@ async def test_the_page_reads_its_fields_from_the_api() -> None:
     data = await (await client.get("/api/settings")).json()
     await client.close()
 
-    assert data["fields"] == SETTINGS_FIELDS
+    english = translator("en")
+    assert data["fields"] == {
+        key: {**field, "label": english(f"settings_field.{key}")}
+        for key, field in SETTINGS_FIELDS.items()
+    }
+
+
+def test_the_registry_holds_no_wording() -> None:
+    assert [key for key, field in SETTINGS_FIELDS.items() if "label" in field] == []
+
+
+async def _fields_answered(accept_language: str) -> dict:
+    server = TriageServer()
+    request = make_mocked_request(
+        "GET", "/api/settings", headers={"Accept-Language": accept_language}
+    )
+    return json.loads((await server._handle_get_settings(request)).body)["fields"]
+
+
+@pytest.mark.parametrize(
+    ("accept_language", "label"),
+    [("en", "Reasoning effort"), ("zh-TW", "推理強度")],
+)
+async def test_a_field_label_is_served_in_the_pages_language(accept_language, label) -> None:
+    fields = await _fields_answered(accept_language)
+
+    assert fields["llm_provider.reasoning_effort"]["label"] == label
+    assert set(fields) == set(SETTINGS_FIELDS)
 
 
 def test_the_script_types_no_key_list_of_its_own() -> None:

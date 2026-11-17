@@ -70,7 +70,9 @@ class FakeSource:
 
 
 class Request:
-    """What a handler reads of a request: its JSON body."""
+    """What a handler reads of a request: its JSON body, and headers that ask for no language."""
+
+    headers: dict[str, str] = {}
 
     def __init__(self, body) -> None:
         self._body = body

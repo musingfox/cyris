@@ -28,7 +28,15 @@ from cyris.domain.areas import (
     meets_birth_threshold,
 )
 from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, Lane, SourceConfig, TrackedTopic
-from cyris.i18n import ENGLISH, accept_language, browser_file, catalogs, resolve, translator
+from cyris.i18n import (
+    ENGLISH,
+    Translator,
+    accept_language,
+    browser_file,
+    catalogs,
+    resolve,
+    translator,
+)
 from cyris.service_layer import area_llm
 
 logger = logging.getLogger(__name__)
@@ -94,8 +102,13 @@ def _refused(error: str, field: str) -> web.Response:
     return web.json_response({"ok": False, "error": error, "field": field}, status=400)
 
 
-def _label(key: str) -> str:
-    return SETTINGS_FIELDS[key]["label"]
+def _label(t: Translator, key: str) -> str:
+    return t(f"settings_field.{key}")
+
+
+def _fields(t: Translator) -> dict[str, dict[str, Any]]:
+    """The registry as the pages read it: each field's structure, and its label in `t`'s words."""
+    return {key: {**field, "label": _label(t, key)} for key, field in SETTINGS_FIELDS.items()}
 
 
 def _probe_refusal(probe) -> str:
@@ -103,9 +116,9 @@ def _probe_refusal(probe) -> str:
     return "\n".join(part for part in (probe.detail, probe.fix) if part)
 
 
-def _values_note(keys: list[str]) -> str:
+def _values_note(t: Translator, keys: list[str]) -> str:
     """When the saved keys take effect: a live key reaches the pages, the rest the next run."""
-    live = [SETTINGS_FIELDS[key]["label"] for key in keys if SETTINGS_FIELDS[key].get("live")]
+    live = [_label(t, key) for key in keys if SETTINGS_FIELDS[key].get("live")]
     if not live:
         return "Effective next run."
     if len(live) == len(keys):
@@ -192,7 +205,7 @@ BROWSER_MESSAGES: tuple[str, ...] = (
     "onboarding.kept",
     "onboarding.key_missing",
     "onboarding.key_ready",
-    "onboarding.model_default",
+    "settings_option.model_default",
     "onboarding.model_hint_check",
     "onboarding.model_hint_none",
     "onboarding.model_hint_pick",
@@ -658,7 +671,7 @@ class TriageServer:
         return web.json_response(
             {
                 "values": values,
-                "fields": SETTINGS_FIELDS,
+                "fields": _fields(self._translator(request)),
                 "missing": sorted(key for key in GRADE_D_KEYS if key not in self._values),
                 # The keys a save sends as the page shows them while the home lacks them:
                 # an empty field's answer, and a select's starting value.
@@ -695,10 +708,14 @@ class TriageServer:
             return resolve(saved)
         return accept_language(request.headers.get("Accept-Language", "")) or ENGLISH
 
+    def _translator(self, request: web.Request) -> Translator:
+        """The `t` this request's answer is worded with: its pages' language."""
+        return translator(self._ui_language(request))
+
     async def _settings_body(self, request: web.Request) -> dict | web.Response:
         """The JSON object a settings write sent, or the response refusing it."""
         if self._settings is None:
-            t = translator(self._ui_language(request))
+            t = self._translator(request)
             return web.json_response(
                 {"ok": False, "error": t("error.no_settings_store")}, status=409
             )
@@ -843,6 +860,7 @@ class TriageServer:
         body = await self._settings_body(request)
         if isinstance(body, web.Response):
             return body
+        t = self._translator(request)
 
         values = body.get("values")
         if not isinstance(values, dict) or not values:
@@ -856,11 +874,11 @@ class TriageServer:
                     {"ok": False, "error": f"{key!r} is not a setting"}, status=400
                 )
             if key not in PLAIN_KEYS:
-                return _refused(f"{_label(key)} is saved from its own form", key)
+                return _refused(f"{_label(t, key)} is saved from its own form", key)
             try:
                 validated[key] = validate_setting(key, value)
             except ValueError as e:
-                return _refused(f"{_label(key)}: {e}", key)
+                return _refused(f"{_label(t, key)}: {e}", key)
 
         stored_provider = self._values.get("llm_provider.provider")
         if "llm_provider.reasoning_effort" in validated and stored_provider not in (
@@ -882,7 +900,7 @@ class TriageServer:
             return refused
 
         logger.info("Settings saved: %s", ", ".join(sorted(validated)))
-        note = _values_note(list(validated))
+        note = _values_note(t, list(validated))
         # The catalog this deployment's pages are now worded from, so a page worded
         # from another reloads in it (ADR-0027).
         ui_lang = self._ui_language(request)
@@ -904,16 +922,17 @@ class TriageServer:
         body = await self._settings_body(request)
         if isinstance(body, web.Response):
             return body
+        t = self._translator(request)
 
         values = {}
         for field in ("enabled", "provider", "model", "max_seeds"):
             key = f"vote_similarity.{field}"
             if field not in body:
-                return _refused(f"{_label(key)} is required", key)
+                return _refused(f"{_label(t, key)} is required", key)
             try:
                 values[key] = validate_setting(key, body[field])
             except ValueError as e:
-                return _refused(f"{_label(key)}: {e}", key)
+                return _refused(f"{_label(t, key)}: {e}", key)
 
         if values["vote_similarity.enabled"]:
             provider = values["vote_similarity.provider"]
