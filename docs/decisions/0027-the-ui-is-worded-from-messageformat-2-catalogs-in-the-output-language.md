@@ -253,8 +253,9 @@ container page makes.
   names.
 * Bad, because English is still special: it is the fallback, and the `source` that other catalogs
   check against.
-* Bad, because tests that assert English copy go red as each surface converts. The shared test
-  configuration's language is `zh-Hant` (`tests/fakes.py:25`).
+* Bad, because tests that assert English copy must read it from the catalog as each surface
+  converts, or they go red when the copy changes. The shared test configuration's language is
+  `en` (`tests/fakes.py:25`).
 * Neutral, because the `CLAUDE.md` convention "User-facing strings are English" becomes false once
   the last surface converts. It is rewritten then, with the owner's approval.
 
