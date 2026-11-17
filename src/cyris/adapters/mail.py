@@ -104,6 +104,8 @@ def build_digest_mail(
 ) -> tuple[str, str]:
     """The subject and plain-text body: Tracking, Stories and Topics, as the HTML part has them.
 
+    Glance is listed only when those three are empty (`Layers.mail_water`).
+
     Worded as the HTML part is: in the issue's language, else `language`, the current setting.
     """
     t = translator(issue_language(content, language))
@@ -141,6 +143,10 @@ def build_digest_mail(
             [line for pebble in layers.pebbles for line in _pebble_lines(pebble.item)],
         ),
         (t("layer.topics"), [line for sand in layers.sand for line in _sand_lines(sand)]),
+        (
+            t("layer.glance"),
+            [line for water in layers.mail_water for line in _pebble_lines(water.item)],
+        ),
     ]
     for label, entries in blocks:
         if entries:

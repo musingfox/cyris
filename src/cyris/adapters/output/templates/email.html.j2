@@ -141,6 +141,18 @@
         </section>
         {% endif %}
 
+        {% if layers.mail_water %}
+        <section class="section">
+            <h2 class="section-tag"><span class="rule"></span>{{ t("layer.glance") }}</h2>
+            {% for water in layers.mail_water %}{% set item = water.item %}
+            <article class="item" lang="{{ '' if water.untranslated else content_lang }}">
+                <h3 class="title" lang="">{{ title_link(item) }}</h3>
+                {% if item.summary %}<p class="summary">{{ item.summary }}</p>{% endif %}
+            </article>
+            {% endfor %}
+        </section>
+        {% endif %}
+
         {% if digest_url %}
         <p class="actions"><a class="btn primary" href="{{ digest_url }}">{{ t("email.read_online") }}</a></p>
         {% endif %}

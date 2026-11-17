@@ -49,6 +49,16 @@ class Layers:
     water: tuple[Water, ...]
     tracking: tuple[DigestSection, ...]
 
+    @property
+    def mail_water(self) -> tuple[Water, ...]:
+        """The water the mail lists: all of it when Tracking, Stories and Topics are empty.
+
+        Otherwise none, to keep a notification short; the page holds it (ui-language §6 *email*).
+        """
+        if self.tracking or self.pebbles or self.sand:
+            return ()
+        return self.water
+
 
 def layer_by_lane(content: DigestContent) -> Layers:
     pebbles = [

@@ -866,7 +866,12 @@ by value, from `_tokens.css.j2` and the §2 light palette (`adapters/output/emai
 - **One column.** `--measure` wide, `--s-4` gutters, no breakpoint. The sections are the page's, in its
   order and under its names (§6 *digest*), without its last: Tracking, Stories and Topics, from
   `layer_by_lane`, an empty one left out. The Glance layer is left to the page, to keep a
-  notification short (owner, 2026-11-16); `Read online` is how a reader reaches it. There is no lead panel; every item is separated by a
+  notification short (owner, 2026-11-16), and `Read online` is how a reader reaches it, with one
+  exception: when Tracking, Stories and Topics are all empty and Glance is not, the mail lists
+  Glance after where Topics would be, under the same marker, each item its title link and its
+  summary, with no tag pill or source (owner, 2026-11-17; a zh-Hant run that day kept 8 articles,
+  all Glance, and its mail held two buttons and no article). Any of the three non-empty, and the
+  mail still lists no Glance. `Layers.mail_water` is that one test. There is no lead panel; every item is separated by a
   `--border` hairline.
 - **Each block says what it says on the page, unfolded.** A Tracking topic is its name and each hit's
   title link. A pebble is its title link and its summary, with no story image: a
@@ -874,7 +879,7 @@ by value, from `_tokens.css.j2` and the §2 light palette (`adapters/output/emai
   mail. The mail shows its layers at once, as the page does without script. A sand block is its
   heading, its line, with no story image for the same reason, then each member's title link, listed open because a mail
   client runs no script and cannot be trusted with `<details>` or `<dialog>`. The mail and Discord name no
-  source anywhere, to keep a notification short (owner, 2026-11-16); the page names them (§6 *digest*). No item shows a score pill, as on the page. A legacy news paragraph takes the layers its units take on the page, so a unit that is water there is not sent. The
+  source anywhere, to keep a notification short (owner, 2026-11-16); the page names them (§6 *digest*). No item shows a score pill, as on the page. A legacy news paragraph takes the layers its units take on the page, so a unit that is water there is not sent, unless Glance is all the issue has. The
   plain-text part holds the same blocks, each item a `- title — link` line with its text indented
   below it.
 - **Discord follows the same order.** The notification is one embed per non-empty section, titled as

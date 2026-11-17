@@ -105,3 +105,17 @@ def four_layer_issue() -> DigestContent:
             )
         ],
     )
+
+
+def water_only_issue(language: str = "en") -> DigestContent:
+    """The same issue with only its water left: a one-article topic and a headline."""
+    issue = four_layer_issue()
+    return issue.model_copy(
+        update={
+            "output_language": language,
+            "featured_articles": [],
+            "fan_sections": [],
+            "news_clusters": issue.news_clusters[1:],
+            "tracked_topics": [],
+        }
+    )

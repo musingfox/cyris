@@ -8,11 +8,12 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 import respx
-from layered_issue import UNNAMED_SOURCES, four_layer_issue
+from layered_issue import UNNAMED_SOURCES, four_layer_issue, water_only_issue
 
 from cyris.adapters import mail
 from cyris.adapters.mail import build_digest_mail, send_alert_mail, send_digest_mail, send_mail
 from cyris.domain.models import DigestContent
+from cyris.i18n import translator
 from cyris.service_layer.alerts import RunAlert
 
 pytestmark = pytest.mark.unit
@@ -188,6 +189,39 @@ class TestDigestMail:
         _, text = build_digest_mail(four_layer_issue())
 
         for line in ("One report", "A headline", "The filter's sentence."):
+            assert line not in text, line
+
+    @pytest.mark.parametrize("language", ["en", "zh-Hant"])
+    def test_water_alone_is_listed_under_the_glance_label(self, language):
+        glance = translator(language)("layer.glance")
+
+        _, text = build_digest_mail(water_only_issue(language))
+
+        lines = text.splitlines()
+        assert lines[lines.index(glance) :] == [
+            glance,
+            "- One report — https://lone.example.test/1",
+            "  Its summary.",
+            "- A headline — https://headline.example.test/1",
+            "  The filter's sentence.",
+        ]
+        for source in UNNAMED_SOURCES:
+            assert source not in text, source
+
+    @pytest.mark.parametrize("language", ["en", "zh-Hant"])
+    @pytest.mark.parametrize("kept", ["tracked_topics", "featured_articles", "news_clusters"])
+    def test_any_other_layer_keeps_glance_off_the_text_part(self, language, kept):
+        full = four_layer_issue()
+        content = water_only_issue(language).model_copy(
+            update={
+                kept: [full.news_clusters[0]] if kept == "news_clusters" else getattr(full, kept)
+            }
+        )
+
+        _, text = build_digest_mail(content)
+
+        assert translator(language)("layer.glance") not in text.splitlines()
+        for line in ("A headline", "The filter's sentence."):
             assert line not in text, line
 
     @respx.mock

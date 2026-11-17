@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 from css_rules import text_langs
-from layered_issue import UNNAMED_SOURCES, four_layer_issue
+from layered_issue import UNNAMED_SOURCES, four_layer_issue, water_only_issue
 
 from cyris.adapters.output.email_digest import (
     LIGHT_PALETTE,
@@ -22,6 +22,7 @@ from cyris.domain.models import (
     DigestSection,
     UsageStats,
 )
+from cyris.i18n import translator
 
 pytestmark = pytest.mark.unit
 
@@ -572,3 +573,51 @@ def test_a_legacy_news_paragraph_in_the_mail_takes_the_layers_of_its_units() -> 
         in topics
     )
     assert "Letter" not in html
+
+
+class TestGlanceWhenAlone:
+    @pytest.mark.parametrize("language", ["en", "zh-Hant"])
+    def test_water_alone_is_listed_under_the_glance_marker(self, language):
+        glance = translator(language)("layer.glance")
+
+        html = render_digest_email(water_only_issue(language), DIGEST_URL)
+
+        assert MARKER.findall(html) == [glance]
+        section = _section(html, glance)
+        assert '<a href="https://lone.example.test/1">One report</a>' in section
+        assert '<p class="summary">Its summary.</p>' in section
+        assert '<a href="https://headline.example.test/1">A headline</a>' in section
+        assert '<p class="summary">The filter&#39;s sentence.</p>' in section
+
+    @pytest.mark.parametrize("language", ["en", "zh-Hant"])
+    def test_glance_has_no_source_tag_or_score(self, language):
+        html = render_digest_email(water_only_issue(language), DIGEST_URL)
+
+        for source in UNNAMED_SOURCES:
+            assert source not in html, source
+        assert "pill" not in _section(html, translator(language)("layer.glance"))
+
+    def test_an_untranslated_water_item_leaves_its_language_unknown(self):
+        content = water_only_issue("en")
+        headline = content.filtered_headlines[0].model_copy(update={"passed_through": True})
+        content = content.model_copy(update={"filtered_headlines": [headline]})
+
+        html = render_digest_email(content, DIGEST_URL)
+
+        assert re.findall(r'<article class="item" lang="([^"]*)"', html) == ["en", ""]
+
+    @pytest.mark.parametrize("language", ["en", "zh-Hant"])
+    @pytest.mark.parametrize("kept", ["tracked_topics", "featured_articles", "news_clusters"])
+    def test_any_other_layer_keeps_glance_off_the_mail(self, language, kept):
+        full = four_layer_issue()
+        content = water_only_issue(language).model_copy(
+            update={
+                kept: [full.news_clusters[0]] if kept == "news_clusters" else getattr(full, kept)
+            }
+        )
+
+        html = render_digest_email(content, DIGEST_URL)
+
+        assert translator(language)("layer.glance") not in MARKER.findall(html)
+        for text in ("A headline", "The filter's sentence.", "headline.example"):
+            assert text not in html, text
