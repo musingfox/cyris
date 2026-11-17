@@ -229,10 +229,10 @@ def _kind(raw: object) -> TopicKind:
 def _member(article: Article, article_scores: dict[str, float] | None) -> DigestItem:
     """One article of a sand block, as the page's fold and the sand line read it.
 
-    Stand-in until the sand-what-happened ticket: the summary is the article's own
-    excerpt, which the page shows as the sand block's one line for want
-    of a sentence written for the topic. A wire article opens with its dateline, which
-    would spend the line on the wire's name, so the excerpt starts after it.
+    The summary is the article's own excerpt: the topic dialog shows it, and the sand
+    line falls back to the first member's when no line was written for the topic. A wire
+    article opens with its dateline, which would spend the excerpt on the wire's name, so
+    the excerpt starts after it.
     """
     return DigestItem(
         title=article.title,
