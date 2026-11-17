@@ -10,6 +10,7 @@ import pytest
 from fakes import TEST_SETTINGS, FakeLLM, pipeline_settings
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
+from cyris.domain.layers import layer_by_lane
 from cyris.domain.models import Article, DigestItem, DigestSection, Lane, TopicRecord
 from cyris.domain.selection import digest_urls
 from cyris.service_layer.digest_pipeline import DigestPipeline
@@ -841,3 +842,60 @@ class TestSummarizeFollow:
             ("Body.", True),
         ]
         assert result.content.usage.fell_back_to_excerpts
+
+
+class TestSandLine:
+    """One more call per issue writes each sand topic's line; an issue with no sand makes none."""
+
+    @staticmethod
+    def _wires(n: int) -> list[Article]:
+        return [_article(i, Lane.SKIM, "Wire") for i in range(1, n + 1)]
+
+    async def test_an_issue_with_sand_makes_exactly_one_more_call(self, sample_sources):
+        lines = json.dumps({"lines": {"0": "Two reports of the outage.", "1": "The strike."}})
+        llm = FakeLLM([_kept(outage=[0, 1], strike=[2, 3], lone=[4]), lines])
+        pipeline = DigestPipeline(llm, **pipeline_settings())
+
+        result = await pipeline.process(
+            self._wires(5), sample_sources, timezone=TEST_SETTINGS["general.timezone"]
+        )
+
+        filter_call, line_call = llm.calls
+        assert '"selected"' in filter_call["system"]
+        assert '"lines"' in line_call["system"]
+        assert [s.heading for s in layer_by_lane(result.content).sand] == ["outage", "strike"]
+        assert [(s.line, s.line_untranslated) for s in layer_by_lane(result.content).sand] == [
+            ("Two reports of the outage.", False),
+            ("The strike.", False),
+        ]
+        assert result.sand_lines is not None
+        assert (result.sand_lines["topics"], result.sand_lines["written"]) == (2, 2)
+        assert result.content.usage.api_calls == 2
+
+    async def test_an_issue_with_no_sand_makes_no_more_calls(self, sample_sources):
+        llm = FakeLLM(_kept(a=[0], b=[1], c=[2]))
+        pipeline = DigestPipeline(llm, **pipeline_settings())
+
+        result = await pipeline.process(
+            self._wires(3), sample_sources, timezone=TEST_SETTINGS["general.timezone"]
+        )
+
+        (filter_call,) = llm.calls
+        assert '"selected"' in filter_call["system"]
+        assert result.content.news_clusters == []
+        assert result.sand_lines is None
+        assert result.content.usage.api_calls == 1
+
+    async def test_a_failed_line_call_keeps_the_stand_in_and_the_run(self, sample_sources):
+        llm = FakeLLM([_kept(outage=[0, 1]), "no json here"])
+        pipeline = DigestPipeline(llm, **pipeline_settings())
+
+        result = await pipeline.process(
+            self._wires(2), sample_sources, timezone=TEST_SETTINGS["general.timezone"]
+        )
+
+        (sand,) = layer_by_lane(result.content).sand
+        assert (sand.line, sand.line_untranslated) == ("Body.", True)
+        assert result.sand_lines is not None and result.sand_lines["written"] == 0
+        assert "error" in result.sand_lines
+        assert not result.content.usage.fell_back_to_excerpts

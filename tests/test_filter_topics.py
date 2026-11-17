@@ -416,7 +416,7 @@ async def test_a_continuing_topic_with_two_skims_this_issue_is_sand_under_its_st
     assert result.topics[0].id == "old-strike"
 
 
-async def test_the_sand_line_stays_its_first_members_excerpt() -> None:
+async def test_a_sand_line_the_model_did_not_write_is_its_first_members_excerpt() -> None:
     wire = "<p>（中央社首爾29日綜合外電報導）南韓軍方表示，北韓今天發射一枚飛彈。</p>"
     articles = [_article(1, "One", content=wire), _article(2, "Two")]
     model = ReplayModel({"One": STRIKE, "Two": STRIKE})

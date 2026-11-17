@@ -84,14 +84,16 @@ def layer_by_lane(content: DigestContent) -> Layers:
         if len(section.members or vote.urls) < 2:
             water.append(Water(vote, tags, section.story_id, vote.passed_through))
             continue
-        # Stored before members: the cluster's own summary is the only line it has.
+        # The line written for the topic, in the output language; without one, the first
+        # member's excerpt stands in. Stored before members: the cluster's own summary is the
+        # only line it has.
         first = section.members[0] if section.members else vote
         members = tuple(section.members or _members_of(vote))
         sand.append(
             Sand(
                 heading=section.heading,
-                line=first.summary,
-                line_untranslated=first.passed_through,
+                line=section.summary or first.summary,
+                line_untranslated=not section.summary and first.passed_through,
                 members=members,
                 vote=vote,
                 tags=tags,

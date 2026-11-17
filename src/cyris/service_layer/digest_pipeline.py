@@ -28,6 +28,7 @@ from cyris.domain.story_images import stamp_story_images, stamp_topic_images
 from cyris.domain.topics import TopicBook
 from cyris.service_layer.filtering import filter_articles, sections_by_topic
 from cyris.service_layer.ports import LLMClient
+from cyris.service_layer.sand_lines import write_sand_lines
 from cyris.service_layer.schedule import Period
 from cyris.service_layer.summarize import (
     build_follow_sections,
@@ -175,6 +176,13 @@ class DigestPipeline:
         news_clusters, headlines = sections_by_topic(filtered, topics, skim_lane, article_scores)
         for article in (*read_lane, *follow_lane):
             topics.ensure(article.url, article.title)
+        sand_lines = await write_sand_lines(
+            news_clusters,
+            self._llm,
+            usage,
+            output_language=self.output_language,
+            style_prompt=self.style_prompt,
+        )
 
         summaries = await summarize_articles(
             read_lane,
@@ -292,4 +300,5 @@ class DigestPipeline:
             story_records=story_records,
             topics=issue_topics,
             preference_moves=moves,
+            sand_lines=sand_lines,
         )

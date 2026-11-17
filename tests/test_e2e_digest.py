@@ -134,6 +134,8 @@ CLUSTER = {
     "heading": "Region east proxy outage and recovery",
     "tags": [{"tag": "Outage", "kind": "domain"}],
 }
+# What the sand line call writes for the cluster: the line under its heading.
+SAND_LINE = "Region east lost its proxy, and it is back."
 OWN_SUMMARIES = {
     "a1": "A1 on its own.",
     "a2": "A2 on its own.",
@@ -178,6 +180,7 @@ LLM = {
     },
     # l1 has none: the model left that Features article out of `summaries`.
     "own_summaries": {TITLE[k]: text for k, text in OWN_SUMMARIES.items()},
+    "sand_lines": {CLUSTER["heading"]: SAND_LINE},
 }
 SETTINGS = harness.settings(
     **{
@@ -338,7 +341,7 @@ EXPECTED_ROUTES = {
     "workers_domains": 1,
     "email_send": 1,
     "discord_webhook": 1,
-    "gemini_generate": 4,
+    "gemini_generate": 5,
     # Vote similarity is off, and no feed is polled directly: the rss Worker buffers them.
     "gemini_embed": 0,
     "workers_ai_clef": 0,
@@ -542,9 +545,9 @@ def test_the_run_records_its_spend_its_outcome_and_its_issue(receipts) -> None:
         "articles_received": 13,
         "articles_included": 12,
         "model": MODEL,
-        "api_calls": 4,
-        "input_tokens": 4000,
-        "output_tokens": 2000,
+        "api_calls": 5,
+        "input_tokens": 5000,
+        "output_tokens": 2500,
         "cost_usd": round(usage.estimated_cost, 6),
     }
 
@@ -570,7 +573,8 @@ def test_the_run_records_its_spend_its_outcome_and_its_issue(receipts) -> None:
         "degraded": True,
     }
     assert summary["digest_url"] == receipts.digest_url
-    assert (summary["llm"]["model"], summary["llm"]["api_calls"]) == (MODEL, 4)
+    assert (summary["llm"]["model"], summary["llm"]["api_calls"]) == (MODEL, 5)
+    assert (summary["sand_lines"]["topics"], summary["sand_lines"]["written"]) == (1, 1)
 
     (issue,) = run.rows("SELECT * FROM digests")
     content = json.loads(issue["content"])
@@ -719,7 +723,7 @@ def _llm_calls(records: list[dict]) -> list[tuple[str, list[str]]]:
 def test_each_llm_call_names_its_kind_and_the_articles_it_was_given(receipts) -> None:
     calls = by_route(receipts.records, "gemini_generate")
     kinds = [c["llm"]["kind"] for c in calls]
-    assert kinds == ["scoring", "filter", "summarize", "summarize"]
+    assert kinds == ["scoring", "filter", "sand_line", "summarize", "summarize"]
     # Sorted, not sets: an article listed twice must show. The order within a prompt
     # is the store's, which no setting decides.
     given = [sorted(titles) for _, titles in _llm_calls(receipts.records)]
@@ -727,8 +731,10 @@ def test_each_llm_call_names_its_kind_and_the_articles_it_was_given(receipts) ->
         sorted(TITLE[k] for k in ("a1", "a2", "b1", "b2", "l1", "l2", "f1", "f2")),
         sorted(TITLE.values()),
     ]
+    # One call for every sand topic, each listed by its heading.
+    assert given[2] == [CLUSTER["heading"]]
     # One call per topic group, in the order the store returns the window.
-    assert sorted(given[2:4]) == sorted(
+    assert sorted(given[3:5]) == sorted(
         [
             sorted(TITLE[k] for k in ("a1", "a2", "b1", "b2")),
             sorted(TITLE[k] for k in ("l1", "l2")),
@@ -938,6 +944,10 @@ def check_rewritten_ids_match(r: Receipts) -> None:
     # The topic of two is one sand block: one vote on both members, its dialog their links.
     (sand,) = page.find_all("div", "news-cluster")
     assert sand.one("h3").text() == CLUSTER["heading"]
+    # The line written for the topic, echoed under a rewritten id, in the output language.
+    line = sand.one("p", "summary")
+    assert line.text() == SAND_LINE
+    assert "lang" not in line.attrs
     vote = sand.one("span", "vote-group")
     assert json.loads(vote.attrs["data-urls"]) == [URL["n1"], URL["n2"]]
     assert vote.attrs["data-story-id"].startswith(f"{r.date}-morning-")
@@ -967,6 +977,7 @@ def test_discord_and_mail_each_receive_the_issue_once(receipts) -> None:
     for key in (*TOP_STORY, *FEATURES):
         assert f"[{TITLE[key]}]({URL[key]})" in stories["description"], key
     assert CLUSTER["heading"] in topics["description"]
+    assert SAND_LINE in topics["description"]
     for key in WATER:
         assert URL[key] not in json.dumps(receipts.discord()), key
     assert f"({receipts.digest_url})" in stats["description"]

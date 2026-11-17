@@ -466,7 +466,10 @@ invoker commands (§4 *topic dialog*); the mail and Discord are not affected.
   hover; the owner found two columns of them read as a wall of text (owner, 2026-11-02). Until
   2026-11-12 the meta row also held a `<details class="src-fold">` whose summary was `N articles` and
   which unfolded each member's title link with its source name; the topic dialog replaced it, and the
-  count moved into the dialog (owner, 2026-11-12). The line is a stand-in until the sand-what-happened ticket: the first
+  count moved into the dialog (owner, 2026-11-12). The line is written for the topic: one or two
+  sentences of what happened, in the issue's output language, from one model call per issue
+  (`docs/architecture.md` §3.2, *The sand line*). A topic that call leaves without one keeps the
+  stand-in, marked untranslated: the first
   member's excerpt of up to 200 characters (owner, 2026-11-17; an uncapped line had run to
   300-5500 characters with bylines and footers, and an issue stored before that day holds 80),
   taken after a wire dateline in brackets at the very

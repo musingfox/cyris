@@ -43,7 +43,7 @@ flowchart TB
 
     subgraph CORE["Core · service_layer + domain"]
         RUN["run_digest orchestrator"]
-        UC["use cases: fetching · scoring · digest_pipeline<br/>filtering · summarize · vote_similarity · vote_order · tracking"]
+        UC["use cases: fetching · scoring · digest_pipeline<br/>filtering · summarize · sand_lines · vote_similarity · vote_order · tracking"]
         DOM["domain (pure): selection · models · similarity"]
         RUN --> UC
         RUN --> DOM
@@ -518,10 +518,28 @@ the filter assigned topics may also hold a cluster of one article, which is wate
 first, then pebbles, sand and water. Each item carries exactly one vote group: a pebble's and a water
 row's vote is for its article, and a sand block's is for every member URL, posted once per URL; the
 vote sync turns those posts into one vote on the item's topic (§4 *Topic votes*), which a pebble shares
-with the sand or water of its topic. Sand's line is its first member's excerpt, at most 200
-characters (`MEMBER_SUMMARY_CHARS`, §5; an issue stored before 2026-11-17 holds 80), until
-sand-what-happened writes one. The page's unopened card shows the first 80 characters of it
-(`CARD_LINE_CHARS`, §5); its dialog, the mail and Discord show it whole.
+with the sand or water of its topic. Sand's line is the one written for its topic (below), and
+its first member's excerpt, the stand-in, when none was written. A member's excerpt is at most 200
+characters (`MEMBER_SUMMARY_CHARS`, §5; an issue stored before 2026-11-17 holds 80). The page's
+unopened card shows the first 80 characters of the line (`CARD_LINE_CHARS`, §5); its dialog, the
+mail and Discord show it whole.
+
+**The sand line** (`service_layer/sand_lines.py`) is one or two sentences of what happened,
+written for each sand topic in the output language. The filter assigns the topics and no later
+call writes for one, so once `sections_by_topic` has built the news clusters one more call per
+issue takes every cluster of two or more members, each its heading and its members' titles and
+excerpts, and returns a line per topic; an issue with no sand makes no call. The prompt
+(`SAND_LINE_SYSTEM`) allows the event only: no comparison of viewpoints, no cause or consequence
+the reports do not state, no analysis, with an over-the-line counter-example, and it shares
+`SUMMARY_OPENING_RULES` and `OUTPUT_LANGUAGE_RULES` with the filter and summarize prompts. The
+line is stored as the cluster's `DigestSection.summary`, the field a read-lane group's own summary
+already uses, so a stored issue needs no new field and one stored before keeps its stand-in.
+`layer_by_lane` reads it, marked as the output language; a topic the reply leaves out, a malformed
+reply or a failed call keeps the stand-in, marked untranslated, and the run goes on. Falling back
+to it does not make the run degraded (below), since the stand-in is what the page showed before
+the line was written. The call's tokens are part of the run's LLM `usage`, so `usage_log`'s calls,
+tokens and cost count it, and `run_summary`'s `sand_lines` is the call's own receipt: the topics
+it was given, the lines it wrote, its calls, tokens and estimated cost, and `error` when it failed.
 
 **The vote order** (`[digest] rank_by_preference`), option I of ADR-0023. When it is on, each item
 is scored as its topic (§4 *Topics*): the topic's own votes, each halving every
@@ -646,7 +664,8 @@ through it too.
 A run whose provider is not `none` but whose scoring, filter or summarize step went on without
 the LLM's answer, because no client was built or its call failed, is *degraded*
 (`is_degraded_run` in `domain/models.py`): the notification, the page and the mail open with a
-notice saying so.
+notice saying so. The sand line call is not one of those steps: a sand line it did not write
+keeps the stand-in and degrades nothing.
 
 ## 4. Data residency
 

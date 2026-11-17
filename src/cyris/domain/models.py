@@ -141,8 +141,9 @@ class DigestSection(BaseModel):
     description: str | None = None
     items: list[DigestItem] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
-    # One summary the LLM wrote for the whole read-lane group, beside each item's
-    # own. Set only there, and printed only when the group is the Top story.
+    # One summary the LLM wrote for the whole section, beside each item's own: a read-lane
+    # group's, printed only when the group is the Top story, and a news cluster's sand line
+    # (`service_layer.sand_lines`), None when the call wrote it none.
     summary: str | None = None
     # Persistent story id ("{date}-{period}-{n}", same shape as StoryRecord.id) for
     # news clusters; None everywhere else and on digests rendered before stories.
@@ -454,6 +455,9 @@ class ProcessResult(BaseModel):
     topics: list[TopicRecord] = Field(default_factory=list)
     # Features and news positions the vote preference changed; None when none was given.
     preference_moves: dict[str, int] | None = None
+    # The sand line call's receipt: its topics, the lines it wrote and its spend; None when
+    # it made no call.
+    sand_lines: dict | None = None
 
 
 class TriageFeedbackData(BaseModel):

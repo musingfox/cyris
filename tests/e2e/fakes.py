@@ -88,11 +88,12 @@ NEWSLETTER_VALUE_HEADERS = {
 }  # fmt: skip
 
 # The JSON key each system prompt asks the model to answer under is what tells the
-# three prompt kinds apart (service_layer/prompts.py), not the prose around it.
+# four prompt kinds apart (service_layer/prompts.py), not the prose around it.
 PROMPT_KINDS = (
     ("scoring", '"scores"'),
     ("filter", '"selected"'),
     ("summarize", '"sections"'),
+    ("sand_line", '"lines"'),
 )
 _PROMPT_LINE = re.compile(r"^\[([^\]]+)\] (.*)$")
 _SOURCED_TITLE = re.compile(r"^\((.*?)\) (.*)$")
@@ -565,8 +566,8 @@ def _llm_answer(kind, prompt, articles, rules):
     """A schema-valid answer built from the article positions the prompt names.
 
     `rules` is the test's script: a score per title, the filter's picks and each title's
-    topic, the summaries per title and per topic group, and the format the model
-    "rewrites" a position into before echoing it.
+    topic, the summaries per title and per topic group, the line per sand topic's heading,
+    and the format the model "rewrites" a position into before echoing it.
     """
     rewrite = rules["rewrite_id"].format
     titles = [title for _, _, title in articles]
@@ -595,6 +596,15 @@ def _llm_answer(kind, prompt, articles, rules):
             ]
             + [{"id": rewrite(titles.index(t)), **rules["topics"][t]} for t in kept],
             "rejected_count": len(titles) - len(picks) - len(kept),
+        }
+    if kind == "sand_line":
+        lines = rules.get("sand_lines", {})
+        return {
+            "lines": {
+                rewrite(int(topic_id)): lines[heading]
+                for topic_id, _, heading in articles
+                if heading in lines
+            }
         }
     tag = prompt.splitlines()[0].split(":", 1)[1].strip()
     group = rules["groups"][tag]

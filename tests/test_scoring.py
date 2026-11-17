@@ -841,6 +841,16 @@ class TestScoringAreaPrompt:
         ).hexdigest()
         assert digest == "0756d4bf6917a76a9c6fcb46183b44a87ae8ad2db314dac632a83be2e4c22968"
 
+    def test_the_sand_line_prompt_is_byte_identical(self):
+        import hashlib
+
+        from cyris.service_layer.prompts import build_sand_line_system_prompt
+
+        digest = hashlib.sha256(
+            build_sand_line_system_prompt("en", style_prompt="Plain.").encode()
+        ).hexdigest()
+        assert digest == "7c577024c8fce40d44d4ca11557e7ab5a1abe20b23e37778a5588731c6c32e2b"
+
 
 # --- Area pick parsing (ScoringAreaParse) ---
 

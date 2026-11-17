@@ -848,6 +848,8 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         summary["preference_rank_moved_features"] = result.preference_moves["features"]
         summary["preference_rank_moved_units"] = result.preference_moves["news"]
     summary.update(order.receipt.as_summary())
+    if result.sand_lines is not None:
+        summary["sand_lines"] = result.sand_lines
     # A view, not a verdict: no hit changes its article's state or the issue's counts.
     content.tracked_topics = tracked_sections
     # Deliberately no empty-records guard: a re-run with no sand must clear the

@@ -21,6 +21,7 @@ from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
 from cyris.adapters.mail import send_alert_mail
 from cyris.adapters.notify import send_discord_alert
 from cyris.adapters.output.html_digest import FAVICON, HtmlDigestWriter
+from cyris.adapters.output.usage_log import usage_record
 from cyris.adapters.run_alert import alert_message
 from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.adapters.store.topics import D1TopicStore
@@ -1987,6 +1988,74 @@ async def test_the_stored_digest_is_the_final_content(tmp_path: Path, caplog) ->
     assert loaded.synthetic_url_count == 1
     assert loaded.dead_link_count is not None
     assert loaded.usage.api_calls == _run_summary(caplog)["llm"]["api_calls"]
+
+
+def _wire_run(tmp_path: Path, topic_names: list[str | None], *replies: str):
+    """Skim articles the filter keeps, each under the topic named at its position."""
+    wires = [
+        _vote_article(i, f"Wire {i}", f"https://wire.example.test/{i}").model_copy(
+            update={"source_lane": Lane.SKIM}
+        )
+        for i in range(len(topic_names))
+    ]
+    selected = [
+        {"id": i, "title": f"Wire {i}", "source": "NotifySource", "topic_name": name}
+        for i, name in enumerate(topic_names)
+    ]
+    llm = FakeLLM([json.dumps({"scores": []}), json.dumps({"selected": selected}), *replies])
+    logged: list[DigestContent] = []
+    deps, _ = make_deps(tmp_path, llm, FakeSource(wires))
+    return replace(deps, log_usage=logged.append), llm, logged
+
+
+async def test_a_run_with_sand_makes_one_more_call_and_its_receipt_shows_it(
+    tmp_path: Path, caplog
+) -> None:
+    lines = json.dumps({"lines": {"0": "Two reports of one outage."}})
+    deps, llm, logged = _wire_run(tmp_path, ["Outage", "Outage"], lines)
+
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        report = await run_digest(deps, RunOptions())
+
+    assert report.status == "ok"
+    asked = [
+        next(k for k in ('"scores"', '"selected"', '"lines"') if k in c["system"])
+        for c in llm.calls
+    ]
+    assert asked == ['"scores"', '"selected"', '"lines"']
+    summary = _run_summary(caplog)
+    assert summary["sand_lines"] == {
+        "topics": 1,
+        "written": 1,
+        "api_calls": 1,
+        "input_tokens": 500,
+        "output_tokens": 100,
+        "estimated_cost_usd": None,
+    }
+    assert summary["llm"]["api_calls"] == 3
+    (content,) = logged
+    record = usage_record(content)
+    assert (record["api_calls"], record["input_tokens"], record["output_tokens"]) == (
+        3,
+        1500,
+        300,
+    )
+    (cluster,) = content.news_clusters
+    assert cluster.summary == "Two reports of one outage."
+
+
+async def test_a_run_with_no_sand_makes_no_more_calls(tmp_path: Path, caplog) -> None:
+    deps, llm, logged = _wire_run(tmp_path, [None, None])
+
+    with caplog.at_level("INFO", logger="cyris.service_layer.run_digest"):
+        report = await run_digest(deps, RunOptions())
+
+    assert report.status == "ok"
+    assert len(llm.calls) == 2
+    summary = _run_summary(caplog)
+    assert "sand_lines" not in summary
+    assert summary["llm"]["api_calls"] == 2
+    assert usage_record(logged[0])["api_calls"] == 2
 
 
 async def test_the_stored_digest_keeps_the_start_its_run_is_named_by(

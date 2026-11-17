@@ -130,6 +130,21 @@ def test_the_sand_line_stands_in_with_the_first_members_excerpt() -> None:
     assert sand.line_untranslated
 
 
+def test_the_sand_line_is_the_line_written_for_the_topic_in_the_output_language() -> None:
+    cluster = _cluster("big", 2, summary="Two reports of one event.")
+
+    (sand,) = layer_by_lane(_content(news_clusters=[cluster])).sand
+
+    assert (sand.line, sand.line_untranslated) == ("Two reports of one event.", False)
+    assert [m.summary for m in sand.members] == ["Excerpt big-0", "Excerpt big-1"]
+
+
+def test_an_empty_written_line_falls_back_to_the_stand_in() -> None:
+    (sand,) = layer_by_lane(_content(news_clusters=[_cluster("big", 2, summary="")])).sand
+
+    assert (sand.line, sand.line_untranslated) == ("Excerpt big-0", True)
+
+
 def test_a_cluster_of_one_article_is_a_water_row_keeping_its_story_and_tags() -> None:
     content = _content(news_clusters=[_cluster("one", 1)])
 
