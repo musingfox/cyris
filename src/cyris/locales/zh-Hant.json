@@ -37,27 +37,27 @@
     "source": "this deployment has no settings store to write"
   },
   "feed_check.already_listed": {
-    "text": "清單中已有這個訂閱源，名稱為「{$name}」。",
+    "text": "清單中已有這個資訊來源，名稱為「{$name}」。",
     "source": "This feed is already in the list as {$name}."
   },
   "feed_check.encoded": {
-    "text": "{$url} 回應了未要求的壓縮格式。請貼上訂閱源本身的網址。",
+    "text": "{$url} 回應了未要求的壓縮格式。請貼上資訊來源本身的網址。",
     "source": "{$url} answered in a compressed form the check did not ask for. Paste the feed's own address."
   },
   "feed_check.http_status": {
-    "text": "{$url} 回應 HTTP {$status}。請檢查網址，或改貼訂閱源本身的網址。",
+    "text": "{$url} 回應 HTTP {$status}。請檢查網址，或改貼資訊來源本身的網址。",
     "source": "{$url} answered HTTP {$status}. Check the address, or paste the feed's own address."
   },
   "feed_check.no_articles": {
-    "text": "訂閱源 {$url} 尚無文章，目前沒有內容可讀。",
+    "text": "資訊來源 {$url} 尚無文章，目前沒有內容可讀。",
     "source": "The feed at {$url} has no articles, so there is nothing to read from it yet."
   },
   "feed_check.no_feed_link": {
-    "text": "頁面 {$url} 未連結任何 RSS 或 Atom 訂閱源。請在網站上找到訂閱源本身的網址並貼上。",
+    "text": "頁面 {$url} 未連結任何 RSS 或 Atom 資訊來源。請在網站上找到資訊來源本身的網址並貼上。",
     "source": "The page at {$url} links no RSS or Atom feed. Find the feed's own address on the site and paste that."
   },
   "feed_check.not_a_feed": {
-    "text": "{$url} 不是 RSS 或 Atom 訂閱源。請貼上訂閱源的網址，或有連結訂閱源的網站首頁。",
+    "text": "{$url} 不是 RSS 或 Atom 資訊來源。請貼上資訊來源的網址，或有連結資訊來源的網站首頁。",
     "source": "{$url} is not an RSS or Atom feed. Paste a feed's address, or a site's home page that links one."
   },
   "feed_check.not_a_url": {
@@ -65,15 +65,15 @@
     "source": "Paste a web address that starts with http:// or https://."
   },
   "feed_check.not_public": {
-    "text": "{$url} 位於私人或本機網路，檢查不會抓取這類網址。請貼上公開訂閱源的網址。",
+    "text": "{$url} 位於私人或本機網路，檢查不會抓取這類網址。請貼上公開資訊來源的網址。",
     "source": "{$url} is on a private or local network, which this check does not fetch. Paste a public feed's address."
   },
   "feed_check.too_large": {
-    "text": "{$url} 回應的內容過大，不可能是訂閱源。請貼上訂閱源本身的網址。",
+    "text": "{$url} 回應的內容過大，不可能是資訊來源。請貼上資訊來源本身的網址。",
     "source": "The answer from {$url} is too large to be a feed. Paste the feed's own address."
   },
   "feed_check.too_many_redirects": {
-    "text": "{$url} 重新導向次數過多。請貼上訂閱源本身的網址。",
+    "text": "{$url} 重新導向次數過多。請貼上資訊來源本身的網址。",
     "source": "{$url} redirects too many times. Paste the feed's own address."
   },
   "feed_check.unreachable": {
@@ -188,15 +188,15 @@
   "notify.stat_sources": {"text": "來源", "source": "Sources"},
   "onboarding.add": {"text": "新增", "source": "Add"},
   "onboarding.added": {
-    "text": "已新增 {$count} 個訂閱源：{$names}。{$note}",
+    "text": "已新增 {$count} 個資訊來源：{$names}。{$note}",
     "source": ".input {$count :integer}\n.match $count\none {{Added 1 feed: {$names}. {$note}}}\n* {{Added {$count} feeds: {$names}. {$note}}}"
   },
   "onboarding.added_some": {
-    "text": ".input {$failed :integer}\n{{已新增 {$added}／{$picked} 個訂閱源，以下未新增：}}",
+    "text": ".input {$failed :integer}\n{{已新增 {$added}／{$picked} 個資訊來源，以下未新增：}}",
     "source": ".input {$failed :integer}\n.match $failed\none {{Added {$added} of {$picked} feeds. This one was not added:}}\n* {{Added {$added} of {$picked} feeds. These were not added:}}"
   },
   "onboarding.added_some_next": {
-    "text": "按「下一步」重試，或按「略過」不加入這些訂閱源，直接繼續。",
+    "text": "按「下一步」重試，或按「略過」不加入這些資訊來源，直接繼續。",
     "source": "Press Next to try again, or Skip to go on without them."
   },
   "onboarding.adding": {
@@ -214,7 +214,7 @@
     "source": "Building the first issue: {$elapsed} so far. It usually takes a few minutes. You can leave with Finish: the issue still reaches the archive."
   },
   "onboarding.cards_empty": {
-    "text": "這 {$count} 個訂閱源沒有抓到文章：{$names}。它們仍保留在來源中，第一期會再讀取一次；請到「設定」的「來源」檢查。",
+    "text": "這 {$count} 個資訊來源沒有抓到文章：{$names}。它們仍保留在來源中，第一期會再讀取一次；請到「設定」的「來源」檢查。",
     "source": ".input {$count :integer}\n.match $count\none {{No articles came back from this feed: {$names}. They stay in your sources and the first issue reads them again; check them under Sources in Settings.}}\n* {{No articles came back from these {$count} feeds: {$names}. They stay in your sources and the first issue reads them again; check them under Sources in Settings.}}"
   },
   "onboarding.cards_failed": {
@@ -222,7 +222,7 @@
     "source": "{$reason} Press Skip to go on without votes, or reload the page to try again."
   },
   "onboarding.cards_no_sources": {
-    "text": "尚無可抽取文章的訂閱源。請按「上一步」挑選，或按「下一步」繼續。",
+    "text": "尚無可抽取文章的資訊來源。請按「上一步」挑選，或按「下一步」繼續。",
     "source": "There are no feeds to draw from yet. Press Back to pick some, or Next to go on."
   },
   "onboarding.cards_none": {
@@ -230,7 +230,7 @@
     "source": "There is no article to vote on yet. Press Next to go on: the first issue works without votes."
   },
   "onboarding.cards_poll_failed": {
-    "text": "剛才無法抓取訂閱源（{$reason}），這些卡片只來自之前抓到的文章。",
+    "text": "剛才無法抓取資訊來源（{$reason}），這些卡片只來自之前抓到的文章。",
     "source": "The feeds could not be fetched just now ({$reason}), so these cards are only what had been fetched before."
   },
   "onboarding.check": {"text": "檢查", "source": "Check"},
@@ -270,27 +270,27 @@
   },
   "onboarding.evening": {"text": "晚上發布", "source": "Evening"},
   "onboarding.feed_count": {
-    "text": "{$count} 個訂閱源",
+    "text": "{$count} 個資訊來源",
     "source": ".input {$count :integer}\n.match $count\none {{{$count} feed}}\n* {{{$count} feeds}}"
   },
   "onboarding.feed_refused": {"text": "{$name}：{$reason}", "source": "{$name}: {$reason}"},
   "onboarding.feeds_load_failed": {
-    "text": "無法載入訂閱源清單：{$reason}。請重新載入頁面再試一次。",
+    "text": "無法載入資訊來源清單：{$reason}。請重新載入頁面再試一次。",
     "source": "Could not load the feed list: {$reason}. Reload the page to try again."
   },
   "onboarding.fetch_failed_for": {"text": "抓取失敗的來源：{$sources}。", "source": "Fetching failed for: {$sources}."},
   "onboarding.fetching_cards": {
-    "text": "正在從訂閱源抓取最新文章，可能需要一兩分鐘…",
+    "text": "正在從資訊來源抓取最新文章，可能需要一兩分鐘…",
     "source": "Fetching the latest articles from your feeds. This can take a minute or two…"
   },
   "onboarding.filter_snippet": {"text": "讀取字數（速覽與主題）", "source": "Characters read (Glance and topics)"},
   "onboarding.finish": {"text": "完成", "source": "Finish"},
   "onboarding.first_issue_heading": {"text": "第一期", "source": "First issue"},
   "onboarding.first_issue_lede": {
-    "text": "現在就用你的訂閱源和投票產生一期精選，不必等到下一個發布時間。產生方式和排定的精選相同，也會發送通知；按「略過」則讓第一期在那個時間產生。",
+    "text": "現在就用你的資訊來源和投票產生一期精選，不必等到下一個發布時間。產生方式和排定的精選相同，也會發送通知；按「略過」則讓第一期在那個時間產生。",
     "source": "Build an issue now from your feeds and votes, instead of waiting for the next publish hour. It runs as a scheduled issue does, notifications included, and Skip leaves the first issue to that hour."
   },
-  "onboarding.gone": {"text": "已不在訂閱源中 · 未記錄", "source": "No longer in the feed · not recorded"},
+  "onboarding.gone": {"text": "已不在資訊來源中 · 未記錄", "source": "No longer in the feed · not recorded"},
   "onboarding.hour_needed": {
     "text": ".input {$which :string}\n.match $which\nmorning {{請為「早上發布」填入 0 到 23 的整點。}}\nevening {{請為「晚上發布」填入 0 到 23 的整點。}}\n* {{請為「早上發布」和「晚上發布」填入 0 到 23 的整點。}}",
     "source": ".input {$which :string}\n.match $which\nmorning {{Morning needs a whole hour from 0 to 23.}}\nevening {{Evening needs a whole hour from 0 to 23.}}\n* {{Morning and Evening need a whole hour from 0 to 23.}}"
@@ -319,7 +319,7 @@
     "text": "每期精選使用的語言，以及發布時間採用的時區。",
     "source": "The language each issue is written in, and the clock its publish hours are read in."
   },
-  "onboarding.loading_feeds": {"text": "正在載入訂閱源…", "source": "Loading feeds…"},
+  "onboarding.loading_feeds": {"text": "正在載入資訊來源…", "source": "Loading feeds…"},
   "onboarding.loading_settings": {"text": "正在載入設定…", "source": "Loading settings…"},
   "onboarding.max_articles": {"text": "每期文章數", "source": "Articles per run"},
   "onboarding.max_articles_help": {
@@ -375,12 +375,12 @@
     "source": "The language headlines and summaries are written in."
   },
   "onboarding.own_added": {
-    "text": "「{$name}」已列在「你的訂閱源」並勾選，按「下一步」會和其他訂閱源一起新增。",
+    "text": "「{$name}」已列在「你的資訊來源」並勾選，按「下一步」會和其他資訊來源一起新增。",
     "source": "{$name} is under Your feeds, checked: Next adds it with the others."
   },
-  "onboarding.own_feed": {"text": "新增自己的訂閱源", "source": "Add your own feed"},
+  "onboarding.own_feed": {"text": "新增自己的資訊來源", "source": "Add your own feed"},
   "onboarding.own_feed_help": {
-    "text": "貼上訂閱源的網址，或有連結訂閱源的網站首頁。名稱會採用訂閱源本身的標題。",
+    "text": "貼上資訊來源的網址，或有連結資訊來源的網站首頁。名稱會採用資訊來源本身的標題。",
     "source": "A feed's address, or a site's home page that links one. It is named by the feed's own title."
   },
   "onboarding.own_listed": {
@@ -393,7 +393,7 @@
   },
   "onboarding.page_title": {"text": "Cyris 設定精靈", "source": "Cyris Onboarding"},
   "onboarding.paste_first": {
-    "text": "請先貼上訂閱源的網址或網站首頁。",
+    "text": "請先貼上資訊來源的網址或網站首頁。",
     "source": "Paste a feed's address, or a site's home page, first."
   },
   "onboarding.pick_provider": {
@@ -401,11 +401,11 @@
     "source": "Pick a provider whose key is present, or None."
   },
   "onboarding.picked": {
-    "text": "已勾選 {$count} 個訂閱源。",
+    "text": "已勾選 {$count} 個資訊來源。",
     "source": ".input {$count :integer}\n.match $count\none {{{$count} feed picked.}}\n* {{{$count} feeds picked.}}"
   },
   "onboarding.picked_slow": {
-    "text": "「投票」步驟會先抓取每個勾選的訂閱源，再發出卡片：{$slow} 個以內約需一分鐘，超過會更久。",
+    "text": "「投票」步驟會先抓取每個勾選的資訊來源，再發出卡片：{$slow} 個以內約需一分鐘，超過會更久。",
     "source": "The Votes step fetches every picked feed before it deals cards: up to {$slow} take about a minute, and more take longer."
   },
   "onboarding.plan_no_sources": {
@@ -454,7 +454,7 @@
     "source": "Press Try again, or Finish to leave: the next publish hour brings an issue either way."
   },
   "onboarding.run_no_articles": {
-    "text": "在本期讀取的時間範圍內，你的訂閱源都沒有文章。",
+    "text": "在本期讀取的時間範圍內，你的資訊來源都沒有文章。",
     "source": "None of your feeds had an article in the window the run reads."
   },
   "onboarding.run_no_pending": {
@@ -500,7 +500,7 @@
     "source": "How much of each article the model reads at each step; more costs more per call."
   },
   "onboarding.sources_feeds_lede": {
-    "text": "以下是所選主題的訂閱源。請勾選你會讀的；按「上一步」可以更改主題。",
+    "text": "以下是所選主題的資訊來源。請勾選你會讀的；按「上一步」可以更改主題。",
     "source": "The feeds of the topics you picked. Check the ones you read; Back changes the topics."
   },
   "onboarding.sources_had": {
@@ -509,7 +509,7 @@
   },
   "onboarding.sources_heading": {"text": "來源", "source": "Sources"},
   "onboarding.sources_topics_lede": {
-    "text": "本站要讀取的訂閱源，每個都由發布者自己提供。請選擇你關注的主題，按「下一步」會列出這些主題的訂閱源。",
+    "text": "本站要讀取的資訊來源，每個都由發布者自己提供。請選擇你關注的主題，按「下一步」會列出這些主題的資訊來源。",
     "source": "The feeds this deployment reads, each a publisher's own feed. Pick the topics you follow; Next shows their feeds."
   },
   "onboarding.start": {"text": "產生第一期", "source": "Start the first issue"},
@@ -553,7 +553,7 @@
   },
   "onboarding.topics": {"text": "主題", "source": "Topics"},
   "onboarding.topics_hint": {
-    "text": "選擇主題，查看其訂閱源。若一個都不選就按「下一步」，會直接前往新增自己的訂閱源。",
+    "text": "選擇主題，查看其資訊來源。若一個都不選就按「下一步」，會直接前往新增自己的資訊來源。",
     "source": "Pick topics to see their feeds. Next with none picked goes straight to adding your own feed."
   },
   "onboarding.try_again": {"text": "再試一次", "source": "Try again"},
@@ -587,17 +587,17 @@
   },
   "onboarding.vote_up": {"text": "多看這類", "source": "Interested"},
   "onboarding.votes_gone": {
-    "text": "發卡片後已有 {$count} 篇文章離開訂閱源，這些票未記錄。",
+    "text": "發卡片後已有 {$count} 篇文章離開資訊來源，這些票未記錄。",
     "source": ".input {$count :integer}\n.match $count\none {{1 article has left its feed since the cards were dealt, so that vote was not recorded.}}\n* {{{$count} articles have left its feed since the cards were dealt, so that vote was not recorded.}}"
   },
   "onboarding.votes_heading": {"text": "投票", "source": "Votes"},
   "onboarding.votes_lede": {
-    "text": "以下是訂閱源中幾篇較舊的文章：請標出會讀和不會讀的，其餘不用管。按「下一步」會把每個標記記為一票，第一期就不會收錄這些文章。",
+    "text": "以下是資訊來源中幾篇較舊的文章：請標出會讀和不會讀的，其餘不用管。按「下一步」會把每個標記記為一票，第一期就不會收錄這些文章。",
     "source": "A few older articles from your feeds: mark the ones you would read and the ones you would not, and leave the rest. Next records each mark as a vote, so the first issue leaves those articles out."
   },
   "onboarding.window_hours": {"text": "時間範圍（小時）", "source": "Window (hours)"},
   "onboarding.window_hours_help": {"text": "每期往回找多久以內的文章。", "source": "How far back a run looks for articles."},
-  "onboarding.your_feeds": {"text": "你的訂閱源", "source": "Your feeds"},
+  "onboarding.your_feeds": {"text": "你的資訊來源", "source": "Your feeds"},
   "onboarding_topic.business": {"text": "商業與經濟", "source": "Business & economy"},
   "onboarding_topic.ideas": {"text": "思想與文化", "source": "Ideas & culture"},
   "onboarding_topic.science": {"text": "科學與健康", "source": "Science & health"},
