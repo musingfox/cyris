@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Literal
 
 from cyris.adapters.store.d1 import D1Queryable
 
@@ -32,6 +33,10 @@ SELECT s.name, h.consecutive_failures, h.last_error, h.last_failed_at, h.last_ok
 """
 
 
+# Why a feed is unhealthy: failing polls, no article ever stored, or none for QUIET_DAYS.
+FeedProblem = Literal["failing", "never_stored", "quiet"]
+
+
 @dataclass(frozen=True)
 class FeedHealth:
     name: str
@@ -41,18 +46,36 @@ class FeedHealth:
     last_ok_at: str | None
     newest_article_at: str | None
 
+    def findings(self, now: datetime) -> list[FeedProblem]:
+        """Why this feed is unhealthy, one code per reason; empty when it is not.
+
+        `/settings` words each in the page's language; `problems` words them for `cyris doctor`.
+        """
+        found: list[FeedProblem] = []
+        if self.consecutive_failures >= UNHEALTHY_FAILURE_STREAK:
+            found.append("failing")
+        if self.newest_article_at is None:
+            found.append("never_stored")
+        elif now - _utc(self.newest_article_at) >= timedelta(days=QUIET_DAYS):
+            found.append("quiet")
+        return found
+
+    @property
+    def error_line(self) -> str:
+        """The last poll error on one line; empty when there is none."""
+        return " ".join((self.last_error or "").split())
+
     def problems(self, now: datetime) -> list[str]:
         """Why this feed is unhealthy, one phrase per reason; empty when it is not."""
         found = []
-        if self.consecutive_failures >= UNHEALTHY_FAILURE_STREAK:
-            streak = f"{self.consecutive_failures} failures in a row"
-            if self.last_error:
-                streak = f"{streak} · {' '.join(self.last_error.split())}"
-            found.append(streak)
-        if self.newest_article_at is None:
-            found.append("no article stored yet")
-        elif now - _utc(self.newest_article_at) >= timedelta(days=QUIET_DAYS):
-            found.append(f"no article in {QUIET_DAYS} days")
+        for problem in self.findings(now):
+            if problem == "failing":
+                streak = f"{self.consecutive_failures} failures in a row"
+                found.append(f"{streak} · {self.error_line}" if self.error_line else streak)
+            elif problem == "never_stored":
+                found.append("no article stored yet")
+            else:
+                found.append(f"no article in {QUIET_DAYS} days")
         return found
 
 

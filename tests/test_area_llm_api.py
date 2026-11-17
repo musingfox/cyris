@@ -20,6 +20,7 @@ from cyris.diagnostics import doctor
 from cyris.domain.models import SourceConfig
 from cyris.entrypoints.cli import app as cli_app
 from cyris.entrypoints.triage_server import TriageServer
+from cyris.i18n import translator
 
 pytestmark = pytest.mark.integration
 
@@ -166,11 +167,18 @@ async def test_no_active_area_or_no_llm_asks_the_model_nothing(db: SqliteD1) -> 
     assert llm.calls == []
 
 
-async def test_a_type_no_fetcher_reads_is_refused_before_the_model_is_asked(db: SqliteD1) -> None:
+@pytest.mark.parametrize(("accept_language", "tag"), [("en", "en"), ("zh-TW", "zh-Hant")])
+async def test_a_type_no_fetcher_reads_is_refused_before_the_model_is_asked(
+    db: SqliteD1, accept_language: str, tag: str
+) -> None:
     llm = FakeLLM('{"area": "Tech"}')
     client = await _client(db, lambda values: llm)
     try:
-        response = await client.post("/api/sources/suggest-area", json=_suggest_body(type="web"))
+        response = await client.post(
+            "/api/sources/suggest-area",
+            json=_suggest_body(type="web"),
+            headers={"Accept-Language": accept_language},
+        )
         data = await response.json()
     finally:
         await client.close()
@@ -178,7 +186,7 @@ async def test_a_type_no_fetcher_reads_is_refused_before_the_model_is_asked(db: 
     assert response.status == 400
     assert data == {
         "ok": False,
-        "error": "A source's type is rss or newsletter, not 'web'.",
+        "error": translator(tag)("settings_api.source_type_unknown", type="'web'"),
         "field": "type",
     }
     assert llm.calls == []

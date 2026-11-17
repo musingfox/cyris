@@ -17,7 +17,7 @@ from pydantic import ValidationError
 
 from cyris.adapters.output import html_digest
 from cyris.adapters.store.d1 import MAX_BOUND_PARAMS
-from cyris.adapters.store.feed_health import FeedHealth
+from cyris.adapters.store.feed_health import QUIET_DAYS, FeedHealth
 from cyris.config import SETTINGS_FIELDS, STARTING_VALUES, DigestConfig
 from cyris.diagnostics.doctor import LLM_PROBE_TIMEOUT_SECONDS, probe_discord, probe_embedder
 from cyris.domain.areas import (
@@ -117,8 +117,8 @@ def _fields(t: Translator) -> dict[str, dict[str, Any]]:
     return {key: {**field, "label": _label(t, key)} for key, field in SETTINGS_FIELDS.items()}
 
 
-def _unknown_source_type(value: object) -> str:
-    return f"A source's type is rss or newsletter, not {value!r}."
+def _unknown_source_type(t: Translator, value: object) -> str:
+    return t("settings_api.source_type_unknown", type=repr(value))
 
 
 def _probe_refusal(probe) -> str:
@@ -130,10 +130,49 @@ def _values_note(t: Translator, keys: list[str]) -> str:
     """When the saved keys take effect: a live key reaches the pages, the rest the next run."""
     live = [_label(t, key) for key in keys if SETTINGS_FIELDS[key].get("live")]
     if not live:
-        return "Effective next run."
+        return t("settings_api.effective_next_run")
     if len(live) == len(keys):
-        return "Pages show it within a minute."
-    return f"{', '.join(live)}: pages show it within a minute. The rest: effective next run."
+        return t("settings_api.pages_within_a_minute")
+    return t("settings_api.some_within_a_minute", labels=_list(t, live))
+
+
+def _list(t: Translator, items: list[str]) -> str:
+    """Names in `t`'s words for a list: "A, B, C"."""
+    head, *rest = items
+    for item in rest:
+        head = t("settings.list_more", head=head, item=item)
+    return head
+
+
+def _invalid_json(t: Translator) -> web.Response:
+    return web.json_response({"ok": False, "error": t("settings_api.invalid_json")}, status=400)
+
+
+def _no_table(error: str) -> web.Response:
+    """409 for a write this deployment's store has no table for."""
+    return web.json_response({"ok": False, "error": error}, status=409)
+
+
+def _no_area(t: Translator, area_id: int) -> web.Response:
+    return web.json_response(
+        {"ok": False, "error": t("settings_api.no_area", id=str(area_id))}, status=404
+    )
+
+
+def _area_status(t: Translator, area: Area) -> str:
+    return t(f"area_status.{area.status}")
+
+
+def _feed_problem(t: Translator, health: FeedHealth, problem: str) -> str:
+    """One finding of `FeedHealth.findings`, in `t`'s words."""
+    if problem == "failing":
+        count = health.consecutive_failures
+        if health.error_line:
+            return t("settings_api.feed_failing_error", count=count, error=health.error_line)
+        return t("settings_api.feed_failing", count=count)
+    if problem == "never_stored":
+        return t("settings_api.feed_never_stored")
+    return t("settings_api.feed_quiet", days=QUIET_DAYS)
 
 
 _AREA_GROUP = {"active": 0, "proposed": 1, "dismissed": 2, "merged": 3}
@@ -148,7 +187,7 @@ def _area_order(area: Area) -> tuple[int, int, int, int]:
     return (_AREA_GROUP[area.status], 0, 0, area.id)
 
 
-def _health_json(health: FeedHealth | None, now: datetime) -> dict[str, Any] | None:
+def _health_json(t: Translator, health: FeedHealth | None, now: datetime) -> dict[str, Any] | None:
     """A feed's poll record, with the problems `cyris doctor` would name; None when not polled."""
     if health is None:
         return None
@@ -158,17 +197,19 @@ def _health_json(health: FeedHealth | None, now: datetime) -> dict[str, Any] | N
         "last_failed_at": health.last_failed_at,
         "last_ok_at": health.last_ok_at,
         "newest_article_at": health.newest_article_at,
-        "problems": health.problems(now),
+        "problems": [_feed_problem(t, health, problem) for problem in health.findings(now)],
     }
 
 
-# Each tracked-topic field's refusal, in the page's words.
-TOPIC_REFUSALS = {
-    "name": "A topic needs a name.",
-    "description": "A topic needs a description: one sentence saying what it is about.",
-    "threshold": "Threshold is a cosine above 0 and at most 1.",
-    "model": "A topic needs the embedding model its threshold was set for.",
-}
+def _topic_refusal(t: Translator, field: str) -> str | None:
+    """A tracked-topic field's refusal, in the page's words; None for a field with none."""
+    refusals = {
+        "name": t("settings_api.topic_needs_name"),
+        "description": t("settings_api.topic_needs_description"),
+        "threshold": t("settings_api.topic_threshold_range"),
+        "model": t("settings_api.topic_needs_model"),
+    }
+    return refusals.get(field)
 
 
 # The keys `static/settings.js` formats beyond those listed with the other pages' below.
@@ -841,7 +882,7 @@ class TriageServer:
         except Exception:
             body = None
         if not isinstance(body, dict):
-            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+            return _invalid_json(self._translator(request))
         return body
 
     def _store(self, values: dict[str, Any]) -> web.Response | None:
@@ -870,6 +911,7 @@ class TriageServer:
         if isinstance(body, web.Response):
             return body
 
+        t = self._translator(request)
         provider = (body.get("provider") or "").strip()
         model = (body.get("model") or "").strip()
         try:
@@ -879,12 +921,14 @@ class TriageServer:
                 reasoning_effort=self._values.get("llm_provider.reasoning_effort", "default"),
             )
         except ValidationError:
-            return _refused(f"unknown provider {provider!r}", "llm_provider.provider")
+            return _refused(
+                t("settings_api.unknown_provider", provider=repr(provider)), "llm_provider.provider"
+            )
 
         if provider == "none":
             # Nothing to call, and a leftover model must not outlive its provider.
             model = ""
-            detail = "No model is called: digests list plain excerpts."
+            detail = t("settings.model_hint_none")
         else:
             probe = await probe_llm(candidate)
             if probe.status != "ok":
@@ -904,7 +948,7 @@ class TriageServer:
                 "detail": detail,
                 # This server holds no LLM of its own; every run resolves settings
                 # fresh, so the change lands on the next digest.
-                "note": "Saved. The next digest run picks this up.",
+                "note": t("settings_api.saved_next_run"),
             }
         )
 
@@ -967,7 +1011,10 @@ class TriageServer:
             return refused
 
         logger.info("Digest schedule set to %s", ", ".join(times))
-        return web.json_response({"ok": True, "times": times, "note": "Effective next tick."})
+        t = self._translator(request)
+        return web.json_response(
+            {"ok": True, "times": times, "note": t("settings_api.effective_next_tick")}
+        )
 
     async def _handle_post_values(self, request: web.Request) -> web.Response:
         """Store any of the plain settings, all or nothing, each through its own rule."""
@@ -982,20 +1029,21 @@ class TriageServer:
         values = body.get("values")
         if not isinstance(values, dict) or not values:
             return web.json_response(
-                {"ok": False, "error": "values must name at least one setting"}, status=400
+                {"ok": False, "error": t("settings_api.values_empty")}, status=400
             )
         validated = {}
         for key, value in values.items():
             if key not in SETTINGS_FIELDS:
                 return web.json_response(
-                    {"ok": False, "error": f"{key!r} is not a setting"}, status=400
+                    {"ok": False, "error": t("settings_api.not_a_setting", key=repr(key))},
+                    status=400,
                 )
             if key not in PLAIN_KEYS:
-                return _refused(f"{_label(t, key)} is saved from its own form", key)
+                return _refused(t("settings_api.own_form", label=_label(t, key)), key)
             try:
                 validated[key] = validate_setting(key, value)
             except ValueError as e:
-                return _refused(f"{_label(t, key)}: {e}", key)
+                return _refused(t("settings_api.refused", label=_label(t, key), reason=str(e)), key)
 
         stored_provider = self._values.get("llm_provider.provider")
         if "llm_provider.reasoning_effort" in validated and stored_provider not in (
@@ -1045,11 +1093,11 @@ class TriageServer:
         for field in ("enabled", "provider", "model", "max_seeds"):
             key = f"vote_similarity.{field}"
             if field not in body:
-                return _refused(f"{_label(t, key)} is required", key)
+                return _refused(t("settings_api.required", label=_label(t, key)), key)
             try:
                 values[key] = validate_setting(key, body[field])
             except ValueError as e:
-                return _refused(f"{_label(t, key)}: {e}", key)
+                return _refused(t("settings_api.refused", label=_label(t, key), reason=str(e)), key)
 
         if values["vote_similarity.enabled"]:
             provider = values["vote_similarity.provider"]
@@ -1061,7 +1109,7 @@ class TriageServer:
                 return _refused(_probe_refusal(probe), field)
             detail = probe.detail
         else:
-            detail = "Not checked: vote similarity is off. Turning it on checks the embedder first."
+            detail = t("settings_api.vote_not_checked")
 
         if (refused := self._store(values)) is not None:
             return refused
@@ -1074,7 +1122,7 @@ class TriageServer:
                 "ok": True,
                 "values": values,
                 "detail": detail,
-                "note": "Saved. The next digest run picks this up.",
+                "note": t("settings_api.saved_next_run"),
             }
         )
 
@@ -1089,6 +1137,7 @@ class TriageServer:
         body = await self._settings_body(request)
         if isinstance(body, web.Response):
             return body
+        t = self._translator(request)
 
         if body.get("off") is True:
             if (refused := self._store({"notify.discord_webhook_url": ""})) is not None:
@@ -1098,16 +1147,13 @@ class TriageServer:
                 {
                     "ok": True,
                     "discord_webhook_url": "",
-                    "note": "Notifications are off. The next run finishes without a message.",
+                    "note": t("settings_api.notifications_off"),
                 }
             )
 
         url = (body.get("discord_webhook_url") or "").strip()
         if not url:
-            return _refused(
-                "Paste a Discord webhook URL, or press Turn off to stop notifications.",
-                "notify.discord_webhook_url",
-            )
+            return _refused(t("settings_api.webhook_empty"), "notify.discord_webhook_url")
 
         probe = await probe_discord(url)
         if probe.status != "ok":
@@ -1122,7 +1168,7 @@ class TriageServer:
                 "ok": True,
                 "discord_webhook_url": mask_discord_webhook_url(url),
                 "detail": probe.detail,
-                "note": "Saved. The next digest run picks this up.",
+                "note": t("settings_api.saved_next_run"),
             }
         )
 
@@ -1138,6 +1184,7 @@ class TriageServer:
         body = await self._settings_body(request)
         if isinstance(body, web.Response):
             return body
+        t = self._translator(request)
 
         recipient = (body.get("email_to") or "").strip()
         sender = (body.get("email_from") or "").strip()
@@ -1147,12 +1194,10 @@ class TriageServer:
             if (refused := self._store(values)) is not None:
                 return refused
             logger.info("Digest mail turned off")
-            return web.json_response(
-                {"ok": True, **values, "note": "Mail is off. The next run sends no message."}
-            )
+            return web.json_response({"ok": True, **values, "note": t("settings_api.mail_off")})
 
         if not sender:
-            return _refused("Enter the address the digest is sent from, too.", "notify.email_from")
+            return _refused(t("settings_api.mail_needs_sender"), "notify.email_from")
 
         account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
         token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
@@ -1160,10 +1205,7 @@ class TriageServer:
             return web.json_response(
                 {
                     "ok": False,
-                    "error": (
-                        "This deployment has no CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN, "
-                        "so it cannot send mail. Set both, then save again."
-                    ),
+                    "error": t("settings_api.mail_needs_cloudflare"),
                 },
                 status=400,
             )
@@ -1174,12 +1216,12 @@ class TriageServer:
                 token,
                 sender,
                 recipient,
-                "Cyris test message",
-                "This address will receive a message for every digest.",
+                t("settings_api.test_mail_subject"),
+                t("settings_api.test_mail_body"),
             )
         except RuntimeError as e:
             return web.json_response(
-                {"ok": False, "error": f"The test message was not sent: {e}"}, status=400
+                {"ok": False, "error": t("settings_api.test_mail_failed", error=str(e))}, status=400
             )
 
         if (refused := self._store(values)) is not None:
@@ -1190,8 +1232,8 @@ class TriageServer:
             {
                 "ok": True,
                 **values,
-                "detail": f"A test message was {status} to {recipient}.",
-                "note": "Saved. The next digest run mails this address.",
+                "detail": t("settings_api.test_mail_sent", status=status, recipient=recipient),
+                "note": t("settings_api.mail_saved"),
             }
         )
 
@@ -1201,6 +1243,7 @@ class TriageServer:
         `email_match` rides along because it is source data (grade D);
         Cloudflare Email Routing is grade B and stays in the dashboard.
         """
+        t = self._translator(request)
         sources = self._effective_sources()
         health = self._read_feed_health()
         now = datetime.now(UTC)
@@ -1217,7 +1260,7 @@ class TriageServer:
                         "homepage": s.homepage,
                         "tags": s.tags,
                         "area_id": s.area_id,
-                        "health": _health_json(health.get(s.name), now),
+                        "health": _health_json(t, health.get(s.name), now),
                     }
                     for s in sources.values()
                 ],
@@ -1242,25 +1285,19 @@ class TriageServer:
 
     async def _handle_post_source(self, request: web.Request) -> web.Response:
         """Add or edit one source, over the row `name` owns."""
+        t = self._translator(request)
         if self._source_store is None:
-            return web.json_response(
-                {
-                    "ok": False,
-                    "error": "No writable source table "
-                    '(store backend is neither "sqlite" nor "d1")',
-                },
-                status=409,
-            )
+            return _no_table(t("settings_api.no_source_table"))
         try:
             body = await request.json()
         except Exception:
-            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+            return _invalid_json(t)
 
         try:
             source = SourceConfig.model_validate(body)
         except ValidationError as e:
             if e.errors()[0]["loc"] == ("type",):
-                return _refused(_unknown_source_type(body["type"]), "type")
+                return _refused(_unknown_source_type(t, body["type"]), "type")
             # One line, in the body's own field names: the page sends only values
             # this model accepts, so whoever reads this wrote the request.
             reasons = "; ".join(
@@ -1268,14 +1305,11 @@ class TriageServer:
             )
             return _refused(reasons, ".".join(map(str, e.errors()[0]["loc"][:1])))
         if not source.name.strip():
-            return _refused("A source needs a name.", "name")
+            return _refused(t("settings_api.source_needs_name"), "name")
         if not source.fetchable:
             needs = {
-                "rss": ("An RSS source needs a Feed URL.", "url"),
-                NEWSLETTER_SOURCE_TYPE: (
-                    "A newsletter source needs a Sender match.",
-                    "email_match",
-                ),
+                "rss": (t("settings_api.rss_needs_url"), "url"),
+                NEWSLETTER_SOURCE_TYPE: (t("settings_api.newsletter_needs_sender"), "email_match"),
             }
             return _refused(*needs[source.type])
 
@@ -1286,14 +1320,14 @@ class TriageServer:
                         return web.json_response(
                             {
                                 "ok": False,
-                                "error": "No area table to check the area against.",
+                                "error": t("settings_api.no_area_table_to_check"),
                                 "field": "area_id",
                             },
                             status=409,
                         )
                     area = self._area_store.get(source.area_id)
                     if area is None or area.status != "active":
-                        return _refused("Pick an active area, or none.", "area_id")
+                        return _refused(t("settings_api.pick_active_area"), "area_id")
             else:
                 # A save that does not mention the area leaves the stored one as it was.
                 stored = self._source_store.list_sources().get(source.name)
@@ -1303,7 +1337,8 @@ class TriageServer:
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
         logger.info("Source %s written to D1", source.name)
-        return web.json_response({"ok": True, "name": source.name, "note": "Effective next run."})
+        note = t("settings_api.effective_next_run")
+        return web.json_response({"ok": True, "name": source.name, "note": note})
 
     async def _handle_get_onboarding_feeds(self, request: web.Request) -> web.Response:
         """The wizard's feed list, offered only while the `sources` table is empty.
@@ -1648,15 +1683,9 @@ class TriageServer:
         return 400, f"date must be today or yesterday in {timezone} ({yesterday} or {today})"
 
     async def _handle_delete_source(self, request: web.Request) -> web.Response:
+        t = self._translator(request)
         if self._source_store is None:
-            return web.json_response(
-                {
-                    "ok": False,
-                    "error": "No writable source table "
-                    '(store backend is neither "sqlite" nor "d1")',
-                },
-                status=409,
-            )
+            return _no_table(t("settings_api.no_source_table"))
         name = request.match_info["name"]
         try:
             # The last source may go: an empty table is a deployment waiting for
@@ -1666,7 +1695,8 @@ class TriageServer:
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
         logger.info("Source %s retired", name)
-        return web.json_response({"ok": True, "name": name, "note": "Effective next run."})
+        note = t("settings_api.effective_next_run")
+        return web.json_response({"ok": True, "name": name, "note": note})
 
     def _embedding_model(self) -> str:
         """The model a run embeds with now, which a new topic's threshold is set for."""
@@ -1690,31 +1720,23 @@ class TriageServer:
             }
         )
 
-    def _no_topic_table(self) -> web.Response:
-        return web.json_response(
-            {
-                "ok": False,
-                "error": 'No writable topic table (store backend is neither "sqlite" nor "d1")',
-            },
-            status=409,
-        )
-
     async def _handle_post_topic(self, request: web.Request) -> web.Response:
         """Add or edit one topic, over the row `name` owns. Nothing is probed: a
         topic that cannot be embedded is skipped by the run and named in its summary."""
+        t = self._translator(request)
         if self._topic_store is None:
-            return self._no_topic_table()
+            return _no_table(t("settings_api.no_topic_table"))
         try:
             body = await request.json()
         except Exception:
-            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+            return _invalid_json(t)
 
         try:
             topic = TrackedTopic.model_validate(body)
         except ValidationError as e:
             first = e.errors()[0]
             field = str(first["loc"][0]) if first["loc"] else ""
-            return _refused(TOPIC_REFUSALS.get(field, f"body: {first['msg']}"), field)
+            return _refused(_topic_refusal(t, field) or f"body: {first['msg']}", field)
 
         try:
             self._topic_store.upsert(topic)
@@ -1722,11 +1744,13 @@ class TriageServer:
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
         logger.info("Tracked topic %s written to D1", topic.name)
-        return web.json_response({"ok": True, "name": topic.name, "note": "Effective next run."})
+        note = t("settings_api.effective_next_run")
+        return web.json_response({"ok": True, "name": topic.name, "note": note})
 
     async def _handle_delete_topic(self, request: web.Request) -> web.Response:
+        t = self._translator(request)
         if self._topic_store is None:
-            return self._no_topic_table()
+            return _no_table(t("settings_api.no_topic_table"))
         name = request.match_info["name"]
         try:
             removed = self._topic_store.delete(name)
@@ -1734,11 +1758,12 @@ class TriageServer:
             return web.json_response({"ok": False, "error": str(e)}, status=500)
         if not removed:
             return web.json_response(
-                {"ok": False, "error": f"No topic named {name}: reload the page."}, status=404
+                {"ok": False, "error": t("settings_api.no_topic", name=name)}, status=404
             )
 
         logger.info("Tracked topic %s removed", name)
-        return web.json_response({"ok": True, "name": name, "note": "Effective next run."})
+        note = t("settings_api.effective_next_run")
+        return web.json_response({"ok": True, "name": name, "note": note})
 
     def _no_sample(self) -> web.Response:
         return web.json_response(
@@ -1768,6 +1793,7 @@ class TriageServer:
 
     async def _handle_get_areas(self, request: web.Request) -> web.Response:
         """Every area with its status and counts, in the order the page lists them."""
+        t = self._translator(request)
         if self._area_store is None:
             return web.json_response({"writable": False, "areas": [], "birth_threshold": None})
         try:
@@ -1776,7 +1802,7 @@ class TriageServer:
         except Exception as e:  # noqa: BLE001 - the reason goes to the log, not the page
             logger.error("Reading areas failed: %s", type(e).__name__)
             return web.json_response(
-                {"ok": False, "error": "The area table could not be read."}, status=500
+                {"ok": False, "error": t("settings_api.area_table_unreadable")}, status=500
             )
         return web.json_response(
             {
@@ -1797,39 +1823,32 @@ class TriageServer:
         )
 
     @staticmethod
-    def _unplaced_proposal(area: Area) -> web.Response:
+    def _unplaced_proposal(t: Translator, area: Area) -> web.Response:
         """409 for activating a proposal stored as "Other" before the name was reserved."""
         return web.json_response(
-            {
-                "ok": False,
-                "error": f"{area.name} is the page's label for entries no area claims: "
-                "rename it before confirming it.",
-            },
-            status=409,
+            {"ok": False, "error": t("settings_api.unplaced_proposal", name=area.name)}, status=409
         )
 
-    def _not_proposed(self, area_id: int) -> web.Response:
+    def _not_proposed(self, t: Translator, area_id: int) -> web.Response:
         """409 for a proposal-only action on an area that is not a proposal; 404 if it is gone."""
         area = self._area_store.get(area_id)
         if area is None:
-            return web.json_response(
-                {"ok": False, "error": f"No area with id {area_id}: reload the page."}, status=404
-            )
-        return web.json_response(
-            {"ok": False, "error": f"{area.name} is {area.status}, not proposed."}, status=409
-        )
+            return _no_area(t, area_id)
+        error = t("settings_api.not_proposed", name=area.name, status=_area_status(t, area))
+        return web.json_response({"ok": False, "error": error}, status=409)
 
     async def _handle_activate_area(self, request: web.Request) -> web.Response:
         """Confirm a proposal: it joins the closed set the next run offers the model."""
+        t = self._translator(request)
         if self._area_store is None:
-            return self._no_area_table()
+            return _no_table(t("settings_api.no_area_table"))
         area_id = int(request.match_info["id"])
         try:
             area = self._area_store.get(area_id)
             if area is not None and area.status == "proposed" and is_unplaced_label(area.name):
-                return self._unplaced_proposal(area)
+                return self._unplaced_proposal(t, area)
             if not self._area_store.activate(area_id):
-                return self._not_proposed(area_id)
+                return self._not_proposed(t, area_id)
             area = self._area_store.get(area_id)
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             return web.json_response({"ok": False, "error": str(e)}, status=500)
@@ -1841,86 +1860,82 @@ class TriageServer:
                 "id": area.id,
                 "name": area.name,
                 "position": area.position,
-                "note": "Effective next run.",
+                "note": t("settings_api.effective_next_run"),
             }
         )
 
     async def _handle_dismiss_area(self, request: web.Request) -> web.Response:
         """Reject a proposal; its name is then ignored, not proposed again."""
+        t = self._translator(request)
         if self._area_store is None:
-            return self._no_area_table()
+            return _no_table(t("settings_api.no_area_table"))
         area_id = int(request.match_info["id"])
         try:
             if not self._area_store.dismiss(area_id):
-                return self._not_proposed(area_id)
+                return self._not_proposed(t, area_id)
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
         logger.info("Area %s dismissed", area_id)
-        return web.json_response({"ok": True, "id": area_id, "note": "Effective next run."})
+        note = t("settings_api.effective_next_run")
+        return web.json_response({"ok": True, "id": area_id, "note": note})
 
     async def _handle_merge_area(self, request: web.Request) -> web.Response:
         """Fold a proposal into an active area; the proposal's name resolves to that area."""
+        t = self._translator(request)
         if self._area_store is None:
-            return self._no_area_table()
+            return _no_table(t("settings_api.no_area_table"))
         area_id = int(request.match_info["id"])
         try:
             body = await request.json()
         except Exception:
-            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+            return _invalid_json(t)
         into = body.get("into") if isinstance(body, dict) else None
         if isinstance(into, bool) or not isinstance(into, int) or into == area_id:
-            return _refused("Merge into a different active area.", "into")
+            return _refused(t("settings_api.merge_into_other"), "into")
         try:
             target = self._area_store.get(into)
             if target is None or target.status != "active":
-                return _refused("Merge into an active area.", "into")
+                return _refused(t("settings_api.merge_into_active"), "into")
             if self._area_store.get(area_id) is None:
-                return web.json_response(
-                    {"ok": False, "error": f"No area with id {area_id}: reload the page."},
-                    status=404,
-                )
+                return _no_area(t, area_id)
             if not self._area_store.merge(area_id, into):
-                return self._not_proposed(area_id)
+                return self._not_proposed(t, area_id)
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
         logger.info("Area %s merged into %s", area_id, into)
         return web.json_response(
-            {"ok": True, "id": area_id, "into": into, "note": "Effective next run."}
+            {"ok": True, "id": area_id, "into": into, "note": t("settings_api.effective_next_run")}
         )
 
     async def _handle_assign_sources(self, request: web.Request) -> web.Response:
         """Place a batch of sources in one active area; each keeps every other field."""
+        t = self._translator(request)
         if self._area_store is None or self._source_store is None:
-            return self._no_area_table()
+            return _no_table(t("settings_api.no_area_table"))
         area_id = int(request.match_info["id"])
         try:
             body = await request.json()
         except Exception:
-            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+            return _invalid_json(t)
         names = body.get("sources") if isinstance(body, dict) else None
         if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
-            return _refused("sources must be a list of source names.", "sources")
+            return _refused(t("settings_api.sources_not_a_list"), "sources")
         try:
             area = self._area_store.get(area_id)
             if area is None:
-                return web.json_response(
-                    {"ok": False, "error": f"No area with id {area_id}: reload the page."},
-                    status=404,
-                )
+                return _no_area(t, area_id)
             if area.status != "active":
-                return web.json_response(
-                    {"ok": False, "error": f"{area.name} is {area.status}, not active."},
-                    status=409,
-                )
+                error = t("settings_api.not_active", name=area.name, status=_area_status(t, area))
+                return web.json_response({"ok": False, "error": error}, status=409)
             stored = self._source_store.list_sources()
             unknown = [name for name in names if name not in stored]
             if unknown:
                 return web.json_response(
                     {
                         "ok": False,
-                        "error": "Unknown sources: " + ", ".join(unknown),
+                        "error": t("settings_api.unknown_sources", names=_list(t, unknown)),
                         "field": "sources",
                         "names": unknown,
                     },
@@ -1942,20 +1957,19 @@ class TriageServer:
         Every refusal is decided before the first write, so a refused request changes nothing.
         A write that fails midway answers 500 with what did land, so the page can recompute.
         """
+        t = self._translator(request)
         if self._area_store is None or self._source_store is None:
-            return self._no_area_table()
+            return _no_table(t("settings_api.no_area_table"))
         try:
             body = await request.json()
         except Exception:
-            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+            return _invalid_json(t)
         assignments = body.get("assignments") if isinstance(body, dict) else None
         if not isinstance(assignments, dict) or not all(
             value is None or (isinstance(value, int) and not isinstance(value, bool))
             for value in assignments.values()
         ):
-            return _refused(
-                "assignments must map each source name to an area id or null.", "assignments"
-            )
+            return _refused(t("settings_api.assignments_shape"), "assignments")
         assigned: list[str] = []
         activated: list[dict[str, Any]] = []
         try:
@@ -1965,7 +1979,7 @@ class TriageServer:
                 return web.json_response(
                     {
                         "ok": False,
-                        "error": "Unknown sources: " + ", ".join(unknown),
+                        "error": t("settings_api.unknown_sources", names=_list(t, unknown)),
                         "field": "assignments",
                         "names": unknown,
                     },
@@ -1975,17 +1989,13 @@ class TriageServer:
             for area_id in dict.fromkeys(v for v in assignments.values() if v is not None):
                 area = self._area_store.get(area_id)
                 if area is None:
-                    return web.json_response(
-                        {"ok": False, "error": f"No area with id {area_id}: reload the page."},
-                        status=404,
-                    )
+                    return _no_area(t, area_id)
                 if area.status in ("dismissed", "merged"):
-                    return web.json_response(
-                        {"ok": False, "error": f"{area.name} is {area.status}, not assignable."},
-                        status=409,
-                    )
+                    status = _area_status(t, area)
+                    error = t("settings_api.not_assignable", name=area.name, status=status)
+                    return web.json_response({"ok": False, "error": error}, status=409)
                 if area.status == "proposed" and is_unplaced_label(area.name):
-                    return self._unplaced_proposal(area)
+                    return self._unplaced_proposal(t, area)
                 targets[area_id] = area
             for area in sorted(
                 (a for a in targets.values() if a.status == "proposed"), key=_area_order
@@ -2014,15 +2024,16 @@ class TriageServer:
 
     async def _handle_suggest_area(self, request: web.Request) -> web.Response:
         """Suggest the active area for a source being added. A failure never stops the save."""
+        t = self._translator(request)
         if self._area_store is None:
-            return self._no_area_table()
+            return _no_table(t("settings_api.no_area_table"))
         try:
             body = await request.json()
         except Exception:
-            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+            return _invalid_json(t)
         url = body.get("url") if isinstance(body, dict) else None
         if not isinstance(url, str) or not url.strip():
-            return _refused("A source needs a Feed URL before an area can be suggested.", "url")
+            return _refused(t("settings_api.suggest_needs_url"), "url")
 
         def answer(suggestion, note: str) -> web.Response:
             return web.json_response({"ok": True, "suggestion": suggestion, "note": note})
@@ -2032,22 +2043,22 @@ class TriageServer:
         except Exception as e:  # noqa: BLE001 - the reason stays in the log, not the page
             logger.error("Reading areas failed: %s", type(e).__name__)
             return web.json_response(
-                {"ok": False, "error": "The area table could not be read."}, status=500
+                {"ok": False, "error": t("settings_api.area_table_unreadable")}, status=500
             )
         names = catalog.names()
         if not names:
-            return answer(None, "No active area to suggest from yet.")
+            return answer(None, t("settings_api.suggest_no_active_area"))
         try:
             llm = self._llm()
         except Exception as e:  # noqa: BLE001 - only the class name leaves this handler
             logger.warning("Suggesting an area failed: %s", type(e).__name__)
-            return answer(None, f"The model call failed ({type(e).__name__}).")
+            return answer(None, t("settings_api.model_call_failed", error=type(e).__name__))
         if llm is None:
-            return answer(None, "No LLM is configured, so no area is suggested.")
+            return answer(None, t("settings_api.suggest_no_llm"))
 
         source_type = body.get("type") or "rss"
         if source_type not in get_args(SourceType):
-            return _refused(_unknown_source_type(source_type), "type")
+            return _refused(_unknown_source_type(t, source_type), "type")
         source = SourceConfig(
             name=str(body.get("name") or "").strip() or url,
             url=url.strip(),
@@ -2061,27 +2072,28 @@ class TriageServer:
             )
         except Exception as e:  # noqa: BLE001 - only the class name leaves this handler
             logger.warning("Suggesting an area failed: %s", type(e).__name__)
-            return answer(None, f"The model call failed ({type(e).__name__}).")
+            return answer(None, t("settings_api.model_call_failed", error=type(e).__name__))
         if picked is None:
-            return answer(None, "The model did not pick one of the active areas.")
+            return answer(None, t("settings_api.suggest_no_pick"))
         area = catalog.place(picked).area
-        return answer(
-            {"id": area.id, "name": area.name},
-            "Suggested from your active areas. Confirm it or choose another.",
-        )
+        return answer({"id": area.id, "name": area.name}, t("settings_api.suggested"))
 
     async def _handle_propose_areas(self, request: web.Request) -> web.Response:
         """Ask the model to group every source into areas, and record the new names as proposals."""
+        t = self._translator(request)
         if self._area_store is None:
-            return self._no_area_table()
+            return _no_table(t("settings_api.no_area_table"))
         sources = self._source_store.list_sources() if self._source_store else self._sources
         if not sources:
-            return _refused("There are no sources to group yet.", "sources")
+            return _refused(t("settings_api.propose_no_sources"), "sources")
 
         def model_failed(error: Exception) -> web.Response:
             logger.warning("Proposing areas failed: %s", type(error).__name__)
             return web.json_response(
-                {"ok": False, "error": f"The model call failed ({type(error).__name__})."},
+                {
+                    "ok": False,
+                    "error": t("settings_api.model_call_failed", error=type(error).__name__),
+                },
                 status=502,
             )
 
@@ -2091,7 +2103,7 @@ class TriageServer:
             return model_failed(e)
         if llm is None:
             return web.json_response(
-                {"ok": False, "error": "No LLM is configured, so no areas are proposed."},
+                {"ok": False, "error": t("settings_api.propose_no_llm")},
                 status=409,
             )
         try:
@@ -2099,7 +2111,7 @@ class TriageServer:
         except Exception as e:  # noqa: BLE001 - the reason stays in the log, not the page
             logger.error("Reading areas failed: %s", type(e).__name__)
             return web.json_response(
-                {"ok": False, "error": "The area table could not be read."}, status=500
+                {"ok": False, "error": t("settings_api.area_table_unreadable")}, status=500
             )
         catalog = AreaCatalog(areas)
         # The model is offered the active areas by position, then the proposals.
@@ -2136,8 +2148,7 @@ class TriageServer:
             return web.json_response(
                 {
                     "ok": False,
-                    "error": f"The model proposed more than {MAX_BOUND_PARAMS} new areas; "
-                    "nothing was saved.",
+                    "error": t("settings_api.too_many_proposals", limit=MAX_BOUND_PARAMS),
                 },
                 status=502,
             )
@@ -2146,7 +2157,7 @@ class TriageServer:
         except Exception as e:  # noqa: BLE001 - the reason stays in the log, not the page
             logger.error("Writing proposed areas failed: %s", type(e).__name__)
             return web.json_response(
-                {"ok": False, "error": "The area table could not be written."}, status=500
+                {"ok": False, "error": t("settings_api.area_table_unwritable")}, status=500
             )
         proposals = []
         for name, members, placed in placements:
@@ -2160,54 +2171,51 @@ class TriageServer:
 
     async def _handle_put_area_order(self, request: web.Request) -> web.Response:
         """Set the order of the active areas: the page's list, top to bottom."""
+        t = self._translator(request)
         if self._area_store is None:
-            return self._no_area_table()
+            return _no_table(t("settings_api.no_area_table"))
         try:
             body = await request.json()
         except Exception:
-            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+            return _invalid_json(t)
         ids = body.get("ids") if isinstance(body, dict) else None
         if not isinstance(ids, list) or not all(
             isinstance(i, int) and not isinstance(i, bool) for i in ids
         ):
-            return _refused("ids must be a list of area ids.", "ids")
+            return _refused(t("settings_api.ids_not_a_list"), "ids")
         try:
             active = {area.id for area in self._area_store.list_areas() if area.status == "active"}
             if len(set(ids)) != len(ids) or set(ids) != active:
-                return _refused("ids must name every active area exactly once.", "ids")
+                return _refused(t("settings_api.ids_not_every_area"), "ids")
             self._area_store.set_order(ids)
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
         logger.info("Active areas reordered")
-        return web.json_response({"ok": True, "note": "Effective next run."})
+        return web.json_response({"ok": True, "note": t("settings_api.effective_next_run")})
 
     async def _handle_rename_area(self, request: web.Request) -> web.Response:
         """Give an area a new name; every source and pick keeps resolving to it by id."""
+        t = self._translator(request)
         if self._area_store is None:
-            return self._no_area_table()
+            return _no_table(t("settings_api.no_area_table"))
         area_id = int(request.match_info["id"])
         try:
             body = await request.json()
         except Exception:
-            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+            return _invalid_json(t)
         raw = body.get("name") if isinstance(body, dict) else None
         name = raw.strip() if isinstance(raw, str) else ""
         if not name or "\n" in raw or "\r" in raw:
-            return _refused(
-                "A name needs at least one visible character and no line break.", "name"
-            )
+            return _refused(t("settings_api.name_shape"), "name")
         try:
             if self._area_store.get(area_id) is None:
-                return web.json_response(
-                    {"ok": False, "error": f"No area with id {area_id}: reload the page."},
-                    status=404,
-                )
+                return _no_area(t, area_id)
             if is_unplaced_label(name):
                 return web.json_response(
                     {
                         "ok": False,
-                        "error": f"{name} is the page's label for entries no area claims.",
+                        "error": t("settings_api.name_reserved", name=name),
                         "field": "name",
                     },
                     status=409,
@@ -2216,7 +2224,7 @@ class TriageServer:
                 return web.json_response(
                     {
                         "ok": False,
-                        "error": f"Another area already has the name {name}.",
+                        "error": t("settings_api.name_taken", name=name),
                         "field": "name",
                     },
                     status=409,
@@ -2227,32 +2235,24 @@ class TriageServer:
 
         logger.info("Area %s renamed", area_id)
         return web.json_response(
-            {"ok": True, "id": area_id, "name": name, "note": "Effective next run."}
-        )
-
-    def _no_area_table(self) -> web.Response:
-        return web.json_response(
-            {
-                "ok": False,
-                "error": 'No writable area table (store backend is neither "sqlite" nor "d1").',
-            },
-            status=409,
+            {"ok": True, "id": area_id, "name": name, "note": t("settings_api.effective_next_run")}
         )
 
     async def _handle_put_birth_threshold(self, request: web.Request) -> web.Response:
         """The (articles, issues) a proposal must reach to be marked as meeting the threshold."""
+        t = self._translator(request)
         if self._area_store is None:
-            return self._no_area_table()
+            return _no_table(t("settings_api.no_area_table"))
         try:
             body = await request.json()
         except Exception:
-            return web.json_response({"ok": False, "error": "invalid JSON"}, status=400)
+            return _invalid_json(t)
 
         values = {}
         for field in ("articles", "issues"):
             value = body.get(field) if isinstance(body, dict) else None
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-                return _refused(f"{field} must be a whole number of at least 1.", field)
+                return _refused(t("settings_api.threshold_whole_number", field=field), field)
             values[field] = value
         try:
             self._area_store.set_birth_threshold(values["articles"], values["issues"])

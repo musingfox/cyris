@@ -7,7 +7,9 @@ from pathlib import Path
 import pytest
 
 import cyris
-from cyris.entrypoints.triage_server import render_settings_page
+from cyris.adapters.store.feed_health import FeedHealth
+from cyris.domain.models import SourceConfig
+from cyris.entrypoints.triage_server import TriageServer, render_settings_page
 
 pytestmark = pytest.mark.unit
 
@@ -112,3 +114,81 @@ def test_an_element_inside_a_sentence_is_the_templates_own(tag) -> None:
     assert page.count("<em>") == 1
     assert "{#" not in page
     assert "\ue000" not in page
+
+
+class _Request:
+    """What a handler reads of a request: its JSON body and the language the browser asks for."""
+
+    def __init__(self, language: str, body=None) -> None:
+        self.headers = {"Accept-Language": language}
+        self._body = body
+
+    async def json(self):
+        return self._body
+
+
+class _Settings:
+    def set(self, values) -> None:
+        pass
+
+
+class _Health:
+    def read(self) -> dict[str, FeedHealth]:
+        return {"Feed": FeedHealth("Feed", 3, "HTTP 429", None, None, None)}
+
+
+async def _answer(handler: str, language: str, body=None, **server) -> dict:
+    found = TriageServer(**server)
+    return json.loads((await getattr(found, handler)(_Request(language, body))).body)
+
+
+@pytest.mark.parametrize(
+    ("language", "error"),
+    [("en", "Model is saved from its own form"), ("zh-TW", "模型須從專屬表單儲存")],
+)
+async def test_a_refusal_names_the_field_in_the_pages_language(language, error) -> None:
+    body = {"values": {"llm_provider.model": "m"}}
+
+    answer = await _answer("_handle_post_values", language, body, settings=_Settings())
+
+    assert answer == {"ok": False, "error": error, "field": "llm_provider.model"}
+
+
+@pytest.mark.parametrize(
+    ("language", "note"),
+    [
+        ("en", "Notifications are off. The next run finishes without a message."),
+        ("zh-TW", "通知已關閉。下一期完成時不會發送訊息。"),
+    ],
+)
+async def test_a_saved_note_is_worded_in_the_pages_language(language, note) -> None:
+    answer = await _answer("_handle_post_notify", language, {"off": True}, settings=_Settings())
+
+    assert answer["note"] == note
+
+
+@pytest.mark.parametrize(
+    ("language", "problems"),
+    [
+        ("en", ["3 failures in a row · HTTP 429", "no article stored yet"]),
+        ("zh-TW", ["連續失敗 3 次 · HTTP 429", "尚未儲存任何文章"]),
+    ],
+)
+async def test_a_feeds_problems_are_worded_in_the_pages_language(language, problems) -> None:
+    sources = {"Feed": SourceConfig(name="Feed", url="https://feed.test/rss")}
+
+    answer = await _answer("_handle_get_sources", language, sources=sources, feed_health=_Health())
+
+    assert answer["sources"][0]["health"]["problems"] == problems
+
+
+async def test_the_saved_language_words_the_answer_whatever_the_browser_asks() -> None:
+    answer = await _answer(
+        "_handle_post_notify",
+        "en",
+        {"off": True},
+        settings=_Settings(),
+        values={"digest.output_language": "zh-Hant"},
+    )
+
+    assert answer["note"] == "通知已關閉。下一期完成時不會發送訊息。"
