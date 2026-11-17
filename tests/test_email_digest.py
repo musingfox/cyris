@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 from css_rules import text_langs
-from layered_issue import UNNAMED_SOURCES, four_layer_issue, water_only_issue
+from layered_issue import (
+    UNNAMED_SOURCES,
+    four_layer_issue,
+    topics_only_issue,
+    water_only_issue,
+)
 
 from cyris.adapters.output.email_digest import (
     LIGHT_PALETTE,
@@ -175,16 +180,23 @@ class TestSections:
         assert '<p class="summary">Why it matters.</p>' in stories
         assert '<a href="https://fan.example.test/post">A followed post</a>' in stories
 
-    def test_a_sand_block_is_its_heading_its_line_and_each_member_link(self):
-        topics = _section(render_digest_email(four_layer_issue(), DIGEST_URL), "Topics")
+    @pytest.mark.parametrize("language", ["en", "zh-Hant"])
+    def test_a_sand_block_is_its_heading_and_its_whole_line_with_no_member_link(self, language):
+        line = (
+            "兩篇報導說的是同一件事。" * 80
+            if language == "zh-Hant"
+            else " ".join(["Both agree."] * 400)
+        )
+        label = translator(language)("layer.topics")
 
-        assert ">Two reports of one event</h3>" in topics
-        assert '<p class="summary" lang="">Excerpt a</p>' in topics
-        assert (
-            '<a href="https://wire-a.example.test/a">Report a</a><br>'
-            '<a href="https://wire-b.example.test/b">Report b</a></p>'
-        ) in topics
-        assert "The model's cluster summary." not in topics
+        html = render_digest_email(topics_only_issue(language, line), DIGEST_URL)
+
+        topics = _section(html, label)
+        assert ">Topic 0</h3>" in topics
+        assert f'<p class="summary" lang="">{line}</p>' in topics
+        assert "<a " not in topics
+        for text in ("Report a", "Report b", "wire-a.example", "wire-b.example"):
+            assert text not in topics, text
 
     def test_no_source_is_named(self):
         html = render_digest_email(four_layer_issue(), DIGEST_URL)
@@ -195,7 +207,7 @@ class TestSections:
     def test_every_item_carries_its_link(self):
         html = render_digest_email(_full(), DIGEST_URL)
 
-        for url in ["https://lead.test/a", "https://news.test/2", "https://fan.test/1"]:
+        for url in ["https://lead.test/a", "https://fan.test/1"]:
             assert f'href="{url}"' in html
 
     def test_a_radar_pebble_is_untranslated(self):
@@ -568,10 +580,7 @@ def test_a_legacy_news_paragraph_in_the_mail_takes_the_layers_of_its_units() -> 
     html = render_digest_email(_paragraph_issue(), DIGEST_URL)
     topics = _section(html, "Topics")
     assert '<p class="summary">A quake struck; a letter followed.</p>' in topics
-    assert (
-        '<a href="https://a.test/quake">Wire A</a><br><a href="https://b.test/quake">Wire B</a>'
-        in topics
-    )
+    assert "Wire A" not in topics and "Wire B" not in topics
     assert "Letter" not in html
 
 

@@ -164,9 +164,8 @@ def _pebble_lines(item: DigestItem) -> list[str]:
 
 
 def _sand_lines(sand: Sand) -> list[str]:
-    """A topic's heading and line, then each article's title and link; no source."""
-    members = [f"  {_line(m)}" for m in sand.members]
-    return [f"- {sand.heading}", *([f"  {sand.line}"] if sand.line else []), *members]
+    """A topic's heading and its line, whole; no article link and no source."""
+    return [f"- {sand.heading}", *([f"  {sand.line}"] if sand.line else [])]
 
 
 def _area_entries(section: AreaSection) -> list[str]:

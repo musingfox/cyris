@@ -8,7 +8,12 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 import respx
-from layered_issue import UNNAMED_SOURCES, four_layer_issue, water_only_issue
+from layered_issue import (
+    UNNAMED_SOURCES,
+    four_layer_issue,
+    topics_only_issue,
+    water_only_issue,
+)
 
 from cyris.adapters import mail
 from cyris.adapters.mail import build_digest_mail, send_alert_mail, send_digest_mail, send_mail
@@ -167,9 +172,21 @@ class TestDigestMail:
             "Topics",
             "- Two reports of one event",
             "  Excerpt a",
-            "  - Report a — https://wire-a.example.test/a",
-            "  - Report b — https://wire-b.example.test/b",
         ]
+
+    @pytest.mark.parametrize("language", ["en", "zh-Hant"])
+    def test_a_topic_is_its_heading_and_its_whole_line_with_no_member_link(self, language):
+        line = (
+            "兩篇報導說的是同一件事。" * 80
+            if language == "zh-Hant"
+            else " ".join(["Both agree."] * 400)
+        )
+        topics = translator(language)("layer.topics")
+
+        _, text = build_digest_mail(topics_only_issue(language, line))
+
+        lines = text.splitlines()
+        assert lines[lines.index(topics) :] == [topics, "- Topic 0", f"  {line}"]
 
     def test_an_empty_layer_has_no_label(self):
         content = four_layer_issue().model_copy(update={"news_clusters": [], "tracked_topics": []})
@@ -539,8 +556,5 @@ def _paragraph_issue():
 
 def test_the_plain_text_part_takes_a_legacy_paragraphs_layers_from_its_units() -> None:
     _, body = build_digest_mail(_paragraph_issue())
-    assert body.endswith(
-        "Topics\n- Quake\n  A quake struck; a letter followed.\n"
-        "  - Wire A — https://a.test/quake\n  - Wire B — https://b.test/quake"
-    )
+    assert body.endswith("Topics\n- Quake\n  A quake struck; a letter followed.")
     assert "Letter" not in body

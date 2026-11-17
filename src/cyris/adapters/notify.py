@@ -188,11 +188,10 @@ def _render_pebble(pebble: Pebble) -> str:
 
 
 def _render_sand(sand: Sand) -> str:
-    """A topic block: its heading, its line, then each article's title link; no source."""
+    """A topic block: its heading and its line, whole; no article link and no source."""
     lines = [f"### {sand.heading}"]
     if sand.line:
         lines.append(sand.line)
-    lines += [f"- {_linked(member.title, member.link)}" for member in sand.members]
     lines.append("")
     return "\n".join(lines)
 
@@ -201,7 +200,7 @@ def _continued(parts: list[str]) -> list[str]:
     """A layer's items as embed descriptions, each at most one embed long where it can be.
 
     Items are never split here: one item over the limit is a description of its own, and
-    `_fit_embeds` cuts it at its lines.
+    `_fit_embeds` leaves it out whole.
     """
     pages: list[str] = []
     page: list[str] = []
@@ -308,43 +307,53 @@ def _cut_title(title: str) -> str:
     return title.encode("utf-8")[:_DISCORD_TITLE_MAX].decode("utf-8", errors="ignore")
 
 
-def _cut_at_lines(text: str, room: int, more: str) -> str:
-    """`text` if it fits in `room`, else its leading whole lines and the marker `more`, else ""."""
+# Where one item ends and the next begins in a layer's description: a blank line before the
+# next `### ` heading. A summary's own blank lines are not a boundary.
+_ITEM_BREAK = re.compile(r"\n\n(?=### )")
+
+
+def _cut_at_items(text: str, room: int, more: str) -> str:
+    """`text` if it fits in `room`, else its leading whole items and the marker `more`.
+
+    An item is never cut: a summary is shown whole or its item is left out. When not even
+    the first item fits, the marker stands alone, or `""` if it does not fit either.
+    """
     if _size(text) <= room:
         return text
     kept: list[str] = []
-    used = _size(more)
-    for line in text.split("\n"):
-        used += _size(line) + 1
+    used = _size(more) + 1
+    for item in _ITEM_BREAK.split(text):
+        used += _size(item) + 2
         if used > room:
             break
-        kept.append(line)
-    while kept and not kept[-1].strip():
-        kept.pop()
-    return "\n".join([*kept, more]) if kept else ""
+        kept.append(item.rstrip())
+    if kept:
+        return "\n".join(["\n\n".join(kept), more])
+    return more if _size(more) <= room else ""
 
 
 def _fit_embeds(embeds: list[dict], more: str) -> list[dict]:
     """Hold a digest's embeds to Discord's limits; the stats embed, last, stays whole.
 
-    Sections keep their order and are cut from the end, at line boundaries so no
-    markdown link is split: the section the total runs out in keeps what fits,
-    and every section after it is dropped. A cut section ends in the marker `more`.
+    Sections keep their order and are cut from the end, at item boundaries so no
+    summary or markdown link is split: the section the total runs out in keeps the
+    items that fit whole, and every section after it is dropped. A cut section ends in
+    the marker `more`.
     """
     *sections, stats = embeds
     budget = _DISCORD_EMBED_TOTAL - _size(stats["title"]) - _size(stats["description"])
     fitted = []
     for embed in sections[: _DISCORD_MAX_EMBEDS - 1]:
         title = _cut_title(embed["title"])
-        capped = _cut_at_lines(embed["description"], _DISCORD_DESCRIPTION_MAX, more)
+        capped = _cut_at_items(embed["description"], _DISCORD_DESCRIPTION_MAX, more)
         room = budget - _size(title)
         description = (
-            capped if _size(capped) <= room else _cut_at_lines(embed["description"], room, more)
+            capped if _size(capped) <= room else _cut_at_items(embed["description"], room, more)
         )
         if description:
             fitted.append(embed | {"title": title, "description": description})
             budget -= _size(title) + _size(description)
-        if description != capped:
+        if description != embed["description"]:
             break
     return [*fitted, stats]
 

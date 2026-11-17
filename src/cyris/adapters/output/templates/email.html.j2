@@ -135,7 +135,6 @@
             <article class="item" lang="{{ content_lang }}">
                 <h3 class="title">{{ sand.heading }}</h3>
                 {% if sand.line %}<p class="summary"{% if sand.line_untranslated %} lang=""{% endif %}>{{ sand.line }}</p>{% endif %}
-                <p class="desc" lang="">{% for member in sand.members %}{{ title_link(member) }}{% if not loop.last %}<br>{% endif %}{% endfor %}</p>
             </article>
             {% endfor %}
         </section>

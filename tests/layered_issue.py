@@ -119,3 +119,30 @@ def water_only_issue(language: str = "en") -> DigestContent:
             "tracked_topics": [],
         }
     )
+
+
+def topics_only_issue(language: str, *lines: str) -> DigestContent:
+    """The issue with only topics left: one two-article topic per `lines`, that text its summary."""
+    issue = four_layer_issue()
+    cluster = issue.news_clusters[0]
+    clusters = [
+        cluster.model_copy(
+            update={
+                "heading": f"Topic {n}",
+                "members": [
+                    cluster.members[0].model_copy(update={"summary": line}),
+                    *cluster.members[1:],
+                ],
+            }
+        )
+        for n, line in enumerate(lines)
+    ]
+    return issue.model_copy(
+        update={
+            "output_language": language,
+            "featured_articles": [],
+            "fan_sections": [],
+            "news_clusters": clusters,
+            "tracked_topics": [],
+        }
+    )

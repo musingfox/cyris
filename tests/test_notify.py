@@ -2,12 +2,13 @@
 
 import json
 import logging
+import re
 from dataclasses import replace
 from datetime import UTC, datetime
 
 import httpx
 import pytest
-from layered_issue import UNNAMED_SOURCES, four_layer_issue
+from layered_issue import UNNAMED_SOURCES, four_layer_issue, topics_only_issue
 
 from cyris.adapters import notify
 from cyris.adapters.notify import (
@@ -27,6 +28,7 @@ from cyris.domain.models import (
     DigestSection,
     UsageStats,
 )
+from cyris.i18n import translator
 from cyris.service_layer.alerts import RunAlert
 
 pytestmark = pytest.mark.unit
@@ -531,11 +533,12 @@ class TestDiscordPayloadLimits:
         content = four_layer_issue()
         pebble = content.featured_articles[0].items[0]
         content.featured_articles[0].items = [
-            pebble.model_copy(update={"title": f"Read {n}", "summary": "Why it matters. " * 40})
+            pebble.model_copy(update={"title": f"Read {n}", "summary": "Why it matters. " * 45})
             for n in range(5)
         ]
-        cluster = content.news_clusters[0]
-        cluster.members = cluster.members * 40
+        content.news_clusters = topics_only_issue(
+            "en", *[" ".join(["Both agree."] * 40)] * 6
+        ).news_clusters
         full = build_discord_embeds(content, ONLINE)
         topics_at = [e["title"] for e in full].index("Topics")
         # Each layer fits one embed's 4096, so only the 6000 total can cut the topics.
@@ -550,6 +553,42 @@ class TestDiscordPayloadLimits:
         *kept, marker = embeds[topics_at]["description"].split("\n")
         assert "more in the online edition" in marker
         assert kept == full[topics_at]["description"].split("\n")[: len(kept)]
+
+
+class TestDiscordTopicsStayWhole:
+    """A topic's line is never cut to fit: the hard limits leave whole topics out instead."""
+
+    @pytest.mark.parametrize(
+        ("language", "unit"),
+        [("en", "Both agree."), ("zh-Hant", "兩篇報導說的是同一件事。")],
+    )
+    def test_topics_that_overflow_are_left_out_whole_and_the_rest_are_unchanged(
+        self, language, unit
+    ):
+        lines = [" ".join([unit] * 60)] * 10
+        content = topics_only_issue(language, *lines)
+        full = build_discord_embeds(content, ONLINE)
+        assert sum(_counted(e) for e in full) > 6000
+
+        embeds = build_discord_payload(content, digest_url=ONLINE)["embeds"]
+
+        assert sum(_counted(e) for e in embeds) <= 6000
+        assert all(_bytes(e["description"]) <= 4096 for e in embeds)
+        assert embeds[-1] == full[-1]
+        topics = "\n".join(e["description"] for e in embeds[:-1] if e["title"] == full[0]["title"])
+        shown = re.findall(r"### Topic \d\n(.*)", topics)
+        assert 0 < len(shown) < len(lines)
+        assert set(shown) == {lines[0]}
+        assert topics.endswith(f"*{translator(language)('notify.more_online')}*")
+
+    def test_a_topic_over_one_embed_is_left_out_with_the_marker_alone(self):
+        content = topics_only_issue("en", "Too long. " * 600, "Short.")
+
+        embeds = build_discord_payload(content, digest_url=ONLINE)["embeds"]
+
+        assert [e["title"] for e in embeds] == ["Topics", embeds[-1]["title"]]
+        assert embeds[0]["description"] == f"*{translator('en')('notify.more_online')}*"
+        assert "Too long." not in json.dumps(embeds)
 
 
 def _chinese_issue() -> DigestContent:
@@ -1098,15 +1137,18 @@ class TestDiscordThreeLayers:
             "### [A followed post](https://fan.example.test/post)"
         )
 
-    def test_sand_is_its_heading_its_line_and_each_member_link(self):
-        topics = build_discord_embeds(four_layer_issue())[2]
-
-        assert topics["description"] == (
-            "### Two reports of one event\n"
-            "Excerpt a\n"
-            "- [Report a](https://wire-a.example.test/a)\n"
-            "- [Report b](https://wire-b.example.test/b)"
+    @pytest.mark.parametrize("language", ["en", "zh-Hant"])
+    def test_sand_is_its_heading_and_its_whole_line_with_no_member_link(self, language):
+        line = (
+            "兩篇報導說的是同一件事。" * 80
+            if language == "zh-Hant"
+            else " ".join(["Both agree."] * 400)
         )
+
+        topics = build_discord_embeds(topics_only_issue(language, line))[0]
+
+        assert topics["title"] == translator(language)("layer.topics")
+        assert topics["description"] == f"### Topic 0\n{line}"
 
     def test_the_headlines_layer_is_left_to_the_page(self):
         body = json.dumps(build_discord_embeds(four_layer_issue()))
@@ -1175,10 +1217,5 @@ def _paragraph_issue():
 def test_a_legacy_news_paragraph_in_discord_takes_the_layers_of_its_units() -> None:
     embeds = build_discord_embeds(_paragraph_issue())
     topics, _ = embeds
-    assert topics["description"] == (
-        "### Quake\n"
-        "A quake struck; a letter followed.\n"
-        "- [Wire A](https://a.test/quake)\n"
-        "- [Wire B](https://b.test/quake)"
-    )
+    assert topics["description"] == ("### Quake\nA quake struck; a letter followed.")
     assert "Letter" not in json.dumps(embeds)
