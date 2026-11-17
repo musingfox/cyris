@@ -41,8 +41,6 @@ NAMES = {
     "Cyris",
     "cyris",
     "run",
-    "Signal",
-    "Noise",
     "token",
     "API",
     "LLM",
@@ -506,7 +504,7 @@ def test_the_html_mail_is_worded_in_its_issues_language(language) -> None:
         t("layer.stories"),
         t("layer.topics"),
         t("mail.kept_of", included=10, received=20),
-        f"Cyris · {issue_name(t, '2026-01-02', STARTED)}",
+        issue_name(t, "2026-01-02", STARTED),
     ]:
         assert _shows(html, text), text
     link = {"link": ("a", {"href": "https://cyris.musingfox.com/"})}

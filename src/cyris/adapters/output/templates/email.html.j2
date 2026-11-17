@@ -6,7 +6,7 @@
         .brand, .section-tag, .meta, .footer { color: {{ c['text-dim'] }}; }
         .mark, .rule { background: {{ c['accent'] }}; }
         .issue-title, .title, .title a, .lead-title, .lead-title a { color: {{ c['text'] }}; }
-        .issue-title em, .stats b { color: {{ c['accent'] }}; }
+        .stats b { color: {{ c['accent'] }}; }
         .stats, .summary, .desc, .desc a, .meta a, .footer a { color: {{ c['text-dim'] }}; }
         .btn.primary { background: {{ c['accent'] }}; border-color: {{ c['accent'] }}; color: {{ c['bg'] }}; }
         .btn.secondary { background: {{ c['surface-2'] }}; border-color: {{ c['border-strong'] }}; color: {{ c['text-dim'] }}; }
@@ -58,7 +58,6 @@
         .brand { margin: 0 0 {{ tok['s-5'] }}; }
         .mark { display: inline-block; width: 12px; height: 12px; vertical-align: -1px; margin-right: {{ tok['s-3'] }}; }
         .issue-title { font-family: {{ tok['font-serif'] }}; font-weight: 400; font-size: 56px; line-height: .92; letter-spacing: -.04em; margin: 0 0 {{ tok['s-5'] }}; }
-        .issue-title em { font-style: italic; }
         .stats { font-family: {{ tok['font-mono'] }}; font-size: 14px; font-variant-numeric: tabular-nums; margin: 0 0 {{ tok['s-6'] }}; }
         .stats b { font-weight: 500; }
         .actions { margin: 0 0 {{ tok['s-12'] }}; }
@@ -88,8 +87,8 @@
 <body class="body">
     <div class="preheader">{% if layers.pebbles %}<span lang="">{{ layers.pebbles[0].item.title }}</span>{% elif layers.sand %}<span lang="{{ content_lang }}">{{ layers.sand[0].heading }}</span>{% endif %} · {{ t("mail.kept_of", included=content.articles_included, received=content.articles_received) }}</div>
     <div class="wrap">
-        <p class="brand"><span class="mark"></span>Cyris · {{ issue_name(content.date, content.started_at) }}</p>
-        <h1 class="issue-title">Signal<em>/</em>Noise</h1>
+        <p class="brand"><span class="mark"></span>Cyris</p>
+        <h1 class="issue-title">{{ issue_name(content.date, content.started_at) }}</h1>
         <p class="stats">{{ t("mail.stats", sources=content.sources_processed, received=content.articles_received, included=content.articles_included, elements={"b": ("b", {})}) }}</p>
         {% if digest_url %}
         <p class="actions"><a class="btn primary" href="{{ digest_url }}">{{ t("email.read_online") }}</a>{% if raw_url %}<a class="btn secondary" href="{{ raw_url }}">{{ t("issue.all_articles") }}</a>{% endif %}</p>

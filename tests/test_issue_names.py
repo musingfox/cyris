@@ -187,7 +187,7 @@ def test_every_surface_names_the_issue_by_its_hour(language, tmp_path) -> None:
         in (pages["archive"])
     )
     assert f"<title>CYRIS // {name}</title>" in pages["mail"]
-    assert f"Cyris · {name}</p>" in pages["mail"]
+    assert f'<h1 class="issue-title">{name}</h1>' in pages["mail"]
     assert pages["discord"] == name
 
 
@@ -215,7 +215,7 @@ def test_an_issue_stored_without_its_start_is_named_by_its_date_alone(language, 
     assert "<title>CYRIS // 11/17</title>" in pages["digest"]
     assert '<span class="data">11/17</span></div>' in pages["digest"]
     assert '<span class="date">11/17</span></div>' in pages["archive"]
-    assert "Cyris · 11/17</p>" in pages["mail"]
+    assert '<h1 class="issue-title">11/17</h1>' in pages["mail"]
     assert pages["discord"] == "11/17"
     assert pages["subject"] == {"en": "Digest for 11/17", "zh-Hant": "11/17 精選"}[language]
 
