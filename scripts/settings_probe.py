@@ -55,6 +55,7 @@ from cyris.diagnostics.doctor import Check as DoctorCheck
 from cyris.domain.areas import Area
 from cyris.domain.models import Lane, SourceConfig, TrackedTopic
 from cyris.entrypoints.triage_server import TriageServer
+from cyris.i18n import translator
 from cyris.service_layer.prompts import _language_names
 
 # Named rather than random so a leak test can look for exactly these strings.
@@ -358,7 +359,8 @@ _PROBE_VALUES = {
     "digest.scoring_snippet_length": 1000,
     "digest.summarize_snippet_length": 1000,
     "digest.filter_snippet_length": 500,
-    "digest.output_language": "zh-Hant",
+    # The page is worded in the stored language (ADR-0027); the checks read English copy.
+    "digest.output_language": "en",
     "digest.style_prompt": "x",
     "digest.type_scale": 1,
     "digest.rank_by_preference": False,
@@ -375,6 +377,9 @@ _PROBE_VALUES = {
 # Every runtime setting set, so no check meets a missing-value marker it did not ask
 # for; a key the registry adds without a value here fails at import.
 PROBE_VALUES = {key: _PROBE_VALUES[key] for key in GRADE_D_KEYS}
+# The page's words as the catalog of the stored language gives them, so a check reads
+# what the page says in the language its fixture stores, not an English literal.
+PAGE = translator(PROBE_VALUES["digest.output_language"])
 
 
 @dataclass
@@ -801,6 +806,16 @@ const warnOf = () => {
 };
 """
 
+# What the assignment table says when a save lands one of its two picks and activates X.
+PARTIAL_ASSIGN = PAGE(
+    "settings.assign_partial_activated",
+    error="The save stopped after the first source.",
+    landed=1,
+    total=2,
+    areas="X",
+    active=1,
+)
+
 # Per save: where it starts, the POST it sends, the change that sends it, the
 # notice it reports in, and what that notice says while the POST is out.
 BUSY = {
@@ -809,28 +824,28 @@ BUSY = {
         "/api/settings/values",
         """setValue($("#style-prompt"), "Short");""",
         "digest",
-        "Saving…",
+        PAGE("settings.saving"),
     ),
     "pipeline": (
         "/settings#pipeline",
         "/api/settings/values",
         """setValue($("#window-hours"), "12");""",
         "pipeline",
-        "Saving…",
+        PAGE("settings.saving"),
     ),
     "model-vote-off": (
         "/settings#model",
         "/api/settings/vote-similarity",
         """setValue($("#vote-seeds"), "50");""",
         "model",
-        "Saving…",
+        PAGE("settings.saving"),
     ),
     "discord": (
         "/settings#notifications",
         "/api/settings/notify",
         f"""setValue($("#discord-webhook"), {json.dumps(NEW_WEBHOOK)});""",
         "notifications",
-        "Checking with Discord…",
+        PAGE("settings.checking_discord"),
     ),
     "email": (
         "/settings#notifications",
@@ -838,7 +853,7 @@ BUSY = {
         """setValue($("#email-to"), "me@example.org");
         setValue($("#email-from"), "d@example.org");""",
         "notifications",
-        "Sending a test message…",
+        PAGE("settings.sending_test"),
     ),
 }
 
@@ -969,6 +984,9 @@ LANGUAGES = list(_language_names().items())
 # languages.json does not list, which the model is still told as written, and
 # a zone no browser lists.
 UNLISTED = {"digest.output_language": "yue-Hant", "general.timezone": "Cyris/Probe"}
+# A deployment that words its pages in Traditional Chinese, and those pages' words.
+TRADITIONAL_CHINESE = {"digest.output_language": "zh-Hant"}
+CHINESE = translator(TRADITIONAL_CHINESE["digest.output_language"])
 # The zone the probe's browser reports as its own (`PIN_ZONE`), so a check knows
 # what a field with no stored zone opens on: not the probe's stored Asia/Taipei.
 BROWSER_ZONE = "America/Halifax"
@@ -1020,10 +1038,11 @@ CHECKS: list[Check] = [
         id="site-bar-current",
         fixture="readonly",
         path="/settings",
-        script="""
+        script=f"""
             const current = $$('.site-nav a[aria-current="page"]');
             const names = current.map((a) => a.textContent.trim());
-            expect(names.length === 1 && names[0] === "Settings", `current: ${names}`);
+            expect(names.length === 1 && names[0] === {json.dumps(PAGE("site.settings"))},
+              `current: ${{names}}`);
         """,
         sabotage="""$('.site-nav a[aria-current="page"]').removeAttribute("aria-current");""",
     ),
@@ -2024,7 +2043,7 @@ CHECKS: list[Check] = [
         preload=answer_get("/api/vote", ACCESS_OFF),
         act="await settingsLoaded();",
         script="""
-            const archive = $$(".site-nav a").find((a) => a.textContent === "Archive");
+            const archive = $(".site-nav a.archive-link");
             expect(archive && !visible(archive), "Archive shows on a refused probe");
             expect(!$(".brand").hasAttribute("href"), `brand links ${$(".brand").href}`);
             expect(visible($(".brand")), "the brand is gone");
@@ -2037,8 +2056,7 @@ CHECKS: list[Check] = [
         path="/settings",
         preload=answer_get("/api/vote", SIGNED_IN),
         act="""
-            const archive = () => $$(".site-nav a").find((a) => a.textContent === "Archive");
-            await waitFor(() => visible(archive()), "Archive");
+            await waitFor(() => visible($(".site-nav a.archive-link")), "Archive");
         """,
         script="""
             const href = $(".brand").getAttribute("href");
@@ -2154,7 +2172,10 @@ CHECKS: list[Check] = [
                 expect(!saveOf("{tab}").disabled, "the edit made during the save looks saved");
                 expect(navOf("{tab}").classList.contains("dirty"), "no dirty mark");
             """,
-            sabotage=f"""markClean(saveOf("{tab}").form);""",
+            sabotage=f"""
+                saveOf("{tab}").disabled = true;
+                navOf("{tab}").classList.remove("dirty");
+            """,
             receipt=_last_call(stored),
         )
         for tab, field, typed, stored in (
@@ -2473,13 +2494,67 @@ CHECKS: list[Check] = [
             expect(field.tagName === "SELECT", `the field is a ${{field.tagName}}`);
             const wanted = {json.dumps([list(pair) for pair in LANGUAGES], ensure_ascii=False)};
             expect(same(options(field), wanted), `options: ${{JSON.stringify(options(field))}}`);
-            expect(field.value === "zh-Hant", `selected: ${{field.value}}`);
+            const stored = {json.dumps(PROBE_VALUES["digest.output_language"])};
+            expect(field.value === stored, `selected: ${{field.value}}`);
         """,
         # After the act: the options lose the file's order.
         sabotage="""
             const field = $("#output-language");
             field.append(field.options[0]);
         """,
+    ),
+    Check(
+        id="chinese-page-words-a-new-source-and-its-refusal-from-its-catalog",
+        fixture="writable",
+        path="/settings#sources",
+        setup=_holding(TRADITIONAL_CHINESE),
+        act="""
+            await sourcesLoaded();
+            $("#add-source").click();
+            await waitFor(editor, "the editor");
+            setValue($("#e-name", editor()), "新來源");
+            editorAct("save").click();
+            const notice = () => editorAct("save").parentElement.querySelector(".notice");
+            await waitFor(() => settled(notice()), "the refusal");
+        """,
+        script=f"""
+            const lang = document.documentElement.lang;
+            expect(lang === "zh-Hant", `lang: ${{lang}}`);
+            const tab = navOf("notifications").textContent.trim();
+            expect(tab === {json.dumps(CHINESE("settings.tab_notifications"), ensure_ascii=False)},
+              `Notifications tab: ${{tab}}`);
+            const title = $(".editor-title", editor()).textContent;
+            expect(title === {json.dumps(CHINESE("settings.new_source"), ensure_ascii=False)},
+              `editor title: ${{title}}`);
+            const refusal = editorAct("save").parentElement.querySelector(".notice").textContent;
+            const wanted = {json.dumps(CHINESE("settings_api.rss_needs_url"), ensure_ascii=False)};
+            expect(refusal === wanted, `refusal: ${{refusal}}`);
+        """,
+        # After the act: the server's refusal, as an English-only server words it.
+        sabotage=f"""
+            editorAct("save").parentElement.querySelector(".notice").textContent =
+              {json.dumps(translator("en")("settings_api.rss_needs_url"))};
+        """,
+    ),
+    Check(
+        id="chinese-page-arms-turn-off-in-its-own-words",
+        fixture="writable",
+        path="/settings#notifications",
+        setup=_holding(TRADITIONAL_CHINESE),
+        act="""
+            await settingsLoaded();
+            ctx.label = $("#notify-off").textContent;
+            $("#notify-off").click();
+            ctx.armed = $("#notify-off").textContent;
+        """,
+        script=f"""
+            const label = {json.dumps(CHINESE("settings.turn_off"), ensure_ascii=False)};
+            expect(ctx.label === label, `Turn off reads ${{ctx.label}}`);
+            const armed = {json.dumps(CHINESE("settings.confirm_turn_off"), ensure_ascii=False)};
+            expect(ctx.armed === armed, `armed, it reads ${{ctx.armed}}`);
+        """,
+        # After the act: the armed label a script with English literals sets.
+        sabotage=f"""ctx.armed = {json.dumps(translator("en")("settings.confirm_turn_off"))};""",
     ),
     Check(
         id="digest-keeps-an-unlisted-stored-value",
@@ -2742,20 +2817,22 @@ CHECKS: list[Check] = [
         act="""
             await settingsLoaded();
             setValue($("#timezone"), "Europe/Berlin");
-            setValue($("#output-language"), "en");
+            // A language other than the stored English, and one no catalog words, so the
+            // answer stays English.
+            setValue($("#output-language"), "ja");
             saveOf("digest").click();
             await waitFor(() => settled(noticeOf("digest")) && saveOf("digest").disabled,
               "the save");
         """,
         script="""
             const text = noticeOf("digest").textContent;
-            expect(text === "Timezone: Europe/Berlin, Output language: en. Effective next run.",
+            expect(text === "Timezone: Europe/Berlin, Output language: ja. Effective next run.",
               `notice: ${text}`);
         """,
         sabotage_preload=rewrite_post(
             "/api/settings/values", 'body.values["digest.style_prompt"] = "x";'
         ),
-        receipt=_calls([{"general.timezone": "Europe/Berlin", "digest.output_language": "en"}]),
+        receipt=_calls([{"general.timezone": "Europe/Berlin", "digest.output_language": "ja"}]),
     ),
     Check(
         id="digest-style-empty",
@@ -3161,10 +3238,11 @@ CHECKS: list[Check] = [
             $("#notify-off").click();
             await waitFor(() => window.__release, "the held turn off");
         """,
-        script="""
+        script=f"""
             const notice = $("#notify-result");
-            expect(visible(notice) && notice.textContent === "Turning off…",
-              `notice: ${visible(notice) && notice.textContent}`);
+            const busy = {json.dumps(PAGE("settings.turning_off"))};
+            expect(visible(notice) && notice.textContent === busy,
+              `notice: ${{visible(notice) && notice.textContent}}`);
             expect(notice.getAttribute("aria-busy") === "true", "the notice is not busy");
         """,
         sabotage="""$("#notify-result").removeAttribute("aria-busy");""",
@@ -3180,10 +3258,10 @@ CHECKS: list[Check] = [
             editorAct("save").click();
             await waitFor(() => window.__release, "the held save");
         """,
-        script="""
+        script=f"""
             const notice = editorAct("save").parentElement.querySelector(".notice");
-            expect(visible(notice) && notice.textContent === "Saving…",
-              `notice: ${visible(notice) && notice.textContent}`);
+            expect(visible(notice) && notice.textContent === {json.dumps(PAGE("settings.saving"))},
+              `notice: ${{visible(notice) && notice.textContent}}`);
             expect(notice.getAttribute("aria-busy") === "true", "the notice is not busy");
         """,
         sabotage="""
@@ -3218,10 +3296,11 @@ CHECKS: list[Check] = [
             editorAct("retire").click();
             await waitFor(() => window.__release, "the held retire");
         """,
-        script="""
+        script=f"""
             const notice = editorAct("retire").parentElement.querySelector(".notice");
-            expect(visible(notice) && notice.textContent === "Retiring…",
-              `notice: ${visible(notice) && notice.textContent}`);
+            const busy = {json.dumps(PAGE("settings.retiring"))};
+            expect(visible(notice) && notice.textContent === busy,
+              `notice: ${{visible(notice) && notice.textContent}}`);
             expect(notice.getAttribute("aria-busy") === "true", "the notice is not busy");
         """,
         sabotage="""
@@ -3255,25 +3334,26 @@ CHECKS: list[Check] = [
         fixture="writable",
         path="/settings#model",
         preload=RECORD_POSTS,
-        act="""
+        act=f"""
             await settingsLoaded();
             setValue($("#model-input"), "gemini-3.8-flash");
             $('input[name=provider][value="none"]').click();
             ctx.disabled = $("#model-input").disabled;
             saveOf("model").click();
+            const checking = {json.dumps(PAGE("settings.checking_provider"))};
             await waitFor(() => settled(noticeOf("model")) && saveOf("model").disabled
-              && !noticeOf("model").textContent.startsWith("Checking"), "the save");
+              && noticeOf("model").textContent !== checking, "the save");
         """,
-        script="""
+        script=f"""
             expect(ctx.disabled, "the model field stayed enabled under None");
             const label = $(".name", choice("none")).textContent;
-            expect(label === "None — plain excerpts", `label: ${label}`);
+            expect(label === {json.dumps(PAGE("provider.none"))}, `label: ${{label}}`);
             const text = noticeOf("model").textContent;
-            expect(text.startsWith("No model is called: digests list plain excerpts."), text);
+            expect(text.startsWith({json.dumps(PAGE("settings.model_hint_none"))}), text);
             // The server stores "" for None whatever it is sent, so read what was sent.
             const sent = window.__sent.filter(([url]) => url.endsWith("/api/settings"));
-            expect(same(sent.map(([, body]) => body), [{provider: "none", model: ""}]),
-              `sent: ${JSON.stringify(sent)}`);
+            expect(same(sent.map(([, body]) => body), [{{provider: "none", model: ""}}]),
+              `sent: ${{JSON.stringify(sent)}}`);
         """,
         sabotage_preload=rewrite_post("/api/settings", 'body.model = "gemini-3.8-flash";'),
         receipt=_calls([{"llm_provider.provider": "none", "llm_provider.model": ""}]),
@@ -4448,7 +4528,8 @@ CHECKS += [
             expect(value("曼報") === "1", `dismissed pick: ${value("曼報")}`);
             expect(!$("#save-order").disabled, "Save order is disabled");
         """,
-        sabotage="""localOrder = storedOrder.slice(); renderAreas();""",
+        # After the act: the order as stored, which leaves Save order nothing to save.
+        sabotage="""$("#save-order").disabled = true;""",
     ),
     Check(
         id="areas-reload-source-gone",
@@ -4459,16 +4540,12 @@ CHECKS += [
             await waitFor(() => $('#assign-body select[data-source="Hacker News"]'), "the rows");
             setValue($('select[data-source="Simon Willison"]'), "3");
             setValue($('select[data-source="Hacker News"]'), "4");
-            const realFetch = window.fetch;
-            window.fetch = async (input, init) => {
-              if (!String(input).endsWith("/api/sources") || (init && init.method)) {
-                return realFetch(input, init);
-              }
-              const data = await (await realFetch(input, init)).json();
-              const sources = data.sources.filter((s) => s.name !== "Hacker News");
-              return new Response(JSON.stringify({...data, sources}));
-            };
-            await loadSources();
+            // Retiring a source reloads the list, as any source write does.
+            await openRow("Hacker News");
+            editorAct("retire").click();
+            await sleep(200);
+            editorAct("retire").click();
+            await waitFor(() => !rowOf("Hacker News"), "the reload");
         """,
         script="""
             expect(!$('#assign-body select[data-source="Hacker News"]'),
@@ -4477,7 +4554,8 @@ CHECKS += [
                    `pick: ${$('select[data-source="Simon Willison"]').value}`);
             expect(!$("#save-assign").disabled, "Save assignments is disabled");
         """,
-        sabotage="""delete picks["Simon Willison"]; renderAreas();""",
+        # After the act: the pick the reload dropped.
+        sabotage="""$('select[data-source="Simon Willison"]').value = "1";""",
     ),
     Check(
         id="areas-reload-activated",
@@ -4497,7 +4575,12 @@ CHECKS += [
               headers: {"Content-Type": "application/json"},
               body: JSON.stringify({assignments: {"Simon Willison": 4}}),
             });
-            await loadSources();
+            // Retiring another source reloads the list, as any source write does.
+            await openRow("Cloudflare Blog");
+            editorAct("retire").click();
+            await sleep(200);
+            editorAct("retire").click();
+            await waitFor(() => !rowOf("Cloudflare Blog"), "the reload");
         """,
         script="""
             expect(same(areaNames(), ["Finance", "Tech", "Food", "X"]), `rows: ${areaNames()}`);
@@ -4618,19 +4701,19 @@ window.fetch = async (input, init) => {
             await waitFor(() => $("#assign-result").classList.contains("err"), "the notice");
             await waitFor(() => $("#save-assign").disabled === false, "the re-read");
         """,
-        script="""
+        script=f"""
             const notice = $("#assign-result").textContent;
-            expect(notice === "The save stopped after the first source. — 1 of 2 sources assigned; "
-                   + "X is active. Save again for the rest.", `notice: ${notice}`);
-            expect(same(areaNames(), ["Tech", "Food", "Finance", "X"]), `rows: ${areaNames()}`);
-            const value = (name) => $(`select[data-source="${name}"]`).value;
+            expect(notice === {json.dumps(PARTIAL_ASSIGN)}, `notice: ${{notice}}`);
+            expect(same(areaNames(), ["Tech", "Food", "Finance", "X"]), `rows: ${{areaNames()}}`);
+            const value = (name) => $(`select[data-source="${{name}}"]`).value;
             expect(value("Simon Willison") === "4", "the landed pick did not move");
             expect(value("Hacker News") === "4", "the unlanded pick is gone");
             expect(!$("#save-assign").disabled, "Save assignments is disabled");
         """,
+        # After the act: the unlanded pick dropped, as the stored assignments show it.
         sabotage="""
-            for (const name of Object.keys(picks)) delete picks[name];
-            renderAreas();
+            $('select[data-source="Hacker News"]').value = "";
+            $("#save-assign").disabled = true;
         """,
     ),
     Check(
@@ -4731,7 +4814,10 @@ window.fetch = (input, init) => {
             setValue($("#th-articles"), "4");
             expect(dot(), "a reverted threshold cleared an assignment's dot");
         """,
-        sabotage="""thresholdEdited = () => navOf("areas").classList.remove("dirty");""",
+        sabotage="""
+            $("#th-articles").addEventListener("input",
+              () => navOf("areas").classList.remove("dirty"));
+        """,
     ),
     Check(
         id="areas-tap-375",

@@ -706,6 +706,8 @@ EXPECTED_IDS = {
     "digest-clef-votes-reason-describes-it",
     "digest-clef-reason-describes-it",
     "digest-clef-votes-reason-leaves-with-vote-similarity",
+    "chinese-page-words-a-new-source-and-its-refusal-from-its-catalog",
+    "chinese-page-arms-turn-off-in-its-own-words",
 }
 
 
@@ -895,6 +897,40 @@ def test_the_onboarding_probe_reads_no_binding_of_the_page_module():
     assert "function tunedValue(" in script and "let voteSimilarity = null;" in script
     assert "tunedValue(" not in probe
     assert not re.search(r"await voteSimilarity;", probe)
+
+
+def test_the_settings_probe_reads_no_binding_of_the_page_module():
+    """settings.js is a module, so its top-level names are not on the window: the probe
+    reloads the sources through a write the page makes and reads the result off the DOM."""
+    probe = Path(settings_probe.__file__).read_text(encoding="utf-8")
+    static = Path(cyris.entrypoints.__file__).parent
+    script = (static / "static" / "settings.js").read_text(encoding="utf-8")
+
+    template = (static / "templates" / "settings.html.j2").read_text(encoding="utf-8")
+    assert '<script type="module" src="/static/settings.js">' in template
+    bindings = (
+        "loadSources",
+        "renderAreas",
+        "picks",
+        "localOrder",
+        "storedOrder",
+        "markClean",
+        "thresholdEdited",
+    )
+    for name in bindings:
+        assert re.search(rf"^(?:const|let|function) {name}\b", script, re.M), name
+        assert not re.search(rf"(?<![\w.$#-]){name}\s*(?:\(|\[|\.\w|=(?!=))", probe), name
+
+
+def test_the_settings_probe_reads_the_pages_words_from_the_catalog():
+    """The fixture's stored language words the page, so a check reads its text from that
+    language's catalog rather than an English literal."""
+    probe = Path(settings_probe.__file__).read_text(encoding="utf-8")
+
+    assert settings_probe.PAGE.tag == settings_probe.PROBE_VALUES["digest.output_language"]
+    assert settings_probe.CHINESE.tag == "zh-Hant"
+    assert 'a.textContent === "Archive"' not in probe
+    assert '"Checking with Discord…"' not in probe
 
 
 def test_the_driver_emulates_media_before_it_loads_the_page():
