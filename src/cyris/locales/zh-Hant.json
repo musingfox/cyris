@@ -278,8 +278,8 @@
     "source": "Whole hours from 0 to 23, in the timezone of the step before; half hours are refused."
   },
   "onboarding.intro": {
-    "text": "完成七個步驟，就能產生第一期。每一步都可以略過，略過的步驟會保留目前的值；這裡的所有設定之後都能在「設定」修改。",
-    "source": "Seven steps to your first issue. Skip any of them: a skipped step keeps its current value, and everything here can be changed later in Settings."
+    "text": "每一步都可以略過，略過的步驟會保留目前的值；這裡的所有設定之後都能在「設定」修改。",
+    "source": "Skip any step: it keeps its current value, and everything here can be changed later in Settings."
   },
   "onboarding.issue_built": {
     "text": "第一期已產生。本站不發布線上版，第一期只會透過通知送達。",
@@ -293,10 +293,6 @@
   "onboarding.key_missing": {"text": "缺少 {$variable}", "source": "{$variable} missing"},
   "onboarding.key_ready": {"text": "金鑰已就緒", "source": "Key ready"},
   "onboarding.language_heading": {"text": "語言與時區", "source": "Language and timezone"},
-  "onboarding.language_lede": {
-    "text": "每期精選使用的語言，以及發布時間採用的時區。",
-    "source": "The language each issue is written in, and the clock its publish hours are read in."
-  },
   "onboarding.loading_feeds": {"text": "正在載入資訊來源…", "source": "Loading feeds…"},
   "onboarding.loading_settings": {"text": "正在載入設定…", "source": "Loading settings…"},
   "onboarding.model_heading": {"text": "模型", "source": "Model"},
@@ -305,13 +301,13 @@
     "source": "Next makes one real call to the provider first, so a typo is refused here."
   },
   "onboarding.model_hint_none": {
-    "text": "不呼叫任何模型，精選只列出原文摘錄。",
-    "source": "No model is called: digests list plain excerpts."
+    "text": "不呼叫任何模型。",
+    "source": "No model is called."
   },
   "onboarding.model_hint_pick": {"text": "請選擇有金鑰的供應商。", "source": "Pick a provider whose key is present."},
   "onboarding.model_lede": {
-    "text": "選擇撰寫標題和摘要的模型，供應商限這台機器有金鑰的。金鑰只存在 .env，不會存在這裡。",
-    "source": "The model that writes headlines and summaries, from the providers this machine has a key for. Keys stay in .env, never here."
+    "text": "撰寫標題和摘要的模型。金鑰只存在 .env，不會存在這裡。",
+    "source": "The model that writes headlines and summaries. Keys stay in .env, never here."
   },
   "onboarding.next": {"text": "下一步", "source": "Next"},
   "onboarding.no_key": {
@@ -381,8 +377,8 @@
   },
   "onboarding.plan_started": {"text": "已從這個頁面開始產生第一期。", "source": "The first issue was started from this page."},
   "onboarding.plan_today": {
-    "text": "按「產生第一期」會立即開始，需要幾分鐘；今天稍後的精選不會取代它。",
-    "source": "Start builds the first issue now. It takes a few minutes, and no later issue today replaces it."
+    "text": "需要幾分鐘；今天稍後的精選不會取代它。",
+    "source": "It takes a few minutes, and no later issue today replaces it."
   },
   "onboarding.plan_yesterday": {
     "text": "今天的發布時間 {$hours}（{$timezone}）都還沒到，屆時產生的精選會取代今天日期那一期；按「產生第一期」會立即開始，日期記為昨天，需要幾分鐘。",
@@ -431,7 +427,6 @@
   "onboarding.saved_values": {"text": "{$values}。{$note}", "source": "{$values}. {$note}"},
   "onboarding.saving": {"text": "儲存中…", "source": "Saving…"},
   "onboarding.schedule_heading": {"text": "發布時間", "source": "Publish hours"},
-  "onboarding.schedule_lede": {"text": "每天兩期精選的發布時間。", "source": "When each day's two issues are published."},
   "onboarding.sending_test": {"text": "正在寄送測試信…", "source": "Sending a test message…"},
   "onboarding.session_expired": {
     "text": "登入已過期。請重新載入頁面並再次登入。",
@@ -455,8 +450,8 @@
   },
   "onboarding.sources_heading": {"text": "來源", "source": "Sources"},
   "onboarding.sources_topics_lede": {
-    "text": "本站要讀取的資訊來源，每個都由發布者自己提供。請選擇你關注的主題，按「下一步」會列出這些主題的資訊來源。",
-    "source": "The feeds this deployment reads, each a publisher's own feed. Pick the topics you follow; Next shows their feeds."
+    "text": "本站要讀取的資訊來源，每個都由發布者自己提供。",
+    "source": "The feeds this deployment reads, each a publisher's own feed."
   },
   "onboarding.start": {"text": "產生第一期", "source": "Start the first issue"},
   "onboarding.starting_run": {"text": "正在開始產生精選…", "source": "Starting the run…"},

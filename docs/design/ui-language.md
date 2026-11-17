@@ -718,7 +718,8 @@ reload on a later step must keep the reader in the wizard. The same container se
   move the wizard.
 - Each step is a heading, a one-sentence description and the fields of the settings it writes, in the
   field component (§4), with the same names and help text as the settings category it shares them
-  with. Output language and Timezone are the selects settings has (§6 *settings*); a
+  with. The description is left out when the heading and the fields already say it: Language and
+  Publish hours have none (owner, 2026-11-17). Output language and Timezone are the selects settings has (§6 *settings*); a
   timezone opened on the browser's zone says `Detected from this browser, and not saved yet: Next
   saves it`, and `Skip` leaves the setting unset. A step writes through the route `/settings` saves those fields with, so the store
   cannot tell the two pages apart.

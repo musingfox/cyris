@@ -393,7 +393,7 @@ def test_no_onboarding_or_labels_message_names_the_old_third_layer() -> None:
     ] == []
 
 
-@pytest.mark.parametrize("key", ["onboarding.advanced", "onboarding.model_hint_none"])
+@pytest.mark.parametrize("key", ["onboarding.advanced"])
 def test_a_digest_is_called_by_the_issue_pages_word_in_zh_hant(key) -> None:
     text = _text("zh-Hant", key)
 
