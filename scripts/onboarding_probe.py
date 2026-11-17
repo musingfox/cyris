@@ -96,6 +96,7 @@ KINDS = (
     "answered",
     "trial",
     "model-skipped",
+    "zh-hant",
 )
 
 # What the reader types, and what each step must then store.
@@ -174,6 +175,7 @@ FIXTURE_VALUES = {
     "answered": {k: PROBE_VALUES[k] for k in ANSWERED_FIRST},
     "trial": _ANSWERED | {"llm_provider.provider": "none", "llm_provider.model": ""} | TRIAL_PUSHED,
     "model-skipped": _ANSWERED,
+    "zh-hant": PROBE_VALUES | {"digest.output_language": "zh-Hant"},
 }
 # The LLM key the probe's environment holds, and the ones it clears, so which
 # provider the model step offers does not depend on the reviewer's own shell.
@@ -254,6 +256,10 @@ TWO_TOPICS, SHARED = next(
 )
 # The pick kept when its topic is dropped: one feed with a single topic.
 KEPT_PICK = next(entry for entry in FEEDS if len(entry["topics"]) == 1)
+# What the `zh-hant` deployment shows on the sources step: its progress line and
+# its topic tiles, from the zh-Hant catalog.
+ZH_PROGRESS = translator("zh-Hant")("onboarding.progress", step=3, steps=7)
+ZH_TOPICS = [translator("zh-Hant")(f"onboarding_topic.{topic['id']}") for topic in TOPICS]
 # The step's heading over such picks (onboarding.js KEPT, worded in English
 # from the catalog), and the key the chosen topics are kept under for a reload
 # (onboarding.js TOPICS_KEY).
@@ -547,6 +553,8 @@ def build_fixture(kind: str) -> Fixture:
     first two steps save, so the first-issue step can read its key; `trial` has every step but the
     model step answered and `TRIAL_PUSHED` stored, as a trial's first boot leaves it;
     `model-skipped` has the same answers, none of the tuned settings and `A_SOURCE`.
+    `zh-hant` is `empty` storing zh-Hant, the one language here with a UI catalog
+    of its own, so its page is worded in Chinese.
     """
     if kind not in KINDS:
         raise ValueError(f"unknown fixture {kind!r}")
@@ -1129,6 +1137,27 @@ WEBHOOK_STORED = {"notify.discord_webhook_url": NEW_WEBHOOK}
 MAIL_STORED = {"notify.email_to": NEW_MAIL_TO, "notify.email_from": NEW_MAIL_FROM}
 
 _CHECKS: list[Check] = [
+    Check(
+        id="a-zh-hant-deployment-is-worded-in-chinese",
+        fixture="zh-hant",
+        path=f"{PAGE}#sources",
+        act="""
+            await loaded();
+            await feedsDrawn();
+        """,
+        script=f"""
+            expect(document.documentElement.lang === "zh-Hant",
+              `lang: ${{document.documentElement.lang}}`);
+            expect(progress() === {json.dumps(ZH_PROGRESS, ensure_ascii=False)},
+              `progress: ${{progress()}}`);
+            const tiles = topicRows().map((tile) => $(".name", tile).textContent);
+            expect(same(tiles, {json.dumps(ZH_TOPICS, ensure_ascii=False)}), `topics: ${{tiles}}`);
+        """,
+        # After the act: the progress line is written in English, as a script that
+        # formats from no catalog would write it.
+        sabotage="""$("#o-progress").textContent = "Step 3 of 7";""",
+        receipt=_both_untouched,
+    ),
     Check(
         id="opens-on-the-first-step",
         fixture="empty",
