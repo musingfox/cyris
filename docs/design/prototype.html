@@ -9,7 +9,7 @@
 <meta name="description" content="Reference implementation of the cyris UI design spec, with sample data.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
 <style>
 /* Reference implementation of docs/design/ui-language.md. Sample data only. */
 
@@ -34,7 +34,6 @@
   --s-6: 24px; --s-8: 32px; --s-12: 48px; --s-16: 64px; --s-20: 80px;
   --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, monospace;
-  --font-serif: 'Instrument Serif', Georgia, serif;
   --type-scale: 1;
   --r-control: 6px;
   --r-tag: 999px;
@@ -80,11 +79,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .data { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); font-variant-numeric: tabular-nums; }
 .display {
-  font-family: var(--font-serif); font-weight: 400;
-  font-size: calc(clamp(46px, 7vw, 84px) * var(--type-scale)); line-height: 1; letter-spacing: -.03em;
+  font-family: var(--font-sans); font-weight: 500;
+  font-size: calc(clamp(46px, 7vw, 84px) * var(--type-scale)); line-height: 1; letter-spacing: -.02em;
   text-wrap: balance;
 }
-.display em { font-style: italic; color: var(--accent); }
+.display em { font-style: normal; color: var(--accent); }
 .heading { font-weight: 600; font-size: calc(24px * var(--type-scale)); letter-spacing: -.015em; line-height: 1.3; }
 .small { font-size: calc(14px * var(--type-scale)); line-height: 1.5; color: var(--text-dim); }
 
@@ -221,7 +220,7 @@ details.more summary::after { content: ""; position: absolute; inset: calc(-1 * 
 
 /* ---- digest ---- */
 .digest-head { display: grid; grid-template-columns: minmax(0, 1fr) min(37vw, 320px); gap: var(--s-12); align-items: end; margin-bottom: var(--s-12); overflow-x: clip; }
-.issue-title { font-family: var(--font-serif); font-weight: 400; font-size: calc(clamp(56px, 8.75vw, 119px) * var(--type-scale)); line-height: .92; letter-spacing: -.04em; }
+.issue-title { font-family: var(--font-sans); font-weight: 500; font-size: calc(clamp(56px, 8.75vw, 119px) * var(--type-scale)); line-height: .92; letter-spacing: -.03em; }
 .stats { background: var(--surface); border: 1px solid var(--border); padding: var(--s-4) var(--s-5); }
 .stats div { display: flex; justify-content: space-between; padding: var(--s-2) 0; border-bottom: 1px dashed var(--border); font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); }
 .stats div:last-child { border-bottom: 0; }
@@ -925,7 +924,7 @@ table.src td.areas-pos-cell { width: 1%; }
     <div class="sys-section">
       <span class="label">Type roles</span>
       <div class="panel">
-        <div class="list-row type-row"><span class="display">11/17 0800</span><span class="spec">display · Instrument Serif 400<br>clamp(46–84px) · −0.03em</span></div>
+        <div class="list-row type-row"><span class="display">11/17 0800</span><span class="spec">display · Geist 500<br>clamp(46–84px) · −0.02em</span></div>
         <div class="list-row type-row"><span class="heading">Sources</span><span class="spec">heading · Geist 600 · 24px</span></div>
         <div class="list-row type-row"><span style="font-weight:600;font-size: calc(19px * var(--type-scale))">Nvidia 的護城河真的在 CUDA 嗎</span><span class="spec">title · Geist 600 · 18–19px</span></div>
         <div class="list-row type-row"><span style="font-size: calc(18px * var(--type-scale));line-height:1.65;color:var(--text-dim)">Containers can now follow a Durable Object's lifecycle and sleep when idle.</span><span class="spec">body · Geist 400 · 18px / 1.65</span></div>

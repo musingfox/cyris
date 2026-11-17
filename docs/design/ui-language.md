@@ -92,7 +92,6 @@ Below is the complete token set. `_tokens.css.j2` and `static/style.css` must ma
   /* fonts and the type scale multiplier */
   --font-sans: 'Geist', system-ui, -apple-system, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, monospace;
-  --font-serif: 'Instrument Serif', Georgia, serif;
   --type-scale: 1;
   /* shape, motion, layout */
   --r-control: 6px;
@@ -204,9 +203,9 @@ original baseline was judged too large, and the multiplier's three steps are for
 
 | Role | Spec | Used for |
 |---|---|---|
-| display | Instrument Serif 400, clamp(46px, 7vw, 84px), line height 1, letter spacing −0.03em, `em` in italic `--accent` | Page titles (archive, raw, settings) |
-| issue title | Instrument Serif 400, clamp(56px, 8.75vw, 119px), line height .92, letter spacing −0.04em | The digest masthead title |
-| tagline | Instrument Serif 400, clamp(26px, 2.6vw, 36px), line height 1.2, letter spacing −0.01em | The landing page's hero `h1`, which is the tagline under the logo and not a title. It stays larger than the page's `h2`s (§4 *guided diagram*) (owner, 2026-11-06) |
+| display | Geist 500, clamp(46px, 7vw, 84px), line height 1, letter spacing −0.02em, `em` upright in `--accent` | Page titles (archive, raw, interest, labels, onboarding, settings) |
+| issue title | Geist 500, clamp(56px, 8.75vw, 119px), line height .92, letter spacing −0.03em | The digest masthead title |
+| tagline | The landing page's own serif, 400, clamp(26px, 2.6vw, 36px), line height 1.2, letter spacing −0.01em | The landing page's hero `h1`, which is the tagline under the logo and not a title. It stays larger than the page's `h2`s (§4 *guided diagram*) (owner, 2026-11-06) |
 | heading | Geist 600, 24px, line height 1.3, letter spacing −0.015em | Panel titles, settings category titles |
 | title | Geist 600, 18–19px, line height 1.3 | List items, source names; triage card title 26px |
 | body | Geist 400, 18px, line height 1.65, `--text-dim` | Descriptions, summaries |
@@ -250,7 +249,7 @@ Each component has exactly one stylesheet (§7). Heights in the table are fixed 
 | **destructive confirm** | No `window.confirm`. On the first press, the danger button turns into `Confirm …` in place and takes an `--warn-tint` background; only a second press within 3 seconds acts, otherwise it reverts |
 | **section marker** | The label role, preceded by a 24px × 1px `--accent` line, spaced `--s-3` |
 | **footer** | `--s-16` above it, then a 1px `--border` and `--s-5` above its text, the same on archive, digest and raw; Geist Mono 12px uppercase, letter spacing 0.08em, `--text-dim`. It holds generation info, never site navigation. Its one link is the word `Cyris`, pointing to the project's site, so a page that reaches someone who has never heard of cyris says where it came from; the link takes the footer's colour. The mail (§6 *email*) is the one exception: it has no site bar, so its footer also carries the `Archive` · `Settings` links |
-| **guided diagram** | Landing-page explanation, not an app mockup. One drawing stays pinned while an ordered list of sentences scrolls past it, one step each: sources, lanes, layers, reading a layer at a time, votes and delivery. On a phone the drawing is pinned under the site bar and the sentences scroll beneath it. The step whose sentence has reached the reading line is the active one: activating it plays that step's part of the drawing, and scrolling back reverses it. Script drives this from the scroll position. Text carries the full meaning without the drawings. The drawing is decorative (`aria-hidden`, non-focusable), and it has no fake controls. It may animate (§4 *Interaction*). Illustrative squares and generic text fragments are allowed; it shows no dates, counts or fictional articles. Line art uses `--text-dim`, and `--accent` marks what the step is about. Each sentence is Instrument Serif 400, clamp(28px, 2.7vw, 38px), line height 1.2, letter spacing −0.01em, `em` in `--accent`. Headings stay below the tagline (§3): the `h2` naming the steps is in the label role, and the `h2` opening the section after them is the same face at clamp(24px, 2.4vw, 32px). With no script, or under reduced motion, every part of the drawing shows where the story leaves it. `website/index.html` is its reference implementation (owner, 2026-11-06) |
+| **guided diagram** | Landing-page explanation, not an app mockup. One drawing stays pinned while an ordered list of sentences scrolls past it, one step each: sources, lanes, layers, reading a layer at a time, votes and delivery. On a phone the drawing is pinned under the site bar and the sentences scroll beneath it. The step whose sentence has reached the reading line is the active one: activating it plays that step's part of the drawing, and scrolling back reverses it. Script drives this from the scroll position. Text carries the full meaning without the drawings. The drawing is decorative (`aria-hidden`, non-focusable), and it has no fake controls. It may animate (§4 *Interaction*). Illustrative squares and generic text fragments are allowed; it shows no dates, counts or fictional articles. Line art uses `--text-dim`, and `--accent` marks what the step is about. Each sentence is the landing page's own serif, 400, clamp(28px, 2.7vw, 38px), line height 1.2, letter spacing −0.01em, `em` in `--accent`. Headings stay below the tagline (§3): the `h2` naming the steps is in the label role, and the `h2` opening the section after them is the same face at clamp(24px, 2.4vw, 32px). With no script, or under reduced motion, every part of the drawing shows where the story leaves it. `website/index.html` is its reference implementation (owner, 2026-11-06) |
 
 ### Interaction
 
@@ -912,7 +911,8 @@ by value, from `_tokens.css.j2` and the §2 light palette (`adapters/output/emai
   after the buttons, the empty sentence in the small role with its `All articles` link only when the raw
   page was published.
 - **Type at the baseline.** Nothing serves the mail, so `digest.type_scale` does not reach it. Web fonts
-  come from the same Google Fonts link; Apple Mail loads them, Gmail falls back to each stack.
+  come from the same Google Fonts link; Apple Mail loads them, Gmail falls back to each stack. The issue
+  title is the §3 issue-title role at 56px: Geist 500, letter spacing −0.03em, in `--font-sans` by value.
 
 ## 7. Where styles live
 
