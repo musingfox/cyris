@@ -439,7 +439,7 @@ def unscaled_font_sizes(css_source: str) -> list[str]:
     return found
 
 
-_FONT_NAME = re.compile(r"Geist|Instrument Serif", re.IGNORECASE)
+_FONT_NAME = re.compile(r"Geist", re.IGNORECASE)
 
 
 def font_stack_literals(css_source: str) -> list[str]:

@@ -15,12 +15,12 @@
         {# digest's headline is <h1 class="issue-title">, so a bare h1 rule would
            really match it. Only a page that asks for h1 typography gets one. #}
         h1 {
-            font-family: var(--font-serif);
-            font-weight: 400;
+            font-family: var(--font-sans);
+            font-weight: 500;
             font-size: calc(clamp(46px, 7vw, 84px) * var(--type-scale));
             line-height: 1;
-            letter-spacing: -0.03em;
+            letter-spacing: -0.02em;
         }
 
-        h1 em { font-style: italic; color: var(--accent); }
+        h1 em { font-style: normal; color: var(--accent); }
 {% endif %}

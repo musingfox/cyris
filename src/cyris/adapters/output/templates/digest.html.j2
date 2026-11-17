@@ -23,7 +23,7 @@
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@300;400;500;600&display=swap">
     <style>
         {% include "_tokens.css.j2" %}
 
@@ -41,21 +41,21 @@
             margin-top: var(--s-8);
             display: grid;
             /* The stats column narrows with the page, so the fallback-font title,
-               wider than Instrument Serif, clears it from 721px up. */
+               wider than Geist, clears it from 721px up. */
             grid-template-columns: minmax(0, 1fr) min(37vw, 320px);
             gap: var(--s-12);
             align-items: end;
             /* The fallback font sets the title wider than a phone's column until the
-               webfont lands; clip, not hidden, so the italic's overhang still shows. */
+               webfont lands; clip, not hidden, so a glyph's overhang still shows. */
             overflow-x: clip;
         }
 
         .issue-title {
-            font-family: var(--font-serif);
-            font-weight: 400;
+            font-family: var(--font-sans);
+            font-weight: 500;
             font-size: calc(clamp(56px, 8.75vw, 119px) * var(--type-scale));
             line-height: 0.92;
-            letter-spacing: -0.04em;
+            letter-spacing: -0.03em;
             color: var(--text);
         }
 

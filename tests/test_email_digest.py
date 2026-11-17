@@ -107,7 +107,7 @@ class TestWhatAMailClientKeeps:
         style = _style(render_digest_email(_full(), DIGEST_URL))
 
         assert "&#39;" not in style
-        assert f"font-family: {tokens()['font-serif']};" in style
+        assert f"font-family: {tokens()['font-sans']};" in style
 
     def test_every_link_is_absolute(self):
         html = render_digest_email(_full(), DIGEST_URL, raw_page=True)

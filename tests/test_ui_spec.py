@@ -783,7 +783,7 @@ async def test_a_hidden_settings_field_stays_hidden_whatever_its_display(
 async def test_settings_loads_the_display_font(triage: TestClient) -> None:
     page = await _served(triage, "/settings")
     fonts = re.search(r'href="(https://fonts\.googleapis\.com/css2[^"]+)"', page)
-    assert fonts and "Instrument+Serif" in fonts.group(1)
+    assert fonts and re.search(r"family=Geist:wght@[^&]*\b500\b", fonts.group(1))
 
 
 def _declared(rules: set[str] | list[str], prop: str) -> list[str]:
@@ -924,7 +924,7 @@ def test_the_page_title_is_the_display_component(page: str) -> None:
     assert {
         "font-size: calc(clamp(46px, 7vw, 84px) * var(--type-scale))",
         "line-height: 1",
-        "letter-spacing: -.03em",
+        "letter-spacing: -.02em",
     } <= set(_parsed(page)[".display"])
 
 
@@ -1370,7 +1370,7 @@ def test_every_font_stack_is_a_token(source: str) -> None:
     ("css", "reported"),
     [
         (".x{font-family:'Geist Mono', monospace}", 1),
-        (".x{font:400 1em 'Instrument Serif', serif}", 1),
+        (".x{font:500 1em 'Geist', sans-serif}", 1),
         (".x{font-family:var(--font-mono)}", 0),
         (":root{--font-sans:'Geist', system-ui, sans-serif}", 0),
     ],
@@ -1622,8 +1622,11 @@ def _website_tokens(selector: str) -> dict[str, str]:
 
 def test_the_websites_dark_tokens_are_the_page_tokens() -> None:
     page = {k: canonical_colour(v) for k, v in tokens().items()}
-    # The logo mark's two tokens are the landing page's alone (ui-language.md §2).
-    assert _website_tokens(":root") == page | {"iris": "#c6ff3d", "iris-plate": "#07070a"}
+    # The logo mark's two tokens are the landing page's alone (ui-language.md §2), and so is
+    # its serif stack: the app pages no longer have one.
+    website = _website_tokens(":root")
+    assert website.pop("font-serif")
+    assert website == page | {"iris": "#c6ff3d", "iris-plate": "#07070a"}
 
 
 def test_the_websites_light_tokens_are_the_one_light_palette() -> None:
