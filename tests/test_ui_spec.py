@@ -1694,9 +1694,8 @@ def test_the_websites_dark_tokens_are_the_page_tokens() -> None:
     # its serif stack: the app pages no longer have one.
     expected = page | {"iris": "#c6ff3d", "iris-plate": "#07070a"}
     website = _website_tokens(":root")
-    serif = [name for name in website if "serif" in name]
-    assert len(serif) == 1
-    assert {k: v for k, v in website.items() if k not in serif} == expected
+    assert website.pop("font-serif").startswith("'instrumentserif'")
+    assert website == expected
 
 
 def test_the_websites_light_tokens_are_the_one_light_palette() -> None:
