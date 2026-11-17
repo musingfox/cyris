@@ -1,10 +1,12 @@
 """The settings, labels and vote pages send each request with redirect manual."""
 
+import json
 import re
 from pathlib import Path
 
 import pytest
 
+import cyris
 import cyris.entrypoints
 from cyris.adapters.output import html_digest
 
@@ -15,6 +17,7 @@ TEMPLATES = Path(html_digest.__file__).parent / "templates"
 SETTINGS = STATIC / "settings.js"
 LABELS = STATIC / "labels.js"
 PROMOTE = TEMPLATES / "_promote_script.html.j2"
+LOCALES = Path(cyris.__file__).parent / "locales"
 ACCESS_NOT_SET_UP = "Access is not set up for this deployment"
 
 
@@ -56,9 +59,11 @@ def test_a_fetch_without_redirect_options_is_a_violation():
 
 def test_settings_names_the_access_refusal_once():
     source = SETTINGS.read_text()
+    english = json.loads((LOCALES / "en.json").read_text(encoding="utf-8"))
 
-    assert source.count(ACCESS_NOT_SET_UP) == 1
-    assert 'const ACCESS_NOT_SET_UP = new Error("' in source
+    assert source.count('t("settings.access_not_set_up")') == 1
+    assert 'const ACCESS_NOT_SET_UP = new Error(t("settings.access_not_set_up"));' in source
+    assert english["settings.access_not_set_up"].startswith(ACCESS_NOT_SET_UP)
 
 
 @pytest.mark.parametrize("path", [SETTINGS, LABELS, PROMOTE], ids=["settings", "labels", "promote"])

@@ -437,6 +437,33 @@ def test_every_translated_key_is_an_english_key() -> None:
     assert {tag: keys for tag, keys in extra.items() if keys} == {}
 
 
+def _untranslated_in(catalog: dict, keys_by_file: dict[str, set[str]]) -> dict[str, list[str]]:
+    """Each file's keys `catalog` lacks, where `catalog` words some other key the file uses."""
+    return {
+        name: missing
+        for name, keys in keys_by_file.items()
+        if keys & catalog.keys() and (missing := sorted(keys - catalog.keys()))
+    }
+
+
+@pytest.mark.parametrize("tag", sorted(set(_catalogs()) - {ENGLISH}))
+def test_a_catalog_words_all_of_a_file_or_none_of_it(tag) -> None:
+    """A family value left untranslated shows English inside a translated sentence."""
+    keys_by_file = {str(path.relative_to(SRC)): _keys_in(path) for path in _sources()}
+
+    assert _untranslated_in(_catalogs()[tag], keys_by_file) == {}
+
+
+def test_a_family_value_left_out_of_a_translated_file_is_found() -> None:
+    keys_by_file = {
+        "page.js": {"settings.closed_status", "area_status.active"},
+        "english.js": {"area_status.merged"},
+    }
+    catalog = {"settings.closed_status": {"text": "{$name}（{$status}）"}}
+
+    assert _untranslated_in(catalog, keys_by_file) == {"page.js": ["area_status.active"]}
+
+
 @pytest.mark.parametrize("tag", sorted(_catalogs()))
 def test_a_catalog_is_named_by_its_canonical_tag(tag) -> None:
     assert langcodes.standardize_tag(tag) == tag

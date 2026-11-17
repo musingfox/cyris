@@ -2,6 +2,10 @@ import { t } from "./i18n.js";
 
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? "").replace(/[<>&"]/g, (c) => `&#${c.charCodeAt(0)};`);
+// A list of names in the page's language: "A, B" and "A, B and C".
+const list = (items) => items.reduce((head, item) => t("settings.list_more", {head, item}));
+const listJoin = (items) => items.length < 2 ? items.join("")
+  : t("settings.list_last", {head: list(items.slice(0, -1)), last: items.at(-1)});
 let state = null;
 
 const TABS = ["model", "digest", "pipeline", "notifications", "sources", "areas", "tracking"];
@@ -103,7 +107,7 @@ const isMissing = (el) => Object.entries(FIELDS)
 
 function applyPlaceholder(el) {
   if (!("placeholder" in el)) return;
-  el.placeholder = isMissing(el) ? "Not set" : el.dataset.placeholder || "";
+  el.placeholder = isMissing(el) ? t("settings.not_set") : el.dataset.placeholder || "";
 }
 
 // A missing key's field, its category's notice and its dot stay until a save
@@ -126,8 +130,7 @@ function markMissing() {
   }
   for (const [tab, labels] of Object.entries(byTab)) {
     const notice = $(`${tab}-missing`);
-    notice.textContent = !labels.length ? ""
-      : `Not set yet: ${labels.join(", ")}. The next run stops until they are saved.`;
+    notice.textContent = !labels.length ? "" : t("settings.missing_notice", {labels: list(labels)});
     notice.hidden = !labels.length;
     document.querySelector(`.settings-nav a[data-tab="${tab}"]`)
       .classList.toggle("missing", labels.length > 0);
@@ -192,9 +195,9 @@ function render() {
              ${p.name === values["llm_provider.provider"] && p.configured ? "checked" : ""}
              ${p.configured ? "" : "disabled"}>
       <span class="name">${esc(p.name === "none" ? t("provider.none") : p.name)}</span>
-      ${p.name === "none" ? `<span class="label">No key needed</span>`
-        : p.configured ? `<span class="label">Key ready</span>`
-        : `<span class="label key-missing">${esc(p.env_var)} missing</span>`}
+      ${p.name === "none" ? `<span class="label">${esc(t("settings.no_key_needed"))}</span>`
+        : p.configured ? `<span class="label">${esc(t("settings.key_ready"))}</span>`
+        : `<span class="label key-missing">${esc(t("settings.key_missing", {variable: p.env_var}))}</span>`}
     </label>`).join("");
   $("model-input").value = values["llm_provider.model"] ?? "";
   updateHint();
@@ -207,14 +210,14 @@ function render() {
              ${p.name === values["vote_similarity.provider"] ? "checked" : ""}>
       <span class="name">${esc(p.name)}</span>
       ${p.configured
-        ? `<span class="label">Key ready</span>`
-        : `<span class="label key-missing">${esc(p.env_var)} missing</span>`}
+        ? `<span class="label">${esc(t("settings.key_ready"))}</span>`
+        : `<span class="label key-missing">${esc(t("settings.key_missing", {variable: p.env_var}))}</span>`}
     </label>`).join("");
   $("embedding-model-input").value = values["vote_similarity.model"] ?? "";
   updateEmbeddingHint();
   $("embedding-providers").addEventListener("change", updateEmbeddingHint);
   const enabled = values["vote_similarity.enabled"];
-  if (enabled == null) $("vote-enabled").prepend(new Option("Not set", "", true, true));
+  if (enabled == null) $("vote-enabled").prepend(new Option(t("settings.not_set"), "", true, true));
   else $("vote-enabled").value = String(enabled);
   if (values["vote_similarity.max_seeds"] != null) {
     $("vote-seeds").value = values["vote_similarity.max_seeds"];
@@ -231,7 +234,7 @@ function render() {
     if (values[key] != null) $(id).value = values[key];
     else if ($(id).tagName !== "SELECT") continue;
     else if (key in state.starting) $(id).value = String(state.starting[key]);
-    else $(id).prepend(new Option("Not set", "", true, true));
+    else $(id).prepend(new Option(t("settings.not_set"), "", true, true));
   }
   if (values["notify.discord_webhook_url"]) {
     $("discord-webhook").value = values["notify.discord_webhook_url"];
@@ -245,7 +248,7 @@ function render() {
     detectTimezone($("digest-form"));
   } else {
     SETTINGS_NOTICES.forEach((id) => {
-      show("err", "This deployment has no settings store, so nothing can be saved here.", id);
+      show("err", t("settings.no_settings_store"), id);
     });
   }
   updateDependencies();
@@ -262,17 +265,19 @@ function updateHint() {
   const none = p && p.name === "none";
   $("model-input").disabled = !!none;
   if (none) $("model-input").value = "";
-  $("model-input").dataset.placeholder = p && !none ? `Empty uses ${p.default_model}` : "";
+  $("model-input").dataset.placeholder = p && !none
+    ? t("settings_option.model_default", {model: p.default_model}) : "";
   applyPlaceholder($("model-input"));
-  $("model-hint").textContent = !p ? "Pick a provider whose key is present."
-    : none ? "No model is called: digests list plain excerpts."
-    : "Saving makes one real call to the provider first, so a typo is rejected here.";
+  $("model-hint").textContent = !p ? t("settings.model_hint_pick")
+    : none ? t("settings.model_hint_none")
+    : t("settings.model_hint_call");
 }
 
 function updateEmbeddingHint() {
   const el = document.querySelector("input[name=embedding-provider]:checked");
   const p = el && state.embedding_providers.find((x) => x.name === el.value);
-  $("embedding-model-input").dataset.placeholder = p ? `Empty uses ${p.default_model}` : "";
+  $("embedding-model-input").dataset.placeholder = p
+    ? t("settings_option.model_default", {model: p.default_model}) : "";
   applyPlaceholder($("embedding-model-input"));
 }
 
@@ -379,9 +384,9 @@ $("model-form").addEventListener("submit", async (e) => {
   unrefuse(form);
   if (partChanged(form, LLM_PART)) {
     const p = chosen();
-    show("busy", "Checking with the provider…", "model-result");
+    show("busy", t("settings.checking_provider"), "model-result");
     try {
-      if (!p) throw new Error("Pick a provider first.");
+      if (!p) throw new Error(t("settings.pick_provider_first"));
       const data = await post("/api/settings", {provider: p.name, model: sent["model-input"].trim()});
       state.values["llm_provider.provider"] = data.provider;
       state.values["llm_provider.model"] = data.model;
@@ -403,7 +408,7 @@ $("model-form").addEventListener("submit", async (e) => {
       model: sent["embedding-model-input"].trim(),
       max_seeds: seeds === "" ? null : Number(seeds),
     };
-    show("busy", body.enabled ? "Checking the embedder…" : "Saving…", "model-result");
+    show("busy", body.enabled ? t("settings.checking_embedder") : t("settings.saving"), "model-result");
     try {
       const data = await post("/api/settings/vote-similarity", body);
       Object.assign(state.values, data.values);
@@ -424,9 +429,9 @@ $("model-form").addEventListener("submit", async (e) => {
 
 // Access answers a reader it does not admit with a redirect the page cannot follow
 // (opaqueredirect). Reloading /settings then serves the sign-in again.
-const SESSION_EXPIRED = new Error("Your session has expired. Reload the page to sign in again.");
+const SESSION_EXPIRED = new Error(t("settings.session_expired"));
 // The app Worker answers 403 when Cloudflare Access has not been configured here.
-const ACCESS_NOT_SET_UP = new Error("Access is not set up for this deployment. Ask the operator to finish the Cloudflare Access setup, then reload the page.");
+const ACCESS_NOT_SET_UP = new Error(t("settings.access_not_set_up"));
 const REFUSALS = [SESSION_EXPIRED, ACCESS_NOT_SET_UP];
 
 function refusalOf(res) {
@@ -453,14 +458,13 @@ async function post(url, body, method = "POST") {
       redirect: "manual",
     });
   } catch (err) {
-    throw new Error(`Could not reach cyris (${err.message}). Check the connection and try again.`);
+    throw new Error(t("settings.unreachable", {error: err.message}));
   }
   const refusal = refusalOf(res);
   if (refusal) throw refusal;
   const data = await res.json().catch(() => ({}));
   if (data.ok) return data;
-  const err = new Error(data.error || `cyris answered ${res.status} without saying why. ` +
-    "Try again; if it keeps failing, check the server log.");
+  const err = new Error(data.error || t("settings.answered_without_reason", {status: String(res.status)}));
   // The setting or source field the refusal is about, for the page to mark.
   err.field = data.field;
   err.status = res.status;
@@ -481,7 +485,7 @@ const plainValue = (input) => {
 };
 
 const shownValue = (value) => {
-  if (value === "") return "empty";
+  if (value === "") return t("settings.value_empty");
   const text = String(value);
   return text.length > 40 ? `${text.slice(0, 40)}…` : text;
 };
@@ -504,12 +508,13 @@ async function savePlain(form, stored) {
     // The Worker sizes the next page it serves; this one follows at once.
     const scale = data.values["digest.type_scale"];
     if (scale != null) document.documentElement.style.setProperty("--type-scale", String(scale));
-    const parts = ids.map((id) => `${FIELDS[PLAIN[id]].label}: ${shownValue(data.values[PLAIN[id]])}`);
-    return {ok: true, line: `${parts.join(", ")}. ${data.note}`};
+    const parts = ids.map((id) => t("settings.saved_value",
+      {label: FIELDS[PLAIN[id]].label, value: shownValue(data.values[PLAIN[id]])}));
+    return {ok: true, line: t("settings.saved_values", {values: list(parts), note: data.note})};
   } catch (err) {
     refuseSetting(err);
     const labels = ids.map((id) => FIELDS[PLAIN[id]].label);
-    return {ok: false, line: `${labels.join(", ")} not saved. ${err.message || err}`};
+    return {ok: false, line: t("settings.not_saved", {labels: list(labels), error: err.message || String(err)})};
   }
 }
 
@@ -520,8 +525,8 @@ const HOURS = [$("morning"), $("evening")];
 function emptyHours() {
   const empty = HOURS.filter((input) => input.value === "");
   if (!empty.length) return null;
-  const names = empty.map((input) => input.labels[0].textContent).join(" and ");
-  const reason = `${names} ${empty.length > 1 ? "need" : "needs"} a whole hour from 0 to 23.`;
+  const names = listJoin(empty.map((input) => input.labels[0].textContent));
+  const reason = t("settings.hours_need", {names, count: empty.length});
   refuse(empty, reason);
   return reason;
 }
@@ -538,23 +543,24 @@ $("digest-form").addEventListener("submit", async (e) => {
   saving.add(form);
   refresh(form);
   unrefuse(form);
-  show("busy", "Saving…", "digest-result");
+  show("busy", t("settings.saving"), "digest-result");
   const hoursChanged = morning !== stored.morning || evening !== stored.evening;
   const empty = hoursChanged && emptyHours();
   if (empty) {
     failed = true;
-    lines.push(`Digest hours not saved: ${empty}`);
+    lines.push(t("settings.hours_not_saved", {error: empty}));
   } else if (hoursChanged) {
     const times = [morning, evening].map((h) => `${String(h).padStart(2, "0")}:00`);
     try {
       const data = await post("/api/settings/schedule", {times});
-      lines.push(`Digest hours: ${data.times.join(" and ")}. ${data.note}`);
+      const [savedMorning, savedEvening] = data.times;
+      lines.push(t("settings.hours_saved", {morning: savedMorning, evening: savedEvening, note: data.note}));
       Object.assign(stored, {morning, evening});
       markSet(keysSavedBy("schedule"));
     } catch (err) {
       failed = true;
       refuseSetting(err);
-      lines.push(`Digest hours not saved: ${err.message || err}`);
+      lines.push(t("settings.hours_not_saved", {error: err.message || String(err)}));
     }
   }
   const plain = await savePlain(form, stored);
@@ -574,7 +580,7 @@ $("pipeline-form").addEventListener("submit", async (e) => {
   saving.add(form);
   refresh(form);
   unrefuse(form);
-  show("busy", "Saving…", "pipeline-result");
+  show("busy", t("settings.saving"), "pipeline-result");
   const plain = await savePlain(form, stored);
   saving.delete(form);
   markClean(form, stored);
@@ -615,7 +621,7 @@ $("notify-form").addEventListener("submit", async (e) => {
     }
   }
   if (changed(EMAIL_PART) || unsavedIn(form).length) {
-    show("busy", "Sending a test message…", "notify-result");
+    show("busy", t("settings.sending_test"), "notify-result");
     try {
       const data = await post("/api/settings/email",
         {email_to: sent["email-to"], email_from: sent["email-from"]});
@@ -648,20 +654,20 @@ let notifyOffTimer;
 const disarmNotifyOff = () => {
   clearTimeout(notifyOffTimer);
   $("notify-off").classList.remove("armed");
-  $("notify-off").textContent = "Turn off";
+  $("notify-off").textContent = t("settings.turn_off");
 };
 
 $("notify-off").addEventListener("click", async () => {
   const button = $("notify-off"), form = $("notify-form");
   if (!button.classList.contains("armed")) {
     button.classList.add("armed");
-    button.textContent = "Confirm turn off";
+    button.textContent = t("settings.confirm_turn_off");
     notifyOffTimer = setTimeout(disarmNotifyOff, 3000);
     return;
   }
   disarmNotifyOff();
   button.disabled = true;
-  show("busy", "Turning off…", "notify-result");
+  show("busy", t("settings.turning_off"), "notify-result");
   try {
     const data = await post("/api/settings/notify", {off: true});
     state.values["notify.discord_webhook_url"] = data.discord_webhook_url;
@@ -685,12 +691,12 @@ let filter = "all";
 let openName = null;
 
 const EMPTY = {
-  all: "No sources yet. The next run waits until one is added.",
-  rss: "No RSS sources.",
-  newsletter: "No newsletter sources.",
+  all: t("settings.no_sources"),
+  rss: t("settings.no_rss_sources"),
+  newsletter: t("settings.no_newsletter_sources"),
 };
 
-const NO_SOURCE_TABLE = "No writable source table here.";
+const NO_SOURCE_TABLE = t("settings.no_source_table");
 
 const rowOf = (name) => document.querySelector(`tr.src-row[data-name="${CSS.escape(name)}"]`);
 
@@ -707,12 +713,12 @@ function renderSources() {
     ? rows.map((s) => `
       <tr class="src-row" data-name="${esc(s.name)}" tabindex="0">
         <td class="name">${esc(s.name)}${feedProblem(s)}</td>
-        <td><span class="label">${esc(s.type)}</span></td>
+        <td><span class="label">${esc(t(`source_type.${s.type}`))}</span></td>
         <td><span class="pill">${esc(t(`lane.${s.lane}`))}</span></td>
         <td class="target">${esc(s.url || s.email_match || "—")}</td>
         <td class="small">${esc((s.tags || []).join(", ") || "—")}</td>
       </tr>`).join("")
-    : `<tr><td colspan="5" class="small">${EMPTY[sources.length ? filter : "all"]}</td></tr>`;
+    : `<tr><td colspan="5" class="small">${esc(EMPTY[sources.length ? filter : "all"])}</td></tr>`;
   sourcesNav().classList.remove("dirty");
   if (openName !== null) openEditor(openName);
 }
@@ -740,7 +746,7 @@ function openEditor(name) {
   } else {
     $("src-body").prepend(ed);
   }
-  q(".editor-title").textContent = adding ? "New source" : `Editing ${s.name}`;
+  q(".editor-title").textContent = adding ? t("settings.new_source") : t("settings.editing", {name: s.name});
   q("#e-name").value = s.name;
   q("#e-name").readOnly = !adding;
   q("#e-lane").value = s.lane;
@@ -754,15 +760,16 @@ function openEditor(name) {
   // Save that goes out then keeps it; the names fill in when the list does.
   const syncArea = (chosen = area.value) => {
     const active = activeAreas();
-    area.replaceChildren(new Option("None", ""), ...active.map((x) => new Option(x.name, String(x.id))));
+    area.replaceChildren(new Option(t("settings.area_none"), ""),
+                         ...active.map((x) => new Option(x.name, String(x.id))));
     if (chosen && !active.some((x) => String(x.id) === chosen)) {
-      area.append(new Option(areasLoaded ? `Area ${chosen} (not active)` : `Area ${chosen} (list not loaded)`,
-                             chosen));
+      area.append(new Option(areasLoaded ? t("settings.area_not_active", {id: chosen})
+        : t("settings.area_list_not_loaded", {id: chosen}), chosen));
     }
     area.value = chosen;
     area.disabled = !sourcesWritable || !areasLoaded;
     suggest.disabled = !sourcesWritable || !areasLoaded || !active.length;
-    suggest.title = areasLoaded && !active.length ? "Confirm an area first" : "";
+    suggest.title = areasLoaded && !active.length ? t("settings.confirm_area_first") : "";
   };
   syncArea(s.area_id == null ? "" : String(s.area_id));
   syncSourceArea = syncArea;
@@ -814,25 +821,25 @@ function openEditor(name) {
   const disarm = () => {
     clearTimeout(armTimer);
     retire.classList.remove("armed");
-    retire.textContent = "Retire";
+    retire.textContent = t("settings.retire");
   };
   retire.addEventListener("click", async () => {
     if (!retire.classList.contains("armed")) {
       retire.classList.add("armed");
-      retire.textContent = "Confirm retire";
+      retire.textContent = t("settings.confirm_retire");
       armTimer = setTimeout(disarm, 3000);
       return;
     }
     disarm();
     const data = await writeSource(`/api/sources/${encodeURIComponent(s.name)}`, "DELETE", null,
-                                   retire, "Retiring…");
+                                   retire, t("settings.retiring"));
     if (!data) {
       returnFocus(retire);
       return;
     }
     openName = null;
     await loadSources();
-    show("ok", `${s.name} retired. ${data.note}`, "sources-notice");
+    show("ok", t("settings.source_retired", {name: s.name, note: data.note}), "sources-notice");
     returnFocus($("add-source"));
   });
   q("#e-name").focus();
@@ -920,7 +927,7 @@ async function suggestArea(ed, button) {
   const q = (selector) => ed.querySelector(selector);
   const note = q("[data-suggest-note]");
   button.disabled = true;
-  button.textContent = "Suggesting…";
+  button.textContent = t("settings.suggesting");
   q("#e-area").disabled = true;
   try {
     const data = await post("/api/sources/suggest-area", {
@@ -928,7 +935,7 @@ async function suggestArea(ed, button) {
       type: q('[data-type][aria-pressed="true"]').dataset.type,
       url: q("#e-url").value.trim(),
       homepage: q("#e-home").value.trim(),
-      tags: q("#e-tags").value.split(",").map((t) => t.trim()).filter(Boolean),
+      tags: q("#e-tags").value.split(",").map((tag) => tag.trim()).filter(Boolean),
     });
     if (data.suggestion) {
       q("#e-area").value = String(data.suggestion.id);
@@ -936,13 +943,13 @@ async function suggestArea(ed, button) {
       q("[data-suggested]").hidden = false;
       note.textContent = data.note;
     } else {
-      note.textContent = `No suggestion. ${data.note}`;
+      note.textContent = t("settings.no_suggestion", {reason: data.note});
     }
   } catch (err) {
-    note.textContent = `No suggestion. ${err.message}`;
+    note.textContent = t("settings.no_suggestion", {reason: err.message});
   }
   note.hidden = false;
-  button.textContent = "Suggest";
+  button.textContent = t("settings.suggest");
   syncSourceArea();
 }
 
@@ -964,9 +971,9 @@ async function saveSource(ed, button) {
     url: shown("#e-url"),
     email_match: shown("#e-email"),
     homepage: shown("#e-home"),
-    tags: q("#e-tags").value.split(",").map((t) => t.trim()).filter(Boolean),
+    tags: q("#e-tags").value.split(",").map((tag) => tag.trim()).filter(Boolean),
     area_id: q("#e-area").value === "" ? null : Number(q("#e-area").value),
-  }, button, "Saving…");
+  }, button, t("settings.saving"));
   if (!data) {
     ed.inert = false;
     returnFocus(button);
@@ -978,7 +985,7 @@ async function saveSource(ed, button) {
   openName = data.name;
   await loadSources();
   const reopened = document.querySelector("tr.editor");
-  show("ok", `${data.name} saved. ${data.note}`,
+  show("ok", t("settings.item_saved", {name: data.name, note: data.note}),
        reopened ? reopened.querySelector(".notice") : "sources-notice");
 }
 
@@ -993,7 +1000,7 @@ const loadSources = () =>
       sourcesFailed = true;
       renderAreas();
       show("err", REFUSALS.includes(e) ? e.message
-        : `Could not load sources: ${e}. Reload the page to try again.`, "sources-notice");
+        : t("settings.load_sources_failed", {error: String(e)}), "sources-notice");
     });
 
 loadSources();
@@ -1020,7 +1027,7 @@ const picks = Object.create(null);
 // The (articles, issues) a proposal must reach to be marked; null until it is set.
 let birthThreshold = null;
 
-const NO_AREA_TABLE = "No writable area table here — the areas live in the D1 store this deployment lacks.";
+const NO_AREA_TABLE = t("settings.no_area_table");
 
 const areasNav = () => document.querySelector('.settings-nav a[data-tab="areas"]');
 
@@ -1055,13 +1062,10 @@ const activeAreas = () => areas.filter((area) => area.status === "active");
 const orderDirty = () => localOrder.join() !== storedOrder.join();
 const storedArea = (name) => sources.find((source) => source.name === name)?.area_id ?? null;
 const pickedArea = (name) => (Object.hasOwn(picks, name) ? picks[name] : storedArea(name));
-const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
-const listJoin = (words) => words.length < 2 ? words.join("")
-  : `${words.slice(0, -1).join(", ")} and ${words.at(-1)}`;
 // The unsaved selects that point at a proposal, said under its name.
 const picked = (id) => {
   const n = Object.keys(picks).filter((name) => picks[name] === id).length;
-  return n ? `<span class="small areas-note">${plural(n, "source")} picked</span>` : "";
+  return n ? `<span class="small areas-note">${esc(t("settings.sources_picked", {count: n}))}</span>` : "";
 };
 // What a pick means after a reload: a merged area's pick follows it to its target, and a pick
 // is dropped when its area is dismissed or gone, or when it no longer differs from the stored one.
@@ -1104,24 +1108,26 @@ function renderAreas() {
     ? ordered.map((area, i) => `
       <tr class="src-row" data-id="${area.id}" tabindex="0">
         <td class="name">${esc(area.name)}</td>
-        <td class="areas-pos-cell"><select class="select areas-pos" aria-label="Position of ${esc(area.name)}" data-pos="${area.id}"${areasWritable ? "" : " disabled"}>${
+        <td class="areas-pos-cell"><select class="select areas-pos" aria-label="${esc(t("settings.position_of", {name: area.name}))}" data-pos="${area.id}"${areasWritable ? "" : " disabled"}>${
           ordered.map((_, k) => `<option value="${k}"${k === i ? " selected" : ""}>${k + 1}</option>`).join("")}</select></td>
       </tr>`).join("")
     : areasFailed ? ""
-    : !areasLoaded ? `<tr data-loading><td colspan="2" class="small">Loading areas…</td></tr>`
-    : `<tr><td colspan="2" class="small">No areas yet. Use "Propose areas from my sources" under Sources, or wait for the next run to suggest some.</td></tr>`;
+    : !areasLoaded ? `<tr data-loading><td colspan="2" class="small">${esc(t("settings.loading_areas"))}</td></tr>`
+    : `<tr><td colspan="2" class="small">${esc(t("settings.no_areas"))}</td></tr>`;
   $("proposed-body").innerHTML = proposed.length
     ? proposed.map((area) => `
       <tr class="src-row" data-id="${area.id}" tabindex="0">
         <td class="name">${esc(area.name)}${picked(area.id)}</td>
-        <td class="small">${area.proposal_articles} articles / ${area.proposal_issues} issues${
-          meetsThreshold(area) ? ' <span class="pill">Meets birth threshold</span>' : ""}</td>
+        <td class="small">${esc(t("settings.proposal_counts",
+          {articles: area.proposal_articles, issues: area.proposal_issues}))}${
+          meetsThreshold(area) ? ` <span class="pill">${esc(t("settings.meets_threshold"))}</span>` : ""}</td>
       </tr>`).join("")
-    : areasLoaded ? `<tr><td colspan="2" class="small">No proposals yet.</td></tr>` : "";
+    : areasLoaded ? `<tr><td colspan="2" class="small">${esc(t("settings.no_proposals"))}</td></tr>` : "";
   $("closed-list").innerHTML = closed.length
-    ? closed.map((area) => `<li>${esc(area.name)} — ${area.status === "merged"
-      ? `merged into ${esc(areaNameOf(area.merged_into))}` : esc(t(`area_status.${area.status}`))}</li>`).join("")
-    : areasLoaded ? "<li>No closed areas.</li>" : "";
+    ? closed.map((area) => `<li>${esc(area.status === "merged"
+      ? t("settings.closed_merged", {name: area.name, target: areaNameOf(area.merged_into)})
+      : t("settings.closed_status", {name: area.name, status: t(`area_status.${area.status}`)}))}</li>`).join("")
+    : areasLoaded ? `<li>${esc(t("settings.no_closed_areas"))}</li>` : "";
   $("threshold-hint").hidden = birthThreshold !== null;
   $("save-order").disabled = !areasWritable || !orderDirty();
   $("propose-areas").disabled = !proposable();
@@ -1137,36 +1143,50 @@ function areaOptions(cur) {
   const proposed = areas.filter((area) => area.status === "proposed");
   const option = (area) => `<option value="${area.id}"${area.id === cur ? " selected" : ""}>${esc(area.name)}</option>`;
   const known = [...active, ...proposed].some((area) => area.id === cur);
-  return `<option value=""${cur === null ? " selected" : ""}>None</option>`
+  return `<option value=""${cur === null ? " selected" : ""}>${esc(t("settings.area_none"))}</option>`
     + active.map(option).join("")
-    + (proposed.length ? `<optgroup label="Proposed">${proposed.map(option).join("")}</optgroup>` : "")
-    + (cur !== null && !known ? `<option value="${cur}" selected>Area ${cur} (not active)</option>` : "");
+    + (proposed.length
+      ? `<optgroup label="${esc(t("settings.proposed"))}">${proposed.map(option).join("")}</optgroup>` : "")
+    + (cur !== null && !known
+      ? `<option value="${cur}" selected>${esc(t("settings.area_not_active", {id: String(cur)}))}</option>` : "");
 }
 
 // Marks a suggestion the reader has not changed; a source with another area gets a note instead.
 const suggestPill = (name) => storedArea(name) === null && suggestionFor(name) !== undefined
   && pickedArea(name) === suggestionFor(name) && !touched.has(name)
-  ? `<span class="pill">Suggested</span>` : "";
+  ? `<span class="pill">${esc(t("settings.suggested"))}</span>` : "";
 const suggestNote = (name) => storedArea(name) !== null && suggestionFor(name) !== undefined
   && suggestionFor(name) !== storedArea(name)
-  ? `<span class="small areas-note">Suggests ${esc(areaNameOf(suggestionFor(name)))}</span>` : "";
+  ? `<span class="small areas-note">${esc(t("settings.suggests_area", {area: areaNameOf(suggestionFor(name))}))}</span>`
+  : "";
+
+function noSourcesRow() {
+  const row = document.createElement("tr");
+  const cell = row.insertCell();
+  cell.className = "small";
+  cell.colSpan = 2;
+  const link = document.createElement("a");
+  link.href = "#sources";
+  cell.append(t("settings.assign_no_sources", {}, {link}));
+  return row;
+}
 
 // The table waits for both reads, so no select can show a stored area before the list it names.
 function renderAssign() {
   const ready = areasLoaded && sourcesLoaded;
   const failed = areasFailed || sourcesFailed;
   const changed = changedSources();
-  $("assign-body").innerHTML = failed ? ""
-    : !ready ? `<tr data-loading><td colspan="2" class="small">Loading sources…</td></tr>`
-    : sources.length ? sources.map((source) => `
+  if (!failed && ready && !sources.length) $("assign-body").replaceChildren(noSourcesRow());
+  else $("assign-body").innerHTML = failed ? ""
+    : !ready ? `<tr data-loading><td colspan="2" class="small">${esc(t("settings.loading_sources"))}</td></tr>`
+    : sources.map((source) => `
       <tr><td class="name">${esc(source.name)}${suggestNote(source.name)}</td>
-        <td><div class="areas-cell"><select class="select" aria-label="Area for ${esc(source.name)}" data-source="${esc(source.name)}"${areasWritable ? "" : " disabled"}>${areaOptions(pickedArea(source.name))}</select>${suggestPill(source.name)}</div></td></tr>`).join("")
-    : `<tr><td class="small" colspan="2">No sources yet. <a href="#sources">Add one under Sources</a>.</td></tr>`;
+        <td><div class="areas-cell"><select class="select" aria-label="${esc(t("settings.area_for", {name: source.name}))}" data-source="${esc(source.name)}"${areasWritable ? "" : " disabled"}>${areaOptions(pickedArea(source.name))}</select>${suggestPill(source.name)}</div></td></tr>`).join("");
   $("save-assign").disabled = failed || !ready || !areasWritable || !changed.length;
 }
 
 // The destructive confirm: the first press arms the button, a second within three seconds acts.
-function armThen(button, label, act) {
+function armThen(button, label, armed, act) {
   let timer;
   const disarm = () => {
     clearTimeout(timer);
@@ -1176,7 +1196,7 @@ function armThen(button, label, act) {
   button.addEventListener("click", () => {
     if (!button.classList.contains("armed")) {
       button.classList.add("armed");
-      button.textContent = `Confirm ${label.toLowerCase()}`;
+      button.textContent = armed;
       timer = setTimeout(disarm, 3000);
       return;
     }
@@ -1197,7 +1217,7 @@ function openAreaEditor(id) {
   const q = (selector) => ed.querySelector(selector);
   anchor.after(ed);
   anchor.classList.add("open");
-  q(".editor-title").textContent = `Editing ${area.name}`;
+  q(".editor-title").textContent = t("settings.editing", {name: area.name});
   q("#a-name").value = area.name;
   const save = q('[data-act="save"]');
   const acts = ["activate", "dismiss", "merge"].map((act) => q(`[data-act="${act}"]`));
@@ -1205,7 +1225,7 @@ function openAreaEditor(id) {
   const targets = activeAreas().filter((x) => x.id !== id);
   into.replaceChildren(...(targets.length
     ? targets.map((x) => new Option(x.name, String(x.id)))
-    : [new Option("No active area to merge into", "")]));
+    : [new Option(t("settings.no_merge_target"), "")]));
   ed.querySelectorAll("[data-proposed]").forEach((el) => { el.hidden = area.status !== "proposed"; });
   save.classList.toggle("primary", area.status === "active");
   save.classList.toggle("secondary", area.status !== "active");
@@ -1238,7 +1258,7 @@ function openAreaEditor(id) {
         // The row changed or went elsewhere: close the editor and show the list as it is now.
         openArea = null;
         await loadAreas();
-        show("err", "This area no longer exists.", "areas-notice");
+        show("err", t("settings.area_gone"), "areas-notice");
         focusAfterLeaving(id);
         return null;
       }
@@ -1265,26 +1285,29 @@ function openAreaEditor(id) {
   });
   save.addEventListener("click", async () => {
     const name = q("#a-name").value.trim();
-    const data = await writeArea(`/api/areas/${id}`, "PUT", {name}, "Saving…");
+    const data = await writeArea(`/api/areas/${id}`, "PUT", {name}, t("settings.saving"));
     if (!data) return;
     // As Tracking's save does: the editor reopens on the row with the result beside it.
     openArea = id;
     await loadAreas();
-    show("ok", `${data.name} saved. ${data.note}`, document.querySelector("tr.editor .notice"));
+    show("ok", t("settings.item_saved", {name: data.name, note: data.note}),
+         document.querySelector("tr.editor .notice"));
     areaRow(id)?.focus();
   });
   q('[data-act="activate"]').addEventListener("click", async () => {
-    const data = await writeArea(`/api/areas/${id}/activate`, "POST", null, "Activating…");
-    if (data) await finish(`${area.name} activated. ${data.note}`);
+    const data = await writeArea(`/api/areas/${id}/activate`, "POST", null, t("settings.activating"));
+    if (data) await finish(t("settings.area_activated", {name: area.name, note: data.note}));
   });
-  armThen(q('[data-act="dismiss"]'), "Dismiss", async () => {
-    const data = await writeArea(`/api/areas/${id}/dismiss`, "POST", null, "Dismissing…");
-    if (data) await finish(`${area.name} dismissed. ${data.note}`);
+  armThen(q('[data-act="dismiss"]'), t("settings.dismiss"), t("settings.confirm_dismiss"), async () => {
+    const data = await writeArea(`/api/areas/${id}/dismiss`, "POST", null, t("settings.dismissing"));
+    if (data) await finish(t("settings.area_dismissed", {name: area.name, note: data.note}));
   });
-  armThen(q('[data-act="merge"]'), "Merge", async () => {
+  armThen(q('[data-act="merge"]'), t("settings.merge"), t("settings.confirm_merge"), async () => {
     const target = Number(into.value);
-    const data = await writeArea(`/api/areas/${id}/merge`, "POST", {into: target}, "Merging…");
-    if (data) await finish(`${area.name} merged into ${areaNameOf(target)}. ${data.note}`);
+    const data = await writeArea(`/api/areas/${id}/merge`, "POST", {into: target}, t("settings.merging"));
+    if (data) {
+      await finish(t("settings.area_merged", {name: area.name, target: areaNameOf(target), note: data.note}));
+    }
   });
   return ed;
 }
@@ -1300,8 +1323,8 @@ $("propose-areas").addEventListener("click", async () => {
   const button = $("propose-areas");
   const label = button.textContent;
   button.disabled = true;
-  button.textContent = "Proposing…";
-  show("busy", "Proposing areas from your sources…", "areas-notice");
+  button.textContent = t("settings.proposing");
+  show("busy", t("settings.proposing_areas"), "areas-notice");
   try {
     const data = await post("/api/areas/propose", {});
     suggestions = Object.create(null);
@@ -1318,8 +1341,8 @@ $("propose-areas").addEventListener("click", async () => {
       }
     }
     renderAreas();
-    show("ok", data.created ? `${plural(data.created, "new proposal")} under Proposed.`
-      : "No new proposals.", "areas-notice");
+    show("ok", data.created ? t("settings.new_proposals", {count: data.created})
+      : t("settings.no_new_proposals"), "areas-notice");
   } catch (err) {
     show("err", err.message, "areas-notice");
     button.disabled = !proposable();
@@ -1361,10 +1384,10 @@ $("area-body").addEventListener("change", (e) => {
 async function saveOrder() {
   const button = $("save-order");
   button.disabled = true;
-  show("busy", "Saving order…", "order-result");
+  show("busy", t("settings.saving_order"), "order-result");
   try {
     const data = await post("/api/areas/order", {ids: localOrder}, "PUT");
-    show("ok", `Order saved. ${data.note}`, "order-result");
+    show("ok", t("settings.order_saved", {note: data.note}), "order-result");
     await loadAreas();
   } catch (err) {
     show("err", err.message, "order-result");
@@ -1379,22 +1402,25 @@ async function saveAssignments() {
   const assignments = Object.fromEntries(changedSources().map((name) => [name, pickedArea(name)]));
   const button = $("save-assign");
   button.disabled = true;
-  show("busy", "Saving assignments…", "assign-result");
+  show("busy", t("settings.saving_assignments"), "assign-result");
   try {
     const data = await post("/api/areas/assign", {assignments});
     const names = data.activated.map((area) => area.name);
-    show("ok", `${plural(data.assigned, "source")} assigned${names.length
-      ? `; ${listJoin(names)} ${names.length === 1 ? "is" : "are"} active` : ""}.`, "assign-result");
+    show("ok", names.length
+      ? t("settings.sources_assigned_activated",
+        {count: data.assigned, areas: listJoin(names), active: names.length})
+      : t("settings.sources_assigned", {count: data.assigned}), "assign-result");
   } catch (err) {
     // A failed write may have landed in part, so the notice says what did and what is left.
     const landed = err.body?.assigned;
     const names = (err.body?.activated ?? []).map((area) => area.name);
-    const verb = names.length === 1 ? "is" : "are";
     if (landed) {
-      show("err", `${err.message} — ${landed.length} of ${Object.keys(assignments).length} sources assigned${
-        names.length ? `; ${listJoin(names)} ${verb} active` : ""}. Save again for the rest.`, "assign-result");
+      const counts = {error: err.message, landed: landed.length, total: Object.keys(assignments).length};
+      show("err", names.length
+        ? t("settings.assign_partial_activated", {...counts, areas: listJoin(names), active: names.length})
+        : t("settings.assign_partial", counts), "assign-result");
     } else if (err.status === undefined && !REFUSALS.includes(err)) {
-      show("err", "Could not confirm the save; showing what is stored.", "assign-result");
+      show("err", t("settings.save_unconfirmed"), "assign-result");
     } else {
       show("err", err.message, "assign-result");
     }
@@ -1444,7 +1470,7 @@ const loadAreas = () =>
       syncSourceArea?.();
       $("propose-areas").disabled = true;
       show("err", REFUSALS.includes(e) ? e.message
-        : `Could not load areas: ${e.message || e}. Reload the page to try again.`, "areas-notice");
+        : t("settings.load_areas_failed", {error: e.message || String(e)}), "areas-notice");
       renderAreas();
       renderThreshold();
     });
@@ -1475,7 +1501,7 @@ async function saveThreshold() {
   const button = $("save-threshold");
   unrefuse($("threshold-block"));
   button.disabled = true;
-  show("busy", "Saving…", "threshold-result");
+  show("busy", t("settings.saving"), "threshold-result");
   try {
     const data = await post("/api/areas/birth-threshold", {
       articles: Number($("th-articles").value),
@@ -1483,7 +1509,7 @@ async function saveThreshold() {
     }, "PUT");
     birthThreshold = {articles: data.articles, issues: data.issues};
     thresholdTyped = false;
-    show("ok", "Birth threshold saved. It only marks proposals on this page.", "threshold-result");
+    show("ok", t("settings.threshold_saved"), "threshold-result");
     renderAreas();
     renderThreshold();
   } catch (err) {
@@ -1514,37 +1540,38 @@ let topicModel = "";
 // Which editor is open: null for none, "" for a new topic, else its name.
 let openTopic = null;
 
-const NO_TOPIC_TABLE = "No writable topic table here.";
+const NO_TOPIC_TABLE = t("settings.no_topic_table");
 
 const topicRow = (name) => $("topic-body").querySelector(`tr.src-row[data-name="${CSS.escape(name)}"]`);
 
 const trackingNav = () => document.querySelector('.settings-nav a[data-tab="tracking"]');
 
-const topicProblem = (t) => topicModel && t.model !== topicModel
-  ? `<span class="small feed-problem">${esc(`Set for ${t.model}; runs embed with ${topicModel}, so it is skipped`)}</span>`
+const topicProblem = (topic) => topicModel && topic.model !== topicModel
+  ? `<span class="small feed-problem">${
+    esc(t("settings.topic_other_model", {model: topic.model, current: topicModel}))}</span>`
   : "";
 
 function renderTopics() {
   $("topic-body").innerHTML = topics.length
-    ? topics.map((t) => `
-      <tr class="src-row" data-name="${esc(t.name)}" tabindex="0">
-        <td class="name">${esc(t.name)}${topicProblem(t)}</td>
-        <td class="small">${esc(t.description)}</td>
-        <td class="target">${esc(t.threshold)}</td>
-        <td class="target">${esc(t.model)}</td>
+    ? topics.map((topic) => `
+      <tr class="src-row" data-name="${esc(topic.name)}" tabindex="0">
+        <td class="name">${esc(topic.name)}${topicProblem(topic)}</td>
+        <td class="small">${esc(topic.description)}</td>
+        <td class="target">${esc(topic.threshold)}</td>
+        <td class="target">${esc(topic.model)}</td>
       </tr>`).join("")
-    : `<tr><td colspan="4" class="small">No topics yet.</td></tr>`;
+    : `<tr><td colspan="4" class="small">${esc(t("settings.no_topics"))}</td></tr>`;
   trackingNav().classList.remove("dirty");
   if (openTopic !== null) openTopicEditor(openTopic);
 }
 
 function openTopicEditor(name) {
   const adding = name === "";
-  const t = adding
+  const topic = adding
     ? {name: "", description: "", threshold: "", model: topicModel}
     : topics.find((x) => x.name === name);
   const anchor = adding ? null : topicRow(name);
-  if (!adding && !(t && anchor)) {
+  if (!adding && !(topic && anchor)) {
     openTopic = null;
     return null;
   }
@@ -1556,12 +1583,12 @@ function openTopicEditor(name) {
   } else {
     $("topic-body").prepend(ed);
   }
-  q(".editor-title").textContent = adding ? "New topic" : `Editing ${t.name}`;
-  q("#t-name").value = t.name;
+  q(".editor-title").textContent = adding ? t("settings.new_topic") : t("settings.editing", {name: topic.name});
+  q("#t-name").value = topic.name;
   q("#t-name").readOnly = !adding;
-  q("#t-description").value = t.description;
-  q("#t-threshold").value = t.threshold;
-  q("#t-model").value = t.model;
+  q("#t-description").value = topic.description;
+  q("#t-threshold").value = topic.threshold;
+  q("#t-model").value = topic.model;
   const save = q('[data-act="save"]'), remove = q('[data-act="remove"]');
   const values = () => JSON.stringify([...ed.querySelectorAll("input, textarea")].map((i) => i.value));
   const initial = values();
@@ -1594,25 +1621,25 @@ function openTopicEditor(name) {
   const disarm = () => {
     clearTimeout(armTimer);
     remove.classList.remove("armed");
-    remove.textContent = "Remove";
+    remove.textContent = t("settings.remove");
   };
   remove.addEventListener("click", async () => {
     if (!remove.classList.contains("armed")) {
       remove.classList.add("armed");
-      remove.textContent = "Confirm remove";
+      remove.textContent = t("settings.confirm_remove");
       armTimer = setTimeout(disarm, 3000);
       return;
     }
     disarm();
-    const data = await writeSource(`/api/topics/${encodeURIComponent(t.name)}`, "DELETE", null,
-                                   remove, "Removing…");
+    const data = await writeSource(`/api/topics/${encodeURIComponent(topic.name)}`, "DELETE", null,
+                                   remove, t("settings.removing"));
     if (!data) {
       returnFocus(remove);
       return;
     }
     openTopic = null;
     await loadTopics();
-    show("ok", `${t.name} removed. ${data.note}`, "topics-notice");
+    show("ok", t("settings.topic_removed", {name: topic.name, note: data.note}), "topics-notice");
     returnFocus($("add-topic"));
   });
   q("#t-name").focus();
@@ -1630,7 +1657,7 @@ async function saveTopic(ed, button) {
     // No number is not 0: the server refuses it rather than store a threshold nobody set.
     threshold: threshold === "" ? null : Number(threshold),
     model: q("#t-model").value.trim(),
-  }, button, "Saving…");
+  }, button, t("settings.saving"));
   if (!data) {
     ed.inert = false;
     returnFocus(button);
@@ -1639,7 +1666,7 @@ async function saveTopic(ed, button) {
   openTopic = data.name;
   await loadTopics();
   const reopened = $("topic-body").querySelector("tr.editor");
-  show("ok", `${data.name} saved. ${data.note}`,
+  show("ok", t("settings.item_saved", {name: data.name, note: data.note}),
        reopened ? reopened.querySelector(".notice") : "topics-notice");
 }
 
@@ -1680,7 +1707,7 @@ const loadTopics = () =>
       $("topic-body").querySelector("[data-loading]")?.remove();
       $("add-topic").disabled = true;
       show("err", REFUSALS.includes(e) ? e.message
-        : `Could not load topics: ${e}. Reload the page to try again.`, "topics-notice");
+        : t("settings.load_topics_failed", {error: String(e)}), "topics-notice");
     });
 
 loadTopics();
@@ -1691,7 +1718,7 @@ fetch("/api/settings", {redirect: "manual"})
   .catch((e) => {
     // Every Save stays disabled: tracking only starts once the values are known.
     const text = REFUSALS.includes(e) ? e.message
-      : `Could not load settings: ${e}. Reload the page to try again.`;
+      : t("settings.load_settings_failed", {error: String(e)});
     SETTINGS_NOTICES.forEach((id) => show("err", text, id));
   })
   .finally(() => document.querySelectorAll("form.tab [data-loading]").forEach((el) => el.remove()));

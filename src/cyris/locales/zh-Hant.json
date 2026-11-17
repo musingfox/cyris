@@ -9,6 +9,10 @@
     "source": "Vote similarity did not run this period, so reader votes had no effect on this digest. The digest was published unfiltered. The embedding API refused the request: HTTP {$status} {$detail}. This repeats every run until the embedding key or its permissions are fixed."
   },
   "alert.vote_similarity_headline": {"text": "投票相似度未執行", "source": "Vote similarity did not run"},
+  "area_status.active": {"text": "已啟用", "source": "active"},
+  "area_status.dismissed": {"text": "已駁回", "source": "dismissed"},
+  "area_status.merged": {"text": "已合併", "source": "merged"},
+  "area_status.proposed": {"text": "提議中", "source": "proposed"},
   "article_state.accepted": {"text": "已收錄", "source": "accepted"},
   "article_state.awaiting_triage": {"text": "待審閱", "source": "awaiting_triage"},
   "article_state.pending": {"text": "待定", "source": "pending"},
@@ -518,23 +522,58 @@
   "raw.view_list": {"text": "清單", "source": "List"},
   "raw.view_triage": {"text": "審閱", "source": "Triage"},
   "raw.views": {"text": "文章檢視方式", "source": "Article view"},
+  "settings.access_not_set_up": {
+    "text": "本站還沒設定 Access。請管理員完成 Cloudflare Access 設定後，重新載入頁面。",
+    "source": "Access is not set up for this deployment. Ask the operator to finish the Cloudflare Access setup, then reload the page."
+  },
   "settings.activate": {"text": "啟用", "source": "Activate"},
+  "settings.activating": {"text": "正在啟用…", "source": "Activating…"},
   "settings.add_source": {"text": "+ 新增來源", "source": "+ Add source"},
   "settings.add_topic": {"text": "+ 新增主題", "source": "+ Add topic"},
+  "settings.answered_without_reason": {
+    "text": "cyris 回應 {$status}，但未說明原因。請再試一次；如果持續失敗，請查看伺服器日誌。",
+    "source": "cyris answered {$status} without saying why. Try again; if it keeps failing, check the server log."
+  },
+  "settings.area_activated": {"text": "已啟用 {$name}。{$note}", "source": "{$name} activated. {$note}"},
+  "settings.area_dismissed": {"text": "已駁回 {$name}。{$note}", "source": "{$name} dismissed. {$note}"},
+  "settings.area_for": {"text": "{$name} 的領域", "source": "Area for {$name}"},
+  "settings.area_gone": {"text": "這個領域已不存在。", "source": "This area no longer exists."},
+  "settings.area_list_not_loaded": {"text": "領域 {$id}（清單未載入）", "source": "Area {$id} (list not loaded)"},
+  "settings.area_merged": {
+    "text": "已將 {$name} 合併到 {$target}。{$note}",
+    "source": "{$name} merged into {$target}. {$note}"
+  },
   "settings.area_none": {"text": "無", "source": "None"},
+  "settings.area_not_active": {"text": "領域 {$id}（未啟用）", "source": "Area {$id} (not active)"},
   "settings.areas_intro": {
     "text": "模型為每篇文章歸入的領域，以及等你決定的提議。",
     "source": "The areas the model files each article under, and the proposals waiting for you."
+  },
+  "settings.assign_no_sources": {
+    "text": "還沒有來源。{#link}到「來源」新增{/link}。",
+    "source": "No sources yet. {#link}Add one under Sources{/link}."
+  },
+  "settings.assign_partial": {
+    "text": "{$error}（{$total} 個來源中已歸類 {$landed} 個）。請再儲存一次，歸類其餘來源。",
+    "source": "{$error} — {$landed} of {$total} sources assigned. Save again for the rest."
+  },
+  "settings.assign_partial_activated": {
+    "text": ".input {$active :integer}\n.match $active\n* {{{$error}（{$total} 個來源中已歸類 {$landed} 個，{$areas} 已啟用）。請再儲存一次，歸類其餘來源。}}",
+    "source": ".input {$active :integer}\n.match $active\none {{{$error} — {$landed} of {$total} sources assigned; {$areas} is active. Save again for the rest.}}\n* {{{$error} — {$landed} of {$total} sources assigned; {$areas} are active. Save again for the rest.}}"
   },
   "settings.birth_threshold": {"text": "成立門檻", "source": "Birth threshold"},
   "settings.cancel": {"text": "取消", "source": "Cancel"},
   "settings.characters_read": {"text": "讀取字數", "source": "Characters read"},
   "settings.checking_discord": {"text": "正在向 Discord 確認…", "source": "Checking with Discord…"},
+  "settings.checking_embedder": {"text": "正在檢查嵌入模型…", "source": "Checking the embedder…"},
+  "settings.checking_provider": {"text": "正在向供應商確認…", "source": "Checking with the provider…"},
   "settings.clef_needs_votes": {
     "text": "Clef 需要先在「模型」開啟投票相似度。",
     "source": "Clef needs vote similarity on, under Model."
   },
   "settings.closed": {"text": "已關閉", "source": "Closed"},
+  "settings.closed_merged": {"text": "{$name}（已合併到 {$target}）", "source": "{$name} — merged into {$target}"},
+  "settings.closed_status": {"text": "{$name}（{$status}）", "source": "{$name} — {$status}"},
   "settings.col_area": {"text": "領域", "source": "Area"},
   "settings.col_counts": {"text": "計數", "source": "Counts"},
   "settings.col_description": {"text": "說明", "source": "Description"},
@@ -547,11 +586,19 @@
   "settings.col_target": {"text": "資訊來源或寄件者", "source": "Feed or sender"},
   "settings.col_threshold": {"text": "門檻", "source": "Threshold"},
   "settings.col_type": {"text": "類型", "source": "Type"},
+  "settings.confirm_area_first": {"text": "請先確認一個領域", "source": "Confirm an area first"},
+  "settings.confirm_dismiss": {"text": "確認駁回", "source": "Confirm dismiss"},
+  "settings.confirm_merge": {"text": "確認合併", "source": "Confirm merge"},
+  "settings.confirm_remove": {"text": "確認移除", "source": "Confirm remove"},
+  "settings.confirm_retire": {"text": "確認停用", "source": "Confirm retire"},
+  "settings.confirm_turn_off": {"text": "確認關閉", "source": "Confirm turn off"},
   "settings.digest_intro": {
     "text": "每期何時發布、包含什麼內容，以及文字顯示多大。",
     "source": "When issues are published, what each one holds, and how large its text reads."
   },
   "settings.dismiss": {"text": "駁回", "source": "Dismiss"},
+  "settings.dismissing": {"text": "正在駁回…", "source": "Dismissing…"},
+  "settings.editing": {"text": "編輯 {$name}", "source": "Editing {$name}"},
   "settings.effort_default": {"text": "預設", "source": "Default"},
   "settings.effort_high": {"text": "高", "source": "High"},
   "settings.effort_hint": {
@@ -569,52 +616,172 @@
     "text": "填入 0 到 23 的整點，以下方時區為準；不接受半點。",
     "source": "Whole hours from 0 to 23, in the timezone below; half hours are refused."
   },
+  "settings.hours_need": {
+    "text": ".input {$count :integer}\n.match $count\n* {{{$names}需填入 0 到 23 的整點。}}",
+    "source": ".input {$count :integer}\n.match $count\none {{{$names} needs a whole hour from 0 to 23.}}\n* {{{$names} need a whole hour from 0 to 23.}}"
+  },
+  "settings.hours_not_saved": {"text": "無法儲存發布時間：{$error}", "source": "Digest hours not saved: {$error}"},
+  "settings.hours_saved": {
+    "text": "發布時間：{$morning} 與 {$evening}。{$note}",
+    "source": "Digest hours: {$morning} and {$evening}. {$note}"
+  },
+  "settings.item_saved": {"text": "已儲存 {$name}。{$note}", "source": "{$name} saved. {$note}"},
+  "settings.key_missing": {"text": "缺少 {$variable}", "source": "{$variable} missing"},
+  "settings.key_ready": {"text": "金鑰已就緒", "source": "Key ready"},
+  "settings.list_last": {"text": "{$head}和{$last}", "source": "{$head} and {$last}"},
+  "settings.list_more": {"text": "{$head}、{$item}", "source": "{$head}, {$item}"},
+  "settings.load_areas_failed": {
+    "text": "無法載入領域：{$error}。請重新載入頁面再試一次。",
+    "source": "Could not load areas: {$error}. Reload the page to try again."
+  },
+  "settings.load_settings_failed": {
+    "text": "無法載入設定：{$error}。請重新載入頁面再試一次。",
+    "source": "Could not load settings: {$error}. Reload the page to try again."
+  },
+  "settings.load_sources_failed": {
+    "text": "無法載入來源：{$error}。請重新載入頁面再試一次。",
+    "source": "Could not load sources: {$error}. Reload the page to try again."
+  },
+  "settings.load_topics_failed": {
+    "text": "無法載入主題：{$error}。請重新載入頁面再試一次。",
+    "source": "Could not load topics: {$error}. Reload the page to try again."
+  },
   "settings.loading_areas": {"text": "正在載入領域…", "source": "Loading areas…"},
   "settings.loading_settings": {"text": "正在載入設定…", "source": "Loading settings…"},
   "settings.loading_sources": {"text": "正在載入來源…", "source": "Loading sources…"},
   "settings.loading_topics": {"text": "正在載入主題…", "source": "Loading topics…"},
+  "settings.meets_threshold": {"text": "已達成立門檻", "source": "Meets birth threshold"},
   "settings.merge": {"text": "合併", "source": "Merge"},
   "settings.merge_into": {"text": "合併到", "source": "Merge into"},
+  "settings.merging": {"text": "正在合併…", "source": "Merging…"},
+  "settings.missing_notice": {
+    "text": "尚未設定：{$labels}。儲存之前，下一期不會產生。",
+    "source": "Not set yet: {$labels}. The next run stops until they are saved."
+  },
+  "settings.model_hint_call": {
+    "text": "儲存前會先實際呼叫供應商一次，名稱打錯會在這裡退回。",
+    "source": "Saving makes one real call to the provider first, so a typo is rejected here."
+  },
+  "settings.model_hint_none": {
+    "text": "不呼叫任何模型，精選只列出原文摘錄。",
+    "source": "No model is called: digests list plain excerpts."
+  },
+  "settings.model_hint_pick": {"text": "請選擇有金鑰的供應商。", "source": "Pick a provider whose key is present."},
   "settings.model_intro": {
     "text": "下一期會呼叫的模型，以及如何運用你的投票。",
     "source": "The models the next run calls, and how it uses your votes."
   },
   "settings.nav_label": {"text": "設定分類", "source": "Settings sections"},
+  "settings.new_proposals": {
+    "text": ".input {$count :integer}\n.match $count\n* {{「提議中」新增了 {$count} 個提議。}}",
+    "source": ".input {$count :integer}\n.match $count\none {{{$count} new proposal under Proposed.}}\n* {{{$count} new proposals under Proposed.}}"
+  },
+  "settings.new_source": {"text": "新增來源", "source": "New source"},
+  "settings.new_topic": {"text": "新增主題", "source": "New topic"},
+  "settings.no_area_table": {
+    "text": "本站沒有存放領域的 D1 儲存區，這裡無法寫入領域表。",
+    "source": "No writable area table here — the areas live in the D1 store this deployment lacks."
+  },
+  "settings.no_areas": {
+    "text": "還沒有領域。請按「來源」下的「依來源提議領域」，或等下一期提出建議。",
+    "source": "No areas yet. Use \"Propose areas from my sources\" under Sources, or wait for the next run to suggest some."
+  },
+  "settings.no_closed_areas": {"text": "沒有已關閉的領域。", "source": "No closed areas."},
+  "settings.no_key_needed": {"text": "不需要金鑰", "source": "No key needed"},
+  "settings.no_merge_target": {"text": "沒有可合併的已啟用領域", "source": "No active area to merge into"},
+  "settings.no_new_proposals": {"text": "沒有新的提議。", "source": "No new proposals."},
+  "settings.no_newsletter_sources": {"text": "沒有電子報來源。", "source": "No newsletter sources."},
+  "settings.no_proposals": {"text": "還沒有提議。", "source": "No proposals yet."},
+  "settings.no_rss_sources": {"text": "沒有 RSS 來源。", "source": "No RSS sources."},
+  "settings.no_settings_store": {
+    "text": "本站沒有設定儲存區，無法在這裡儲存設定。",
+    "source": "This deployment has no settings store, so nothing can be saved here."
+  },
+  "settings.no_source_table": {"text": "這裡沒有可寫入的來源表。", "source": "No writable source table here."},
+  "settings.no_sources": {
+    "text": "還沒有來源。新增來源之前，下一期會先等待。",
+    "source": "No sources yet. The next run waits until one is added."
+  },
+  "settings.no_suggestion": {"text": "沒有建議。{$reason}", "source": "No suggestion. {$reason}"},
+  "settings.no_topic_table": {"text": "這裡沒有可寫入的主題表。", "source": "No writable topic table here."},
+  "settings.no_topics": {"text": "還沒有主題。", "source": "No topics yet."},
+  "settings.not_saved": {"text": "無法儲存{$labels}：{$error}", "source": "{$labels} not saved. {$error}"},
+  "settings.not_set": {"text": "未設定", "source": "Not set"},
   "settings.notifications_intro": {"text": "每期完成後，要在哪裡通知。", "source": "Where a finished issue is announced."},
   "settings.notify_off_state": {"text": "通知已關閉。", "source": "Notifications are off."},
+  "settings.order_saved": {"text": "已儲存順序。{$note}", "source": "Order saved. {$note}"},
   "settings.page_description": {
     "text": "本站的 Cyris 設定：模型、精選、處理流程、通知、來源與追蹤主題。",
     "source": "Settings for this Cyris deployment: model, digest, pipeline, notifications, sources and tracked topics."
   },
   "settings.page_title": {"text": "Cyris 設定", "source": "Cyris Settings"},
+  "settings.pick_provider_first": {"text": "請先選擇供應商。", "source": "Pick a provider first."},
   "settings.pipeline_intro": {
     "text": "每期往回找多久、讀多少內容，以及在哪裡截斷。",
     "source": "How far back each run looks, how much it reads, and where it cuts."
   },
+  "settings.position_of": {"text": "{$name} 的順序", "source": "Position of {$name}"},
+  "settings.proposal_counts": {
+    "text": "{$articles} 篇文章／{$issues} 期",
+    "source": "{$articles} articles / {$issues} issues"
+  },
   "settings.propose_areas": {"text": "依來源提議領域", "source": "Propose areas from my sources"},
   "settings.proposed": {"text": "提議中", "source": "Proposed"},
+  "settings.proposing": {"text": "正在提議…", "source": "Proposing…"},
+  "settings.proposing_areas": {"text": "正在依來源提議領域…", "source": "Proposing areas from your sources…"},
   "settings.remove": {"text": "移除", "source": "Remove"},
+  "settings.removing": {"text": "正在移除…", "source": "Removing…"},
   "settings.retire": {"text": "停用", "source": "Retire"},
+  "settings.retiring": {"text": "正在停用…", "source": "Retiring…"},
   "settings.save": {"text": "儲存", "source": "Save"},
   "settings.save_assignments": {"text": "儲存歸類", "source": "Save assignments"},
   "settings.save_name": {"text": "儲存名稱", "source": "Save name"},
   "settings.save_order": {"text": "儲存順序", "source": "Save order"},
   "settings.save_source": {"text": "儲存來源", "source": "Save source"},
   "settings.save_topic": {"text": "儲存主題", "source": "Save topic"},
+  "settings.save_unconfirmed": {
+    "text": "無法確認是否已儲存；以下顯示目前儲存的內容。",
+    "source": "Could not confirm the save; showing what is stored."
+  },
+  "settings.saved_value": {"text": "{$label}：{$value}", "source": "{$label}: {$value}"},
+  "settings.saved_values": {"text": "{$values}。{$note}", "source": "{$values}. {$note}"},
+  "settings.saving": {"text": "正在儲存…", "source": "Saving…"},
+  "settings.saving_assignments": {"text": "正在儲存歸類…", "source": "Saving assignments…"},
+  "settings.saving_order": {"text": "正在儲存順序…", "source": "Saving order…"},
   "settings.sender_match": {"text": "寄件者比對", "source": "Sender match"},
   "settings.sender_match_hint": {
     "text": "把寄件者對應到這個來源；郵件路由本身仍在 Cloudflare 主控台設定。",
     "source": "Maps a sender to this source; email routing itself stays in the Cloudflare dashboard."
   },
+  "settings.sending_test": {"text": "正在寄送測試信…", "source": "Sending a test message…"},
+  "settings.session_expired": {
+    "text": "登入已過期。請重新載入頁面並再次登入。",
+    "source": "Your session has expired. Reload the page to sign in again."
+  },
   "settings.snippet_filter": {"text": "速覽與主題", "source": "Glance and topics"},
   "settings.snippet_scoring": {"text": "評分", "source": "Scoring"},
   "settings.snippet_summary": {"text": "摘要", "source": "Summary"},
+  "settings.source_retired": {"text": "已停用 {$name}。{$note}", "source": "{$name} retired. {$note}"},
+  "settings.sources_assigned": {
+    "text": ".input {$count :integer}\n.match $count\n* {{已歸類 {$count} 個來源。}}",
+    "source": ".input {$count :integer}\n.match $count\none {{{$count} source assigned.}}\n* {{{$count} sources assigned.}}"
+  },
+  "settings.sources_assigned_activated": {
+    "text": ".input {$count :integer}\n.input {$active :integer}\n.match $count $active\n* * {{已歸類 {$count} 個來源；{$areas} 已啟用。}}",
+    "source": ".input {$count :integer}\n.input {$active :integer}\n.match $count $active\none one {{{$count} source assigned; {$areas} is active.}}\none * {{{$count} source assigned; {$areas} are active.}}\n* one {{{$count} sources assigned; {$areas} is active.}}\n* * {{{$count} sources assigned; {$areas} are active.}}"
+  },
   "settings.sources_intro": {
     "text": "下一期會讀取的資訊來源與電子報寄件者。",
     "source": "The feeds and newsletter senders the next run reads."
   },
+  "settings.sources_picked": {
+    "text": ".input {$count :integer}\n.match $count\n* {{已選 {$count} 個來源}}",
+    "source": ".input {$count :integer}\n.match $count\none {{{$count} source picked}}\n* {{{$count} sources picked}}"
+  },
   "settings.suggest": {"text": "建議領域", "source": "Suggest"},
   "settings.suggested": {"text": "建議", "source": "Suggested"},
+  "settings.suggesting": {"text": "正在建議…", "source": "Suggesting…"},
+  "settings.suggests_area": {"text": "建議：{$area}", "source": "Suggests {$area}"},
   "settings.tab_areas": {"text": "領域", "source": "Areas"},
   "settings.tab_digest": {"text": "精選", "source": "Digest"},
   "settings.tab_model": {"text": "模型", "source": "Model"},
@@ -625,12 +792,21 @@
   "settings.tags_placeholder": {"text": "以逗號分隔", "source": "comma separated"},
   "settings.threshold_articles": {"text": "文章數", "source": "Articles"},
   "settings.threshold_issues": {"text": "期數", "source": "Issues"},
+  "settings.threshold_saved": {
+    "text": "已儲存成立門檻。門檻只用來在本頁標示提議。",
+    "source": "Birth threshold saved. It only marks proposals on this page."
+  },
   "settings.threshold_unset": {"text": "尚未設定成立門檻", "source": "Birth threshold not set"},
   "settings.timezone_detected": {"text": "從這個瀏覽器偵測到，尚未儲存。", "source": "Detected from this browser, and not saved yet."},
   "settings.topic_description_hint": {
     "text": "用一句話說明這個主題在講什麼。",
     "source": "One sentence saying what the topic is about."
   },
+  "settings.topic_other_model": {
+    "text": "為 {$model} 設定；每期改以 {$current} 嵌入，略過此主題",
+    "source": "Set for {$model}; runs embed with {$current}, so it is skipped"
+  },
+  "settings.topic_removed": {"text": "已移除 {$name}。{$note}", "source": "{$name} removed. {$note}"},
   "settings.topic_threshold_hint": {
     "text": "標題須達到的餘弦值，以該模型的尺度計算，沒有預設值。{#code}cyris topic-sim{/code} 會依說明為時間範圍內的標題排名，請選仍切題的最低餘弦值。",
     "source": "The cosine a title must reach, on that model's scale; there is no default. {#code}cyris topic-sim{/code} ranks the window's titles against the description: pick the lowest cosine still on topic."
@@ -640,6 +816,12 @@
     "source": "Topics each issue lists every close article for, under Tracking; a topic set for another embedding model is skipped."
   },
   "settings.turn_off": {"text": "關閉通知", "source": "Turn off"},
+  "settings.turning_off": {"text": "正在關閉…", "source": "Turning off…"},
+  "settings.unreachable": {
+    "text": "無法連線到 cyris（{$error}）。請檢查網路連線後再試一次。",
+    "source": "Could not reach cyris ({$error}). Check the connection and try again."
+  },
+  "settings.value_empty": {"text": "空白", "source": "empty"},
   "settings.vote_similarity_hint": {
     "text": "排除與你投少看的文章相近的候選文章。可用 {#code}cyris vote-sim{/code} 預覽會排除哪些；開啟前會先檢查嵌入模型。",
     "source": "Drop candidates close to an article you voted down. Preview what it would drop with {#code}cyris vote-sim{/code}; turning it on checks the embedder first."

@@ -44,7 +44,7 @@ def test_the_page_shows_a_missing_select_its_starting_value_else_not_set() -> No
     js = SETTINGS_JS.read_text()
     assert "key in state.starting" in js
     assert "String(state.starting[key])" in js
-    assert 'new Option("Not set", "", true, true)' in js
+    assert 'new Option(t("settings.not_set"), "", true, true)' in js
 
 
 def test_the_vote_order_judge_is_a_select_in_the_digest_form() -> None:
