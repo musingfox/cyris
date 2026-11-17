@@ -46,6 +46,9 @@ SETTINGS_JS = (STATIC / "settings.js").read_text()
 _CATALOG = json.loads((Path(cyris.__file__).parent / "onboarding_feeds.json").read_text())
 CATALOG = _CATALOG["feeds"]
 TOPICS = _CATALOG["topics"]
+ENGLISH = json.loads((Path(cyris.__file__).parent / "locales" / "en.json").read_text())
+# Each topic as the server sends it to a page worded in English: its id and its label.
+TOPICS_SENT = [{"id": t["id"], "label": ENGLISH[f"onboarding_topic.{t['id']}"]} for t in TOPICS]
 
 
 def _as_posted(entry: dict) -> dict:
@@ -690,7 +693,11 @@ class TestThePickSourcesStep:
         response = await client.get("/api/onboarding/feeds")
 
         assert response.status == 200
-        assert await response.json() == {"awaiting": True, "topics": TOPICS, "feeds": CATALOG}
+        assert await response.json() == {
+            "awaiting": True,
+            "topics": TOPICS_SENT,
+            "feeds": CATALOG,
+        }
 
     async def test_a_table_with_a_source_is_offered_no_list(self, serve) -> None:
         client = await serve(_server(table={"Feed": A_SOURCE}))
@@ -784,7 +791,8 @@ class TestThePickSourcesStep:
     @pytest.mark.parametrize("field", ["id", "label"])
     def test_no_topic_is_written_into_the_page_or_its_script(self, field: str) -> None:
         page = render_onboarding_page()
-        written = [t[field] for t in TOPICS if t[field] in page or t[field] in ONBOARDING_JS]
+        sent = [t[field] for t in TOPICS_SENT]
+        written = [word for word in sent if word in page or word in ONBOARDING_JS]
 
         assert written == []
 

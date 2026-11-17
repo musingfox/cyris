@@ -231,7 +231,10 @@ def load_onboarding_feeds() -> list[dict[str, Any]]:
 
 
 def load_onboarding_topics() -> list[dict[str, str]]:
-    """The topics the feed picker groups its entries by, in the order it shows them."""
+    """The topics the feed picker groups its entries by, in the order it shows them.
+
+    Each is its id alone; its label is the UI catalogs' `onboarding_topic.<id>`.
+    """
     return _onboarding_catalog()["topics"]
 
 
@@ -1097,10 +1100,15 @@ class TriageServer:
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             logger.warning("Could not read the sources table for onboarding", exc_info=True)
             return web.json_response({"ok": False, "error": str(e)}, status=500)
+        t = translator(self._ui_language(request))
+        topics = [
+            {"id": topic["id"], "label": t(f"onboarding_topic.{topic['id']}")}
+            for topic in load_onboarding_topics()
+        ]
         return web.json_response(
             {
                 "awaiting": awaiting,
-                "topics": load_onboarding_topics() if awaiting else [],
+                "topics": topics if awaiting else [],
                 "feeds": load_onboarding_feeds() if awaiting else [],
             }
         )

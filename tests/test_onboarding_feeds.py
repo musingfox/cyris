@@ -21,6 +21,7 @@ from cyris.domain.models import Lane, SourceConfig
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
 CATALOG_PATH = Path(__file__).resolve().parents[1] / "src" / "cyris" / "onboarding_feeds.json"
+ENGLISH_PATH = CATALOG_PATH.parent / "locales" / "en.json"
 
 
 def _raw_feeds() -> list[dict]:
@@ -76,13 +77,16 @@ def test_names_are_unique() -> None:
     assert len(names) == len(set(names)), "duplicate source name"
 
 
-def test_every_topic_has_a_lowercase_ascii_id_and_a_label() -> None:
+def test_every_topic_has_a_lowercase_ascii_id_and_an_english_label() -> None:
+    """The file holds the id alone: the label is the UI catalogs' (ADR-0027)."""
+    english = json.loads(ENGLISH_PATH.read_text(encoding="utf-8"))
     topics = _topics()
     assert topics, "no topic table"
     for topic in topics:
-        assert set(topic) == {"id", "label"}, f"{topic}: fields"
+        assert set(topic) == {"id"}, f"{topic}: fields"
         assert re.fullmatch(r"[a-z]+", topic["id"]), f"{topic['id']!r}: not lowercase ascii"
-        assert topic["label"].strip(), f"{topic['id']}: no label"
+        label = english.get(f"onboarding_topic.{topic['id']}", "")
+        assert label.strip(), f"{topic['id']}: no label"
     ids = [topic["id"] for topic in topics]
     assert len(ids) == len(set(ids)), "duplicate topic id"
 

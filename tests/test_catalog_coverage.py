@@ -37,6 +37,7 @@ from cyris.entrypoints.triage_server import (
     STATIC_DIR,
     TEMPLATES_DIR,
     TriageServer,
+    load_onboarding_topics,
     render_labels_page,
     render_onboarding_page,
     render_settings_page,
@@ -56,6 +57,7 @@ FAMILIES: dict[str, tuple[str, ...]] = {
     "area_status.": get_args(AreaStatus),
     "polarity.": get_args(get_type_hints(InterestNode)["polarity"]),
     "feed_check.": get_args(FeedRefusal),
+    "onboarding_topic.": tuple(topic["id"] for topic in load_onboarding_topics()),
 }
 # A family's keys, for the checks that a call is read for the keys it names.
 LANE_KEYS = {f"lane.{lane}" for lane in Lane}

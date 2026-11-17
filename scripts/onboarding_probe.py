@@ -211,7 +211,7 @@ A_SOURCE = SourceConfig(name="Simon Willison", url="https://simonwillison.net/at
 # and kept in the list's order, which is the order the page posts them in.
 FEEDS = load_onboarding_feeds()
 TOPICS = load_onboarding_topics()
-LABELS = {topic["id"]: topic["label"] for topic in TOPICS}
+LABELS = {topic["id"]: translator("en")(f"onboarding_topic.{topic['id']}") for topic in TOPICS}
 _MOST_TAGS = sorted(FEEDS, key=lambda entry: -len(entry["tags"]))[:2]
 PICKS = [entry for entry in FEEDS if entry in _MOST_TAGS]
 # The feed the `refuses-one` table turns down once, and the one it takes beside it.
@@ -1810,7 +1810,7 @@ _CHECKS: list[Check] = [
         """,
         script=f"""
             const topics = topicRows().filter(visible).map((row) => $(".name", row).textContent);
-            const wanted = {json.dumps([topic["label"] for topic in TOPICS])};
+            const wanted = {json.dumps(list(LABELS.values()))};
             expect(same(topics, wanted), `topics: ${{topics.join("|")}}`);
             const chosen = topicRows().filter((row) => row.getAttribute("aria-pressed") === "true");
             expect(chosen.length === 0, `${{chosen.length}} topics start chosen`);
@@ -2014,7 +2014,8 @@ _CHECKS: list[Check] = [
         """,
         gestures=({"key": " "},),
         script=f"""
-            await waitFor(() => topicChosen({json.dumps(TOPICS[0]["label"])}), "the topic chosen");
+            const first = {json.dumps(LABELS[TOPICS[0]["id"]])};
+            await waitFor(() => topicChosen(first), "the topic chosen");
             expect(!$("#o-next").disabled, "Next still waits for a topic");
         """,
         receipt=_both_untouched,

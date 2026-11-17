@@ -192,3 +192,39 @@ def test_labels_is_a_module_that_formats_through_the_shared_formatter() -> None:
 
     assert '<script type="module" src="/static/labels.js"></script>' in html
     assert 'import { t } from "./i18n.js";' in script
+
+
+# ---- /onboarding's feed list -----------------------------------------------------------
+
+
+class _EmptySources:
+    """A `sources` table with nothing in it yet, so the list is offered."""
+
+    def list_sources(self) -> dict:
+        return {}
+
+
+def _feed_list(server: TriageServer, headers: dict[str, str] | None = None) -> dict:
+    request = make_mocked_request("GET", "/api/onboarding/feeds", headers=headers or {})
+    return json.loads(asyncio.run(server._handle_get_onboarding_feeds(request)).body)
+
+
+@pytest.mark.parametrize("catalog", CATALOGS)
+def test_the_feed_lists_topics_are_labelled_in_the_saved_language(catalog) -> None:
+    server = TriageServer(values={"digest.output_language": catalog}, source_store=_EmptySources())
+
+    topics = _feed_list(server)["topics"]
+
+    assert topics and all(
+        topic["label"] == _text(catalog, f"onboarding_topic.{topic['id']}") for topic in topics
+    )
+
+
+def test_with_no_saved_language_the_topics_follow_the_browser() -> None:
+    server = TriageServer(values={}, source_store=_EmptySources())
+
+    topics = _feed_list(server, {"Accept-Language": "zh-TW"})["topics"]
+
+    assert [topic["label"] for topic in topics] == [
+        _text("zh-Hant", f"onboarding_topic.{topic['id']}") for topic in topics
+    ]
