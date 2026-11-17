@@ -1096,11 +1096,11 @@ table.src td.areas-pos-cell { width: 1%; }
         </fieldset>
         <div class="field">
           <label class="label" for="o-own-url">Add your own feed</label>
+          <p class="small">A feed's address, or a site's home page that links one. It is named by the feed's own title.</p>
           <div class="add-feed">
             <input class="input" id="o-own-url" type="url" inputmode="url" placeholder="https://example.com/feed.xml" autocomplete="off">
             <button class="btn secondary" type="button">Add</button>
           </div>
-          <p class="small">A feed's address, or a site's home page that links one. It is named by the feed's own title.</p>
           <div class="notice" role="status">Slow Reads is under Your feeds, checked: Next adds it with the others.</div>
         </div>
         <div id="o-own">
@@ -1246,31 +1246,31 @@ Press Try again, or Finish to leave: the next publish hour brings an issue eithe
             </fieldset>
             <div class="field">
               <label class="label" for="model">Model</label>
-              <input class="input" id="model" type="text" placeholder="Empty uses gemini-2.5-flash" autocomplete="off">
               <p class="small">Saving makes one real call to the provider first, so a typo is rejected here.</p>
+              <input class="input" id="model" type="text" placeholder="Empty uses gemini-2.5-flash" autocomplete="off">
             </div>
             <fieldset class="field" style="border:0">
               <legend class="label" style="margin-bottom:8px">Embedding provider</legend>
+              <p class="small">The embedder vote similarity compares articles with. Its similarity cutoff comes with the model, so it is not set here.</p>
               <div class="choices" id="embedding-providers">
                 <label class="choice"><input type="radio" name="embedding-provider" id="e-workers" value="workers_ai" checked><span class="name">workers_ai</span><span class="label">Key ready</span></label>
                 <label class="choice"><input type="radio" name="embedding-provider" id="e-gemini" value="gemini"><span class="name">gemini</span><span class="label">Key ready</span></label>
               </div>
-              <p class="small">The embedder vote similarity compares articles with. Its similarity cutoff comes with the model, so it is not set here.</p>
             </fieldset>
             <div class="field">
               <label class="label" for="embedding-model-input">Embedding model</label>
-              <input class="input" id="embedding-model-input" type="text" placeholder="Empty uses @cf/baai/bge-m3" autocomplete="off">
               <p class="small">Checked with one real call when vote similarity is on.</p>
+              <input class="input" id="embedding-model-input" type="text" placeholder="Empty uses @cf/baai/bge-m3" autocomplete="off">
             </div>
             <div class="field">
               <label class="label" for="vote-enabled">Vote similarity</label>
-              <select class="select" id="vote-enabled"><option value="false" selected>Off</option><option value="true">On</option></select>
               <p class="small">Drop candidates close to an article you voted down. Preview what it would drop with <code>cyris vote-sim</code>; turning it on checks the embedder first.</p>
+              <select class="select" id="vote-enabled"><option value="false" selected>Off</option><option value="true">On</option></select>
             </div>
             <div class="field">
               <label class="label" for="vote-seeds">Votes compared</label>
-              <input class="input narrow" id="vote-seeds" type="number" min="1" value="200">
               <p class="small">How many of your most recent votes on each side a run compares against.</p>
+              <input class="input narrow" id="vote-seeds" type="number" min="1" value="200">
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" disabled>Save</button>
@@ -1288,55 +1288,55 @@ Press Try again, or Finish to leave: the next publish hour brings an issue eithe
           <div class="form">
             <div class="field">
               <span class="label">Publish hours</span>
+              <p class="small">Whole hours from 0 to 23, in the timezone below; half hours are refused.</p>
               <div class="field-row">
                 <div class="field"><label class="small" for="morning">Morning</label><input class="input narrow" id="morning" type="number" min="0" max="23" value="8"></div>
                 <div class="field"><label class="small" for="evening">Evening</label><input class="input narrow" id="evening" type="number" min="0" max="23" value="20"></div>
               </div>
               <div class="notice err" id="hours-error" hidden></div>
-              <p class="small">Whole hours from 0 to 23, in the timezone below; half hours are refused.</p>
             </div>
             <div class="field">
               <label class="label" for="timezone">Timezone</label>
+              <p class="small">The clock the publish hours are read in.</p>
               <!-- The page offers every zone the browser lists, plus UTC; a few stand in for them here. -->
               <select class="select" id="timezone"><option>America/New_York</option><option>Asia/Taipei</option><option>Asia/Tokyo</option><option>Europe/London</option><option selected>UTC</option></select>
-              <p class="small">The clock the publish hours are read in.</p>
             </div>
             <div class="field">
               <label class="label" for="output-language">Output language</label>
-              <select class="select" id="output-language"><option value="zh-Hant" selected>繁體中文 (Traditional Chinese)</option><option value="zh-Hans">简体中文 (Simplified Chinese)</option><option value="en">English</option><option value="ja">日本語 (Japanese)</option><option value="ko">한국어 (Korean)</option><option value="fr">français (French)</option><option value="de">Deutsch (German)</option><option value="es">español (Spanish)</option></select>
               <p class="small">The language headlines and summaries are written in.</p>
+              <select class="select" id="output-language"><option value="zh-Hant" selected>繁體中文 (Traditional Chinese)</option><option value="zh-Hans">简体中文 (Simplified Chinese)</option><option value="en">English</option><option value="ja">日本語 (Japanese)</option><option value="ko">한국어 (Korean)</option><option value="fr">français (French)</option><option value="de">Deutsch (German)</option><option value="es">español (Spanish)</option></select>
             </div>
             <div class="field">
               <label class="label" for="style-prompt">Style</label>
-              <textarea class="input" id="style-prompt" rows="4"></textarea>
               <p class="small">Your tone or focus for the summaries, in your own words; empty means none.</p>
+              <textarea class="input" id="style-prompt" rows="4"></textarea>
             </div>
             <div class="field">
               <label class="label" for="type-scale">Type size</label>
-              <select class="select" id="type-scale"><option value="0.875">Smaller</option><option value="1" selected>Default</option><option value="1.125">Larger</option></select>
               <p class="small">How large the text is on every page. It applies within a minute, to issues already published too.</p>
+              <select class="select" id="type-scale"><option value="0.875">Smaller</option><option value="1" selected>Default</option><option value="1.125">Larger</option></select>
             </div>
             <div class="field">
               <label class="label" for="rank-by-preference">Order by your votes</label>
-              <select class="select" id="rank-by-preference"><option value="false" selected>Off</option><option value="true">On</option></select>
               <p class="small">Put first the items on topics you voted up, and on topics that share a name with them. The order only moves items; nothing is left out for it.</p>
+              <select class="select" id="rank-by-preference"><option value="false" selected>Off</option><option value="true">On</option></select>
             </div>
             <div class="field">
               <label class="label" for="preference-source">Order judged by</label>
-              <select class="select" id="preference-source"><option value="cosine">Your topic votes</option><option value="clef" disabled>Clef</option></select>
               <p class="small">Who decides which items come first: your topic votes, or Clef reading the votes nearest each item. An issue Clef cannot fully score uses your topic votes.</p>
               <p class="small" id="clef-needs-votes">Clef needs vote similarity on, under Model.</p>
               <p class="small" id="clef-needs">Clef needs a Workers AI token: set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AI_TOKEN (or CLOUDFLARE_EMBEDDING_API_TOKEN).</p>
+              <select class="select" id="preference-source"><option value="cosine">Your topic votes</option><option value="clef" disabled>Clef</option></select>
             </div>
             <div class="field">
               <label class="label" for="vote-half-life">Vote half-life (days)</label>
-              <input class="input narrow" id="vote-half-life" type="number" min="1" max="365" value="7">
               <p class="small">A vote counts half as much after this many days, so a preference fades unless you vote again.</p>
+              <input class="input narrow" id="vote-half-life" type="number" min="1" max="365" value="7">
             </div>
             <div class="field">
               <label class="label" for="topic-lifetime">Topic lifetime (days)</label>
-              <input class="input narrow" id="topic-lifetime" type="number" min="1" max="365" value="7">
               <p class="small">Topics seen within this many days are current: new articles can join them, and a name many of them share counts for less in the order. An upvote slows how fast a topic leaves the list new articles can join; the effect fades with the vote half-life, and never lasts past three times this many days after the topic last appeared.</p>
+              <input class="input narrow" id="topic-lifetime" type="number" min="1" max="365" value="7">
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" disabled>Save</button>
@@ -1355,32 +1355,32 @@ Press Try again, or Finish to leave: the next publish hour brings an issue eithe
           <div class="form">
             <div class="field">
               <label class="label" for="window-hours">Window (hours)</label>
-              <input class="input narrow" id="window-hours" type="number" min="1" max="168" value="24">
               <p class="small">How far back a run looks for articles.</p>
+              <input class="input narrow" id="window-hours" type="number" min="1" max="168" value="24">
             </div>
             <div class="field">
               <label class="label" for="max-articles">Articles per run</label>
-              <input class="input narrow" id="max-articles" type="number" min="1" aria-invalid="true">
               <p class="small">How many of the window's newest articles, by publish time, one run scores and digests across all sources.</p>
+              <input class="input narrow" id="max-articles" type="number" min="1" aria-invalid="true">
             </div>
             <div class="field">
               <label class="label" for="featured-threshold">Top story score</label>
-              <input class="input narrow" id="featured-threshold" type="number" min="0" max="100" value="70">
               <p class="small">Two or more articles on one topic scoring at least this share the Top story.</p>
+              <input class="input narrow" id="featured-threshold" type="number" min="0" max="100" value="70">
             </div>
             <div class="field">
               <span class="label">Characters read</span>
+              <p class="small">How much of each article the model reads at each step; more costs more per call.</p>
               <div class="field-row">
                 <div class="field"><label class="small" for="scoring-snippet">Scoring</label><input class="input narrow" id="scoring-snippet" type="number" min="1" value="1000"></div>
                 <div class="field"><label class="small" for="summarize-snippet">Summary</label><input class="input narrow" id="summarize-snippet" type="number" min="1" value="1000"></div>
                 <div class="field"><label class="small" for="filter-snippet">News clustering and headlines</label><input class="input narrow" id="filter-snippet" type="number" min="1" value="500"></div>
               </div>
-              <p class="small">How much of each article the model reads at each step; more costs more per call.</p>
             </div>
             <div class="field">
               <label class="label" for="reasoning-effort">Reasoning effort</label>
-              <select class="select" id="reasoning-effort"><option value="default">Default</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
               <p class="small">How hard the model thinks before it answers; more costs more tokens and time. Default keeps each provider's own level, except low on OpenAI; Workers AI always runs at low, and Save checks the level with one call.</p>
+              <select class="select" id="reasoning-effort"><option value="default">Default</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" disabled>Save</button>
@@ -1398,8 +1398,8 @@ Press Try again, or Finish to leave: the next publish hour brings an issue eithe
           <div class="form">
             <div class="field">
               <label class="label" for="webhook">Discord webhook</label>
-              <input class="input" id="webhook" type="text" value="https://discord.com/api/webhooks/1398…/••••••••" autocomplete="off">
               <p class="small">To change it, paste the whole URL; it is saved once Discord confirms it exists. Turn off clears it: runs then finish without a message.</p>
+              <input class="input" id="webhook" type="text" value="https://discord.com/api/webhooks/1398…/••••••••" autocomplete="off">
               <p class="small" id="notify-state" hidden>Notifications are off.</p>
             </div>
             <div class="actions-line">
