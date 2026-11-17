@@ -118,28 +118,28 @@
             </div>
             <div class="field">
               <label class="label" for="model-input">{{ t("settings_field.llm_provider.model") }}</label>
-              <input class="input" id="model-input" type="text" autocomplete="off">
               <p class="small" id="model-hint"></p>
+              <input class="input" id="model-input" type="text" autocomplete="off">
             </div>
             <div class="field">
               <span class="label" id="embedding-provider-label">{{ t("settings_field.vote_similarity.provider") }}</span>
-              <div class="choices" id="embedding-providers" role="radiogroup" aria-labelledby="embedding-provider-label"></div>
               <p class="small">{{ t("settings_help.vote_similarity.provider") }}</p>
+              <div class="choices" id="embedding-providers" role="radiogroup" aria-labelledby="embedding-provider-label"></div>
             </div>
             <div class="field">
               <label class="label" for="embedding-model-input">{{ t("settings_field.vote_similarity.model") }}</label>
-              <input class="input" id="embedding-model-input" type="text" autocomplete="off">
               <p class="small">{{ t("settings_help.vote_similarity.model") }}</p>
+              <input class="input" id="embedding-model-input" type="text" autocomplete="off">
             </div>
             <div class="field">
               <label class="label" for="vote-enabled">{{ t("settings_field.vote_similarity.enabled") }}</label>
-              <select class="select" id="vote-enabled"><option value="false">{{ t("settings_option.off") }}</option><option value="true">{{ t("settings_option.on") }}</option></select>
               <p class="small">{{ t("settings.vote_similarity_hint", elements={"code": ("code", {})}) }}</p>
+              <select class="select" id="vote-enabled"><option value="false">{{ t("settings_option.off") }}</option><option value="true">{{ t("settings_option.on") }}</option></select>
             </div>
             <div class="field">
               <label class="label" for="vote-seeds">{{ t("settings_field.vote_similarity.max_seeds") }}</label>
-              <input class="input narrow" id="vote-seeds" type="number" min="1" autocomplete="off">
               <p class="small">{{ t("settings_help.vote_similarity.max_seeds") }}</p>
+              <input class="input narrow" id="vote-seeds" type="number" min="1" autocomplete="off">
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-model" disabled>{{ t("settings.save") }}</button>
@@ -158,60 +158,60 @@
           <div class="form">
             <div class="field">
               <span class="label">{{ t("settings_field.general.digest_schedule") }}</span>
+              <p class="small">{{ t("settings.hours_hint") }}</p>
               <div class="field-row">
                 <div class="field"><label class="small" for="morning">{{ t("settings_option.schedule_morning") }}</label><input class="input narrow" id="morning" type="number" min="0" max="23" autocomplete="off"></div>
                 <div class="field"><label class="small" for="evening">{{ t("settings_option.schedule_evening") }}</label><input class="input narrow" id="evening" type="number" min="0" max="23" autocomplete="off"></div>
               </div>
               <div class="notice err" id="hours-error" data-field-error hidden></div>
-              <p class="small">{{ t("settings.hours_hint") }}</p>
             </div>
             <div class="field">
               <label class="label" for="timezone">{{ t("settings_field.general.timezone") }}</label>
-              <select class="select" id="timezone"></select>
               <p class="small">{{ t("settings_help.general.timezone") }}</p>
+              <select class="select" id="timezone"></select>
               <p class="small" id="timezone-detected" hidden>{{ t("settings.timezone_detected") }}</p>
             </div>
             <div class="field">
               <label class="label" for="output-language">{{ t("settings_field.digest.output_language") }}</label>
-              <select class="select" id="output-language"></select>
               <p class="small">{{ t("settings_help.digest.output_language") }}</p>
+              <select class="select" id="output-language"></select>
             </div>
             <div class="field">
               <label class="label" for="style-prompt">{{ t("settings_field.digest.style_prompt") }}</label>
-              <textarea class="input" id="style-prompt" rows="4"></textarea>
               <p class="small">{{ t("settings_help.digest.style_prompt") }}</p>
+              <textarea class="input" id="style-prompt" rows="4"></textarea>
             </div>
             <div class="field">
               <label class="label" for="type-scale">{{ t("settings_field.digest.type_scale") }}</label>
-              <select class="select" id="type-scale"><option value="0.875">{{ t("settings_option.type_scale_smaller") }}</option><option value="1">{{ t("settings_option.type_scale_default") }}</option><option value="1.125">{{ t("settings_option.type_scale_larger") }}</option></select>
               <p class="small">{{ t("settings_help.digest.type_scale") }}</p>
+              <select class="select" id="type-scale"><option value="0.875">{{ t("settings_option.type_scale_smaller") }}</option><option value="1">{{ t("settings_option.type_scale_default") }}</option><option value="1.125">{{ t("settings_option.type_scale_larger") }}</option></select>
             </div>
             <div class="field">
               <label class="label" for="rank-by-preference">{{ t("settings_field.digest.rank_by_preference") }}</label>
-              <select class="select" id="rank-by-preference"><option value="false">{{ t("settings_option.off") }}</option><option value="true">{{ t("settings_option.on") }}</option></select>
               <p class="small">{{ t("settings_help.digest.rank_by_preference") }}</p>
+              <select class="select" id="rank-by-preference"><option value="false">{{ t("settings_option.off") }}</option><option value="true">{{ t("settings_option.on") }}</option></select>
             </div>
             <div class="field">
               <label class="label" for="preference-source">{{ t("settings_field.digest.preference_source") }}</label>
-              <select class="select" id="preference-source"><option value="cosine">{{ t("settings_option.preference_cosine") }}</option><option value="clef">Clef</option></select>
               <p class="small">{{ t("settings_help.digest.preference_source") }}</p>
               <p class="small" id="clef-needs-votes" hidden>{{ t("settings.clef_needs_votes") }}</p>
               <p class="small" id="clef-needs" hidden>{{ t("settings_help.clef_needs_token") }}</p>
+              <select class="select" id="preference-source"><option value="cosine">{{ t("settings_option.preference_cosine") }}</option><option value="clef">Clef</option></select>
             </div>
             <div class="field">
               <label class="label" for="summarize-follow">{{ t("settings_field.digest.summarize_follow") }}</label>
-              <select class="select" id="summarize-follow"><option value="false">{{ t("settings_option.off") }}</option><option value="true">{{ t("settings_option.on") }}</option></select>
               <p class="small">{{ t("settings_help.digest.summarize_follow") }}</p>
+              <select class="select" id="summarize-follow"><option value="false">{{ t("settings_option.off") }}</option><option value="true">{{ t("settings_option.on") }}</option></select>
             </div>
             <div class="field">
               <label class="label" for="vote-half-life">{{ t("settings_field.digest.vote_half_life_days") }}</label>
-              <input class="input narrow" id="vote-half-life" type="number" min="1" max="365" autocomplete="off">
               <p class="small">{{ t("settings_help.digest.vote_half_life_days") }}</p>
+              <input class="input narrow" id="vote-half-life" type="number" min="1" max="365" autocomplete="off">
             </div>
             <div class="field">
               <label class="label" for="topic-lifetime">{{ t("settings_field.digest.topic_lifetime_days") }}</label>
-              <input class="input narrow" id="topic-lifetime" type="number" min="1" max="365" autocomplete="off">
               <p class="small">{{ t("settings_help.digest.topic_lifetime_days") }}</p>
+              <input class="input narrow" id="topic-lifetime" type="number" min="1" max="365" autocomplete="off">
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-digest" disabled>{{ t("settings.save") }}</button>
@@ -230,32 +230,32 @@
           <div class="form">
             <div class="field">
               <label class="label" for="window-hours">{{ t("settings_field.general.digest_window_hours") }}</label>
-              <input class="input narrow" id="window-hours" type="number" min="1" max="168" autocomplete="off">
               <p class="small">{{ t("settings_help.general.digest_window_hours") }}</p>
+              <input class="input narrow" id="window-hours" type="number" min="1" max="168" autocomplete="off">
             </div>
             <div class="field">
               <label class="label" for="max-articles">{{ t("settings_field.digest.max_articles_per_digest") }}</label>
-              <input class="input narrow" id="max-articles" type="number" min="1" autocomplete="off">
               <p class="small">{{ t("settings_help.digest.max_articles_per_digest") }}</p>
+              <input class="input narrow" id="max-articles" type="number" min="1" autocomplete="off">
             </div>
             <div class="field">
               <label class="label" for="featured-threshold">{{ t("settings_field.routing.score_threshold") }}</label>
-              <input class="input narrow" id="featured-threshold" type="number" min="0" max="100" autocomplete="off">
               <p class="small">{{ t("settings_help.routing.score_threshold") }}</p>
+              <input class="input narrow" id="featured-threshold" type="number" min="0" max="100" autocomplete="off">
             </div>
             <div class="field">
               <span class="label">{{ t("settings.characters_read") }}</span>
+              <p class="small">{{ t("settings_help.snippet_lengths") }}</p>
               <div class="field-row">
                 <div class="field"><label class="small" for="scoring-snippet">{{ t("settings.snippet_scoring") }}</label><input class="input narrow" id="scoring-snippet" type="number" min="1" autocomplete="off"></div>
                 <div class="field"><label class="small" for="summarize-snippet">{{ t("settings.snippet_summary") }}</label><input class="input narrow" id="summarize-snippet" type="number" min="1" autocomplete="off"></div>
                 <div class="field"><label class="small" for="filter-snippet">{{ t("settings.snippet_filter") }}</label><input class="input narrow" id="filter-snippet" type="number" min="1" autocomplete="off"></div>
               </div>
-              <p class="small">{{ t("settings_help.snippet_lengths") }}</p>
             </div>
             <div class="field">
               <label class="label" for="reasoning-effort">{{ t("settings_field.llm_provider.reasoning_effort") }}</label>
-              <select class="select" id="reasoning-effort"><option value="default">{{ t("settings.effort_default") }}</option><option value="low">{{ t("settings.effort_low") }}</option><option value="medium">{{ t("settings.effort_medium") }}</option><option value="high">{{ t("settings.effort_high") }}</option></select>
               <p class="small">{{ t("settings.effort_hint") }}</p>
+              <select class="select" id="reasoning-effort"><option value="default">{{ t("settings.effort_default") }}</option><option value="low">{{ t("settings.effort_low") }}</option><option value="medium">{{ t("settings.effort_medium") }}</option><option value="high">{{ t("settings.effort_high") }}</option></select>
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-pipeline" disabled>{{ t("settings.save") }}</button>
@@ -274,19 +274,19 @@
           <div class="form">
             <div class="field">
               <label class="label" for="discord-webhook">{{ t("settings_field.notify.discord_webhook_url") }}</label>
-              <input class="input" id="discord-webhook" type="text" placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
               <p class="small">{{ t("settings.webhook_hint") }}</p>
+              <input class="input" id="discord-webhook" type="text" placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
               <p class="small" id="notify-state" hidden>{{ t("settings.notify_off_state") }}</p>
             </div>
             <div class="field">
               <label class="label" for="email-to">{{ t("settings_field.notify.email_to") }}</label>
-              <input class="input" id="email-to" type="email" placeholder="you@example.com" autocomplete="off">
               <p class="small">{{ t("settings_help.notify.email_to") }}</p>
+              <input class="input" id="email-to" type="email" placeholder="you@example.com" autocomplete="off">
             </div>
             <div class="field">
               <label class="label" for="email-from">{{ t("settings_field.notify.email_from") }}</label>
-              <input class="input" id="email-from" type="email" placeholder="digest@your-domain" autocomplete="off">
               <p class="small">{{ t("settings_help.notify.email_from") }}</p>
+              <input class="input" id="email-from" type="email" placeholder="digest@your-domain" autocomplete="off">
             </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-notify" disabled>{{ t("settings.save") }}</button>
@@ -417,8 +417,9 @@
           </div>
         </div>
         <div class="field" data-for="rss"><label class="label" for="e-url">{{ t("settings.feed_url") }}</label><input class="input" id="e-url" name="url" type="text" autocomplete="off"></div>
-        <div class="field" data-for="newsletter"><label class="label" for="e-email">{{ t("settings.sender_match") }}</label><input class="input" id="e-email" name="email_match" type="text" placeholder="from:hi@example.com" autocomplete="off">
-          <p class="small">{{ t("settings.sender_match_hint") }}</p></div>
+        <div class="field" data-for="newsletter"><label class="label" for="e-email">{{ t("settings.sender_match") }}</label>
+          <p class="small">{{ t("settings.sender_match_hint") }}</p>
+          <input class="input" id="e-email" name="email_match" type="text" placeholder="from:hi@example.com" autocomplete="off"></div>
         <div class="field" data-for="newsletter"><label class="label" for="e-home">{{ t("settings.homepage") }}</label><input class="input" id="e-home" name="homepage" type="text" autocomplete="off"></div>
         <div class="field"><label class="label" for="e-tags">{{ t("settings.col_tags") }}</label><input class="input" id="e-tags" name="tags" type="text" placeholder="{{ t("settings.tags_placeholder") }}" autocomplete="off"></div>
         <div class="field-row">
@@ -471,13 +472,14 @@
       <h3 class="label editor-title"></h3>
       <div class="form">
         <div class="field"><label class="label" for="t-name">{{ t("settings.col_name") }}</label><input class="input" id="t-name" name="name" type="text" autocomplete="off"></div>
-        <div class="field"><label class="label" for="t-description">{{ t("settings.col_description") }}</label><textarea class="input" id="t-description" name="description" rows="3"></textarea>
-          <p class="small">{{ t("settings.topic_description_hint") }}</p></div>
+        <div class="field"><label class="label" for="t-description">{{ t("settings.col_description") }}</label>
+          <p class="small">{{ t("settings.topic_description_hint") }}</p>
+          <textarea class="input" id="t-description" name="description" rows="3"></textarea></div>
+        <p class="small">{{ t("settings.topic_threshold_hint", elements={"code": ("code", {})}) }}</p>
         <div class="field-row">
           <div class="field"><label class="label" for="t-threshold">{{ t("settings.col_threshold") }}</label><input class="input narrow" id="t-threshold" name="threshold" type="number" min="0" max="1" step="0.01" autocomplete="off"></div>
           <div class="field"><label class="label" for="t-model">{{ t("settings.col_embedding_model") }}</label><input class="input" id="t-model" name="model" type="text" autocomplete="off"></div>
         </div>
-        <p class="small">{{ t("settings.topic_threshold_hint", elements={"code": ("code", {})}) }}</p>
       </div>
       <div class="editor-foot">
         <div class="actions-line">

@@ -1475,6 +1475,74 @@ def test_help_is_one_or_two_sentences(page: str) -> None:
     assert _longer_than_two_sentences(_source(page)) == []
 
 
+# A line that reports the control's state, not what the setting does, sits below the control.
+STATE_LINES = {"timezone-detected", "o-timezone-detected", "notify-state", "o-no-key"}
+CHOICE_CLASSES = {"choices", "tiles", "add-feed", "field-row"}
+
+
+class _HelpOrder(HTMLParser):
+    """The help paragraphs of each field that come after its first control."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.late: list[str] = []
+        self._divs: list[list | None] = []  # a field's [seen a control], else None
+        self._help: list[str] | None = None
+
+    def _fields(self) -> list[list]:
+        return [d for d in self._divs if d is not None]
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        a = dict(attrs)
+        classes = (a.get("class") or "").split()
+        if tag == "div":
+            self._divs.append([False] if "field" in classes else None)
+        if tag in {"input", "select", "textarea"} or (
+            tag == "div" and CHOICE_CLASSES & set(classes)
+        ):
+            for field in self._fields():
+                field[0] = True
+        if tag == "p" and "small" in classes and a.get("id") not in STATE_LINES:
+            fields = self._fields()
+            if fields and fields[-1][0]:
+                self._help = []
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "div" and self._divs:
+            self._divs.pop()
+        if tag == "p" and self._help is not None:
+            self.late.append("".join(self._help).strip())
+            self._help = None
+
+    def handle_data(self, data: str) -> None:
+        if self._help is not None:
+            self._help.append(data)
+
+
+def _help_after_a_control(html: str) -> list[str]:
+    parser = _HelpOrder()
+    parser.feed(html)
+    return parser.late
+
+
+def test_help_after_a_control_is_reported() -> None:
+    planted = (
+        '<div class="field"><label>A</label><p class="small">Before.</p><input></div>'
+        '<div class="field"><label>B</label><input><p class="small">After.</p></div>'
+        '<div class="field"><label>C</label><div class="field-row"><input></div>'
+        '<p class="small">Row.</p></div>'
+        '<div class="field"><label>D</label><input>'
+        '<p class="small" id="notify-state">State.</p></div>'
+    )
+    assert _help_after_a_control(planted) == ["After.", "Row."]
+
+
+@pytest.mark.parametrize("page", ["settings", "onboarding"])
+def test_a_fields_help_precedes_its_control(page: str) -> None:
+    """§4 field: the name, the help, the dependency line, then the control."""
+    assert _help_after_a_control(_source(page)) == []
+
+
 FORM_CONTROLS = {"input", "select", "textarea", "button"}
 # The one fold that holds no control: Areas' list of closed areas, which only reports.
 READ_ONLY_FOLDS = {"Closed"}
