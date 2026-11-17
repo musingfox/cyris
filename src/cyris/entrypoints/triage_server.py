@@ -155,6 +155,16 @@ BROWSER_MESSAGES: tuple[str, ...] = (
     "provider.none",
     *(f"lane.{lane}" for lane in Lane),
     *(f"area_status.{status}" for status in get_args(AreaStatus)),
+    "labels.signed_out",
+    "labels.access_not_set_up",
+    "labels.refused",
+    "labels.refused_because",
+    "labels.unanswered",
+    "labels.progress",
+    "labels.no_sample",
+    "labels.all_answered",
+    "labels.not_drawn",
+    "labels.not_loaded",
 )
 # One file per catalog, under `/static/` so the app Worker forwards it to this server,
 # which is what serves `/static/` in both editions. A page names its own in a meta tag;

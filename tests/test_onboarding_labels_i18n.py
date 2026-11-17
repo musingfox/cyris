@@ -5,17 +5,60 @@ message marks up, `{#em}…{/em}`, reaches a page script as the element the scri
 a template draws it with `t(key, elements=…)`.
 """
 
+import asyncio
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
 
 import pytest
+from aiohttp.test_utils import make_mocked_request
 
-from cyris.entrypoints.triage_server import STATIC_DIR
+import cyris
+from cyris.entrypoints.triage_server import STATIC_DIR, TriageServer
 
 pytestmark = pytest.mark.unit
+
+LOCALES = Path(cyris.__file__).parent / "locales"
+CATALOGS = ["en", "zh-Hant"]
+
+
+def _text(catalog: str, key: str) -> str:
+    entry = json.loads((LOCALES / f"{catalog}.json").read_text(encoding="utf-8"))[key]
+    return entry if catalog == "en" else entry["text"]
+
+
+def _html_lang(html: str) -> str:
+    return re.search(r'<html lang="([^"]*)">', html)[1]
+
+
+def _named_file(html: str) -> str:
+    return re.search(r'<meta name="i18n-catalog" content="([^"]*)">', html)[1]
+
+
+def _serve(server: TriageServer, path: str, headers: dict[str, str] | None = None) -> str:
+    handler = {
+        "/labels": server._handle_labels_page,
+        "/onboarding": server._handle_onboarding_page,
+    }[path]
+    response = asyncio.run(handler(make_mocked_request("GET", path, headers=headers or {})))
+    return response.body.decode()
+
+
+def _served(server: TriageServer, html: str) -> dict:
+    """The browser messages in the file `html` names, as the server serves it."""
+
+    async def get():
+        url = _named_file(html)
+        router = server._app.router
+        match = await router.resolve(make_mocked_request("GET", url))
+        return await match.handler(make_mocked_request("GET", url, match_info=match))
+
+    response = asyncio.run(get())
+    assert response.status == 200
+    return json.loads(response.body)
 
 
 # ---- a marked-up span ----------------------------------------------------------------
@@ -91,3 +134,61 @@ def test_the_browser_words_a_marked_message_as_plain_text_without_elements(tmp_p
     assert _format_in_browser(tmp_path, catalog, [["a.title", {}, None]]) == [
         {"text": "Set up cyris"}
     ]
+
+
+# ---- /labels ---------------------------------------------------------------------------
+
+
+def _buttons(html: str) -> list[tuple[str, str]]:
+    return re.findall(r'data-label="(\w+)">([^<]*)</button>', html)
+
+
+@pytest.mark.parametrize("catalog", CATALOGS)
+def test_labels_is_worded_in_the_saved_language(catalog) -> None:
+    server = TriageServer(values={"digest.output_language": catalog})
+
+    html = _serve(server, "/labels")
+
+    assert _html_lang(html) == catalog
+    assert re.search(r"<title>([^<]*)</title>", html)[1] == _text(catalog, "labels.page_title")
+    assert _buttons(html) == [
+        ("down", _text(catalog, "labels.down")),
+        ("skip", _text(catalog, "labels.skip")),
+        ("up", _text(catalog, "labels.up")),
+    ]
+    heading = re.search(r'<h1 class="display">(.*?)</h1>', html)[1]
+    assert heading == re.sub(r"\{#em\}(.*?)\{/em\}", r"<em>\1</em>", _text(catalog, "labels.title"))
+    assert _text(catalog, "labels.hint") in html
+
+
+@pytest.mark.parametrize("catalog", CATALOGS)
+def test_the_labels_script_gets_its_messages_in_the_pages_language(catalog) -> None:
+    server = TriageServer(values={"digest.output_language": catalog})
+    html = _serve(server, "/labels")
+
+    served = _served(server, html)
+
+    assert served["labels.progress"] == {"tag": catalog, "text": _text(catalog, "labels.progress")}
+    assert served["labels.refused_because"]["tag"] == catalog
+
+
+@pytest.mark.parametrize("catalog", CATALOGS)
+def test_the_labels_progress_line_formats_in_the_pages_language(tmp_path, catalog) -> None:
+    server = TriageServer(values={"digest.output_language": catalog})
+    served = _served(server, _serve(server, "/labels"))
+    values = {"answered": 1, "total": 3, "remaining": 2}
+
+    results = _format_in_browser(tmp_path, served, [["labels.progress", values, None]])
+
+    expected = _text(catalog, "labels.progress")
+    for name, value in values.items():
+        expected = expected.replace(f"{{${name}}}", str(value))
+    assert results == [{"text": expected}]
+
+
+def test_labels_is_a_module_that_formats_through_the_shared_formatter() -> None:
+    html = _serve(TriageServer(values={"digest.output_language": "en"}), "/labels")
+    script = (STATIC_DIR / "labels.js").read_text(encoding="utf-8")
+
+    assert '<script type="module" src="/static/labels.js"></script>' in html
+    assert 'import { t } from "./i18n.js";' in script

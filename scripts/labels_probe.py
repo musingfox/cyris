@@ -37,7 +37,7 @@ from cdp_probe import (
 )
 from css_computed import find_browser
 
-from cyris.entrypoints.triage_server import STATIC_DIR, render_labels_page
+from cyris.entrypoints.triage_server import STATIC_DIR, TriageServer, render_labels_page
 
 PAGE = "/labels"
 ACCESS_LOGIN = "https://access.example.test/cdn-cgi/access/login"
@@ -121,6 +121,8 @@ def build_fixture(kind: str) -> LabelsFixture:
     app.router.add_get("/api/vote", probe)
     app.router.add_get("/api/labels", read)
     app.router.add_post("/api/labels", answer)
+    # The page's messages, as the settings server serves them, ahead of the static files.
+    app.router.add_get("/static/i18n/{tag}.json", TriageServer()._handle_browser_messages)
     app.router.add_static("/static", STATIC_DIR)
     return fixture
 

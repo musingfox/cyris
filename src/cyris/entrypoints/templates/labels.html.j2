@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark">
   <meta name="i18n-catalog" content="{{ i18n_catalog }}">
-  <title>Cyris Labels</title>
-  <meta name="description" content="Blind labels for a Cyris deployment: one sampled article at a time, without the pipeline's verdict.">
+  <title>{{ t("labels.page_title") }}</title>
+  <meta name="description" content="{{ t("labels.page_description") }}">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -43,19 +43,19 @@
 {% with current="labels" %}{% include "_site_bar.html.j2" %}{% endwith %}
   <main class="page">
     <div class="page-head">
-      <span class="label" id="l-progress">Loading…</span>
-      <h1 class="display">Label it <em>blind</em></h1>
-      <p class="small">Each card is an article the filter judged, without its verdict. Up if you want articles like it, down if not.</p>
+      <span class="label" id="l-progress">{{ t("labels.loading") }}</span>
+      <h1 class="display">{{ t("labels.title", elements={"em": ("em", {})}) }}</h1>
+      <p class="small">{{ t("labels.lede") }}</p>
     </div>
     <div class="deck-wrap">
       <article class="card" id="l-card" tabindex="0" role="link" hidden><span class="label" id="l-source"></span><h2 id="l-title" lang=""></h2><p class="small" id="l-excerpt" lang=""></p></article>
-      <div class="deck-actions" id="l-actions" hidden><button class="btn danger" type="button" data-label="down">Down</button><button class="btn secondary" type="button" data-label="skip">Skip</button><button class="btn primary" type="button" data-label="up">Up</button></div>
+      <div class="deck-actions" id="l-actions" hidden><button class="btn danger" type="button" data-label="down">{{ t("labels.down") }}</button><button class="btn secondary" type="button" data-label="skip">{{ t("labels.skip") }}</button><button class="btn primary" type="button" data-label="up">{{ t("labels.up") }}</button></div>
       <p class="notice err" id="l-error" role="alert" hidden></p>
-      <p class="small" id="l-hint" hidden>Swipe left for down, right for up. Tap the card to open the article in a new tab.</p>
+      <p class="small" id="l-hint" hidden>{{ t("labels.hint") }}</p>
       <p class="small" id="l-empty" hidden></p>
     </div>
   </main>
-<script src="/static/labels.js"></script>
+<script type="module" src="/static/labels.js"></script>
 {% include "_probe_script.html.j2" %}
 </body>
 </html>

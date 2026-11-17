@@ -1,6 +1,8 @@
 // The blind-label deck: one sampled article at a time, showing nothing of what the
 // pipeline decided, answered up, down or skip. The server holds the order and the
 // progress, so every answer comes back with the next item.
+import { t } from "./i18n.js";
+
 const $ = (id) => document.getElementById(id);
 const card = $("l-card");
 const buttons = [...document.querySelectorAll("#l-actions button")];
@@ -14,23 +16,25 @@ let busy = false;
 let answerFocus = null;
 
 const FAILED = {
-  signedOut: "Your session has ended, so the answer was not taken. Reload the page and sign in again.",
-  accessNotSetUp: "Access is not set up for this deployment. Ask the operator to finish the Cloudflare Access setup, then reload the page.",
-  refused: (status, reason) => `The answer was not taken (HTTP ${status})${reason ? `: ${reason}` : "."}`,
-  unanswered: "No answer from the server, so the answer may not have been taken. Check your connection, then try again.",
+  signedOut: t("labels.signed_out"),
+  accessNotSetUp: t("labels.access_not_set_up"),
+  refused: (status, reason) => reason
+    ? t("labels.refused_because", { status: String(status), reason })
+    : t("labels.refused", { status: String(status) }),
+  unanswered: t("labels.unanswered"),
 };
 
 function show(deck) {
   current = deck.item;
   const remaining = deck.total - deck.answered;
   $("l-progress").textContent = deck.total
-    ? `${deck.answered} of ${deck.total} answered · ${remaining} remaining`
-    : "No sample";
+    ? t("labels.progress", { answered: deck.answered, total: deck.total, remaining })
+    : t("labels.no_sample");
   for (const id of ["l-card", "l-actions", "l-hint"]) $(id).hidden = !current;
   $("l-empty").hidden = Boolean(current);
   $("l-empty").textContent = deck.total
-    ? "Every item is answered. Run cyris labels report for the result."
-    : "No sample is drawn yet. Run cyris labels draw first.";
+    ? t("labels.all_answered")
+    : t("labels.not_drawn");
   if (!current) return;
   $("l-source").textContent = current.source;
   $("l-title").textContent = current.title;
@@ -57,7 +61,7 @@ async function load() {
     if (!resp.ok) throw new Error(await failureOf(resp));
     show(await resp.json());
   } catch (error) {
-    $("l-progress").textContent = "Not loaded";
+    $("l-progress").textContent = t("labels.not_loaded");
     // fetch rejects with a TypeError only when no answer came back at all.
     notice.textContent = error instanceof TypeError ? FAILED.unanswered : error.message;
     notice.hidden = false;
