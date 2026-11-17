@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="color-scheme" content="dark">
   <meta name="i18n-catalog" content="{{ i18n_catalog }}">
-  <title>Cyris Onboarding</title>
-  <meta name="description" content="The guided setup of a new Cyris deployment: language, publish hours, sources, votes, notifications, the model and the first issue.">
+  <title>{{ t("onboarding.page_title") }}</title>
+  <meta name="description" content="{{ t("onboarding.page_description") }}">
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -67,62 +67,62 @@
         <canvas id="o-canvas"></canvas>
         <div class="opening-vp"><span class="brand opening-logo" id="o-logo"><span class="brand-mark"></span><span class="brand-name">CYRIS</span></span></div>
       </div>
-      <p class="heading opening-claim" id="o-claim" data-held>Too much, too fast. I’ll hold it for you; <em>you</em> say what matters.</p>
+      <p class="heading opening-claim" id="o-claim" data-held>{{ t("onboarding.opening_claim", elements={"em": ("em", {})}) }}</p>
       <div class="opening-nav">
-        <button class="btn secondary" type="button" id="o-skip-intro">Skip intro</button>
-        <button class="btn primary" type="button" id="o-show" hidden>Show me how</button>
+        <button class="btn secondary" type="button" id="o-skip-intro">{{ t("onboarding.skip_intro") }}</button>
+        <button class="btn primary" type="button" id="o-show" hidden>{{ t("onboarding.show_me_how") }}</button>
       </div>
     </section>
 
     <div class="page-head">
-      <span class="label" id="o-progress">Step 1 of 7</span>
-      <h1 class="display">Set up <em>cyris</em></h1>
-      <p class="small">Seven steps to your first issue. Skip any of them: a skipped step keeps its current value, and everything here can be changed later in Settings.</p>
+      <span class="label" id="o-progress">{{ t("onboarding.progress", step=1, steps=7) }}</span>
+      <h1 class="display">{{ t("onboarding.title", elements={"em": ("em", {})}) }}</h1>
+      <p class="small">{{ t("onboarding.intro") }}</p>
     </div>
 
     <ol class="steps" id="o-steps">
-      <li class="label" data-step="language">Language</li>
-      <li class="label" data-step="schedule">Publish hours</li>
-      <li class="label" data-step="sources">Sources</li>
-      <li class="label" data-step="votes">Votes</li>
-      <li class="label" data-step="notify">Notifications</li>
-      <li class="label" data-step="model">Model</li>
-      <li class="label" data-step="first-issue">First issue</li>
+      <li class="label" data-step="language">{{ t("onboarding.step_language") }}</li>
+      <li class="label" data-step="schedule">{{ t("onboarding.step_schedule") }}</li>
+      <li class="label" data-step="sources">{{ t("onboarding.step_sources") }}</li>
+      <li class="label" data-step="votes">{{ t("onboarding.step_votes") }}</li>
+      <li class="label" data-step="notify">{{ t("onboarding.step_notify") }}</li>
+      <li class="label" data-step="model">{{ t("onboarding.step_model") }}</li>
+      <li class="label" data-step="first-issue">{{ t("onboarding.step_first_issue") }}</li>
     </ol>
 
     <section class="step" data-step="language" hidden>
       <div class="step-head">
-        <h2 class="heading">Language and timezone</h2>
-        <p class="small">The language each issue is written in, and the clock its publish hours are read in.</p>
-        <p class="small" data-loading>Loading settings…</p>
+        <h2 class="heading">{{ t("onboarding.language_heading") }}</h2>
+        <p class="small">{{ t("onboarding.language_lede") }}</p>
+        <p class="small" data-loading>{{ t("onboarding.loading_settings") }}</p>
       </div>
       <div class="field">
-        <label class="label" for="o-output-language">Output language</label>
+        <label class="label" for="o-output-language">{{ t("onboarding.output_language") }}</label>
         <select class="select" id="o-output-language"></select>
-        <p class="small">The language headlines and summaries are written in.</p>
+        <p class="small">{{ t("onboarding.output_language_help") }}</p>
       </div>
       <div class="field">
-        <label class="label" for="o-timezone">Timezone</label>
+        <label class="label" for="o-timezone">{{ t("onboarding.timezone") }}</label>
         <select class="select" id="o-timezone"></select>
-        <p class="small">The clock the publish hours are read in.</p>
-        <p class="small" id="o-timezone-detected" hidden>Detected from this browser, and not saved yet: Next saves it.</p>
+        <p class="small">{{ t("onboarding.timezone_help") }}</p>
+        <p class="small" id="o-timezone-detected" hidden>{{ t("onboarding.timezone_detected") }}</p>
       </div>
     </section>
 
     <section class="step" data-step="schedule" hidden>
       <div class="step-head">
-        <h2 class="heading">Publish hours</h2>
-        <p class="small">When each day's two issues are published.</p>
-        <p class="small" data-loading>Loading settings…</p>
+        <h2 class="heading">{{ t("onboarding.schedule_heading") }}</h2>
+        <p class="small">{{ t("onboarding.schedule_lede") }}</p>
+        <p class="small" data-loading>{{ t("onboarding.loading_settings") }}</p>
       </div>
       <div class="field">
-        <label class="label" for="o-morning">Morning</label>
+        <label class="label" for="o-morning">{{ t("onboarding.morning") }}</label>
         <input class="input" id="o-morning" type="number" min="0" max="23" autocomplete="off">
       </div>
       <div class="field">
-        <label class="label" for="o-evening">Evening</label>
+        <label class="label" for="o-evening">{{ t("onboarding.evening") }}</label>
         <input class="input" id="o-evening" type="number" min="0" max="23" autocomplete="off">
-        <p class="small">Whole hours from 0 to 23, in the timezone of the step before; half hours are refused.</p>
+        <p class="small">{{ t("onboarding.hours_help") }}</p>
       </div>
     </section>
 
@@ -133,15 +133,15 @@
        POST /api/sources as listed, less the list's own topics. #}
     <section class="step" data-step="sources" hidden>
       <div class="step-head">
-        <h2 class="heading">Sources</h2>
-        <p class="small" data-screen="topics">The feeds this deployment reads, each a publisher's own feed. Pick the topics you follow; Next shows their feeds.</p>
-        <p class="small" data-screen="feeds" hidden>The feeds of the topics you picked. Check the ones you read; Back changes the topics.</p>
-        <p class="small" id="o-feeds-loading">Loading feeds…</p>
+        <h2 class="heading">{{ t("onboarding.sources_heading") }}</h2>
+        <p class="small" data-screen="topics">{{ t("onboarding.sources_topics_lede") }}</p>
+        <p class="small" data-screen="feeds" hidden>{{ t("onboarding.sources_feeds_lede") }}</p>
+        <p class="small" id="o-feeds-loading">{{ t("onboarding.loading_feeds") }}</p>
       </div>
       <div class="field" data-screen="topics" id="o-topics-screen" hidden>
-        <span class="label" id="o-topics-label">Topics</span>
+        <span class="label" id="o-topics-label">{{ t("onboarding.topics") }}</span>
         <div class="tiles" id="o-topics" role="group" aria-labelledby="o-topics-label"></div>
-        <p class="small" id="o-feeds-hint">Pick topics to see their feeds. Next with none picked goes straight to adding your own feed.</p>
+        <p class="small" id="o-feeds-hint">{{ t("onboarding.topics_hint") }}</p>
       </div>
       <div data-screen="feeds" id="o-feeds-screen" hidden>
         <div id="o-feeds"></div>
@@ -149,12 +149,12 @@
            server checks it (POST /api/onboarding/feed-check) and names it by its
            own title, and Next posts it with the picks, under Your feeds. #}
         <div class="field">
-          <label class="label" for="o-own-url">Add your own feed</label>
+          <label class="label" for="o-own-url">{{ t("onboarding.own_feed") }}</label>
           <div class="add-feed">
             <input class="input" id="o-own-url" type="url" inputmode="url" placeholder="https://example.com/feed.xml" autocomplete="off">
-            <button class="btn secondary" type="button" id="o-own-add">Add</button>
+            <button class="btn secondary" type="button" id="o-own-add">{{ t("onboarding.add") }}</button>
           </div>
-          <p class="small">A feed's address, or a site's home page that links one. It is named by the feed's own title.</p>
+          <p class="small">{{ t("onboarding.own_feed_help") }}</p>
           <div class="notice" id="o-own-result" role="status" hidden></div>
         </div>
         <div id="o-own"></div>
@@ -162,16 +162,16 @@
            in onboarding.js, that the Votes step waits for each of them. #}
         <p class="small" id="o-picked" aria-live="polite"></p>
       </div>
-      <p class="small" id="o-feeds-had" hidden>This deployment already has sources. Add more later under Sources in Settings; Next moves on.</p>
+      <p class="small" id="o-feeds-had" hidden>{{ t("onboarding.sources_had") }}</p>
     </section>
 
     {# The cards are the server's (POST /api/onboarding/cards), read through the
        run's own RSS fetch; Next sends only the marked ones to POST /api/onboarding/votes. #}
     <section class="step" data-step="votes" hidden>
       <div class="step-head">
-        <h2 class="heading">Votes</h2>
-        <p class="small">A few older articles from your feeds: mark the ones you would read and the ones you would not, and leave the rest. Next records each mark as a vote, so the first issue leaves those articles out.</p>
-        <p class="small" id="o-cards-loading" aria-busy="true" hidden>Fetching the latest articles from your feeds. This can take a minute or two…</p>
+        <h2 class="heading">{{ t("onboarding.votes_heading") }}</h2>
+        <p class="small">{{ t("onboarding.votes_lede") }}</p>
+        <p class="small" id="o-cards-loading" aria-busy="true" hidden>{{ t("onboarding.fetching_cards") }}</p>
       </div>
       <div class="notice err" id="o-cards-empty" hidden></div>
       <p class="small" id="o-cards-none" hidden></p>
@@ -180,24 +180,24 @@
 
     <section class="step" data-step="notify" hidden>
       <div class="step-head">
-        <h2 class="heading">Notifications</h2>
-        <p class="small">Where a finished issue is announced. Leave both empty to be notified nowhere.</p>
-        <p class="small" data-loading>Loading settings…</p>
+        <h2 class="heading">{{ t("onboarding.notify_heading") }}</h2>
+        <p class="small">{{ t("onboarding.notify_lede") }}</p>
+        <p class="small" data-loading>{{ t("onboarding.loading_settings") }}</p>
       </div>
       <div class="field">
-        <label class="label" for="o-discord-webhook">Discord webhook</label>
+        <label class="label" for="o-discord-webhook">{{ t("onboarding.discord_webhook") }}</label>
         <input class="input" id="o-discord-webhook" type="text" placeholder="https://discord.com/api/webhooks/..." autocomplete="off">
-        <p class="small">Paste the whole URL; it is saved once Discord confirms it exists.</p>
+        <p class="small">{{ t("onboarding.discord_webhook_help") }}</p>
       </div>
       <div class="field">
-        <label class="label" for="o-email-to">Email to</label>
+        <label class="label" for="o-email-to">{{ t("onboarding.email_to") }}</label>
         <input class="input" id="o-email-to" type="email" placeholder="you@example.com" autocomplete="off">
-        <p class="small">Leave it empty to send no mail. It must be a verified destination in Cloudflare Email Routing, and is saved once a test message reaches it.</p>
+        <p class="small">{{ t("onboarding.email_to_help") }}</p>
       </div>
       <div class="field">
-        <label class="label" for="o-email-from">Email from</label>
+        <label class="label" for="o-email-from">{{ t("onboarding.email_from") }}</label>
         <input class="input" id="o-email-from" type="email" placeholder="digest@your-domain" autocomplete="off">
-        <p class="small">An address on your Email Routing domain.</p>
+        <p class="small">{{ t("onboarding.email_from_help") }}</p>
       </div>
     </section>
 
@@ -210,103 +210,103 @@
        setting's field stays hidden, so the wizard never writes over it. #}
     <section class="step" data-step="model" hidden>
       <div class="step-head">
-        <h2 class="heading">Model</h2>
-        <p class="small">The model that writes headlines and summaries, from the providers this machine has a key for. Keys stay in .env, never here.</p>
-        <p class="small" data-loading>Loading settings…</p>
+        <h2 class="heading">{{ t("onboarding.model_heading") }}</h2>
+        <p class="small">{{ t("onboarding.model_lede") }}</p>
+        <p class="small" data-loading>{{ t("onboarding.loading_settings") }}</p>
       </div>
       <div class="field">
-        <span class="label" id="o-provider-label">Provider</span>
+        <span class="label" id="o-provider-label">{{ t("onboarding.provider") }}</span>
         <div class="choices" id="o-providers" role="radiogroup" aria-labelledby="o-provider-label"></div>
         <p class="small" id="o-no-key" hidden></p>
       </div>
       <div class="field">
-        <label class="label" for="o-model">Model</label>
+        <label class="label" for="o-model">{{ t("onboarding.model") }}</label>
         <input class="input" id="o-model" type="text" autocomplete="off">
         <p class="small" id="o-model-hint"></p>
-        <div><button class="btn secondary" type="button" id="o-check" hidden>Check</button></div>
+        <div><button class="btn secondary" type="button" id="o-check" hidden>{{ t("onboarding.check") }}</button></div>
         <div class="notice" id="o-check-result" role="status" hidden></div>
       </div>
       <details class="more" id="o-advanced" hidden>
-        <summary>Advanced: embedder, digest and pipeline, defaults shown</summary>
+        <summary>{{ t("onboarding.advanced") }}</summary>
         <div class="fold-fields">
           <div class="field" data-key="vote_similarity.provider">
-            <span class="label" id="o-embedding-provider-label">Embedding provider</span>
+            <span class="label" id="o-embedding-provider-label">{{ t("onboarding.embedding_provider") }}</span>
             <div class="choices" id="o-embedding-providers" role="radiogroup" aria-labelledby="o-embedding-provider-label"></div>
-            <p class="small">The embedder vote similarity compares articles with. Its similarity cutoff comes with the model, so it is not set here.</p>
+            <p class="small">{{ t("onboarding.embedding_provider_help") }}</p>
           </div>
           <div class="field" data-key="vote_similarity.model">
-            <label class="label" for="o-embedding-model">Embedding model</label>
+            <label class="label" for="o-embedding-model">{{ t("onboarding.embedding_model") }}</label>
             <input class="input" id="o-embedding-model" type="text" autocomplete="off" data-kind="text">
-            <p class="small">Checked with one real call when vote similarity is on.</p>
+            <p class="small">{{ t("onboarding.embedding_model_help") }}</p>
           </div>
           <div class="field" data-key="vote_similarity.max_seeds">
-            <label class="label" for="o-vote-seeds">Votes compared</label>
+            <label class="label" for="o-vote-seeds">{{ t("onboarding.vote_seeds") }}</label>
             <input class="input" id="o-vote-seeds" type="number" min="1" autocomplete="off" data-kind="number">
-            <p class="small">How many of your most recent votes on each side a run compares against.</p>
+            <p class="small">{{ t("onboarding.vote_seeds_help") }}</p>
           </div>
           <div class="field" data-key="general.digest_window_hours">
-            <label class="label" for="o-window-hours">Window (hours)</label>
+            <label class="label" for="o-window-hours">{{ t("onboarding.window_hours") }}</label>
             <input class="input" id="o-window-hours" type="number" min="1" max="168" autocomplete="off" data-kind="number">
-            <p class="small">How far back a run looks for articles.</p>
+            <p class="small">{{ t("onboarding.window_hours_help") }}</p>
           </div>
           <div class="field" data-key="digest.max_articles_per_digest">
-            <label class="label" for="o-max-articles">Articles per run</label>
+            <label class="label" for="o-max-articles">{{ t("onboarding.max_articles") }}</label>
             <input class="input" id="o-max-articles" type="number" min="1" autocomplete="off" data-kind="number">
-            <p class="small">How many of the window's newest articles, by publish time, one run scores and digests across all sources.</p>
+            <p class="small">{{ t("onboarding.max_articles_help") }}</p>
           </div>
           <div class="field" data-key="routing.score_threshold">
-            <label class="label" for="o-featured-threshold">Top story score</label>
+            <label class="label" for="o-featured-threshold">{{ t("onboarding.top_story_score") }}</label>
             <input class="input" id="o-featured-threshold" type="number" min="0" max="100" autocomplete="off" data-kind="number">
-            <p class="small">Two or more articles on one topic scoring at least this share the Top story.</p>
+            <p class="small">{{ t("onboarding.top_story_score_help") }}</p>
           </div>
           <div class="field" data-key="digest.scoring_snippet_length">
-            <label class="label" for="o-scoring-snippet">Characters read (Scoring)</label>
+            <label class="label" for="o-scoring-snippet">{{ t("onboarding.scoring_snippet") }}</label>
             <input class="input" id="o-scoring-snippet" type="number" min="1" autocomplete="off" data-kind="number">
-            <p class="small">How much of each article the model reads at each step; more costs more per call.</p>
+            <p class="small">{{ t("onboarding.snippet_help") }}</p>
           </div>
           <div class="field" data-key="digest.summarize_snippet_length">
-            <label class="label" for="o-summarize-snippet">Characters read (Summary)</label>
+            <label class="label" for="o-summarize-snippet">{{ t("onboarding.summarize_snippet") }}</label>
             <input class="input" id="o-summarize-snippet" type="number" min="1" autocomplete="off" data-kind="number">
           </div>
           <div class="field" data-key="digest.filter_snippet_length">
-            <label class="label" for="o-filter-snippet">Characters read (Headlines and topics)</label>
+            <label class="label" for="o-filter-snippet">{{ t("onboarding.filter_snippet") }}</label>
             <input class="input" id="o-filter-snippet" type="number" min="1" autocomplete="off" data-kind="number">
           </div>
           <div class="field" data-key="digest.style_prompt">
-            <label class="label" for="o-style-prompt">Style</label>
+            <label class="label" for="o-style-prompt">{{ t("onboarding.style_prompt") }}</label>
             <textarea class="input" id="o-style-prompt" rows="4" data-kind="prose"></textarea>
-            <p class="small">Your tone or focus for the summaries, in your own words; empty means none.</p>
+            <p class="small">{{ t("onboarding.style_prompt_help") }}</p>
           </div>
           <div class="field" data-key="digest.type_scale">
-            <label class="label" for="o-type-scale">Type size</label>
-            <select class="select" id="o-type-scale" data-kind="number"><option value="0.875">Smaller</option><option value="1">Default</option><option value="1.125">Larger</option></select>
-            <p class="small">How large the text is on every page. It applies within a minute, to issues already published too.</p>
+            <label class="label" for="o-type-scale">{{ t("onboarding.type_scale") }}</label>
+            <select class="select" id="o-type-scale" data-kind="number"><option value="0.875">{{ t("onboarding.type_smaller") }}</option><option value="1">{{ t("onboarding.type_default") }}</option><option value="1.125">{{ t("onboarding.type_larger") }}</option></select>
+            <p class="small">{{ t("onboarding.type_scale_help") }}</p>
           </div>
           <div class="field" data-key="digest.rank_by_preference">
-            <label class="label" for="o-rank-by-preference">Order by your votes</label>
-            <select class="select" id="o-rank-by-preference" data-kind="bool"><option value="false">Off</option><option value="true">On</option></select>
-            <p class="small">Put first the items on topics you voted up, and on topics that share a name with them. The order only moves items; nothing is left out for it.</p>
+            <label class="label" for="o-rank-by-preference">{{ t("onboarding.rank_by_preference") }}</label>
+            <select class="select" id="o-rank-by-preference" data-kind="bool"><option value="false">{{ t("onboarding.off") }}</option><option value="true">{{ t("onboarding.on") }}</option></select>
+            <p class="small">{{ t("onboarding.rank_by_preference_help") }}</p>
           </div>
           <div class="field" data-key="digest.preference_source">
-            <label class="label" for="o-preference-source">Order judged by</label>
-            <select class="select" id="o-preference-source" data-kind="text"><option value="cosine">Your topic votes</option><option value="clef">Clef</option></select>
-            <p class="small">Who decides which items come first: your topic votes, or Clef reading the votes nearest each item. An issue Clef cannot fully score uses your topic votes.</p>
-            <p class="small" id="o-clef-needs" hidden>Clef needs a Workers AI token: set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AI_TOKEN (or CLOUDFLARE_EMBEDDING_API_TOKEN).</p>
+            <label class="label" for="o-preference-source">{{ t("onboarding.preference_source") }}</label>
+            <select class="select" id="o-preference-source" data-kind="text"><option value="cosine">{{ t("onboarding.preference_cosine") }}</option><option value="clef">Clef</option></select>
+            <p class="small">{{ t("onboarding.preference_source_help") }}</p>
+            <p class="small" id="o-clef-needs" hidden>{{ t("onboarding.clef_needs") }}</p>
           </div>
           <div class="field" data-key="digest.summarize_follow">
-            <label class="label" for="o-summarize-follow">Summarize follow articles</label>
-            <select class="select" id="o-summarize-follow" data-kind="bool"><option value="false">Off</option><option value="true">On</option></select>
-            <p class="small">Give each article from a source you follow a short explanation of what it is, as read articles get. Off shows the start of its own text.</p>
+            <label class="label" for="o-summarize-follow">{{ t("onboarding.summarize_follow") }}</label>
+            <select class="select" id="o-summarize-follow" data-kind="bool"><option value="false">{{ t("onboarding.off") }}</option><option value="true">{{ t("onboarding.on") }}</option></select>
+            <p class="small">{{ t("onboarding.summarize_follow_help") }}</p>
           </div>
           <div class="field" data-key="digest.vote_half_life_days">
-            <label class="label" for="o-vote-half-life">Vote half-life (days)</label>
+            <label class="label" for="o-vote-half-life">{{ t("onboarding.vote_half_life") }}</label>
             <input class="input" id="o-vote-half-life" type="number" min="1" max="365" autocomplete="off" data-kind="number">
-            <p class="small">A vote counts half as much after this many days, so a preference fades unless you vote again.</p>
+            <p class="small">{{ t("onboarding.vote_half_life_help") }}</p>
           </div>
           <div class="field" data-key="digest.topic_lifetime_days">
-            <label class="label" for="o-topic-lifetime">Topic lifetime (days)</label>
+            <label class="label" for="o-topic-lifetime">{{ t("onboarding.topic_lifetime") }}</label>
             <input class="input" id="o-topic-lifetime" type="number" min="1" max="365" autocomplete="off" data-kind="number">
-            <p class="small">Topics seen within this many days are current: new articles can join them, and a name many of them share counts for less in the order. An upvote slows how fast a topic leaves the list new articles can join; the effect fades with the vote half-life, and never lasts past three times this many days after the topic last appeared.</p>
+            <p class="small">{{ t("onboarding.topic_lifetime_help") }}</p>
           </div>
         </div>
       </details>
@@ -317,28 +317,28 @@
        cannot replace, and reads the run's outcome back from digest_runs. #}
     <section class="step" data-step="first-issue" hidden>
       <div class="step-head">
-        <h2 class="heading">First issue</h2>
-        <p class="small">Build an issue now from your feeds and votes, instead of waiting for the next publish hour. It runs as a scheduled issue does, notifications included, and Skip leaves the first issue to that hour.</p>
-        <p class="small" id="o-issue-loading" aria-busy="true">Checking which issue comes first…</p>
+        <h2 class="heading">{{ t("onboarding.first_issue_heading") }}</h2>
+        <p class="small">{{ t("onboarding.first_issue_lede") }}</p>
+        <p class="small" id="o-issue-loading" aria-busy="true">{{ t("onboarding.checking_first_issue") }}</p>
       </div>
       <p class="small" id="o-issue-plan" hidden></p>
       <p class="small" id="o-vote-similarity" hidden></p>
     </section>
 
     <div class="step-nav">
-      <button class="btn secondary" type="button" id="o-back">Back</button>
-      <button class="btn secondary" type="button" id="o-skip">Skip</button>
-      <button class="btn primary" type="button" id="o-next">Next</button>
+      <button class="btn secondary" type="button" id="o-back">{{ t("onboarding.back") }}</button>
+      <button class="btn secondary" type="button" id="o-skip">{{ t("onboarding.skip") }}</button>
+      <button class="btn primary" type="button" id="o-next">{{ t("onboarding.next") }}</button>
       {# The last step's own action: it starts the run, and once a run fails it tries again. #}
-      <button class="btn primary" type="button" id="o-start" hidden>Start the first issue</button>
+      <button class="btn primary" type="button" id="o-start" hidden>{{ t("onboarding.start") }}</button>
       {# The way out, on the last step alone, once there is no run to start or one
          has been started. The mark is what keeps /settings from sending a
          deployment whose sources table is still empty straight back here. #}
-      <a class="btn primary" id="o-finish" href="/settings?from=onboarding" hidden>Finish</a>
+      <a class="btn primary" id="o-finish" href="/settings?from=onboarding" hidden>{{ t("onboarding.finish") }}</a>
       <div class="notice" id="o-result" role="status" hidden></div>
     </div>
   </main>
-<script src="/static/onboarding.js"></script>
+<script type="module" src="/static/onboarding.js"></script>
 {% include "_probe_script.html.j2" %}
 </body>
 </html>

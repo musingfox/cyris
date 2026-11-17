@@ -482,6 +482,7 @@ class TestPlainValues:
             "ok": True,
             "values": {"general.timezone": "Europe/Berlin", "digest.max_articles_per_digest": 3},
             "note": "Effective next run.",
+            "ui_lang": "en",
         }
         assert settings.calls == [
             {"general.timezone": "Europe/Berlin", "digest.max_articles_per_digest": 3}
@@ -499,7 +500,12 @@ class TestPlainValues:
         await client.close()
 
         assert res.status == 200
-        assert body == {"ok": True, "values": {key: "high"}, "note": "Effective next run."}
+        assert body == {
+            "ok": True,
+            "values": {key: "high"},
+            "note": "Effective next run.",
+            "ui_lang": "en",
+        }
         assert settings.calls == [{key: "high"}]
         assert settings.stored[key] == "high"
 

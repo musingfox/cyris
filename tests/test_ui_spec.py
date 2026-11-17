@@ -637,7 +637,7 @@ def test_onboarding_opens_with_the_digest_site_bar_leading_out_of_the_wizard() -
     # Settings would send a deployment with no source back here, so the bar's own
     # link carries the wizard's exit mark (ui-language.md §6 onboarding).
     assert '<a class="label settings-link" href="/settings?from=onboarding">' in page
-    assert '<script src="/static/onboarding.js"></script>' in page
+    assert '<script type="module" src="/static/onboarding.js"></script>' in page
 
 
 def test_onboarding_links_only_the_shared_stylesheet() -> None:

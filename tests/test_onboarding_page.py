@@ -280,7 +280,7 @@ class TestTheFrame:
         assert '$("o-finish").hidden = !last;' in ONBOARDING_JS
 
     def test_the_page_is_served_with_its_own_script(self, page: str) -> None:
-        assert '<script src="/static/onboarding.js"></script>' in page
+        assert '<script type="module" src="/static/onboarding.js"></script>' in page
 
 
 # The body of the Skip button's click handler.
@@ -577,8 +577,11 @@ class TestTheModelStep:
             _fold(page),
         )
 
+        # /settings still names the third layer Headlines until its own conversion renames it;
+        # the wizard already says Glance.
+        pending = {"digest.filter_snippet_length": ENGLISH["onboarding.filter_snippet"]}
         assert fields and {key: label for key, label in fields} == {
-            key: SETTINGS_FIELDS[key]["label"] for key, _ in fields
+            key: pending.get(key, SETTINGS_FIELDS[key]["label"]) for key, _ in fields
         }
 
     def test_the_fold_writes_no_value_of_its_own(self, page) -> None:
@@ -615,14 +618,17 @@ class TestTheModelStep:
         assert draw, "no drawProviders in onboarding.js"
 
         assert '$("o-no-key").hidden = keyed.some((p) => p.configured);' in draw[1]
-        assert '${keyed.map((p) => p.env_var).join(", ")}' in draw[1]
+        assert 't("onboarding.no_key",' in draw[1]
+        assert "keyed.map((p) => p.env_var)" in draw[1]
+        assert "{$variables}" in ENGLISH["onboarding.no_key"]
 
     def test_the_line_gives_the_restart_each_install_path_needs(self) -> None:
         draw = re.search(r"function drawProviders\(stored\) \{(.*?)\n\}\n", ONBOARDING_JS, re.S)
         assert draw, "no drawProviders in onboarding.js"
 
-        assert "docker compose up -d --force-recreate" in draw[1]
-        assert "cyris triage-ui" in draw[1]
+        assert 't("onboarding.no_key",' in draw[1]
+        assert "docker compose up -d --force-recreate" in ENGLISH["onboarding.no_key"]
+        assert "cyris triage-ui" in ENGLISH["onboarding.no_key"]
 
 
 def _function_with_args(name: str) -> str:

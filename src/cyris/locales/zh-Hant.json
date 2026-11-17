@@ -186,6 +186,418 @@
   "notify.stat_cost": {"text": "費用", "source": "Cost"},
   "notify.stat_kept": {"text": "收錄", "source": "Kept"},
   "notify.stat_sources": {"text": "來源", "source": "Sources"},
+  "onboarding.add": {"text": "新增", "source": "Add"},
+  "onboarding.added": {
+    "text": "已新增 {$count} 個訂閱源：{$names}。{$note}",
+    "source": ".input {$count :integer}\n.match $count\none {{Added 1 feed: {$names}. {$note}}}\n* {{Added {$count} feeds: {$names}. {$note}}}"
+  },
+  "onboarding.added_some": {
+    "text": ".input {$failed :integer}\n{{已新增 {$added}／{$picked} 個訂閱源，以下未新增：}}",
+    "source": ".input {$failed :integer}\n.match $failed\none {{Added {$added} of {$picked} feeds. This one was not added:}}\n* {{Added {$added} of {$picked} feeds. These were not added:}}"
+  },
+  "onboarding.added_some_next": {
+    "text": "按「下一步」重試，或按「略過」不加入這些訂閱源，直接繼續。",
+    "source": "Press Next to try again, or Skip to go on without them."
+  },
+  "onboarding.adding": {
+    "text": "正在新增「{$name}」（{$index}／{$total}）…",
+    "source": "Adding {$name} ({$index} of {$total})…"
+  },
+  "onboarding.advanced": {
+    "text": "進階：嵌入模型、精選與流程（顯示預設值）",
+    "source": "Advanced: embedder, digest and pipeline, defaults shown"
+  },
+  "onboarding.answered": {"text": "cyris 回應 {$status}", "source": "cyris answered {$status}"},
+  "onboarding.back": {"text": "上一步", "source": "Back"},
+  "onboarding.building": {
+    "text": "正在產生第一期：已經過 {$elapsed}，通常需要幾分鐘。可以按「完成」離開，本期仍會出現在過往精選。",
+    "source": "Building the first issue: {$elapsed} so far. It usually takes a few minutes. You can leave with Finish: the issue still reaches the archive."
+  },
+  "onboarding.cards_empty": {
+    "text": "這 {$count} 個訂閱源沒有抓到文章：{$names}。它們仍保留在來源中，第一期會再讀取一次；請到「設定」的「來源」檢查。",
+    "source": ".input {$count :integer}\n.match $count\none {{No articles came back from this feed: {$names}. They stay in your sources and the first issue reads them again; check them under Sources in Settings.}}\n* {{No articles came back from these {$count} feeds: {$names}. They stay in your sources and the first issue reads them again; check them under Sources in Settings.}}"
+  },
+  "onboarding.cards_failed": {
+    "text": "{$reason} 請按「略過」不投票直接繼續，或重新載入頁面再試一次。",
+    "source": "{$reason} Press Skip to go on without votes, or reload the page to try again."
+  },
+  "onboarding.cards_no_sources": {
+    "text": "尚無可抽取文章的訂閱源。請按「上一步」挑選，或按「下一步」繼續。",
+    "source": "There are no feeds to draw from yet. Press Back to pick some, or Next to go on."
+  },
+  "onboarding.cards_none": {
+    "text": "目前沒有可投票的文章。沒有投票也能產生第一期，請按「下一步」繼續。",
+    "source": "There is no article to vote on yet. Press Next to go on: the first issue works without votes."
+  },
+  "onboarding.cards_poll_failed": {
+    "text": "剛才無法抓取訂閱源（{$reason}），這些卡片只來自之前抓到的文章。",
+    "source": "The feeds could not be fetched just now ({$reason}), so these cards are only what had been fetched before."
+  },
+  "onboarding.check": {"text": "檢查", "source": "Check"},
+  "onboarding.checking_first_issue": {"text": "正在確認第一期…", "source": "Checking which issue comes first…"},
+  "onboarding.checking_provider": {"text": "正在向供應商確認…", "source": "Checking with the provider…"},
+  "onboarding.checking_url": {"text": "正在檢查 {$url}…", "source": "Checking {$url}…"},
+  "onboarding.clef_needs": {
+    "text": "Clef 需要 Workers AI 權杖，請設定 CLOUDFLARE_ACCOUNT_ID 和 CLOUDFLARE_AI_TOKEN（或 CLOUDFLARE_EMBEDDING_API_TOKEN）。",
+    "source": "Clef needs a Workers AI token: set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_AI_TOKEN (or CLOUDFLARE_EMBEDDING_API_TOKEN)."
+  },
+  "onboarding.discord_webhook": {"text": "Discord webhook", "source": "Discord webhook"},
+  "onboarding.discord_webhook_help": {
+    "text": "請貼上完整網址，Discord 確認網址存在後才會儲存。",
+    "source": "Paste the whole URL; it is saved once Discord confirms it exists."
+  },
+  "onboarding.elapsed": {"text": "{$minutes} 分 {$seconds} 秒", "source": "{$minutes}m {$seconds}s"},
+  "onboarding.email_from": {"text": "寄件地址", "source": "Email from"},
+  "onboarding.email_from_help": {
+    "text": "請填寫 Email Routing 網域上的地址。",
+    "source": "An address on your Email Routing domain."
+  },
+  "onboarding.email_to": {"text": "收件地址", "source": "Email to"},
+  "onboarding.email_to_help": {
+    "text": "留空就不寄信。必須是 Cloudflare Email Routing 中已驗證的收件地址，測試信寄達後才會儲存。",
+    "source": "Leave it empty to send no mail. It must be a verified destination in Cloudflare Email Routing, and is saved once a test message reaches it."
+  },
+  "onboarding.email_to_needed": {"text": "請一併填寫收件地址。", "source": "Enter the address the digest is sent to, too."},
+  "onboarding.embedding_model": {"text": "嵌入模型", "source": "Embedding model"},
+  "onboarding.embedding_model_help": {
+    "text": "開啟投票相似度時，會實際呼叫一次來檢查。",
+    "source": "Checked with one real call when vote similarity is on."
+  },
+  "onboarding.embedding_provider": {"text": "嵌入模型供應商", "source": "Embedding provider"},
+  "onboarding.embedding_provider_help": {
+    "text": "投票相似度用這個嵌入模型比對文章。相似度門檻由模型決定，不在這裡設定。",
+    "source": "The embedder vote similarity compares articles with. Its similarity cutoff comes with the model, so it is not set here."
+  },
+  "onboarding.evening": {"text": "晚上發布", "source": "Evening"},
+  "onboarding.feed_count": {
+    "text": "{$count} 個訂閱源",
+    "source": ".input {$count :integer}\n.match $count\none {{{$count} feed}}\n* {{{$count} feeds}}"
+  },
+  "onboarding.feed_refused": {"text": "{$name}：{$reason}", "source": "{$name}: {$reason}"},
+  "onboarding.feeds_load_failed": {
+    "text": "無法載入訂閱源清單：{$reason}。請重新載入頁面再試一次。",
+    "source": "Could not load the feed list: {$reason}. Reload the page to try again."
+  },
+  "onboarding.fetch_failed_for": {"text": "抓取失敗的來源：{$sources}。", "source": "Fetching failed for: {$sources}."},
+  "onboarding.fetching_cards": {
+    "text": "正在從訂閱源抓取最新文章，可能需要一兩分鐘…",
+    "source": "Fetching the latest articles from your feeds. This can take a minute or two…"
+  },
+  "onboarding.filter_snippet": {"text": "讀取字數（速覽與主題）", "source": "Characters read (Glance and topics)"},
+  "onboarding.finish": {"text": "完成", "source": "Finish"},
+  "onboarding.first_issue_heading": {"text": "第一期", "source": "First issue"},
+  "onboarding.first_issue_lede": {
+    "text": "現在就用你的訂閱源和投票產生一期精選，不必等到下一個發布時間。產生方式和排定的精選相同，也會發送通知；按「略過」則讓第一期在那個時間產生。",
+    "source": "Build an issue now from your feeds and votes, instead of waiting for the next publish hour. It runs as a scheduled issue does, notifications included, and Skip leaves the first issue to that hour."
+  },
+  "onboarding.gone": {"text": "已不在訂閱源中 · 未記錄", "source": "No longer in the feed · not recorded"},
+  "onboarding.hour_needed": {
+    "text": ".input {$which :string}\n.match $which\nmorning {{請為「早上發布」填入 0 到 23 的整點。}}\nevening {{請為「晚上發布」填入 0 到 23 的整點。}}\n* {{請為「早上發布」和「晚上發布」填入 0 到 23 的整點。}}",
+    "source": ".input {$which :string}\n.match $which\nmorning {{Morning needs a whole hour from 0 to 23.}}\nevening {{Evening needs a whole hour from 0 to 23.}}\n* {{Morning and Evening need a whole hour from 0 to 23.}}"
+  },
+  "onboarding.hours_help": {
+    "text": "填入 0 到 23 的整點，以上一步的時區為準；不接受半點。",
+    "source": "Whole hours from 0 to 23, in the timezone of the step before; half hours are refused."
+  },
+  "onboarding.intro": {
+    "text": "完成七個步驟，就能產生第一期。每一步都可以略過，略過的步驟會保留目前的值；這裡的所有設定之後都能在「設定」修改。",
+    "source": "Seven steps to your first issue. Skip any of them: a skipped step keeps its current value, and everything here can be changed later in Settings."
+  },
+  "onboarding.issue_built": {
+    "text": "第一期已產生。本站不發布線上版，第一期只會透過通知送達。",
+    "source": "Your first issue is built. This deployment publishes no site, so it reached you only through its notifications."
+  },
+  "onboarding.issue_published": {
+    "text": "第一期已發布。{#read}閱讀本期{/read}，或到{#archive}過往精選{/archive}查看它和之後的每一期。",
+    "source": "Your first issue is published. {#read}Read it{/read}, or find it with every later issue in the {#archive}archive{/archive}."
+  },
+  "onboarding.kept": {"text": "已勾選，但不在所選主題", "source": "Picked, outside the chosen topics"},
+  "onboarding.key_missing": {"text": "缺少 {$variable}", "source": "{$variable} missing"},
+  "onboarding.key_ready": {"text": "金鑰已就緒", "source": "Key ready"},
+  "onboarding.language_heading": {"text": "語言與時區", "source": "Language and timezone"},
+  "onboarding.language_lede": {
+    "text": "每期精選使用的語言，以及發布時間採用的時區。",
+    "source": "The language each issue is written in, and the clock its publish hours are read in."
+  },
+  "onboarding.loading_feeds": {"text": "正在載入訂閱源…", "source": "Loading feeds…"},
+  "onboarding.loading_settings": {"text": "正在載入設定…", "source": "Loading settings…"},
+  "onboarding.max_articles": {"text": "每期文章數", "source": "Articles per run"},
+  "onboarding.max_articles_help": {
+    "text": "每期從所有來源中，依發布時間取時間範圍內最新的幾篇文章，評分後編入精選。",
+    "source": "How many of the window's newest articles, by publish time, one run scores and digests across all sources."
+  },
+  "onboarding.model": {"text": "模型", "source": "Model"},
+  "onboarding.model_default": {"text": "留空則使用 {$model}", "source": "Empty uses {$model}"},
+  "onboarding.model_heading": {"text": "模型", "source": "Model"},
+  "onboarding.model_hint_check": {
+    "text": "按「下一步」會先實際呼叫供應商一次，打錯字會直接在這裡擋下。",
+    "source": "Next makes one real call to the provider first, so a typo is refused here."
+  },
+  "onboarding.model_hint_none": {
+    "text": "不呼叫任何模型，精選只列出原文摘錄。",
+    "source": "No model is called: digests list plain excerpts."
+  },
+  "onboarding.model_hint_pick": {"text": "請選擇有金鑰的供應商。", "source": "Pick a provider whose key is present."},
+  "onboarding.model_lede": {
+    "text": "選擇撰寫標題和摘要的模型，供應商限這台機器有金鑰的。金鑰只存在 .env，不會存在這裡。",
+    "source": "The model that writes headlines and summaries, from the providers this machine has a key for. Keys stay in .env, never here."
+  },
+  "onboarding.morning": {"text": "早上發布", "source": "Morning"},
+  "onboarding.next": {"text": "下一步", "source": "Next"},
+  "onboarding.no_key": {
+    "text": "這裡沒有任何供應商的金鑰。請在 .env 設定 {$variables} 其中之一，再重新啟動：compose 安裝請執行 docker compose up -d --force-recreate，uv 安裝請重新執行 cyris triage-ui。或維持「不使用」。",
+    "source": "No provider has its key here. Set one of {$variables} in .env, then restart: under compose run docker compose up -d --force-recreate, under uv start cyris triage-ui again. Or keep None."
+  },
+  "onboarding.no_key_needed": {"text": "不需要金鑰", "source": "No key needed"},
+  "onboarding.no_reason": {
+    "text": "cyris 回應 {$status}，但未說明原因。請再試一次；如果持續失敗，請查看伺服器日誌。",
+    "source": "cyris answered {$status} without saying why. Try again; if it keeps failing, check the server log."
+  },
+  "onboarding.no_reason_reload": {
+    "text": "cyris 回應 {$status}，但未說明原因。請重新載入頁面再試一次；如果持續失敗，請查看伺服器日誌。",
+    "source": "cyris answered {$status} without saying why. Reload the page to try again; if it keeps failing, check the server log."
+  },
+  "onboarding.not_set": {"text": "未設定", "source": "Not set"},
+  "onboarding.notify_heading": {"text": "通知", "source": "Notifications"},
+  "onboarding.notify_lede": {
+    "text": "每期精選完成後通知的管道。兩個都留空就不通知。",
+    "source": "Where a finished issue is announced. Leave both empty to be notified nowhere."
+  },
+  "onboarding.off": {"text": "關閉", "source": "Off"},
+  "onboarding.on": {"text": "開啟", "source": "On"},
+  "onboarding.opening_claim": {
+    "text": "資訊太多、太快。我先幫你接住；什麼重要，由{#em}你{/em}決定。",
+    "source": "Too much, too fast. I’ll hold it for you; {#em}you{/em} say what matters."
+  },
+  "onboarding.output_language": {"text": "輸出語言", "source": "Output language"},
+  "onboarding.output_language_help": {
+    "text": "標題和摘要使用的語言。",
+    "source": "The language headlines and summaries are written in."
+  },
+  "onboarding.own_added": {
+    "text": "「{$name}」已列在「你的訂閱源」並勾選，按「下一步」會和其他訂閱源一起新增。",
+    "source": "{$name} is under Your feeds, checked: Next adds it with the others."
+  },
+  "onboarding.own_feed": {"text": "新增自己的訂閱源", "source": "Add your own feed"},
+  "onboarding.own_feed_help": {
+    "text": "貼上訂閱源的網址，或有連結訂閱源的網站首頁。名稱會採用訂閱源本身的標題。",
+    "source": "A feed's address, or a site's home page that links one. It is named by the feed's own title."
+  },
+  "onboarding.own_listed": {
+    "text": "「{$name}」已在清單中，並已勾選。",
+    "source": "{$name} is already listed, and is checked there."
+  },
+  "onboarding.page_description": {
+    "text": "引導你設定新的 Cyris：語言、發布時間、來源、投票、通知、模型和第一期。",
+    "source": "The guided setup of a new Cyris deployment: language, publish hours, sources, votes, notifications, the model and the first issue."
+  },
+  "onboarding.page_title": {"text": "Cyris 設定精靈", "source": "Cyris Onboarding"},
+  "onboarding.paste_first": {
+    "text": "請先貼上訂閱源的網址或網站首頁。",
+    "source": "Paste a feed's address, or a site's home page, first."
+  },
+  "onboarding.pick_provider": {
+    "text": "請選擇有金鑰的供應商，或選擇「不使用」。",
+    "source": "Pick a provider whose key is present, or None."
+  },
+  "onboarding.picked": {
+    "text": "已勾選 {$count} 個訂閱源。",
+    "source": ".input {$count :integer}\n.match $count\none {{{$count} feed picked.}}\n* {{{$count} feeds picked.}}"
+  },
+  "onboarding.picked_slow": {
+    "text": "「投票」步驟會先抓取每個勾選的訂閱源，再發出卡片：{$slow} 個以內約需一分鐘，超過會更久。",
+    "source": "The Votes step fetches every picked feed before it deals cards: up to {$slow} take about a minute, and more take longer."
+  },
+  "onboarding.plan_no_sources": {
+    "text": "尚未加入任何來源，無法產生精選。請按「上一步」挑選，或按「完成」，之後再到「設定」的「來源」新增。",
+    "source": "There are no sources yet, so there is nothing to build an issue from. Press Back to pick some, or Finish and add them later under Sources in Settings."
+  },
+  "onboarding.plan_published": {
+    "text": "最近一個發布時間的精選（{$date}）已發布，現在產生會取代它。請到過往精選閱讀。",
+    "source": "The issue of the latest publish hour, dated {$date}, is already published, and one built now would replace it. Read it in the archive."
+  },
+  "onboarding.plan_started": {"text": "已從這個頁面開始產生第一期。", "source": "The first issue was started from this page."},
+  "onboarding.plan_today": {
+    "text": "按「產生第一期」會立即開始，需要幾分鐘；今天稍後的精選不會取代它。",
+    "source": "Start builds the first issue now. It takes a few minutes, and no later issue today replaces it."
+  },
+  "onboarding.plan_yesterday": {
+    "text": "今天的發布時間 {$hours}（{$timezone}）都還沒到，屆時產生的精選會取代今天日期那一期；按「產生第一期」會立即開始，日期記為昨天，需要幾分鐘。",
+    "source": "Start builds the first issue now, dated yesterday: neither of today's publish hours, {$hours} {$timezone}, has begun, and an issue dated today would be replaced by them. It takes a few minutes."
+  },
+  "onboarding.preference_cosine": {"text": "你的主題投票", "source": "Your topic votes"},
+  "onboarding.preference_source": {"text": "排序依據", "source": "Order judged by"},
+  "onboarding.preference_source_help": {
+    "text": "決定哪些項目排在前面：依你的主題投票，或由 Clef 參考與各項目最相近的投票。Clef 無法完整評分的那一期，會改用你的主題投票。",
+    "source": "Who decides which items come first: your topic votes, or Clef reading the votes nearest each item. An issue Clef cannot fully score uses your topic votes."
+  },
+  "onboarding.progress": {"text": "第 {$step} 步，共 {$steps} 步", "source": "Step {$step} of {$steps}"},
+  "onboarding.provider": {"text": "供應商", "source": "Provider"},
+  "onboarding.rank_by_preference": {"text": "依投票排序", "source": "Order by your votes"},
+  "onboarding.rank_by_preference_help": {
+    "text": "把你投多看的主題，以及與它們同名的主題排在前面。排序只會調整順序，不會因此移除任何項目。",
+    "source": "Put first the items on topics you voted up, and on topics that share a name with them. The order only moves items; nothing is left out for it."
+  },
+  "onboarding.recorded": {"text": "已記錄 · {$vote}", "source": "Recorded · {$vote}"},
+  "onboarding.recorded_votes": {
+    "text": "已記錄 {$count} 票：多看 {$up} 票，少看 {$down} 票。",
+    "source": ".input {$count :integer}\n.match $count\none {{Recorded 1 vote: {$up} interested, {$down} not interested.}}\n* {{Recorded {$count} votes: {$up} interested, {$down} not interested.}}"
+  },
+  "onboarding.recording": {
+    "text": "正在記錄 {$count} 票…",
+    "source": ".input {$count :integer}\n.match $count\none {{Recording 1 vote…}}\n* {{Recording {$count} votes…}}"
+  },
+  "onboarding.run_ended_as": {"text": "精選產生結束，狀態為 {$status}。", "source": "The run ended as {$status}."},
+  "onboarding.run_error": {"text": "發生錯誤，精選產生中止。", "source": "The run stopped with an error."},
+  "onboarding.run_failed_next": {
+    "text": "無論如何，下一個發布時間都會產生新的一期。請按「再試一次」，或按「完成」離開。",
+    "source": "Press Try again, or Finish to leave: the next publish hour brings an issue either way."
+  },
+  "onboarding.run_no_articles": {
+    "text": "在本期讀取的時間範圍內，你的訂閱源都沒有文章。",
+    "source": "None of your feeds had an article in the window the run reads."
+  },
+  "onboarding.run_no_pending": {
+    "text": "時間範圍內的文章都已評選過，本期沒有新內容。",
+    "source": "Every article in the window was already decided, so the run had nothing new."
+  },
+  "onboarding.run_not_started": {"text": "無法開始產生精選：{$reason}。", "source": "The run did not start: {$reason}."},
+  "onboarding.run_publish_failed": {
+    "text": "精選已產生，但發布到過往精選失敗。",
+    "source": "The issue was built, but publishing it to the archive failed."
+  },
+  "onboarding.run_timed_out": {
+    "text": "{$minutes} 分鐘內沒有任何精選產生完成，本期可能未開始產生，或未留下執行紀錄就中止。請到 app Worker 的日誌查看。",
+    "source": "No run has ended in {$minutes} minutes, so this one did not start or stopped without a record. Its log is in the app Worker's logs."
+  },
+  "onboarding.saved_advanced": {
+    "text": "進階：已儲存 {$count} 項設定。{$note}",
+    "source": ".input {$count :integer}\n.match $count\none {{Advanced: 1 setting saved. {$note}}}\n* {{Advanced: {$count} settings saved. {$note}}}"
+  },
+  "onboarding.saved_embedder": {"text": "嵌入模型：{$provider}。{$note}", "source": "Embedder: {$provider}. {$note}"},
+  "onboarding.saved_hours": {"text": "發布時間：{$hours}。{$note}", "source": "Publish hours: {$hours}. {$note}"},
+  "onboarding.saved_value": {"text": "{$label}：{$value}", "source": "{$label}: {$value}"},
+  "onboarding.saved_values": {"text": "{$values}。{$note}", "source": "{$values}. {$note}"},
+  "onboarding.saving": {"text": "儲存中…", "source": "Saving…"},
+  "onboarding.schedule_heading": {"text": "發布時間", "source": "Publish hours"},
+  "onboarding.schedule_lede": {"text": "每天兩期精選的發布時間。", "source": "When each day's two issues are published."},
+  "onboarding.scoring_snippet": {"text": "讀取字數（評分）", "source": "Characters read (Scoring)"},
+  "onboarding.sending_test": {"text": "正在寄送測試信…", "source": "Sending a test message…"},
+  "onboarding.session_expired": {
+    "text": "登入已過期。請重新載入頁面並再次登入。",
+    "source": "Your session has expired. Reload the page to sign in again."
+  },
+  "onboarding.settings_load_failed": {
+    "text": "無法載入設定：{$reason}。請重新載入頁面再試一次。",
+    "source": "Could not load settings: {$reason}. Reload the page to try again."
+  },
+  "onboarding.settings_not_loaded": {"text": "設定未載入。請重新載入頁面。", "source": "The settings did not load. Reload the page."},
+  "onboarding.show_me_how": {"text": "開始設定", "source": "Show me how"},
+  "onboarding.skip": {"text": "略過", "source": "Skip"},
+  "onboarding.skip_intro": {"text": "略過開場", "source": "Skip intro"},
+  "onboarding.snippet_help": {
+    "text": "模型在各步驟讀取每篇文章的長度；讀得越多，每次呼叫的費用越高。",
+    "source": "How much of each article the model reads at each step; more costs more per call."
+  },
+  "onboarding.sources_feeds_lede": {
+    "text": "以下是所選主題的訂閱源。請勾選你會讀的；按「上一步」可以更改主題。",
+    "source": "The feeds of the topics you picked. Check the ones you read; Back changes the topics."
+  },
+  "onboarding.sources_had": {
+    "text": "本站已有來源。之後可以到「設定」的「來源」新增更多；按「下一步」繼續。",
+    "source": "This deployment already has sources. Add more later under Sources in Settings; Next moves on."
+  },
+  "onboarding.sources_heading": {"text": "來源", "source": "Sources"},
+  "onboarding.sources_topics_lede": {
+    "text": "本站要讀取的訂閱源，每個都由發布者自己提供。請選擇你關注的主題，按「下一步」會列出這些主題的訂閱源。",
+    "source": "The feeds this deployment reads, each a publisher's own feed. Pick the topics you follow; Next shows their feeds."
+  },
+  "onboarding.start": {"text": "產生第一期", "source": "Start the first issue"},
+  "onboarding.starting_run": {"text": "正在開始產生精選…", "source": "Starting the run…"},
+  "onboarding.state_added": {"text": "已新增", "source": "Added"},
+  "onboarding.state_not_added": {"text": "未新增", "source": "Not added"},
+  "onboarding.step_first_issue": {"text": "第一期", "source": "First issue"},
+  "onboarding.step_language": {"text": "語言", "source": "Language"},
+  "onboarding.step_model": {"text": "模型", "source": "Model"},
+  "onboarding.step_notify": {"text": "通知", "source": "Notifications"},
+  "onboarding.step_schedule": {"text": "發布時間", "source": "Publish hours"},
+  "onboarding.step_sources": {"text": "來源", "source": "Sources"},
+  "onboarding.step_votes": {"text": "投票", "source": "Votes"},
+  "onboarding.style_prompt": {"text": "風格", "source": "Style"},
+  "onboarding.style_prompt_help": {
+    "text": "用自己的話描述摘要的語氣或重點；留空表示不指定。",
+    "source": "Your tone or focus for the summaries, in your own words; empty means none."
+  },
+  "onboarding.summarize_follow": {"text": "為關注文章寫摘要", "source": "Summarize follow articles"},
+  "onboarding.summarize_follow_help": {
+    "text": "為你關注的來源中每篇文章加上簡短說明，如同精讀文章。關閉時顯示文章本身的開頭。",
+    "source": "Give each article from a source you follow a short explanation of what it is, as read articles get. Off shows the start of its own text."
+  },
+  "onboarding.summarize_snippet": {"text": "讀取字數（摘要）", "source": "Characters read (Summary)"},
+  "onboarding.timezone": {"text": "時區", "source": "Timezone"},
+  "onboarding.timezone_detected": {
+    "text": "從這個瀏覽器偵測到，尚未儲存；按「下一步」會儲存。",
+    "source": "Detected from this browser, and not saved yet: Next saves it."
+  },
+  "onboarding.timezone_help": {"text": "發布時間採用的時區。", "source": "The clock the publish hours are read in."},
+  "onboarding.title": {"text": "設定 {#em}cyris{/em}", "source": "Set up {#em}cyris{/em}"},
+  "onboarding.top_story_score": {"text": "頭條分數", "source": "Top story score"},
+  "onboarding.top_story_score_help": {
+    "text": "同一主題有兩篇以上文章達到這個分數時，會一起列為頭條。",
+    "source": "Two or more articles on one topic scoring at least this share the Top story."
+  },
+  "onboarding.topic_lifetime": {"text": "主題存續期（天）", "source": "Topic lifetime (days)"},
+  "onboarding.topic_lifetime_help": {
+    "text": "在這個天數內出現過的主題算是現行主題，新文章可以加入；許多主題共用一個名稱時，這個名稱在排序中份量較低。投多看會讓主題較慢離開可加入清單；此效果隨投票半衰期減弱，最長不超過主題最後出現後此天數的三倍。",
+    "source": "Topics seen within this many days are current: new articles can join them, and a name many of them share counts for less in the order. An upvote slows how fast a topic leaves the list new articles can join; the effect fades with the vote half-life, and never lasts past three times this many days after the topic last appeared."
+  },
+  "onboarding.topics": {"text": "主題", "source": "Topics"},
+  "onboarding.topics_hint": {
+    "text": "選擇主題，查看其訂閱源。若一個都不選就按「下一步」，會直接前往新增自己的訂閱源。",
+    "source": "Pick topics to see their feeds. Next with none picked goes straight to adding your own feed."
+  },
+  "onboarding.try_again": {"text": "再試一次", "source": "Try again"},
+  "onboarding.type_default": {"text": "預設", "source": "Default"},
+  "onboarding.type_larger": {"text": "較大", "source": "Larger"},
+  "onboarding.type_scale": {"text": "字級", "source": "Type size"},
+  "onboarding.type_scale_help": {
+    "text": "每個頁面的文字大小。一分鐘內生效，已發布的精選也適用。",
+    "source": "How large the text is on every page. It applies within a minute, to issues already published too."
+  },
+  "onboarding.type_smaller": {"text": "較小", "source": "Smaller"},
+  "onboarding.unreachable": {
+    "text": "無法連線到 cyris（{$reason}）。請檢查網路連線後再試一次。",
+    "source": "Could not reach cyris ({$reason}). Check the connection and try again."
+  },
+  "onboarding.vote_down": {"text": "少看這類", "source": "Not interested"},
+  "onboarding.vote_half_life": {"text": "投票半衰期（天）", "source": "Vote half-life (days)"},
+  "onboarding.vote_half_life_help": {
+    "text": "每一票經過這個天數後，權重只剩一半；除非再次投票，偏好會逐漸淡去。",
+    "source": "A vote counts half as much after this many days, so a preference fades unless you vote again."
+  },
+  "onboarding.vote_on": {"text": "為「{$title}」投票", "source": "Vote on {$title}"},
+  "onboarding.vote_seeds": {"text": "比對票數", "source": "Votes compared"},
+  "onboarding.vote_seeds_help": {
+    "text": "每期比對時，多看和少看各取你最近的幾票。",
+    "source": "How many of your most recent votes on each side a run compares against."
+  },
+  "onboarding.vote_similarity_off": {
+    "text": "投票相似度仍未開啟，投票暫時沒有作用：{$reason} 請到「設定」的「模型」開啟。",
+    "source": "Vote similarity is still off, so votes have no effect yet: {$reason} Turn it on under Model in Settings."
+  },
+  "onboarding.vote_up": {"text": "多看這類", "source": "Interested"},
+  "onboarding.votes_gone": {
+    "text": "發卡片後已有 {$count} 篇文章離開訂閱源，這些票未記錄。",
+    "source": ".input {$count :integer}\n.match $count\none {{1 article has left its feed since the cards were dealt, so that vote was not recorded.}}\n* {{{$count} articles have left its feed since the cards were dealt, so that vote was not recorded.}}"
+  },
+  "onboarding.votes_heading": {"text": "投票", "source": "Votes"},
+  "onboarding.votes_lede": {
+    "text": "以下是訂閱源中幾篇較舊的文章：請標出會讀和不會讀的，其餘不用管。按「下一步」會把每個標記記為一票，第一期就不會收錄這些文章。",
+    "source": "A few older articles from your feeds: mark the ones you would read and the ones you would not, and leave the rest. Next records each mark as a vote, so the first issue leaves those articles out."
+  },
+  "onboarding.window_hours": {"text": "時間範圍（小時）", "source": "Window (hours)"},
+  "onboarding.window_hours_help": {"text": "每期往回找多久以內的文章。", "source": "How far back a run looks for articles."},
+  "onboarding.your_feeds": {"text": "你的訂閱源", "source": "Your feeds"},
   "onboarding_topic.business": {"text": "商業與經濟", "source": "Business & economy"},
   "onboarding_topic.ideas": {"text": "思想與文化", "source": "Ideas & culture"},
   "onboarding_topic.science": {"text": "科學與健康", "source": "Science & health"},
@@ -195,6 +607,7 @@
   "polarity.down": {"text": "少看", "source": "down"},
   "polarity.mixed": {"text": "兩者都有", "source": "mixed"},
   "polarity.up": {"text": "多看", "source": "up"},
+  "provider.none": {"text": "不使用（只列原文摘錄）", "source": "None — plain excerpts"},
   "raw.description": {"text": "Cyris {$issue} 精選評選過的所有文章，依來源分組。", "source": "Every article the {$issue} issue of a Cyris digest judged, grouped by source."},
   "raw.down": {"text": "少看", "source": "Down"},
   "raw.heading": {"text": "本期{#em}評選{/em}過的文章", "source": "What this run {#em}judged{/em}"},

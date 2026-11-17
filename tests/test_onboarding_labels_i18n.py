@@ -17,6 +17,7 @@ import pytest
 from aiohttp.test_utils import make_mocked_request
 
 import cyris
+from cyris import i18n
 from cyris.entrypoints.triage_server import STATIC_DIR, TriageServer
 
 pytestmark = pytest.mark.unit
@@ -228,3 +229,173 @@ def test_with_no_saved_language_the_topics_follow_the_browser() -> None:
     assert [topic["label"] for topic in topics] == [
         _text("zh-Hant", f"onboarding_topic.{topic['id']}") for topic in topics
     ]
+
+
+# ---- /onboarding -----------------------------------------------------------------------
+
+
+def _wizard(**kwargs) -> TriageServer:
+    """A deployment with a writable source table, which the wizard needs to open."""
+    return TriageServer(source_store=_EmptySources(), **kwargs)
+
+
+def _steps(html: str) -> list[str]:
+    return re.findall(r'<li class="label" data-step="[^"]+">([^<]*)</li>', html)
+
+
+def _nav(html: str) -> list[str]:
+    nav = re.search(r'<div class="step-nav">(.*?)</div>', html, re.S)[1]
+    return re.findall(r'id="o-(?:back|skip|next|start|finish)"[^>]*>([^<]*)<', nav)
+
+
+@pytest.mark.parametrize("catalog", CATALOGS)
+def test_onboarding_is_worded_in_the_saved_language(catalog) -> None:
+    server = _wizard(values={"digest.output_language": catalog})
+
+    html = _serve(server, "/onboarding")
+
+    assert _html_lang(html) == catalog
+    assert _named_file(html) == f"/static/i18n/{catalog}.json"
+    assert re.search(r"<title>([^<]*)</title>", html)[1] == _text(catalog, "onboarding.page_title")
+    step_keys = ["language", "schedule", "sources", "votes", "notify", "model", "first_issue"]
+    assert _steps(html) == [_text(catalog, f"onboarding.step_{step}") for step in step_keys]
+    assert _nav(html) == [
+        _text(catalog, f"onboarding.{key}") for key in ("back", "skip", "next", "start", "finish")
+    ]
+    progress = _text(catalog, "onboarding.progress").replace("{$step}", "1")
+    assert re.search(r'id="o-progress">([^<]*)<', html)[1] == progress.replace("{$steps}", "7")
+    heading = re.search(r'<h1 class="display">(.*?)</h1>', html)[1]
+    assert heading == re.sub(
+        r"\{#em\}(.*?)\{/em\}", r"<em>\1</em>", _text(catalog, "onboarding.title")
+    )
+    assert _text(catalog, "onboarding.topic_lifetime_help") in html
+
+
+@pytest.mark.parametrize(("header", "catalog"), [("zh-TW,zh;q=0.9", "zh-Hant"), ("fr", "en")])
+def test_with_no_saved_language_onboarding_follows_the_browser(header, catalog) -> None:
+    server = _wizard(values={})
+
+    html = _serve(server, "/onboarding", {"Accept-Language": header})
+
+    assert _html_lang(html) == catalog
+    assert _steps(html)[0] == _text(catalog, "onboarding.step_language")
+    assert _served(server, html)["onboarding.progress"]["tag"] == catalog
+
+
+def test_onboarding_is_a_module_that_formats_through_the_shared_formatter() -> None:
+    html = _serve(_wizard(values={"digest.output_language": "en"}), "/onboarding")
+    script = (STATIC_DIR / "onboarding.js").read_text(encoding="utf-8")
+
+    assert '<script type="module" src="/static/onboarding.js"></script>' in html
+    assert 'import { t } from "./i18n.js";' in script
+
+
+def test_the_onboarding_script_names_the_none_provider_from_the_shared_key() -> None:
+    script = (STATIC_DIR / "onboarding.js").read_text(encoding="utf-8")
+
+    assert 't("provider.none")' in script
+    assert _text("en", "provider.none") not in script
+
+
+def test_the_onboarding_script_names_no_issue_by_its_period() -> None:
+    """An issue is named by the hour its run started; the period is only the key sent."""
+    script = (STATIC_DIR / "onboarding.js").read_text(encoding="utf-8")
+    english = json.loads((LOCALES / "en.json").read_text(encoding="utf-8"))
+
+    assert "issue_period." not in script
+    assert not re.search(r"\$\{(?:data|run|saved)\.period\}", script)
+    assert not re.search(r"\bt\(\"[\w.]+\",\s*\{[^}]*\bperiod\b", script)
+    assert [key for key, text in english.items() if "{$period}" in text] == []
+
+
+# Each plural or select message the script formats, with values on each side of its rule.
+FORMATTED = [
+    ("onboarding.picked", {"count": 1}),
+    ("onboarding.picked", {"count": 12}),
+    ("onboarding.added_some", {"added": 1, "picked": 2, "failed": 1}),
+    ("onboarding.added_some", {"added": 0, "picked": 3, "failed": 3}),
+    ("onboarding.hour_needed", {"which": "morning"}),
+    ("onboarding.hour_needed", {"which": "both"}),
+    ("onboarding.recorded_votes", {"count": 1, "up": 1, "down": 0}),
+    ("onboarding.saved_advanced", {"count": 2, "note": "Saved."}),
+]
+
+
+@pytest.mark.parametrize("catalog", CATALOGS)
+def test_the_onboarding_script_formats_as_python_words_it(tmp_path, catalog) -> None:
+    server = _wizard(values={"digest.output_language": catalog})
+    served = _served(server, _serve(server, "/onboarding"))
+    t = i18n.translator(catalog)
+
+    results = _format_in_browser(
+        tmp_path, served, [[key, values, None] for key, values in FORMATTED]
+    )
+
+    assert results == [{"text": t(key, **values)} for key, values in FORMATTED]
+
+
+class _Request:
+    """What the settings route reads of a request: its JSON body and its headers."""
+
+    def __init__(self, body: dict, headers: dict[str, str] | None = None) -> None:
+        self._body = body
+        self.headers = headers or {}
+
+    async def json(self) -> dict:
+        return self._body
+
+
+class _Settings:
+    def set(self, values) -> None:
+        pass
+
+
+@pytest.mark.parametrize(
+    ("before", "saved", "catalog"),
+    [
+        ({}, "zh-Hant", "zh-Hant"),
+        ({"digest.output_language": "zh-Hant"}, "en", "en"),
+        ({}, "ja", "en"),
+    ],
+)
+def test_a_saved_language_answers_with_the_catalog_the_pages_now_take(
+    before, saved, catalog
+) -> None:
+    """onboarding.js reloads when this differs from the catalog its page was worded from."""
+    server = _wizard(settings=_Settings(), values=before)
+    body = {"values": {"digest.output_language": saved}}
+
+    response = asyncio.run(server._handle_post_values(_Request(body, {"Accept-Language": "fr"})))
+
+    assert json.loads(response.body)["ui_lang"] == catalog
+    assert _html_lang(_serve(server, "/onboarding")) == catalog
+
+
+# ---- the terms main's catalogs already have ------------------------------------------------
+
+
+@pytest.mark.parametrize("catalog", CATALOGS)
+def test_the_wizards_snippet_label_names_the_third_layer_glance(catalog) -> None:
+    html = _serve(_wizard(values={"digest.output_language": catalog}), "/onboarding")
+
+    label = re.search(r'<label class="label" for="o-filter-snippet">([^<]*)</label>', html)[1]
+    assert label == _text(catalog, "onboarding.filter_snippet")
+    assert _text(catalog, "layer.glance") in label
+
+
+def test_no_onboarding_or_labels_message_names_the_old_third_layer() -> None:
+    english = json.loads((LOCALES / "en.json").read_text(encoding="utf-8"))
+
+    assert [
+        key
+        for key, text in english.items()
+        if key.startswith(("onboarding.", "labels.", "feed_check.")) and "Headlines" in text
+    ] == []
+
+
+@pytest.mark.parametrize("key", ["onboarding.advanced", "onboarding.model_hint_none"])
+def test_a_digest_is_called_by_the_issue_pages_word_in_zh_hant(key) -> None:
+    text = _text("zh-Hant", key)
+
+    assert _text("zh-Hant", "issue.digest") in text
+    assert "摘要" not in text

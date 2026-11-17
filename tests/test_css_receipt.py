@@ -1523,7 +1523,7 @@ def test_the_onboarding_probe_topic_fixtures_hold_what_their_checks_need():
     assert sorted(every) == sorted(entry["name"] for entry in probe.FEEDS)
     assert all("topics" not in probe.as_posted(entry) for entry in probe.FEEDS)
     script = (Path(cyris.entrypoints.__file__).parent / "static" / "onboarding.js").read_text()
-    assert f"const KEPT = {json.dumps(probe.KEPT)};" in script
+    assert 'const KEPT = t("onboarding.kept");' in script
     assert f"const TOPICS_KEY = {json.dumps(probe.TOPICS_KEY)};" in script
 
 

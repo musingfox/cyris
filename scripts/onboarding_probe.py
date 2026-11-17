@@ -214,6 +214,9 @@ TOPICS = load_onboarding_topics()
 LABELS = {topic["id"]: translator("en")(f"onboarding_topic.{topic['id']}") for topic in TOPICS}
 _MOST_TAGS = sorted(FEEDS, key=lambda entry: -len(entry["tags"]))[:2]
 PICKS = [entry for entry in FEEDS if entry in _MOST_TAGS]
+# What the sources step says once both picks are added: the names joined as the
+# page's language, English here, joins two.
+ADDED_PICKS = "Added 2 feeds: " + " and ".join(p["name"] for p in PICKS)
 # The feed the `refuses-one` table turns down once, and the one it takes beside it.
 REFUSED, TAKEN = FEEDS[1], FEEDS[0]
 REFUSAL = "D1 is busy; try again"
@@ -251,9 +254,10 @@ TWO_TOPICS, SHARED = next(
 )
 # The pick kept when its topic is dropped: one feed with a single topic.
 KEPT_PICK = next(entry for entry in FEEDS if len(entry["topics"]) == 1)
-# The step's heading over such picks (onboarding.js KEPT), and the key the
-# chosen topics are kept under for a reload (onboarding.js TOPICS_KEY).
-KEPT = "Picked, outside the chosen topics"
+# The step's heading over such picks (onboarding.js KEPT, worded in English
+# from the catalog), and the key the chosen topics are kept under for a reload
+# (onboarding.js TOPICS_KEY).
+KEPT = translator("en")("onboarding.kept")
 TOPICS_KEY = "cyris-onboarding-topics"
 # How many picks the Votes step's poll fetches within a minute (onboarding.js
 # SLOW_PICKS): past it the feeds screen warns of the wait.
@@ -281,6 +285,11 @@ ISSUE_PERIOD = "morning"
 ISSUE_RUN = (ISSUE_PERIOD, ISSUE_DATE)
 EARLY_RUN = ("evening", YESTERDAY)
 DIGEST_URL = f"https://cyris.example/{ISSUE_DATE}-{ISSUE_PERIOD}"
+# What the step says of the first issue, worded in English from the catalog: it is
+# named by no period, so the key a check reads is the run's and the link's.
+PLAN_TODAY = translator("en")("onboarding.plan_today")
+PUBLISHED = translator("en")("onboarding.issue_published")
+BUILDING = "Building the first issue:"
 ARCHIVE_URL = "https://cyris.example/"
 FAILURE = "RuntimeError: the Gemini key was refused"
 # What each first-issue fixture's runs end as, one per POST /run in order; a POST
@@ -1444,11 +1453,12 @@ _CHECKS: list[Check] = [
             await runEnded();
         """,
         script=f"""
-            expect(plan().includes("{ISSUE_DATE} {ISSUE_PERIOD} issue"), `plan: ${{plan()}}`);
+            expect(plan() === {json.dumps(PLAN_TODAY)}, `plan: ${{plan()}}`);
             const text = notice().textContent;
             expect(!notice().classList.contains("err"), `an error: ${{text}}`);
-            expect(text.includes("the {ISSUE_DATE} {ISSUE_PERIOD} issue, is published."),
-              `notice: ${{text}}`);
+            expect(text.includes({json.dumps(PUBLISHED)}), `notice: ${{text}}`);
+            const read = $("#o-result a").getAttribute("href");
+            expect(read === "{DIGEST_URL}", `Read it: ${{read}}`);
             expect(!visible($("#o-start")), "Start still shows once the issue is out");
             expect(visible($("#o-finish")), "no way out once the issue is out");
         """,
@@ -1487,8 +1497,7 @@ _CHECKS: list[Check] = [
             const text = notice().textContent;
             expect(visible(notice()), "nothing says the run is out");
             expect(notice().getAttribute("aria-busy") === "true", "the wait is not busy");
-            expect(text.includes("Building the {ISSUE_DATE} {ISSUE_PERIOD} issue"),
-              `notice: ${{text}}`);
+            expect(text.startsWith({json.dumps(BUILDING)}), `notice: ${{text}}`);
             expect(!visible($("#o-start")), "Start shows while the run is out");
             expect(!visible($("#o-back")) && !visible($("#o-skip")),
               "Back or Skip shows while the run is out");
@@ -1572,12 +1581,10 @@ _CHECKS: list[Check] = [
         """,
         script=f"""
             const text = notice().textContent;
-            expect(plan().includes("{YESTERDAY} evening issue now, dated yesterday"),
-              `plan: ${{plan()}}`);
+            expect(plan().includes("first issue now, dated yesterday"), `plan: ${{plan()}}`);
             expect(plan().includes("08:00 and 20:00 Asia/Taipei"), `plan: ${{plan()}}`);
             expect(!notice().classList.contains("err"), `an error: ${{text}}`);
-            expect(text.includes("the {YESTERDAY} evening issue, is published"),
-              `notice: ${{text}}`);
+            expect(text.includes({json.dumps(PUBLISHED)}), `notice: ${{text}}`);
             const read = $("#o-result a").getAttribute("href");
             expect(read === "https://cyris.example/{YESTERDAY}-evening", `Read it: ${{read}}`);
         """,
@@ -1618,8 +1625,7 @@ _CHECKS: list[Check] = [
             expect(line.startsWith("Vote similarity is still off"), `line: ${{line}}`);
             expect(line.includes("under Model in Settings"), `line: ${{line}}`);
             const text = notice().textContent;
-            expect(text.includes("the {ISSUE_DATE} {ISSUE_PERIOD} issue, is published."),
-              `notice: ${{text}}`);
+            expect(text.includes({json.dumps(PUBLISHED)}), `notice: ${{text}}`);
         """,
         sabotage="""$("#o-vote-similarity").hidden = true;""",
         receipt=_runs(ISSUE_RUN),
@@ -2192,9 +2198,7 @@ _CHECKS: list[Check] = [
         script=f"""
             const text = notice().textContent;
             expect(!notice().classList.contains("err"), `an error: ${{text}}`);
-            const added = {
-            json.dumps("Added 2 feeds: " + ", ".join(p["name"] for p in PICKS), ensure_ascii=False)
-        };
+            const added = {json.dumps(ADDED_PICKS, ensure_ascii=False)};
             expect(text.includes(added), `notice: ${{text}}`);
         """,
         sabotage_preload=rewrite_post("/api/sources", "body.tags = body.tags.slice(1);"),

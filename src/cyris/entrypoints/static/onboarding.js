@@ -17,7 +17,13 @@
 // the app Worker's POST /run?period=&date=, the route any manual run takes, with
 // the key GET /api/onboarding/first-issue picks, and reads the run's outcome back
 // from that same route.
+import { t } from "./i18n.js";
+
 const $ = (id) => document.getElementById(id);
+
+// A list of names, joined as the language the page is worded in joins one.
+const listOf = (items, type = "conjunction") =>
+  new Intl.ListFormat(document.documentElement.lang, {type}).format(items);
 
 // The seven steps, in order. Each one's hash opens it, so a reload keeps the place.
 const STEPS = ["language", "schedule", "sources", "votes", "notify", "model", "first-issue"];
@@ -53,6 +59,11 @@ const loaded = new Map(FIELDS.map((id) => [id, $(id).value]));
 
 // The result of a save, shown on the step the reader moves to.
 let pending = null;
+// Set by a language save that changes the catalog the page is worded from: the
+// next step opens in a reload, worded in the saved language (ADR-0027), and the
+// save's line is carried over it under PENDING_KEY.
+let relanguage = false;
+const PENDING_KEY = "cyris-onboarding-pending";
 // Why the stored settings could not be read: the opening may be showing when
 // it fails, so each step shows it again until the page is reloaded.
 let loadError = null;
@@ -477,7 +488,7 @@ function route() {
     else item.removeAttribute("aria-current");
     item.classList.toggle("done", position < index);
   });
-  $("o-progress").textContent = `Step ${index + 1} of ${STEPS.length}`;
+  $("o-progress").textContent = t("onboarding.progress", {step: index + 1, steps: STEPS.length});
   const last = index === STEPS.length - 1;
   $("o-back").hidden = index === 0;
   $("o-skip").hidden = false;
@@ -519,8 +530,7 @@ const unmark = (ids) => ids.forEach((id) => {
 
 // The app Worker answers 401 once the session cookie has expired. Reloading
 // /onboarding then serves the sign-in form, which returns here.
-const SESSION_EXPIRED = new Error(
-  "Your session has expired. Reload the page to sign in again.");
+const SESSION_EXPIRED = new Error(t("onboarding.session_expired"));
 
 // Rejects with what the reader needs: the server's own explanation when it
 // gives one, otherwise what happened and what to do next.
@@ -533,13 +543,12 @@ async function post(url, body) {
       body: JSON.stringify(body),
     });
   } catch (err) {
-    throw new Error(`Could not reach cyris (${err.message}). Check the connection and try again.`);
+    throw new Error(t("onboarding.unreachable", {reason: err.message}));
   }
   if (res.status === 401) throw SESSION_EXPIRED;
   const data = await res.json().catch(() => ({}));
   if (data.ok) return data;
-  const err = new Error(data.error || `cyris answered ${res.status} without saying why. ` +
-    "Try again; if it keeps failing, check the server log.");
+  const err = new Error(data.error || t("onboarding.no_reason", {status: String(res.status)}));
   // The setting the refusal is about, for the page to mark its field.
   err.field = data.field;
   err.data = data;
@@ -562,10 +571,12 @@ async function saveLanguage() {
   try {
     const data = await post("/api/settings/values", {values});
     keep(ids);
+    relanguage = data.ui_lang != null && data.ui_lang !== document.documentElement.lang;
     // Stored now, so no longer only detected.
     if (ids.includes("o-timezone")) $("o-timezone-detected").hidden = true;
-    const parts = ids.map((id) => `${labelOf(PLAIN[id])}: ${data.values[PLAIN[id]]}`);
-    return `${parts.join(", ")}. ${data.note}`;
+    const parts = ids.map((id) => t("onboarding.saved_value",
+      {label: labelOf(PLAIN[id]), value: String(data.values[PLAIN[id]])}));
+    return t("onboarding.saved_values", {values: listOf(parts), note: data.note});
   } catch (err) {
     mark(err.field ? fieldOf(ids, PLAIN, err.field) : ids);
     throw err;
@@ -578,15 +589,14 @@ async function saveSchedule() {
   const empty = HOURS.filter((id) => $(id).value === "");
   if (empty.length) {
     mark(empty);
-    const names = empty.map((id) => $(id).labels[0].textContent).join(" and ");
-    throw new Error(
-      `${names} ${empty.length > 1 ? "need" : "needs"} a whole hour from 0 to 23.`);
+    const which = empty.length > 1 ? "both" : empty[0] === "o-morning" ? "morning" : "evening";
+    throw new Error(t("onboarding.hour_needed", {which}));
   }
   const times = HOURS.map((id) => `${String($(id).value).padStart(2, "0")}:00`);
   try {
     const data = await post("/api/settings/schedule", {times});
     keep(HOURS);
-    return `Publish hours: ${data.times.join(" and ")}. ${data.note}`;
+    return t("onboarding.saved_hours", {hours: listOf(data.times), note: data.note});
   } catch (err) {
     mark(HOURS);
     throw err;
@@ -599,7 +609,7 @@ async function saveSchedule() {
 async function saveNotify() {
   const lines = [], problems = [];
   if (changed([WEBHOOK]).length && $(WEBHOOK).value.trim()) {
-    show("busy", "Checking with Discord…");
+    show("busy", t("settings.checking_discord"));
     try {
       // Sent as typed, as the settings form sends it; the server trims it.
       const data = await post("/api/settings/notify", {discord_webhook_url: $(WEBHOOK).value});
@@ -617,9 +627,9 @@ async function saveNotify() {
     // The mirror of the server's own refusal of a recipient without a sender:
     // with nowhere to send it, the pair is not a setting yet.
     mark([mail[0]]);
-    problems.push("Enter the address the digest is sent to, too.");
+    problems.push(t("onboarding.email_to_needed"));
   } else if (changed(mail).length && to.trim()) {
-    show("busy", "Sending a test message…");
+    show("busy", t("onboarding.sending_test"));
     try {
       const data = await post("/api/settings/email", {email_to: to, email_from: from});
       keep(mail);
@@ -682,10 +692,10 @@ function updateModelHint() {
   const none = p && p.name === "none";
   $("o-model").disabled = !!none;
   if (none) $("o-model").value = "";
-  $("o-model").placeholder = p && !none ? `Empty uses ${p.default_model}` : "";
-  $("o-model-hint").textContent = !p ? "Pick a provider whose key is present."
-    : none ? "No model is called: digests list plain excerpts."
-    : "Next makes one real call to the provider first, so a typo is refused here.";
+  $("o-model").placeholder = p && !none ? t("onboarding.model_default", {model: p.default_model}) : "";
+  $("o-model-hint").textContent = !p ? t("onboarding.model_hint_pick")
+    : none ? t("onboarding.model_hint_none")
+    : t("onboarding.model_hint_check");
   $("o-check").hidden = !p || none;
   $("o-check-result").hidden = true;
 }
@@ -699,18 +709,22 @@ function drawProviders(stored) {
   $("o-providers").replaceChildren(...PROVIDERS.map((p) => choice("o-provider", p, {
     checked: p === opened,
     disabled: !p.configured,
-    name: p.name === "none" ? "None — plain excerpts" : p.name,
-    side: p.name === "none" ? "No key needed" : p.configured ? "Key ready" : `${p.env_var} missing`,
+    name: p.name === "none" ? t("provider.none") : p.name,
+    side: p.name === "none" ? t("onboarding.no_key_needed") : keySide(p),
+    missing: !p.configured && p.name !== "none",
   })));
   // With no key present, None is the one choice, and the line says what to set.
   const keyed = PROVIDERS.filter((p) => p.env_var);
   $("o-no-key").hidden = keyed.some((p) => p.configured);
-  $("o-no-key").textContent = `No provider has its key here. Set one of ` +
-    `${keyed.map((p) => p.env_var).join(", ")} in .env, then restart: under compose run ` +
-    `docker compose up -d --force-recreate, under uv start cyris triage-ui again. Or keep None.`;
+  $("o-no-key").textContent = t("onboarding.no_key",
+    {variables: listOf(keyed.map((p) => p.env_var), "disjunction")});
 }
 
-function choice(group, option, {checked, disabled = false, name, side}) {
+// Whether a provider's key is here, or the variable it needs.
+const keySide = (p) => p.configured
+  ? t("onboarding.key_ready") : t("onboarding.key_missing", {variable: p.env_var});
+
+function choice(group, option, {checked, disabled = false, name, side, missing = false}) {
   const label = document.createElement("label");
   label.className = disabled ? "choice unavailable" : "choice";
   const input = Object.assign(document.createElement("input"), {
@@ -718,7 +732,7 @@ function choice(group, option, {checked, disabled = false, name, side}) {
   });
   const shown = Object.assign(document.createElement("span"), {className: "name", textContent: name});
   const note = Object.assign(document.createElement("span"), {className: "label", textContent: side});
-  if (side.endsWith(" missing")) note.classList.add("key-missing");
+  if (missing) note.classList.add("key-missing");
   label.append(input, shown, note);
   return label;
 }
@@ -744,7 +758,8 @@ function drawTuned(state) {
   $("o-embedding-providers").replaceChildren(...EMBEDDERS.map((p) => choice("o-embedder", p, {
     checked: p.name === STARTING["vote_similarity.provider"],
     name: p.name,
-    side: p.configured ? "Key ready" : `${p.env_var} missing`,
+    side: keySide(p),
+    missing: !p.configured,
   })));
   for (const field of TUNED) {
     const key = keyOf(field);
@@ -793,9 +808,9 @@ async function saveModel() {
     || (!!p && (p.name !== llmLoaded.provider || model !== llmLoaded.model));
   if (llmDue && !p) {
     mark(["o-providers"]);
-    problems.push("Pick a provider whose key is present, or None.");
+    problems.push(t("onboarding.pick_provider"));
   } else if (llmDue) {
-    show("busy", p.name === "none" ? "Saving…" : "Checking with the provider…");
+    show("busy", p.name === "none" ? t("onboarding.saving") : t("onboarding.checking_provider"));
     try {
       const data = await post("/api/settings", {provider: p.name, model});
       llmLoaded = {provider: data.provider, model: data.model};
@@ -811,7 +826,7 @@ async function saveModel() {
   const voteDue = voteKeys.some((key) => UNSET.has(key))
     || shownTuned().some((field) => voteKeys.includes(keyOf(field)) && tunedDue(field));
   if (voteDue) {
-    show("busy", "Saving…");
+    show("busy", t("onboarding.saving"));
     try {
       const data = await post("/api/settings/vote-similarity", {
         enabled: voteValue("vote_similarity.enabled"),
@@ -820,7 +835,8 @@ async function saveModel() {
         max_seeds: voteValue("vote_similarity.max_seeds"),
       });
       markSaved(voteKeys, data.values);
-      lines.push(`Embedder: ${data.values["vote_similarity.provider"]}. ${data.note}`);
+      lines.push(t("onboarding.saved_embedder",
+        {provider: data.values["vote_similarity.provider"], note: data.note}));
     } catch (err) {
       markTuned(err.field);
       problems.push(err.message);
@@ -829,13 +845,12 @@ async function saveModel() {
   const plain = shownTuned()
     .filter((field) => REGISTRY[keyOf(field)]?.route === "plain" && tunedDue(field));
   if (plain.length) {
-    show("busy", "Saving…");
+    show("busy", t("onboarding.saving"));
     const values = Object.fromEntries(plain.map((field) => [keyOf(field), tunedValue(field)]));
     try {
       const data = await post("/api/settings/values", {values});
       markSaved(Object.keys(data.values), data.values);
-      const count = plain.length === 1 ? "1 setting" : `${plain.length} settings`;
-      lines.push(`Advanced: ${count} saved. ${data.note}`);
+      lines.push(t("onboarding.saved_advanced", {count: plain.length, note: data.note}));
     } catch (err) {
       markTuned(err.field);
       problems.push(err.message);
@@ -859,7 +874,7 @@ async function checkModel() {
     result.hidden = false;
   };
   $("o-check").disabled = true;
-  say("busy", "Checking with the provider…");
+  say("busy", t("onboarding.checking_provider"));
   try {
     const data = await post("/api/diagnostics/llm", {provider: p.name, model: $("o-model").value.trim()});
     say("ok", data.detail);
@@ -882,7 +897,7 @@ let FEEDS = [];
 // The feeds the reader added by address, in the order added, rows like the
 // list's: each one's entry is the checked feed, with no tags and no topics.
 let OWN = [];
-const OWN_LEGEND = "Your feeds";
+const OWN_LEGEND = t("onboarding.your_feeds");
 
 // The topics chosen, kept for this tab so a reload opens the step on the same
 // feeds. A feed's own pick is not kept: a reload starts it unchecked, as before.
@@ -941,7 +956,7 @@ function topicTile(topic, count) {
   name.textContent = topic.label;
   const side = document.createElement("span");
   side.className = "label";
-  side.textContent = `${count} ${count === 1 ? "feed" : "feeds"}`;
+  side.textContent = t("onboarding.feed_count", {count});
   tile.append(name, side);
   return tile;
 }
@@ -953,7 +968,7 @@ function setChosen(row, chosen) {
 
 // Where a picked feed goes once none of its topics is chosen: it stays checked
 // and shown, so Next never sends a feed the reader can no longer see.
-const KEPT = "Picked, outside the chosen topics";
+const KEPT = t("onboarding.kept");
 
 // The chosen topics' feeds, one checklist per topic in the topic list's order.
 // A feed goes under the first of its own topics that is chosen, so one in two
@@ -984,11 +999,8 @@ function drawFeeds() {
 // for them. It warns; it does not stop the reader.
 function drawPicked() {
   const count = pickedFeeds().length;
-  const lines = [`${count} ${count === 1 ? "feed" : "feeds"} picked.`];
-  if (count > SLOW_PICKS) {
-    lines.push("The Votes step fetches every picked feed before it deals cards: " +
-      `up to ${SLOW_PICKS} take about a minute, and more take longer.`);
-  }
+  const lines = [t("onboarding.picked", {count})];
+  if (count > SLOW_PICKS) lines.push(t("onboarding.picked_slow", {slow: SLOW_PICKS}));
   $("o-picked").textContent = lines.join(" ");
 }
 
@@ -1007,15 +1019,18 @@ function drawScreen() {
   });
 }
 
-// A row's state, shown on its right before its tags. An added feed's checkbox
-// is disabled, and that is what keeps a retry from sending it again.
+// A row's state, "added", "not_added" or "", shown by its name on its right before
+// its tags. An added feed's checkbox is disabled, and that is what keeps a retry
+// from sending it again.
+const STATE_NAMES = {added: t("onboarding.state_added"), not_added: t("onboarding.state_not_added")};
+
 function setState(row, state) {
   row.state = state;
-  row.side.textContent = [state, ...row.entry.tags].filter(Boolean).join(" · ");
-  const added = state === "Added";
+  row.side.textContent = [STATE_NAMES[state], ...row.entry.tags].filter(Boolean).join(" · ");
+  const added = state === "added";
   row.box.disabled = added;
   row.label.classList.toggle("unavailable", added);
-  if (state === "Not added") row.box.setAttribute("aria-invalid", "true");
+  if (state === "not_added") row.box.setAttribute("aria-invalid", "true");
   else row.box.removeAttribute("aria-invalid");
 }
 
@@ -1036,7 +1051,7 @@ function renderFeeds(data) {
     // The entry's own name and tags, as the list holds them.
     const row = {entry, source, ...checklistRow(entry.name)};
     row.box.addEventListener("change", () => {
-      if (row.state === "Not added") setState(row, "");
+      if (row.state === "not_added") setState(row, "");
       // An unchecked feed none of whose topics is chosen leaves the list.
       if (!row.box.checked && !topics.some((id) => chosenTopics().includes(id))) drawFeeds();
       else drawPicked();
@@ -1088,7 +1103,7 @@ function ownRow({name, url}) {
   const row = {entry, source: {name, url, tags: []}, ...checklistRow(name)};
   row.box.checked = true;
   row.box.addEventListener("change", () => {
-    if (row.state === "Not added") setState(row, "");
+    if (row.state === "not_added") setState(row, "");
     drawPicked();
   });
   setState(row, "");
@@ -1104,12 +1119,12 @@ async function addOwnFeed() {
   unmark(["o-own-url"]);
   if (!url) {
     mark(["o-own-url"]);
-    showOwn("err", "Paste a feed's address, or a site's home page, first.");
+    showOwn("err", t("onboarding.paste_first"));
     return;
   }
   const rows = [...FEEDS, ...OWN];
   $("o-own-add").disabled = true;
-  showOwn("busy", `Checking ${url}…`);
+  showOwn("busy", t("onboarding.checking_url", {url}));
   try {
     const data = await post("/api/onboarding/feed-check", {
       url,
@@ -1118,7 +1133,7 @@ async function addOwnFeed() {
     OWN.push(ownRow(data));
     drawOwn();
     input.value = "";
-    showOwn("ok", `${data.name} is under ${OWN_LEGEND}, checked: Next adds it with the others.`);
+    showOwn("ok", t("onboarding.own_added", {name: data.name}));
   } catch (err) {
     const listed = rows.find((row) => row.entry.name === err.data?.name);
     if (listed) {
@@ -1126,7 +1141,7 @@ async function addOwnFeed() {
       drawFeeds();
       drawOwn();
       input.value = "";
-      showOwn("ok", `${listed.entry.name} is already listed, and is checked there.`);
+      showOwn("ok", t("onboarding.own_listed", {name: listed.entry.name}));
       return;
     }
     mark(["o-own-url"]);
@@ -1160,30 +1175,28 @@ async function saveSources() {
   const added = [], failed = [];
   let note = "";
   for (const [index, row] of picked.entries()) {
-    show("busy", `Adding ${row.entry.name} (${index + 1} of ${picked.length})…`);
+    show("busy", t("onboarding.adding", {name: row.entry.name, index: index + 1, total: picked.length}));
     try {
       ({note} = await post("/api/sources", row.source));
-      setState(row, "Added");
+      setState(row, "added");
       added.push(row.entry.name);
     } catch (err) {
-      setState(row, "Not added");
-      failed.push(`${row.entry.name}: ${err.message}`);
+      setState(row, "not_added");
+      failed.push(t("onboarding.feed_refused", {name: row.entry.name, reason: err.message}));
       // A lapsed sign-in fails every feed after it the same way.
       if (err === SESSION_EXPIRED) break;
     }
   }
   if (failed.length) {
-    const which = failed.length === 1 ? "This one was" : "These were";
     throw new Error([
-      `Added ${added.length} of ${picked.length} feeds. ${which} not added:`,
+      t("onboarding.added_some", {added: added.length, picked: picked.length, failed: failed.length}),
       ...failed,
-      "Press Next to try again, or Skip to go on without them.",
+      t("onboarding.added_some_next"),
     ].join("\n"));
   }
   // The cards were dealt from the feeds there were; these are new.
   if (added.length) cardsDealt = false;
-  const feeds = added.length === 1 ? "feed" : "feeds";
-  return `Added ${added.length} ${feeds}: ${added.join(", ")}. ${note}`;
+  return t("onboarding.added", {count: added.length, names: listOf(added), note});
 }
 
 // The vote cards, one per card POST /api/onboarding/cards dealt, in its order.
@@ -1195,7 +1208,7 @@ let CARDS = [];
 let cardsDealt = false;
 let dealing = false;
 
-const VOTE_WORDS = {up: "Interested", down: "Not interested"};
+const VOTE_WORDS = {up: t("onboarding.vote_up"), down: t("onboarding.vote_down")};
 
 function setVote(card, vote) {
   card.vote = vote;
@@ -1209,7 +1222,7 @@ function setVote(card, vote) {
 function setRecorded(card) {
   card.recorded = true;
   card.seg.hidden = true;
-  card.state.textContent = `Recorded · ${VOTE_WORDS[card.vote]}`;
+  card.state.textContent = t("onboarding.recorded", {vote: VOTE_WORDS[card.vote]});
   card.state.hidden = false;
 }
 
@@ -1218,7 +1231,7 @@ function setRecorded(card) {
 function setGone(card) {
   card.gone = true;
   card.seg.hidden = true;
-  card.state.textContent = "No longer in the feed · not recorded";
+  card.state.textContent = t("onboarding.gone");
   card.state.hidden = false;
 }
 
@@ -1250,7 +1263,7 @@ function cardRow(card) {
   const seg = document.createElement("div");
   seg.className = "seg";
   seg.setAttribute("role", "group");
-  seg.setAttribute("aria-label", `Vote on ${card.title || card.url}`);
+  seg.setAttribute("aria-label", t("onboarding.vote_on", {title: card.title || card.url}));
   const state = document.createElement("span");
   state.className = "label";
   state.hidden = true;
@@ -1278,22 +1291,19 @@ function renderCards(data) {
   $("o-cards").hidden = !CARDS.length;
   const problems = [];
   if (data.empty.length) {
-    const which = data.empty.length === 1 ? "this feed" : `these ${data.empty.length} feeds`;
-    problems.push(`No articles came back from ${which}: ${data.empty.join(", ")}. ` +
-      "They stay in your sources and the first issue reads them again; " +
-      "check them under Sources in Settings.");
+    problems.push(t("onboarding.cards_empty",
+      {count: data.empty.length, names: listOf(data.empty)}));
   }
   if (data.poll_error) {
-    problems.push(`The feeds could not be fetched just now (${data.poll_error}), ` +
-      "so these cards are only what had been fetched before.");
+    problems.push(t("onboarding.cards_poll_failed", {reason: data.poll_error}));
   }
   $("o-cards-empty").textContent = problems.join("\n");
   $("o-cards-empty").hidden = !problems.length;
   let none = "";
   if (!data.sources) {
-    none = "There are no feeds to draw from yet. Press Back to pick some, or Next to go on.";
+    none = t("onboarding.cards_no_sources");
   } else if (!CARDS.length) {
-    none = "There is no article to vote on yet. Press Next to go on: the first issue works without votes.";
+    none = t("onboarding.cards_none");
   }
   $("o-cards-none").textContent = none;
   $("o-cards-none").hidden = !none;
@@ -1305,7 +1315,7 @@ async function loadCards() {
   if (cardsDealt || dealing) return;
   dealing = true;
   const loading = $("o-cards-loading");
-  loading.textContent = "Fetching the latest articles from your feeds. This can take a minute or two…";
+  loading.textContent = t("onboarding.fetching_cards");
   loading.setAttribute("aria-busy", "true");
   loading.hidden = false;
   try {
@@ -1314,7 +1324,7 @@ async function loadCards() {
     loading.hidden = true;
   } catch (err) {
     loading.removeAttribute("aria-busy");
-    loading.textContent = `${err.message} Press Skip to go on without votes, or reload the page to try again.`;
+    loading.textContent = t("onboarding.cards_failed", {reason: err.message});
   } finally {
     dealing = false;
   }
@@ -1326,19 +1336,16 @@ async function saveVotes() {
   const marked = CARDS.filter((card) => card.vote && !card.recorded && !card.gone);
   const lines = [];
   if (marked.length) {
-    show("busy", `Recording ${marked.length} ${marked.length === 1 ? "vote" : "votes"}…`);
+    show("busy", t("onboarding.recording", {count: marked.length}));
     const data = await post("/api/onboarding/votes", {
       votes: marked.map((card) => ({url: card.card.url, vote: card.vote})),
     });
     const gone = new Set(data.missing);
     marked.forEach((card) => (gone.has(card.card.url) ? setGone : setRecorded)(card));
     const kept = data.accepted.length + data.rejected.length;
-    lines.push(`Recorded ${kept} ${kept === 1 ? "vote" : "votes"}: ` +
-      `${data.accepted.length} interested, ${data.rejected.length} not interested.`);
-    if (gone.size) {
-      lines.push(`${gone.size} ${gone.size === 1 ? "article has" : "articles have"} left ` +
-        "its feed since the cards were dealt, so that vote was not recorded.");
-    }
+    lines.push(t("onboarding.recorded_votes",
+      {count: kept, up: data.accepted.length, down: data.rejected.length}));
+    if (gone.size) lines.push(t("onboarding.votes_gone", {count: gone.size}));
   }
   return lines.join("\n");
 }
@@ -1364,10 +1371,10 @@ const RUNNING_KEY = "cyris-onboarding-first-issue";
 
 // What each way a run can end, other than with its issue published, tells the reader.
 const RUN_ENDS = {
-  publish_failed: "The issue was built, but publishing it to the archive failed.",
-  no_articles: "None of your feeds had an article in the window the run reads.",
-  no_pending: "Every article in the window was already decided, so the run had nothing new.",
-  error: "The run stopped with an error.",
+  publish_failed: t("onboarding.run_publish_failed"),
+  no_articles: t("onboarding.run_no_articles"),
+  no_pending: t("onboarding.run_no_pending"),
+  error: t("onboarding.run_error"),
 };
 
 function drawIssueNav() {
@@ -1376,7 +1383,7 @@ function drawIssueNav() {
   $("o-back").hidden = issueState === "running";
   $("o-skip").hidden = !open;
   $("o-start").hidden = !["ready", "failed"].includes(issueState);
-  $("o-start").textContent = issueState === "failed" ? "Try again" : "Start the first issue";
+  $("o-start").textContent = issueState === "failed" ? t("onboarding.try_again") : t("onboarding.start");
   $("o-finish").hidden = open;
 }
 
@@ -1392,10 +1399,10 @@ function plan(text) {
   $("o-issue-plan").hidden = !text;
 }
 
-// A link the run's own answer names, so only a web address becomes one.
-function link(text, href) {
+// A link the run's own answer names, so only a web address becomes one; its text
+// is the message's.
+function link(href) {
   const a = document.createElement("a");
-  a.textContent = text;
   if (/^https?:\/\//i.test(href)) a.href = href;
   return a;
 }
@@ -1405,38 +1412,32 @@ async function getJson(url) {
   try {
     res = await fetch(url);
   } catch (err) {
-    throw new Error(`Could not reach cyris (${err.message}). Check the connection and try again.`);
+    throw new Error(t("onboarding.unreachable", {reason: err.message}));
   }
   if (res.status === 401) throw SESSION_EXPIRED;
   const data = await res.json().catch(() => ({}));
   if (data.ok) return data;
-  throw new Error(data.error || `cyris answered ${res.status} without saying why. ` +
-    "Reload the page to try again; if it keeps failing, check the server log.");
+  throw new Error(data.error || t("onboarding.no_reason_reload", {status: String(res.status)}));
 }
 
 // Says what Start would do with the route's answer, and whether there is a run
 // to start. A retry may replace the issue its own failed run stored.
 function planIssue(data, retry) {
   if (!data.sources) {
-    plan("There are no sources yet, so there is nothing to build an issue from. " +
-      "Press Back to pick some, or Finish and add them later under Sources in Settings.");
+    plan(t("onboarding.plan_no_sources"));
     return false;
   }
   if (data.published && !retry) {
-    plan(`The ${data.date} ${data.period} issue is already published, and one built now ` +
-      "would replace it. Read it in the archive.");
+    plan(t("onboarding.plan_published", {date: data.date}));
     return false;
   }
   if (data.date !== data.today) {
     // Today's two hours are both still to come, and each would replace an
     // issue dated today, so the first one is dated yesterday.
-    plan(`Start builds the ${data.date} ${data.period} issue now, dated yesterday: ` +
-      `neither of today's publish hours, ${data.hours.join(" and ")} ${data.timezone}, has ` +
-      "begun, and an issue dated today would be replaced by them. It takes a few minutes.");
+    plan(t("onboarding.plan_yesterday", {hours: listOf(data.hours), timezone: data.timezone}));
     return true;
   }
-  plan(`Start builds the ${data.date} ${data.period} issue now. It takes a few minutes, ` +
-    "and no later issue today replaces it.");
+  plan(t("onboarding.plan_today"));
   return true;
 }
 
@@ -1450,7 +1451,7 @@ let voteSimilarity = null;
 
 async function turnOnVoteSimilarity() {
   await SETTINGS_LOADED;
-  if (!VALUES) throw new Error("The settings did not load. Reload the page.");
+  if (!VALUES) throw new Error(t("onboarding.settings_not_loaded"));
   if (VALUES["vote_similarity.enabled"] === true) return;
   // The embedder this deployment already names, else the one the model step
   // opens on: which model it embeds with is the deployer's choice, under Model
@@ -1471,8 +1472,7 @@ function voteSimilarityOn() {
     () => { line.hidden = true; },
     (err) => {
       voteSimilarity = null;
-      line.textContent = `Vote similarity is still off, so votes have no effect yet: ${err.message} ` +
-        "Turn it on under Model in Settings.";
+      line.textContent = t("onboarding.vote_similarity_off", {reason: err.message});
       line.hidden = false;
     });
   return voteSimilarity;
@@ -1497,7 +1497,7 @@ async function loadIssue() {
   if (data.sources) voteSimilarityOn();
   const saved = JSON.parse(sessionStorage.getItem(RUNNING_KEY) || "null");
   if (saved && Date.now() - saved.started < RUN_WAIT_MS) {
-    plan(`The ${saved.date} ${saved.period} issue was started from this page.`);
+    plan(t("onboarding.plan_started"));
     return waitForRun(saved);
   }
   setIssue(planIssue(data, false) ? "ready" : "closed");
@@ -1511,12 +1511,13 @@ async function startRun(period, date) {
     const query = `period=${encodeURIComponent(period)}&date=${encodeURIComponent(date)}`;
     res = await fetch(`/run?${query}`, {method: "POST"});
   } catch (err) {
-    throw new Error(`Could not reach cyris (${err.message}). Check the connection and try again.`);
+    throw new Error(t("onboarding.unreachable", {reason: err.message}));
   }
   if (res.status === 401) throw SESSION_EXPIRED;
   const data = await res.json().catch(() => ({}));
   if (res.ok && data.started) return data;
-  throw new Error(`The run did not start: ${data.error || `cyris answered ${res.status}`}.`);
+  const reason = data.error || t("onboarding.answered", {status: String(res.status)});
+  throw new Error(t("onboarding.run_not_started", {reason}));
 }
 
 function failIssue(text) {
@@ -1524,7 +1525,7 @@ function failIssue(text) {
   running = null;
   setIssue("failed", () => show("err", [
     text,
-    "Press Try again, or Finish to leave: the next publish hour brings an issue either way.",
+    t("onboarding.run_failed_next"),
   ].join("\n")));
 }
 
@@ -1533,7 +1534,7 @@ function failIssue(text) {
 async function startIssue() {
   const retry = issueState === "failed";
   $("o-start").disabled = true;
-  show("busy", "Starting the run…");
+  show("busy", t("onboarding.starting_run"));
   try {
     ISSUE = await getJson("/api/onboarding/first-issue");
     if (!planIssue(ISSUE, retry)) {
@@ -1558,14 +1559,13 @@ async function startIssue() {
 
 function elapsed(since) {
   const seconds = Math.floor((Date.now() - since) / 1000);
-  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
+  return t("onboarding.elapsed",
+    {minutes: Math.floor(seconds / 60), seconds: String(seconds % 60).padStart(2, "0")});
 }
 
 async function waitForRun(run) {
   running = run;
-  const busy = () => show("busy", `Building the ${run.date} ${run.period} issue: ` +
-    `${elapsed(run.started)} so far. It usually takes a few minutes. You can leave with ` +
-    "Finish: the issue still reaches the archive.");
+  const busy = () => show("busy", t("onboarding.building", {elapsed: elapsed(run.started)}));
   setIssue("running", busy);
   while (running === run) {
     await new Promise((resolve) => setTimeout(resolve, POLL_MS));
@@ -1581,8 +1581,7 @@ async function waitForRun(run) {
     const row = data.run;
     if (row && row.id > run.after && row.period === run.period) return endIssue(row, run);
     if (Date.now() - run.started > RUN_WAIT_MS) {
-      return failIssue(`No run has ended in ${RUN_WAIT_MS / 60000} minutes, so this one ` +
-        "did not start or stopped without a record. Its log is in the app Worker's logs.");
+      return failIssue(t("onboarding.run_timed_out", {minutes: RUN_WAIT_MS / 60000}));
     }
     if (stepOf() === STEPS[STEPS.length - 1]) busy();
   }
@@ -1592,22 +1591,23 @@ function endIssue(row, run) {
   sessionStorage.removeItem(RUNNING_KEY);
   running = null;
   if (row.status !== "ok") {
-    const why = [RUN_ENDS[row.status] || `The run ended as ${row.status}.`];
+    const why = [RUN_ENDS[row.status] || t("onboarding.run_ended_as", {status: row.status})];
     if (row.error) why.push(row.error);
-    if (row.failed_sources.length) why.push(`Fetching failed for: ${row.failed_sources.join(", ")}.`);
+    if (row.failed_sources.length) {
+      why.push(t("onboarding.fetch_failed_for", {sources: listOf(row.failed_sources)}));
+    }
     return failIssue(why.join(" "));
   }
   setIssue("done", () => {
-    const issue = `Your first issue, the ${run.date} ${run.period} issue,`;
     if (!row.digest_url) {
-      show("ok", `${issue} is built. This deployment publishes no site, ` +
-        "so it reached you only through its notifications.");
+      show("ok", t("onboarding.issue_built"));
       return;
     }
-    show("ok", `${issue} is published. `);
-    $("o-result").append(
-      link("Read it", row.digest_url), ", or find it with every later issue in the ",
-      link("archive", new URL("/", row.digest_url).href), ".");
+    show("ok", "");
+    $("o-result").replaceChildren(t("onboarding.issue_published", {}, {
+      read: link(row.digest_url),
+      archive: link(new URL("/", row.digest_url).href),
+    }));
   });
 }
 
@@ -1630,7 +1630,17 @@ const SKIPS = {
 // its own Start and Finish in Next's place, and its Skip leaves.
 function advance() {
   const index = STEPS.indexOf(stepOf());
+  if (relanguage) return reloadOn(STEPS[index + 1]);
   location.hash = STEPS[index + 1];
+}
+
+// The page again, opened on `step`: the server words it in the language just saved.
+function reloadOn(step) {
+  try {
+    if (pending) sessionStorage.setItem(PENDING_KEY, pending);
+  } catch {}
+  history.pushState(null, "", `#${step}`);
+  location.reload();
 }
 
 const moving = (on) => {
@@ -1647,7 +1657,7 @@ $("o-next").addEventListener("click", async () => {
   if (!save) return advance();
   moving(true);
   unmark(FIELDS);
-  show("busy", "Saving…");
+  show("busy", t("onboarding.saving"));
   try {
     pending = await save();
     moving(false);
@@ -1667,7 +1677,7 @@ $("o-skip").addEventListener("click", async () => {
   const skip = SKIPS[stepOf()];
   if (skip) {
     moving(true);
-    show("busy", "Saving…");
+    show("busy", t("onboarding.saving"));
     try {
       pending = await skip();
     } catch (err) {
@@ -1731,7 +1741,7 @@ function fillTimezones(select, stored) {
 // otherwise show as its first option.
 function openOn(select, stored) {
   if (stored != null) select.value = stored;
-  else select.prepend(new Option("Not set", "", true, true));
+  else select.prepend(new Option(t("onboarding.not_set"), "", true, true));
 }
 
 // A zone the reader picked is no longer the detected one.
@@ -1772,6 +1782,12 @@ function render(state) {
   }
 }
 
+// A save's line a reload carried over (reloadOn), shown on the step it opened.
+try {
+  pending = sessionStorage.getItem(PENDING_KEY);
+  sessionStorage.removeItem(PENDING_KEY);
+} catch {}
+
 route();
 
 const SETTINGS_LOADED = fetch("/api/settings")
@@ -1779,7 +1795,7 @@ const SETTINGS_LOADED = fetch("/api/settings")
   .then(render)
   .catch((e) => {
     loadError = e === SESSION_EXPIRED ? e.message
-      : `Could not load settings: ${e}. Reload the page to try again.`;
+      : t("onboarding.settings_load_failed", {reason: String(e)});
     show("err", loadError);
   })
   .finally(() => document.querySelectorAll(".step [data-loading]").forEach((el) => el.remove()));
@@ -1789,12 +1805,12 @@ fetch("/api/onboarding/feeds")
     if (r.status === 401) throw SESSION_EXPIRED;
     if (!r.ok) {
       const data = await r.json().catch(() => ({}));
-      throw new Error(data.error || `cyris answered ${r.status}`);
+      throw new Error(data.error || t("onboarding.answered", {status: String(r.status)}));
     }
     return r.json();
   })
   .then(renderFeeds)
   .catch((e) => {
     $("o-feeds-loading").textContent = e === SESSION_EXPIRED ? e.message
-      : `Could not load the feed list: ${e}. Reload the page to try again.`;
+      : t("onboarding.feeds_load_failed", {reason: String(e)});
   });
