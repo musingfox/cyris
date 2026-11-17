@@ -32,7 +32,7 @@ from cyris.adapters.fetch.feed_check import FeedRefusal
 from cyris.config import SETTINGS_FIELDS
 from cyris.domain.areas import AreaStatus
 from cyris.domain.interest_graph import InterestNode
-from cyris.domain.models import ArticleState, Lane
+from cyris.domain.models import ArticleState, Lane, SourceType
 from cyris.entrypoints.triage_server import (
     BROWSER_MESSAGES,
     STATIC_DIR,
@@ -60,6 +60,7 @@ FAMILIES: dict[str, tuple[str, ...]] = {
     "feed_check.": get_args(FeedRefusal),
     "onboarding_topic.": tuple(topic["id"] for topic in load_onboarding_topics()),
     "settings_field.": tuple(SETTINGS_FIELDS),
+    "source_type.": get_args(SourceType),
 }
 # A family's keys, for the checks that a call is read for the keys it names.
 LANE_KEYS = {f"lane.{lane}" for lane in Lane}

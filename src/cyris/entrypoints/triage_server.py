@@ -27,7 +27,13 @@ from cyris.domain.areas import (
     is_unplaced_label,
     meets_birth_threshold,
 )
-from cyris.domain.models import NEWSLETTER_SOURCE_TYPE, Lane, SourceConfig, TrackedTopic
+from cyris.domain.models import (
+    NEWSLETTER_SOURCE_TYPE,
+    Lane,
+    SourceConfig,
+    SourceType,
+    TrackedTopic,
+)
 from cyris.i18n import (
     ENGLISH,
     Translator,
@@ -109,6 +115,10 @@ def _label(t: Translator, key: str) -> str:
 def _fields(t: Translator) -> dict[str, dict[str, Any]]:
     """The registry as the pages read it: each field's structure, and its label in `t`'s words."""
     return {key: {**field, "label": _label(t, key)} for key, field in SETTINGS_FIELDS.items()}
+
+
+def _unknown_source_type(value: object) -> str:
+    return f"A source's type is rss or newsletter, not {value!r}."
 
 
 def _probe_refusal(probe) -> str:
@@ -1142,6 +1152,8 @@ class TriageServer:
         try:
             source = SourceConfig.model_validate(body)
         except ValidationError as e:
+            if e.errors()[0]["loc"] == ("type",):
+                return _refused(_unknown_source_type(body["type"]), "type")
             # One line, in the body's own field names: the page sends only values
             # this model accepts, so whoever reads this wrote the request.
             reasons = "; ".join(
@@ -1158,10 +1170,7 @@ class TriageServer:
                     "email_match",
                 ),
             }
-            error, field = needs.get(
-                source.type, (f"A source's type is rss or newsletter, not {source.type!r}.", "type")
-            )
-            return _refused(error, field)
+            return _refused(*needs[source.type])
 
         try:
             if "area_id" in body:
@@ -1929,10 +1938,13 @@ class TriageServer:
         if llm is None:
             return answer(None, "No LLM is configured, so no area is suggested.")
 
+        source_type = body.get("type") or "rss"
+        if source_type not in get_args(SourceType):
+            return _refused(_unknown_source_type(source_type), "type")
         source = SourceConfig(
             name=str(body.get("name") or "").strip() or url,
             url=url.strip(),
-            type=str(body.get("type") or "rss"),
+            type=source_type,
             tags=[t for t in body.get("tags") or [] if isinstance(t, str)],
             homepage=body.get("homepage") if isinstance(body.get("homepage"), str) else None,
         )

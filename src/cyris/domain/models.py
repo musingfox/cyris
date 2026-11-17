@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field, StringConstraints, model_validator
 NO_LLM_MODEL = "none"
 
 NEWSLETTER_SOURCE_TYPE = "newsletter"
+# What a fetcher reads a source as: a feed by its URL, or mail by its sender.
+SourceType = Literal["rss", "newsletter"]
 
 
 class Lane(StrEnum):
@@ -33,7 +35,7 @@ class SourceConfig(BaseModel):
 
     name: str
     url: str | None = None
-    type: str = "rss"
+    type: SourceType = "rss"
     lane: Lane = Lane.SKIM
     tags: list[str] = Field(default_factory=list)
     language: str = "auto"

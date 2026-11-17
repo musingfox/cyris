@@ -117,6 +117,10 @@ class TestSourceConfig:
         assert source.lane == Lane.READ
         assert source.url == "https://stratechery.com/feed/"
 
+    def test_a_type_no_fetcher_reads_is_refused(self):
+        with pytest.raises(ValidationError, match="'rss' or 'newsletter'"):
+            SourceConfig(name="Web", type="web", url="https://n.test/feed")
+
 
 class TestUsageStats:
     @pytest.mark.parametrize(

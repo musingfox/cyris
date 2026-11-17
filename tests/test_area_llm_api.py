@@ -166,6 +166,24 @@ async def test_no_active_area_or_no_llm_asks_the_model_nothing(db: SqliteD1) -> 
     assert llm.calls == []
 
 
+async def test_a_type_no_fetcher_reads_is_refused_before_the_model_is_asked(db: SqliteD1) -> None:
+    llm = FakeLLM('{"area": "Tech"}')
+    client = await _client(db, lambda values: llm)
+    try:
+        response = await client.post("/api/sources/suggest-area", json=_suggest_body(type="web"))
+        data = await response.json()
+    finally:
+        await client.close()
+
+    assert response.status == 400
+    assert data == {
+        "ok": False,
+        "error": "A source's type is rss or newsletter, not 'web'.",
+        "field": "type",
+    }
+    assert llm.calls == []
+
+
 async def test_proposing_areas_creates_proposals_once(db: SqliteD1) -> None:
     sources = D1SourceStore(db)
     for name in ("a", "b", "c"):
