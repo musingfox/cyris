@@ -860,6 +860,43 @@ def test_a_probe_job_carries_the_media_features_it_emulates():
     assert cdp_probe.build_job(plain, "http://h", False, "")["media"] == []
 
 
+def test_a_probe_job_asks_for_english_unless_its_check_names_a_language():
+    plain = cdp_probe.Check(id="x", fixture="k", path="/p", script="")
+    chinese = cdp_probe.Check(id="x", fixture="k", path="/p", script="", language="zh-TW")
+    assert cdp_probe.build_job(plain, "http://h", False, "")["language"] == "en-US"
+    assert cdp_probe.build_job(chinese, "http://h", False, "")["language"] == "zh-TW"
+
+
+def test_the_driver_sets_the_language_before_it_loads_the_page():
+    """A page worded from the catalogs follows Accept-Language until one is saved, so the
+    probe's result must not follow the machine's own language."""
+    driver = cdp_probe.DRIVER
+    assert "acceptLanguage: job.language" in driver
+    assert driver.index("Emulation.setUserAgentOverride") < driver.index(
+        "call('Page.navigate', { url })"
+    )
+
+
+def test_the_probe_browser_is_launched_in_english():
+    source = Path(cdp_probe.__file__).read_text(encoding="utf-8")
+    launch = source[source.index("def chromium(") :]
+    assert 'f"--lang={LANGUAGE}"' in launch and 'f"--accept-lang={LANGUAGE}"' in launch
+    assert cdp_probe.LANGUAGE == "en-US"
+
+
+def test_the_onboarding_probe_reads_no_binding_of_the_page_module():
+    """onboarding.js is a module, so its top-level names are not on the window: the
+    probe reads the fold off its controls and waits on the save's request instead."""
+    probe = Path(onboarding_probe.__file__).read_text(encoding="utf-8")
+    script = (Path(cyris.entrypoints.__file__).parent / "static" / "onboarding.js").read_text()
+
+    template = Path(cyris.entrypoints.__file__).parent / "templates" / "onboarding.html.j2"
+    assert '<script type="module" src="/static/onboarding.js">' in template.read_text()
+    assert "function tunedValue(" in script and "let voteSimilarity = null;" in script
+    assert "tunedValue(" not in probe
+    assert not re.search(r"await voteSimilarity;", probe)
+
+
 def test_the_driver_emulates_media_before_it_loads_the_page():
     driver = cdp_probe.DRIVER
     assert driver.index("Emulation.setEmulatedMedia") < driver.index(

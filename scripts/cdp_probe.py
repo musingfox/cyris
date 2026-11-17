@@ -127,6 +127,12 @@ def at_smallest_type_scale(page: str) -> str:
     return _at_type_scale(page, SMALLEST_TYPE_SCALE_STYLE)
 
 
+# The language every probe's browser asks for, whatever the machine's own: a page
+# worded from the UI catalogs follows `Accept-Language` until a language is saved
+# (ADR-0027), and the checks read English. A check that means another sets `language`.
+LANGUAGE = "en-US"
+
+
 @dataclass(frozen=True)
 class Check:
     """One behaviour, read from the DOM and, where something was written, the fixture.
@@ -140,6 +146,7 @@ class Check:
     `media` names CSS media features the browser reports for the whole check,
     such as `(("prefers-reduced-motion", "reduce"),)`. `focused` reports the
     page as the focused window, without which a headless page matches no `:focus`.
+    `language` is the `Accept-Language` and `navigator.language` the page gets.
 
     A gesture step is `{"press": selector, "pointer": "mouse" | "touch"}`,
     `{"move": dx}`, `{"release": True}` or `{"hover": selector}`; a move or a
@@ -167,6 +174,7 @@ class Check:
     gestures: tuple[dict, ...] = ()
     media: tuple[tuple[str, str], ...] = ()
     focused: bool = False
+    language: str = LANGUAGE
 
     def __post_init__(self) -> None:
         pressed = False
@@ -547,6 +555,10 @@ await call('Emulation.setDeviceMetricsOverride',
   { width: job.width, height: job.height, deviceScaleFactor: 1, mobile: false });
 if (touch) await call('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 1 });
 if (job.focused) await call('Emulation.setFocusEmulationEnabled', { enabled: true });
+// The launch flags pin the language too, but how a build honours them varies by
+// platform; the override is per page, and every job sets it, so none inherits another's.
+await call('Emulation.setUserAgentOverride',
+  { userAgent: await evaluate('navigator.userAgent'), acceptLanguage: job.language });
 const results = [];
 try {
   // Before the first navigation: a page reads matchMedia as it loads.
@@ -619,6 +631,7 @@ def build_job(check: Check, base: str, sabotaged: bool, prelude: str) -> dict:
         "gestures": list(check.gestures),
         "media": [{"name": name, "value": value} for name, value in check.media],
         "focused": check.focused,
+        "language": check.language,
         "script": script_expression(check, prelude),
     }
 
@@ -710,6 +723,8 @@ def chromium(browser: str) -> Iterator[str]:
                 "--no-first-run",
                 "--no-default-browser-check",
                 "--disable-gpu",
+                f"--lang={LANGUAGE}",
+                f"--accept-lang={LANGUAGE}",
                 "about:blank",
             ],
             stdout=subprocess.DEVNULL,

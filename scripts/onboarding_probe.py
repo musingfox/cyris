@@ -260,6 +260,10 @@ KEPT_PICK = next(entry for entry in FEEDS if len(entry["topics"]) == 1)
 # its topic tiles, from the zh-Hant catalog.
 ZH_PROGRESS = translator("zh-Hant")("onboarding.progress", step=3, steps=7)
 ZH_TOPICS = [translator("zh-Hant")(f"onboarding_topic.{topic['id']}") for topic in TOPICS]
+# What a browser asking for Chinese gets on a store with no language saved: the
+# zh-Hant catalog's first step, which `Accept-Language` picks until onboarding saves one.
+ZH_BROWSER = "zh-TW"
+ZH_FIRST_STEP = translator("zh-Hant")("onboarding.progress", step=1, steps=7)
 # The step's heading over such picks (onboarding.js KEPT, worded in English
 # from the catalog), and the key the chosen topics are kept under for a reload
 # (onboarding.js TOPICS_KEY).
@@ -955,13 +959,30 @@ const scrolls = () => {
   return el.scrollHeight > innerHeight || el.scrollWidth > el.clientWidth
     ? `${el.scrollWidth}x${el.scrollHeight} in ${el.clientWidth}x${innerHeight}` : "";
 };
-// The model step, read: its providers drawn, and its fold's fields, each read by
-// the page's own `tunedValue` as its route would store it.
+// The model step, read: its providers drawn, and its fold's fields, each read off
+// its control as its route would store it: the choice checked, a number, a switch,
+// the reader's own words, or a trimmed name. The page's own reader is inside its
+// module, out of a check's reach.
 const modelDrawn = () => waitFor(() => $$("#o-providers .choice").length, "the providers");
 const providerRadio = (name) => $(`#o-providers input[value="${name}"]`);
 const foldFields = () => $$("#o-advanced [data-key]").filter((f) => !f.hidden);
 const foldKeys = () => foldFields().map((f) => f.dataset.key);
-const foldValue = (key) => tunedValue($(`#o-advanced [data-key="${key}"]`));
+const foldValue = (key) => {
+  const field = $(`#o-advanced [data-key="${key}"]`);
+  const el = field.querySelector(".choices, input, select, textarea");
+  if (el.classList.contains("choices")) return el.querySelector("input:checked")?.value ?? null;
+  if (el.dataset.kind === "number") return el.value === "" ? null : Number(el.value);
+  if (el.dataset.kind === "bool") return {true: true, false: false}[el.value] ?? null;
+  return el.dataset.kind === "prose" ? el.value : el.value.trim();
+};
+// The first-issue step turns vote similarity on once it has sources: its save has
+// answered when the browser holds the request's timing, and the page has drawn
+// the answer a moment later.
+const voteSimilaritySaved = async () => {
+  await waitFor(() => performance.getEntriesByType("resource")
+    .some((e) => e.name.endsWith("/api/settings/vote-similarity")), "the vote similarity save");
+  await sleep(100);
+};
 """.replace("RUN_READ_MS", str(RUN_READ_MS))
 )
 
@@ -1156,6 +1177,25 @@ _CHECKS: list[Check] = [
         # After the act: the progress line is written in English, as a script that
         # formats from no catalog would write it.
         sabotage="""$("#o-progress").textContent = "Step 3 of 7";""",
+        receipt=_both_untouched,
+    ),
+    Check(
+        id="a-browser-asking-for-chinese-opens-a-fresh-store-in-chinese",
+        fixture="fresh",
+        path=f"{PAGE}#language",
+        language=ZH_BROWSER,
+        act="""
+            await loaded();
+        """,
+        script=f"""
+            expect(document.documentElement.lang === "zh-Hant",
+              `lang: ${{document.documentElement.lang}}`);
+            expect(progress() === {json.dumps(ZH_FIRST_STEP, ensure_ascii=False)},
+              `progress: ${{progress()}}`);
+        """,
+        # After the act: the progress line is written in English, as a page that
+        # ignored the browser's language would write it.
+        sabotage="""$("#o-progress").textContent = "Step 1 of 7";""",
         receipt=_both_untouched,
     ),
     Check(
@@ -1628,7 +1668,7 @@ _CHECKS: list[Check] = [
         act="""
             await loaded();
             await issueRead();
-            await voteSimilarity;
+            await voteSimilaritySaved();
         """,
         script="""
             const line = $("#o-vote-similarity");
@@ -1650,6 +1690,7 @@ _CHECKS: list[Check] = [
             await runEnded();
         """,
         script=f"""
+            expect(visible($("#o-vote-similarity")), "the refusal is not shown");
             const line = $("#o-vote-similarity").textContent;
             expect(line.startsWith("Vote similarity is still off"), `line: ${{line}}`);
             expect(line.includes("under Model in Settings"), `line: ${{line}}`);
@@ -2588,7 +2629,7 @@ _CHECKS: list[Check] = [
             await loaded();
             await skipTo("first-issue");
             await issueRead();
-            await voteSimilarity;
+            await voteSimilaritySaved();
         """,
         script="""
             expect(progress() === "Step 7 of 7", `progress: ${progress()}`);
@@ -3232,7 +3273,7 @@ _CHECKS: list[Check] = [
         act="""
             await loaded();
             await issueRead();
-            await voteSimilarity;
+            await voteSimilaritySaved();
         """,
         script="""
             const line = $("#o-vote-similarity");
