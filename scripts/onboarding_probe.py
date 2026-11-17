@@ -3259,7 +3259,7 @@ _CHECKS: list[Check] = [
         script="""
             const text = notice().textContent;
             expect(!notice().classList.contains("err"), `an error: ${text}`);
-            expect(text.includes("Notifications are off."), `notice: ${text}`);
+            expect(text.includes("Turned off."), `notice: ${text}`);
         """,
         sabotage_preload=rewrite_post("/api/settings/notify", "body.off = false;"),
         receipt=_calls(

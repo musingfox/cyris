@@ -547,8 +547,8 @@
   "settings.area_none": {"text": "無", "source": "None"},
   "settings.area_not_active": {"text": "領域 {$id}（未啟用）", "source": "Area {$id} (not active)"},
   "settings.areas_intro": {
-    "text": "模型為每篇文章歸入的領域，以及等你決定的提議。",
-    "source": "The areas the model files each article under, and the proposals waiting for you."
+    "text": "模型為每篇文章歸入的領域。",
+    "source": "The areas the model files each article under."
   },
   "settings.assign_no_sources": {
     "text": "還沒有來源。{#link}到「來源」新增{/link}。",
@@ -603,8 +603,8 @@
   "settings.effort_default": {"text": "預設", "source": "Default"},
   "settings.effort_high": {"text": "高", "source": "High"},
   "settings.effort_hint": {
-    "text": "模型回答前思考的程度，越高越耗 token 與時間。「預設」沿用各供應商的等級，OpenAI 則用低；Workers AI 一律用低。按「儲存」時會呼叫一次來檢查等級。",
-    "source": "How hard the model thinks before it answers; more costs more tokens and time. Default keeps each provider's own level, except low on OpenAI; Workers AI always runs at low, and Save checks the level with one call."
+    "text": "越高越耗 token 與時間。「預設」沿用各供應商的等級，OpenAI 則用低；Workers AI 一律用低。按「儲存」時會呼叫一次來檢查等級。",
+    "source": "More costs more tokens and time. Default keeps each provider's own level, except low on OpenAI; Workers AI always runs at low, and Save checks the level with one call."
   },
   "settings.effort_low": {"text": "低", "source": "Low"},
   "settings.effort_medium": {"text": "中", "source": "Medium"},
@@ -614,8 +614,8 @@
   "settings.heading": {"text": "cyris 如何{#em}運作{/em}", "source": "How cyris {#em}runs{/em}"},
   "settings.homepage": {"text": "首頁", "source": "Homepage"},
   "settings.hours_hint": {
-    "text": "填入 0 到 23 的整點，以下方時區為準；不接受半點。",
-    "source": "Whole hours from 0 to 23, in the timezone below; half hours are refused."
+    "text": "填入 0 到 23 的整點；不接受半點。",
+    "source": "Whole hours from 0 to 23; half hours are refused."
   },
   "settings.hours_need": {
     "text": ".input {$count :integer}\n.match $count\n* {{{$names}需填入 0 到 23 的整點。}}",
@@ -664,8 +664,8 @@
     "source": "Saving makes one real call to the provider first, so a typo is rejected here."
   },
   "settings.model_hint_none": {
-    "text": "不呼叫任何模型，精選只列出原文摘錄。",
-    "source": "No model is called: digests list plain excerpts."
+    "text": "不呼叫任何模型。",
+    "source": "No model is called."
   },
   "settings.model_hint_pick": {"text": "請選擇有金鑰的供應商。", "source": "Pick a provider whose key is present."},
   "settings.model_intro": {
@@ -813,8 +813,8 @@
     "source": "The cosine a title must reach, on that model's scale; there is no default. {#code}cyris topic-sim{/code} ranks the window's titles against the description: pick the lowest cosine still on topic."
   },
   "settings.tracking_intro": {
-    "text": "每期會在「追蹤」下列出與這些主題相近的所有文章；為其他嵌入模型設定的主題則略過。",
-    "source": "Topics each issue lists every close article for, under Tracking; a topic set for another embedding model is skipped."
+    "text": "每期會在「追蹤」下列出與這些主題相近的所有文章。",
+    "source": "Topics each issue lists every close article for, under Tracking."
   },
   "settings.turn_off": {"text": "關閉通知", "source": "Turn off"},
   "settings.turning_off": {"text": "正在關閉…", "source": "Turning off…"},
@@ -824,8 +824,8 @@
   },
   "settings.value_empty": {"text": "空白", "source": "empty"},
   "settings.vote_similarity_hint": {
-    "text": "排除與你投少看的文章相近的候選文章。可用 {#code}cyris vote-sim{/code} 預覽會排除哪些；開啟前會先檢查嵌入模型。",
-    "source": "Drop candidates close to an article you voted down. Preview what it would drop with {#code}cyris vote-sim{/code}; turning it on checks the embedder first."
+    "text": "排除與你投少看的文章相近的候選文章。可用 {#code}cyris vote-sim{/code} 預覽會排除哪些。",
+    "source": "Drop candidates close to an article you voted down. Preview what it would drop with {#code}cyris vote-sim{/code}."
   },
   "settings.webhook_hint": {
     "text": "如要更改，請貼上完整網址，Discord 確認網址存在後才會儲存。按「關閉通知」會清除網址，之後每期完成時不再發送訊息。",
@@ -860,7 +860,7 @@
     "text": "也請填寫寄出精選的地址。",
     "source": "Enter the address the digest is sent from, too."
   },
-  "settings_api.mail_off": {"text": "郵件已關閉。下一期不會寄信。", "source": "Mail is off. The next run sends no message."},
+  "settings_api.mail_off": {"text": "郵件已關閉。", "source": "Mail is off."},
   "settings_api.mail_saved": {"text": "已儲存。下一期精選會寄到這個地址。", "source": "Saved. The next digest run mails this address."},
   "settings_api.merge_into_active": {"text": "請合併到已啟用的領域。", "source": "Merge into an active area."},
   "settings_api.merge_into_other": {"text": "請合併到另一個已啟用的領域。", "source": "Merge into a different active area."},
@@ -904,8 +904,8 @@
   },
   "settings_api.not_proposed": {"text": "{$name} 的狀態是{$status}，不在提議中。", "source": "{$name} is {$status}, not proposed."},
   "settings_api.notifications_off": {
-    "text": "通知已關閉。下一期完成時不會發送訊息。",
-    "source": "Notifications are off. The next run finishes without a message."
+    "text": "已關閉。",
+    "source": "Turned off."
   },
   "settings_api.own_form": {"text": "{$label}須從專屬表單儲存", "source": "{$label} is saved from its own form"},
   "settings_api.pages_within_a_minute": {"text": "一分鐘內會顯示在頁面上。", "source": "Pages show it within a minute."},
@@ -943,8 +943,8 @@
     "source": "The model did not pick one of the active areas."
   },
   "settings_api.suggested": {
-    "text": "從你已啟用的領域中建議。請確認，或選擇其他領域。",
-    "source": "Suggested from your active areas. Confirm it or choose another."
+    "text": "請確認，或選擇其他領域。",
+    "source": "Confirm it or choose another."
   },
   "settings_api.test_mail_body": {
     "text": "這個地址會收到每一期精選。",
@@ -1054,8 +1054,8 @@
     "source": "Topics seen within this many days are current: new articles can join them, and a name many of them share counts for less in the order. An upvote slows how fast a topic leaves the list new articles can join; the effect fades with the vote half-life, and never lasts past three times this many days after the topic last appeared."
   },
   "settings_help.digest.type_scale": {
-    "text": "每個頁面的文字大小。一分鐘內生效，已發布的精選也適用。",
-    "source": "How large the text is on every page. It applies within a minute, to issues already published too."
+    "text": "一分鐘內套用到每個頁面，已發布的精選也適用。",
+    "source": "Applies to every page within a minute, issues already published too."
   },
   "settings_help.digest.vote_half_life_days": {
     "text": "每一票經過這個天數後，權重只剩一半；除非再次投票，偏好會逐漸淡去。",
@@ -1079,8 +1079,8 @@
     "source": "Two or more articles on one topic scoring at least this share the Top story."
   },
   "settings_help.snippet_lengths": {
-    "text": "模型在各步驟讀取每篇文章的長度；讀得越多，每次呼叫的費用越高。",
-    "source": "How much of each article the model reads at each step; more costs more per call."
+    "text": "讀得越多，每次呼叫的費用越高。",
+    "source": "More costs more per call."
   },
   "settings_help.vote_similarity.max_seeds": {
     "text": "每期比對時，多看和少看各取你最近的幾票。",

@@ -180,7 +180,7 @@ class TestProviderNone:
             "ok": True,
             "provider": "none",
             "model": "",
-            "detail": "No model is called: digests list plain excerpts.",
+            "detail": "No model is called.",
             "note": "Saved. The next digest run picks this up.",
         }
         assert settings.calls == [{"llm_provider.provider": "none", "llm_provider.model": ""}]
@@ -1027,7 +1027,7 @@ class TestNotifyWebhookWrite:
         assert body == {
             "ok": True,
             "discord_webhook_url": "",
-            "note": "Notifications are off. The next run finishes without a message.",
+            "note": "Turned off.",
         }
         assert settings.calls == [{"notify.discord_webhook_url": ""}]
         assert data["values"]["notify.discord_webhook_url"] == ""

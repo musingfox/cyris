@@ -1264,7 +1264,7 @@ Press Try again, or Finish to leave: the next publish hour brings an issue eithe
             </div>
             <div class="field">
               <label class="label" for="vote-enabled">Vote similarity</label>
-              <p class="small">Drop candidates close to an article you voted down. Preview what it would drop with <code>cyris vote-sim</code>; turning it on checks the embedder first.</p>
+              <p class="small">Drop candidates close to an article you voted down. Preview what it would drop with <code>cyris vote-sim</code>.</p>
               <select class="select" id="vote-enabled"><option value="false" selected>Off</option><option value="true">On</option></select>
             </div>
             <div class="field">
@@ -1288,7 +1288,7 @@ Press Try again, or Finish to leave: the next publish hour brings an issue eithe
           <div class="form">
             <div class="field">
               <span class="label">Publish hours</span>
-              <p class="small">Whole hours from 0 to 23, in the timezone below; half hours are refused.</p>
+              <p class="small">Whole hours from 0 to 23; half hours are refused.</p>
               <div class="field-row">
                 <div class="field"><label class="small" for="morning">Morning</label><input class="input narrow" id="morning" type="number" min="0" max="23" value="8"></div>
                 <div class="field"><label class="small" for="evening">Evening</label><input class="input narrow" id="evening" type="number" min="0" max="23" value="20"></div>
@@ -1313,7 +1313,7 @@ Press Try again, or Finish to leave: the next publish hour brings an issue eithe
             </div>
             <div class="field">
               <label class="label" for="type-scale">Type size</label>
-              <p class="small">How large the text is on every page. It applies within a minute, to issues already published too.</p>
+              <p class="small">Applies to every page within a minute, issues already published too.</p>
               <select class="select" id="type-scale"><option value="0.875">Smaller</option><option value="1" selected>Default</option><option value="1.125">Larger</option></select>
             </div>
             <div class="field">
@@ -1370,7 +1370,7 @@ Press Try again, or Finish to leave: the next publish hour brings an issue eithe
             </div>
             <div class="field">
               <span class="label">Characters read</span>
-              <p class="small">How much of each article the model reads at each step; more costs more per call.</p>
+              <p class="small">More costs more per call.</p>
               <div class="field-row">
                 <div class="field"><label class="small" for="scoring-snippet">Scoring</label><input class="input narrow" id="scoring-snippet" type="number" min="1" value="1000"></div>
                 <div class="field"><label class="small" for="summarize-snippet">Summary</label><input class="input narrow" id="summarize-snippet" type="number" min="1" value="1000"></div>
@@ -1379,7 +1379,7 @@ Press Try again, or Finish to leave: the next publish hour brings an issue eithe
             </div>
             <div class="field">
               <label class="label" for="reasoning-effort">Reasoning effort</label>
-              <p class="small">How hard the model thinks before it answers; more costs more tokens and time. Default keeps each provider's own level, except low on OpenAI; Workers AI always runs at low, and Save checks the level with one call.</p>
+              <p class="small">More costs more tokens and time. Default keeps each provider's own level, except low on OpenAI; Workers AI always runs at low, and Save checks the level with one call.</p>
               <select class="select" id="reasoning-effort"><option value="default">Default</option><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option></select>
             </div>
             <div class="actions-line">
@@ -1406,7 +1406,7 @@ Press Try again, or Finish to leave: the next publish hour brings an issue eithe
               <button class="btn primary" type="submit" disabled>Save</button>
               <div class="notice err" role="status" hidden>Discord answered 404: this webhook does not exist. Copy it again from the channel's Integrations page.</div>
               <button class="btn danger" type="button" id="notify-off">Turn off</button>
-              <div class="notice" role="status" id="notify-result" hidden>Notifications are off. The next run finishes without a message.</div>
+              <div class="notice" role="status" id="notify-result" hidden>Turned off.</div>
             </div>
           </div>
         </form>
@@ -1497,7 +1497,7 @@ Press Try again, or Finish to leave: the next publish hour brings an issue eithe
         <div class="tab" data-tab="tracking" hidden>
           <div class="tab-head">
             <h2 class="heading">Tracking</h2>
-            <p class="small">Topics each issue lists every close article for, under Tracking; a topic set for another embedding model is skipped.</p>
+            <p class="small">Topics each issue lists every close article for, under Tracking.</p>
           </div>
           <div class="toolbar">
             <button class="btn primary" type="button">+ Add topic</button>

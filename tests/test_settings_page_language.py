@@ -73,7 +73,7 @@ def test_the_english_page_keeps_its_copy() -> None:
     assert '<meta name="i18n-catalog" content="/static/i18n/en.json">' in page
     assert '<h1 class="display">How cyris <em>runs</em></h1>' in page
     assert '<label class="label" for="timezone">Timezone</label>' in page
-    assert "Preview what it would drop with <code>cyris vote-sim</code>; turning it on" in page
+    assert "Preview what it would drop with <code>cyris vote-sim</code>.</p>" in page
     assert "<code>cyris topic-sim</code> ranks the window&#39;s titles" in page
     assert '<button type="button" data-filter="newsletter" aria-pressed="false">Newsletter' in page
 
@@ -157,8 +157,8 @@ async def test_a_refusal_names_the_field_in_the_pages_language(language, error) 
 @pytest.mark.parametrize(
     ("language", "note"),
     [
-        ("en", "Notifications are off. The next run finishes without a message."),
-        ("zh-TW", "通知已關閉。下一期完成時不會發送訊息。"),
+        ("en", "Turned off."),
+        ("zh-TW", "已關閉。"),
     ],
 )
 async def test_a_saved_note_is_worded_in_the_pages_language(language, note) -> None:
@@ -191,4 +191,4 @@ async def test_the_saved_language_words_the_answer_whatever_the_browser_asks() -
         values={"digest.output_language": "zh-Hant"},
     )
 
-    assert answer["note"] == "通知已關閉。下一期完成時不會發送訊息。"
+    assert answer["note"] == "已關閉。"

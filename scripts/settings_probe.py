@@ -3447,7 +3447,7 @@ document.addEventListener("click", (event) => {
             expect(!visible($("#notify-off")), "Turn off is still shown");
             expect($("#discord-webhook").value === "", `field: ${$("#discord-webhook").value}`);
             expect(!notice.classList.contains("err"), `an error: ${notice.textContent}`);
-            const wanted = "Notifications are off. The next run finishes without a message.";
+            const wanted = "Turned off.";
             expect(notice.textContent === wanted, `notice: ${notice.textContent}`);
             expect(saveOf("notifications").disabled, "Save is enabled after turning off");
         """,
@@ -5267,7 +5267,7 @@ await waitFor(savedNotice, "the save");
 """
 SUGGEST_FOUND = (
     "Promise.resolve(new Response(JSON.stringify({ok: true, note: "
-    '"Suggested from your active areas.", suggestion: {id: 2, name: "Food"}}), '
+    '"Confirm it or choose another.", suggestion: {id: 2, name: "Food"}}), '
     '{headers: {"Content-Type": "application/json"}}))'
 )
 SUGGEST_BROKEN = (
@@ -5310,7 +5310,7 @@ CHECKS += [
             {SAVE_SOURCE}
         """,
         script="""
-            expect(ctx.note === "Suggested from your active areas.", `note: ${ctx.note}`);
+            expect(ctx.note === "Confirm it or choose another.", `note: ${ctx.note}`);
             const post = window.__calls.find(([url]) => url === "/api/sources");
             expect(post && JSON.parse(post[2]).area_id === 2, `posted: ${post && post[2]}`);
             expect($("#e-area", editor()).selectedOptions[0].textContent === "Food",
