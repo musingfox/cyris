@@ -69,8 +69,12 @@ under `tests/`; `tests/test_level_markers.py` rejects a file whose marks break t
   digest templates, `/settings` — and `docs/design/prototype.html` is its reference
   implementation. Every step of the spec's §8 has landed; where a component still differs from
   the spec, restyle it to the spec when you touch it, never copy the old style
-- User-facing strings are English, even while the digest's content is not. i18n has no
-  framework here yet; English is what makes adding one cheap
+- **Reader-facing strings come from the UI catalogs.** Every string a reader sees on a page, a
+  mail, Discord or a run alert is a key in `src/cyris/locales/en.json` (`area.element`, a
+  MessageFormat 2 message), drawn with `t()`. A non-English catalog holds `{text, source}` with
+  `source` equal to the current English, and `tests/test_catalog_coverage.py` holds both. A value
+  the code stores or compares stays its English identifier and is shown through a key family
+  (ADR 0027). The CLI and Pydantic's validation messages stay English
 - A non-null `triaged_at` is what marks an article's state as a *human* decision (a digest or
   raw-page vote, `cyris articles accept|reject`) rather than the pipeline's own verdict.
   `update_states` leaves stamped rows alone and only stamped rows seed vote similarity, so
