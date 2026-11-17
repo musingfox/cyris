@@ -99,7 +99,7 @@
         <p class="notice">{{ t("issue.degraded") }}</p>
         {% endif %}
         {% if not content.articles_included %}
-        <p class="desc">{% if raw_url %}{{ t("issue.empty_raw", received=content.articles_received, elements={"link": ("a", {"href": raw_url})}) }}{% else %}{{ t("issue.empty", received=content.articles_received) }}{% endif %}</p>
+        <p class="desc">{{ t("mail.empty") }}</p>
         {% endif %}
 
         {% if layers.tracking %}

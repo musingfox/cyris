@@ -540,8 +540,9 @@ invoker commands (§4 *topic dialog*); the mail and Discord are not affected.
   line; 760px is about 42 Chinese characters at 18px. `--measure` stays the mail's and `/settings`'
   width.
 - **An issue says when it is empty or degraded.** An issue that includes no article opens its body with
-  one sentence in the small role: the run judged the articles it received and kept none, and
-  `All articles` (linked when the raw page exists) lists each one with its verdict. It is not a notice,
+  one sentence in the small role: the run kept no article, and
+  `All articles` (linked when the raw page exists) lists each one with its verdict. The sentence does
+  not repeat how many articles the run received; the stats card beside it says so. It is not a notice,
   because an empty issue is neither a success nor an error (§1). A degraded issue, one where a step went
   on without a configured LLM that could not be used, opens its body with a `--warn` notice saying some
   or all of it is unscored or plain excerpts and that the provider and its key on Settings are what to
@@ -908,8 +909,9 @@ by value, from `_tokens.css.j2` and the §2 light palette (`adapters/output/emai
   cost, `cost $0.0000`, left out when no call was made or the model has no known price, as Discord's
   stats do.
 - **Empty and degraded as on the page.** The empty sentence and the degraded notice (§6 *digest*) come
-  after the buttons, the empty sentence in the small role with its `All articles` link only when the raw
-  page was published.
+  after the buttons, the empty sentence in the small role. The mail's sentence says only that nothing is
+  in the issue: the stats line and the `All articles` button above it already give the count and the
+  link. The plain-text mail has no button, so its sentence carries the raw page's URL.
 - **Type at the baseline.** Nothing serves the mail, so `digest.type_scale` does not reach it. Web fonts
   come from the same Google Fonts link; Apple Mail loads them, Gmail falls back to each stack. The issue
   title is the §3 issue-title role at 56px: Geist 500, letter spacing −0.03em, in `--font-sans` by value.

@@ -121,7 +121,7 @@ SECTION_LABELS = (
     "Glance",
 )
 
-EMPTY_SENTENCE = "this run judged the 7 articles it received and kept none"
+EMPTY_SENTENCE = "the run kept no article"
 DEGRADED_NOTICE = (
     '<p class="notice err issue-note">Some or all of this issue is unscored or plain excerpts'
 )
@@ -1975,7 +1975,7 @@ def test_the_raw_page_opens_with_the_spec_page_head(tmp_path):
     assert '<h1 class="display">What this run <em>judged</em></h1>' in raw
     assert (
         '<p class="small">Everything the run decided on, plus what is still pending.'
-        " The digest shows a selection of it.</p>"
+        " The digest is a selection of these.</p>"
     ) in raw
     assert 'class="masthead"' not in raw
     assert 'class="subtitle"' not in raw
@@ -1985,8 +1985,7 @@ ARCHIVE_PAGE_HEAD = (
     '<span class="label">Archive</span>',
     '<h1 class="display">Every <em>issue</em></h1>',
     '<p class="small">Cyris collects articles from RSS feeds and newsletters and selects the'
-    " ones worth reading into a digest. Newest first. Each issue has the digest and the full"
-    " list of articles it judged.</p>",
+    " ones worth reading into a digest.</p>",
 )
 
 

@@ -406,20 +406,19 @@ def _issue(articles_included: int = 0) -> DigestContent:
     )
 
 
-EMPTY_SENTENCE = "this run judged the 7 articles it received and kept none"
+EMPTY_SENTENCE = "Nothing is in this issue."
 DEGRADED_NOTICE = '<p class="notice">Some or all of this issue is unscored or plain excerpts'
 
 
 class TestEmptyAndDegraded:
-    def test_an_empty_issue_says_why_and_links_all_articles(self):
+    def test_an_empty_issue_says_so_and_leaves_all_articles_to_its_button(self):
         html = render_digest_email(_issue(), DIGEST_URL, raw_page=True)
 
         sentence = html[html.index('<p class="desc">') :]
         sentence = sentence[: sentence.index("</p>")]
         assert EMPTY_SENTENCE in sentence
-        assert '<a href="https://digest.example.org/2026-09-27-morning-raw">All articles</a>' in (
-            sentence
-        )
+        assert "<a " not in sentence
+        assert 'href="https://digest.example.org/2026-09-27-morning-raw"' in html
 
     @pytest.mark.parametrize(
         ("digest_url", "raw_page"), [(DIGEST_URL, False), ("", True)], ids=["no-raw", "no-site"]

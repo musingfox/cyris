@@ -275,8 +275,8 @@ def test_an_empty_issue_says_so_and_links_its_raw_page_inside_the_sentence(
     alone = HtmlDigestWriter(tmp_path).render(content, raw_page=False)
 
     link = {"link": ("a", {"href": "2026-01-02-morning-raw.html"})}
-    assert t("issue.empty_raw", received=20, elements=link) in html
-    assert str(escape(t("issue.empty", received=20))) in alone
+    assert t("issue.empty_raw", elements=link) in html
+    assert str(escape(t("issue.empty"))) in alone
 
 
 @pytest.mark.parametrize("language", LANGUAGES)
@@ -531,13 +531,12 @@ def test_an_html_mail_that_could_not_publish_says_so(language) -> None:
 
 
 @pytest.mark.parametrize("language", LANGUAGES)
-def test_an_empty_html_mail_links_its_raw_page_inside_the_sentence(language) -> None:
+def test_an_empty_html_mail_says_so_and_leaves_the_link_to_its_button(language) -> None:
     content = _content(language, articles_included=0, featured_articles=[], news_clusters=[])
 
     html = render_digest_email(content, ONLINE, raw_page=True)
 
-    link = {"link": ("a", {"href": RAW})}
-    assert translator(language)("issue.empty_raw", received=20, elements=link) in html
+    assert str(escape(translator(language)("mail.empty"))) in html
 
 
 @pytest.mark.parametrize("language", LANGUAGES)
@@ -575,8 +574,8 @@ def test_an_empty_text_mail_names_its_raw_page(language) -> None:
     _, alone = build_digest_mail(content, publish_failed=True)
 
     t = translator(language)
-    assert t("mail.empty_raw_at", received=20, url=RAW) in text
-    assert t("issue.empty", received=20) in alone
+    assert t("mail.empty_raw_at", url=RAW) in text
+    assert t("issue.empty") in alone
     assert t("mail.publish_failed_text") in alone
 
 

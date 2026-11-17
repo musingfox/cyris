@@ -349,7 +349,7 @@ class TestDigestMail:
 
 
 class TestDigestMailText:
-    EMPTY = "Nothing is in this issue: this run judged the 300 articles it received and kept none."
+    EMPTY = "Nothing is in this issue: the run kept no article."
     DEGRADED = "Some or all of this issue is unscored or plain excerpts"
 
     @staticmethod
@@ -362,7 +362,7 @@ class TestDigestMailText:
         )
 
         assert (
-            f"{self.EMPTY} All articles lists each one with its verdict: "
+            "Nothing is in this issue. All articles lists each one with its verdict: "
             "https://digest.example.org/2026-09-27-morning-raw"
         ) in text
 

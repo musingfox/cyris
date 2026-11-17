@@ -127,11 +127,10 @@ def build_digest_mail(
         ),
     ]
     if not content.articles_included:
-        received = content.articles_received
         if raw_url := raw_page_url(content, digest_url, raw_page):
-            lines.append(t("mail.empty_raw_at", received=received, url=raw_url))
+            lines.append(t("mail.empty_raw_at", url=raw_url))
         else:
-            lines.append(t("issue.empty", received=received))
+            lines.append(t("issue.empty"))
     layers = layer_by_lane(content)
     blocks = [
         (

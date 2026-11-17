@@ -592,7 +592,7 @@
             <p class="notice err issue-note">{{ t("issue.degraded") }}</p>
             {% endif %}
             {% if not articles_included %}
-            <p class="small issue-note">{% if raw_page %}{{ t("issue.empty_raw", received=articles_received, elements={"link": ("a", {"href": date ~ "-" ~ period ~ "-raw.html"})}) }}{% else %}{{ t("issue.empty", received=articles_received) }}{% endif %}</p>
+            <p class="small issue-note">{% if raw_page %}{{ t("issue.empty_raw", elements={"link": ("a", {"href": date ~ "-" ~ period ~ "-raw.html"})}) }}{% else %}{{ t("issue.empty") }}{% endif %}</p>
             {% endif %}
             {#- Above the layers because a topic is something the reader asked to see. Its
                 hits are links only: a hit is a view of the run's candidates, not an item of
