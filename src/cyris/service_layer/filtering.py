@@ -29,6 +29,12 @@ logger = logging.getLogger(__name__)
 # and context tier; every article is still judged, batch by batch.
 BATCH_SIZE = 20
 
+# A topic member's stored summary. An uncapped run gave members of 300-5500 characters
+# with bylines and editorial footers (owner, 2026-11-17), so the stand-in is the article's
+# opening and no more. A display choice, graded A in docs/architecture.md §5; an issue stored
+# before it keeps its 80-character members.
+MEMBER_SUMMARY_CHARS = 200
+
 
 async def filter_articles(
     articles: list[Article],
@@ -224,13 +230,17 @@ def _member(article: Article, article_scores: dict[str, float] | None) -> Digest
     """One article of a sand block, as the page's fold and the sand line read it.
 
     Stand-in until the sand-what-happened ticket: the summary is the article's own
-    80-character excerpt, which the page shows as the sand block's one line for want
+    excerpt, which the page shows as the sand block's one line for want
     of a sentence written for the topic. A wire article opens with its dateline, which
     would spend the line on the wire's name, so the excerpt starts after it.
     """
     return DigestItem(
         title=article.title,
-        summary=excerpt(article.content, 80, drop_dateline=True) if article.content else "",
+        summary=(
+            excerpt(article.content, MEMBER_SUMMARY_CHARS, drop_dateline=True)
+            if article.content
+            else ""
+        ),
         sources=[article.source_name],
         urls=[article.url],
         score=(article_scores or {}).get(article.url),

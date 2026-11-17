@@ -62,7 +62,7 @@ PHONE = {"viewport": {"width": 390, "height": 844}, "has_touch": True}
 
 
 def _excerpt(n: int) -> str:
-    """A stored excerpt as the store keeps one: the article's own opening, at most 80 chars."""
+    """A stored excerpt as the store keeps one: the article's own opening, at most 200 chars."""
     return f"Report {n} opens with its own first line, cut where the store cuts it."
 
 

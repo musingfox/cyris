@@ -650,7 +650,7 @@
                 <div class="news-cluster" id="topic-{{ loop.index }}" lang="{{ content_lang }}">
                     {% if sand.image_url %}<img class="story-image" src="{{ sand.image_url }}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">{% endif %}
                     <h3 class="item-title lg"><button type="button" class="topic-open" aria-haspopup="dialog" commandfor="topic-{{ loop.index }}-dialog" command="show-modal">{{ sand.heading }}</button></h3>
-                    {% if sand.line %}<p class="summary"{% if sand.line_untranslated %} lang=""{% endif %}>{{ sand.line }}</p>{% endif %}
+                    {% if sand.line %}<p class="summary"{% if sand.line_untranslated %} lang=""{% endif %}>{{ sand.line | card_line }}</p>{% endif %}
                     {{ tag_pills(sand.tags) }}
                     <div class="meta">
                         {{ promote_btn(sand.vote, sand.story_id) }}

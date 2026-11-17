@@ -22,6 +22,7 @@ from cyris.domain.models import (
     StoredArticle,
 )
 from cyris.i18n import issue_day, issue_hour, issue_name, resolve, translator
+from cyris.service_layer.degrade import cut
 from cyris.service_layer.schedule import PERIOD_ORDER
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,10 @@ PROJECT_URL = "https://cyris.musingfox.com/"
 # layout's proportions; a display choice, graded A in docs/architecture.md §5.
 INTEREST_MAP_WIDTH = 480
 INTEREST_MAP_HEIGHT = 360
+# How much of a topic's line its unopened card shows; the dialog shows all of it. The owner
+# set the rule in characters, so no CSS line clamp stands in for it (2026-11-17). A display
+# choice, graded A in docs/architecture.md §5.
+CARD_LINE_CHARS = 80
 # A copy of website/assets/favicon.svg, because the image ships `src/` only.
 FAVICON = Path(__file__).parent / "favicon.svg"
 TEMPLATES = Path(__file__).parent / "templates"
@@ -90,6 +95,7 @@ def _environment(tag: str, search_path: tuple[Path, ...]) -> Environment:
         autoescape=select_autoescape(["html", "xml"], default=True),
     )
     env.filters["hostname"] = _hostname
+    env.filters["card_line"] = functools.partial(cut, length=CARD_LINE_CHARS)
     env.filters["paragraph_links"] = paragraph_links
     env.globals["project_url"] = PROJECT_URL
     env.globals["t"] = translator(tag)

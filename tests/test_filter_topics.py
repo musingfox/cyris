@@ -29,7 +29,12 @@ from cyris.domain.models import (
 )
 from cyris.domain.topics import MAX_RECENT_TOPICS, TopicBook, own_topic_id, topic_id
 from cyris.service_layer.digest_pipeline import DigestPipeline
-from cyris.service_layer.filtering import BATCH_SIZE, filter_articles, sections_by_topic
+from cyris.service_layer.filtering import (
+    BATCH_SIZE,
+    MEMBER_SUMMARY_CHARS,
+    filter_articles,
+    sections_by_topic,
+)
 from cyris.service_layer.prompts import build_filter_prompt
 from cyris.service_layer.run_digest import RunOptions, run_digest
 
@@ -749,7 +754,7 @@ def _same_topic(*positions: int) -> list[dict]:
 
 
 async def test_each_member_is_its_own_article_with_the_stand_in_excerpt() -> None:
-    long_text = "<p>" + "word " * 40 + "</p>"
+    long_text = "<p>" + "word " * 60 + "</p>"
     articles = [
         _article(1, "First", content=long_text, source_name="Reuters"),
         _article(2, "Second", content="Short.", source_name="Bloomberg"),
@@ -762,12 +767,27 @@ async def test_each_member_is_its_own_article_with_the_stand_in_excerpt() -> Non
     assert (second.title, second.sources, second.urls) == ("Second", ["Bloomberg"], [_url(2)])
     assert second.summary == "Short."
     assert first.score == 6.0
-    assert first.summary == ("word " * 16).rstrip() + "…"
+    assert first.summary == ("word " * 40).rstrip() + "…"
     assert all(m.passed_through for m in section.members)
     (merged,) = section.items
     assert merged.urls == [_url(2), _url(1)]
     assert merged.sources == ["Bloomberg", "Reuters"]
     assert merged.score == 6.0
+
+
+async def test_a_members_summary_is_capped_at_200_characters_after_a_wire_dateline() -> None:
+    body = "（中央社首爾29日綜合外電報導）" + "word " * 100
+    articles = [
+        _article(1, "First", content=body),
+        _article(2, "Second", content="x" * MEMBER_SUMMARY_CHARS),
+    ]
+
+    (section,), _ = await _sand(_same_topic(1, 0), articles, None)
+
+    second, first = section.members
+    assert first.summary == ("word " * 100)[:MEMBER_SUMMARY_CHARS].rstrip() + "…"
+    assert len(first.summary) == MEMBER_SUMMARY_CHARS
+    assert second.summary == "x" * MEMBER_SUMMARY_CHARS
 
 
 @pytest.mark.parametrize(

@@ -2837,6 +2837,36 @@ def test_the_sand_line_is_its_first_members_excerpt_and_says_it_is_untranslated(
     assert "The model's cluster summary." not in html
 
 
+def test_an_unopened_topic_card_cuts_its_line_at_80_characters_and_the_dialog_keeps_it_whole() -> (
+    None
+):
+    line = "".join(f"w{n:03d} " for n in range(30)).rstrip()
+    issue = _three_layer_issue()
+    topic = issue.news_clusters[0]
+    first, *rest = topic.members
+    topic.members = [first.model_copy(update={"summary": line}), *rest]
+    assert len(line) > 80
+    html = HtmlDigestWriter(Path("/tmp/html-test")).render(issue)
+    root = _Dom(html).root
+
+    (sand,) = _by_class(root, "news-cluster")
+    (card_line,) = [p for p in sand.children if "summary" in p.classes]
+    assert card_line.text_content() == line[:80].rstrip() + "…"
+    dialog = _dialog_of(root, sand)
+    (dialog_line,) = _by_class(dialog, "topic-dialog-line")
+    assert dialog_line.text_content() == line
+    first_row, *_ = _by_class(dialog, "topic-member")
+    assert _by_class(first_row, "topic-member-excerpt")[0].text_content() == line
+
+
+def test_a_topic_card_whose_line_fits_in_80_characters_shows_it_without_an_ellipsis() -> None:
+    _, root = _three_layer_dom()
+
+    (sand,) = _by_class(root, "news-cluster")
+    (card_line,) = [p for p in sand.children if "summary" in p.classes]
+    assert card_line.text_content() == "Excerpt a"
+
+
 def test_no_source_name_or_host_shows_outside_the_topic_dialog_but_a_pebbles_source() -> None:
     html, _ = _three_layer_dom()
     main = _body(html)

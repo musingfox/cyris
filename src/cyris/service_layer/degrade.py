@@ -50,6 +50,11 @@ def excerpt(content: str, length: int = 200, *, drop_dateline: bool = False) -> 
     text = " ".join(html.unescape(text).split())
     if drop_dateline:
         text = strip_dateline(text)
+    return cut(text, length)
+
+
+def cut(text: str, length: int) -> str:
+    """`text` as it is, or its first `length` characters and "…" when it ran longer."""
     if len(text) <= length:
         return text
     return text[:length].rstrip() + "…"
