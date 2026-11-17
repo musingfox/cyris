@@ -3233,7 +3233,7 @@ async def test_a_rejected_embedding_key_warns_each_channel_and_the_digest_still_
     [(webhook, subject, text)] = discord_calls
     assert webhook == _ALERT_WEBHOOK
     assert _SIMILARITY_WARNING_SUBJECT.match(subject)
-    assert "did not run" in text
+    assert "Reader votes had no effect" in text
     assert "HTTP 401 Unauthorized: API key not valid" in text
     assert mail_calls == [("me@example.org", "d@example.org", subject, text)]
     [summary] = recorded
@@ -3250,10 +3250,9 @@ async def test_the_english_warning_says_why_votes_did_nothing_and_what_to_fix(
 
     [(_, _, text)] = discord_calls
     assert text == (
-        "Vote similarity did not run this period, so reader votes had no effect on this "
-        "digest. The digest was published unfiltered. The embedding API refused the request: "
-        "HTTP 403 Forbidden. This repeats every run until the embedding key or its "
-        "permissions are fixed."
+        "Reader votes had no effect: the digest was published unfiltered. The embedding API "
+        "refused the request: HTTP 403 Forbidden. This repeats every run until the embedding "
+        "key or its permissions are fixed."
     )
 
 
@@ -3265,7 +3264,7 @@ async def test_a_rejected_embedding_key_warns_in_the_output_language(tmp_path: P
     [(_, subject, text)] = discord_calls
     assert re.match(r"^投票相似度未執行：\d{1,2}/\d{1,2} \d{2}00 Asia/Taipei$", subject)
     assert text == (
-        "本期未執行投票相似度，讀者的投票沒有作用，精選未經過濾就直接發布。嵌入 API "
+        "讀者的投票沒有作用，精選未經過濾就直接發布。嵌入 API "
         "拒絕了請求：HTTP 403 Forbidden。在嵌入金鑰或其權限修好之前，每次產生精選都會"
         "再發生。"
     )

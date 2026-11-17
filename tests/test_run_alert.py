@@ -79,14 +79,13 @@ def test_a_failed_fetch_names_its_sources(language, body) -> None:
     [
         (
             "en",
-            "Vote similarity did not run this period, so reader votes had no effect on this "
-            "digest. The digest was published unfiltered. The embedding API refused the "
-            "request: HTTP 1403 Forbidden. This repeats every run until the embedding key or "
-            "its permissions are fixed.",
+            "Reader votes had no effect: the digest was published unfiltered. The embedding "
+            "API refused the request: HTTP 1403 Forbidden. This repeats every run until the "
+            "embedding key or its permissions are fixed.",
         ),
         (
             "zh-Hant",
-            "本期未執行投票相似度，讀者的投票沒有作用，精選未經過濾就直接發布。嵌入 API "
+            "讀者的投票沒有作用，精選未經過濾就直接發布。嵌入 API "
             "拒絕了請求：HTTP 1403 Forbidden。在嵌入金鑰或其權限修好之前，每次產生精選都會"
             "再發生。",
         ),

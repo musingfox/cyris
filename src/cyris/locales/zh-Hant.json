@@ -5,8 +5,8 @@
   "alert.run_failed_headline": {"text": "精選產生失敗", "source": "Digest run failed"},
   "alert.subject": {"text": "{$headline}：{$issue} {$timezone}", "source": "{$headline}: {$issue} {$timezone}"},
   "alert.vote_similarity_body": {
-    "text": "本期未執行投票相似度，讀者的投票沒有作用，精選未經過濾就直接發布。嵌入 API 拒絕了請求：HTTP {$status} {$detail}。在嵌入金鑰或其權限修好之前，每次產生精選都會再發生。",
-    "source": "Vote similarity did not run this period, so reader votes had no effect on this digest. The digest was published unfiltered. The embedding API refused the request: HTTP {$status} {$detail}. This repeats every run until the embedding key or its permissions are fixed."
+    "text": "讀者的投票沒有作用，精選未經過濾就直接發布。嵌入 API 拒絕了請求：HTTP {$status} {$detail}。在嵌入金鑰或其權限修好之前，每次產生精選都會再發生。",
+    "source": "Reader votes had no effect: the digest was published unfiltered. The embedding API refused the request: HTTP {$status} {$detail}. This repeats every run until the embedding key or its permissions are fixed."
   },
   "alert.vote_similarity_headline": {"text": "投票相似度未執行", "source": "Vote similarity did not run"},
   "area_status.active": {"text": "已啟用", "source": "active"},
@@ -128,8 +128,8 @@
     "source": "Swipe left for down, right for up. Tap the card to open the article in a new tab."
   },
   "labels.lede": {
-    "text": "每張卡片是一篇評選過的文章，但不顯示評選結果。想看更多類似文章就選「多看」，否則選「少看」。",
-    "source": "Each card is an article the filter judged, without its verdict. Up if you want articles like it, down if not."
+    "text": "每張卡片是一篇評選過的文章。想看更多類似文章就選「多看」，否則選「少看」。",
+    "source": "Each card is an article the filter judged. Up if you want articles like it, down if not."
   },
   "labels.loading": {"text": "載入中…", "source": "Loading…"},
   "labels.no_sample": {"text": "尚無樣本", "source": "No sample"},
