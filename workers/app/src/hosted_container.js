@@ -32,10 +32,16 @@ const HOSTED_SECRETS = [
   "CLOUDFLARE_AIG_TOKEN",
 ];
 
+// The hosted Worker's hostname, which a tenant's links point at (ADR-0029). The operator sets it
+// once (`scripts/hosted.sh secrets`), and every container gets it under the same name.
+export const HOSTED_DOMAIN = "CYRIS_STORE_HOSTED_DOMAIN";
+
 // The environment a tenant's run container starts with. The tenant id comes from the object's
-// own name, and publishing is off whatever the image defaults to: until per-tenant serving
-// lands, a hosted issue stays in the tenant's `digests` (bootstrap refuses to publish too).
+// own name. Pages publishing is off whatever the image defaults to: a hosted run stores its
+// pages in the tenant's own object (bootstrap wires that whatever this says). Without the hosted
+// domain a run would have no link to give, so it is not started.
 export function hostedContainerEnv(env, tenant) {
+  if (!env[HOSTED_DOMAIN]) throw new Error(`${HOSTED_DOMAIN} is not set; run: scripts/hosted.sh secrets`);
   const secrets = Object.fromEntries(
     HOSTED_SECRETS.filter((name) => env[name] != null && env[name] !== "").map((name) => [name, env[name]]),
   );
@@ -44,7 +50,7 @@ export function hostedContainerEnv(env, tenant) {
     CYRIS_ROLE: "run",
     CYRIS_STORE_BACKEND: "d1",
     CYRIS_STORE_TENANT_ID: tenant,
-    CYRIS_HTML_OUTPUT_ENABLED: "false",
+    [HOSTED_DOMAIN]: env[HOSTED_DOMAIN],
     CYRIS_PROMOTE_PUBLISH_ENABLED: "false",
   };
 }

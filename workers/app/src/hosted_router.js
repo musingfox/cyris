@@ -1,13 +1,16 @@
-// The hosted Worker's doors: the operator's routes and nothing else. Every request is checked
-// for a Cloudflare Access JWT first, by router.js's own check (ADR-0015), so a request
-// without one learns nothing, not even which tenants exist. A tenant is served no page yet:
-// per-tenant serving is a later card. No workerd-only imports: vitest runs this under Node.
+// The hosted Worker's doors: the operator's routes and each tenant's site. Every request is
+// checked for a Cloudflare Access JWT first, by router.js's own check (ADR-0015), so a request
+// without one learns nothing, not even which tenants exist. Until tenant sessions land, the
+// sites too are served to whoever Access lets in, the operator. No workerd-only imports:
+// vitest runs this under Node.
 //
 //   POST /hosted/tenants/<tenant>/register[?status=S]       register a tenant, or set its status
 //   POST /hosted/tenants/<tenant>/seed                      the schema, settings and sources
 //   POST /hosted/tenants/<tenant>/run?period=P[&date=D]     one run of the tenant's digest
 //   GET  /hosted/tenants/<tenant>/report                    what the tenant's database holds
+//   GET  /t/<tenant>/...                                    the tenant's pages (hosted_pages.js)
 
+import { SITE_ROUTE } from "./hosted_pages.js";
 import { RUN_PERIODS, accessRefusal, refuseRunDate } from "./router.js";
 import { ACTIVE } from "./tenant_status.js";
 
@@ -19,14 +22,24 @@ const json = (body, status = 200) =>
 
 // `deps`: accessKeys, as router.js takes them; and per tenant, `register(tenant, status)`,
 // which answers `{tenant}` or `{refused}`, `tenant(tenant)`, its registry row or null,
-// `seed(tenant)`, `report(tenant)`, `timeZone(tenant)` and `startRun(tenant, period, date)`.
+// `seed(tenant)`, `report(tenant)`, `timeZone(tenant)`, `startRun(tenant, period, date)` and
+// `page(request, tenant, rest)`, which answers under /t/<tenant> from that tenant's object.
 export async function handleHostedRequest(request, env, deps) {
   const refusal = await accessRefusal(request, env, deps);
   if (refusal) return json({ error: "forbidden", detail: refusal }, 403);
 
   const url = new URL(request.url);
+  const site = SITE_ROUTE.exec(url.pathname);
+  if (site) {
+    const [, tenant, rest = ""] = site;
+    // A paused tenant's pages stay readable; only its runs stop.
+    if (!(await deps.tenant(tenant))) return json({ error: `${tenant} is not a registered tenant` }, 404);
+    return deps.page(request, tenant, rest);
+  }
   const match = ROUTE.exec(url.pathname);
-  if (!match) return json({ error: "not found", routes: "/hosted/tenants/<tenant>/{register,seed,run,report}" }, 404);
+  if (!match) {
+    return json({ error: "not found", routes: "/hosted/tenants/<tenant>/{register,seed,run,report}, /t/<tenant>/" }, 404);
+  }
   const [, tenant, action] = match;
   if (request.method !== METHOD[action]) return json({ error: `${action} takes ${METHOD[action]}` }, 405);
 

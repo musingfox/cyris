@@ -351,6 +351,30 @@ class TestSiteLinks:
         ]:
             assert f'href="{url}"' in html
 
+    def test_a_self_hosted_mail_links_the_raw_page_and_archive_at_the_hosts_root(self):
+        """The hrefs a self-hosted mail has always had: the site is the host itself."""
+        html = render_digest_email(_full(), DIGEST_URL, raw_page=True)
+        footer = html[html.index('<footer class="footer">') :]
+
+        assert 'href="https://digest.example.org/2026-09-27-morning-raw"' in html
+        assert 'href="https://digest.example.org/"' in footer
+        assert 'href="https://digest.example.org/settings"' in footer
+        assert "index.html" not in html
+
+    def test_a_hosted_mail_keeps_its_links_in_the_tenants_site(self):
+        """A tenant's site root serves its latest issue, so its archive is named (ADR-0029)."""
+        digest_url = "https://cyris-hosted.example.workers.dev/t/alpha/2026-09-27-morning"
+
+        html = render_digest_email(_full(), digest_url, raw_page=True)
+        footer = html[html.index('<footer class="footer">') :]
+
+        site = "https://cyris-hosted.example.workers.dev/t/alpha"
+        assert f'href="{digest_url}"' in html
+        assert f'href="{site}/2026-09-27-morning-raw"' in html
+        assert f'href="{site}/index.html"' in footer
+        assert 'href="https://cyris-hosted.example.workers.dev/2026-09-27-morning-raw"' not in html
+        assert f'href="{site}/"' not in html
+
     def test_no_raw_page_means_no_raw_link(self):
         html = render_digest_email(_full(), DIGEST_URL, raw_page=False)
 

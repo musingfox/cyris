@@ -3,6 +3,8 @@
 // registry holds (hosted_router.js). Both run on a TenantDb stub's `query` and `tables`, so a
 // test hands them an object over local SQLite. No workerd-only imports: vitest runs this under Node.
 
+import { latestPage, sha256Hex } from "./hosted_pages.js";
+
 const SETTING_UPSERT =
   "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) " +
   "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at";
@@ -30,13 +32,24 @@ export function seedSources(catalog, seed, tenant) {
 // The time a row is written at, as the container's stores write it (seconds, UTC offset).
 const stamp = (now) => `${now.toISOString().slice(0, 19)}+00:00`;
 
-// Writes the schema, then the settings and the sources, into a tenant's database, and says
-// what it wrote. Every write is an upsert, so seeding again puts these values back and leaves
-// any other row alone. The container's first run applies the schema's versioned steps.
-export async function seedTenant({ db, tenant, schemaSql, startingValues, seed, catalog, now = new Date() }) {
+// Writes the schema and the hosted tables (hosted_schema.sql: the tenant's pages), then the
+// settings and the sources, into a tenant's database, and says what it wrote. Every write is an
+// upsert, so seeding again puts these values back and leaves any other row alone. The
+// container's first run applies the schema's versioned steps.
+export async function seedTenant({
+  db,
+  tenant,
+  schemaSql,
+  hostedSchemaSql,
+  startingValues,
+  seed,
+  catalog,
+  now = new Date(),
+}) {
   const settings = seedSettings(startingValues, seed);
   const sources = seedSources(catalog, seed, tenant);
   await db.query(schemaSql, []);
+  await db.query(hostedSchemaSql, []);
   for (const [key, value] of Object.entries(settings)) {
     await db.query(SETTING_UPSERT, [key, JSON.stringify(value), stamp(now)]);
   }
@@ -51,12 +64,14 @@ export async function seedTenant({ db, tenant, schemaSql, startingValues, seed, 
   };
 }
 
-// What decides whether a tenant's runs and issues are its own (scripts/hosted_check.py): its
-// tables and their row counts, its sources, which sources its stored articles came from, its
-// runs and its issues. A table the tenant does not have yet reads as empty.
+// What decides whether a tenant's runs, issues and pages are its own (scripts/hosted_check.py):
+// its tables and their row counts, its sources, which sources its stored articles came from, its
+// runs, its issues, and the page /t/<tenant>/ serves, by path and SHA-256. A table the tenant
+// does not have yet reads as empty, and a site with no page as null.
 export async function tenantReport({ db, tenant }) {
   const tables = await db.tables();
   const rows = async (table, sql) => (table in tables ? (await db.query(sql, [])).rows : []);
+  const latest = "hosted_pages" in tables && "digests" in tables ? await latestPage(db) : undefined;
   return {
     tenant,
     tables,
@@ -74,5 +89,6 @@ export async function tenantReport({ db, tenant }) {
       "SELECT date, period, saved_at, json_extract(content, '$.articles_included') AS articles_included " +
         "FROM digests ORDER BY date, period",
     ),
+    latest_page: latest ? { path: latest.path, sha256: await sha256Hex(latest.body) } : null,
   };
 }

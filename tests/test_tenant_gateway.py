@@ -18,6 +18,9 @@ from cyris.adapters.store.tenant_gateway import GATEWAY_ORIGIN, GatewayD1Client,
 
 pytestmark = pytest.mark.unit
 
+# One SQL statement's limit on a Durable Object, measured by the probe (ADR-0028).
+MAX_STATEMENT_BYTES = 100_000
+
 
 class FakeGateway:
     """Answers `POST /t/<tenant>/query` as the hosted Worker's gateway does, over real SQL.
@@ -25,8 +28,9 @@ class FakeGateway:
     Only `tenant` is this run's; any other, and any other path or method, is refused with 403,
     as the gateway refuses a request its props do not name. A bound value a Durable Object's
     SQL cannot take is refused as it would be: `SqlStorageValue` is a string, a number, an
-    ArrayBuffer or null, so a JSON boolean is not one. `failures` are answered before the
-    first real query, and every statement refused is kept in `refused`.
+    ArrayBuffer or null, so a JSON boolean is not one. So is a statement over the object's
+    100 KB, while a bound value may be far larger (ADR-0028). `failures` are answered before
+    the first real query, and every statement refused is kept in `refused`.
     """
 
     def __init__(self, tenant: str, *, failures: list = ()) -> None:
@@ -53,6 +57,8 @@ class FakeGateway:
         try:
             if unbindable:
                 raise TypeError(f"a Durable Object cannot bind {unbindable!r}")
+            if len(body["sql"].encode("utf-8")) > MAX_STATEMENT_BYTES:
+                raise ValueError("SQLITE_TOOBIG: statement too long")
             result = self.db.query(body["sql"], body["params"])
         except Exception as e:  # noqa: BLE001 - the gateway answers a failed statement with 400
             self.refused.append(f"{body['sql'][:80]}: {e}")

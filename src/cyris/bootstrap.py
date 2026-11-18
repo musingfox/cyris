@@ -322,6 +322,11 @@ def load_effective_config(
     # reads below propagate by design, so an empty D1 would abort the CLI before
     # any check could name the cause. Idempotent, one POST.
     apply_schema(d1)
+    if cfg.app.store.is_hosted:
+        # The tenant's own pages table, which no self-hosted store has (ADR-0029). One query.
+        from cyris.adapters.store.tenant_gateway import apply_hosted_schema
+
+        apply_hosted_schema(d1)
     cfg = resolve_config(raw, d1_settings=settings.all())
     # The table alone, empty included: sources.yaml is not a run's list.
     cfg.sources = D1SourceStore(d1).list_sources()
@@ -499,9 +504,10 @@ def build_deps(
 
     A hosted tenant's run is wired the same way for the same reason: it gets no
     newsletter queue and no vote sync, which are another deployment's queues, and,
-    until per-tenant serving and operator alerts land, no page writer, no publisher
-    and senders that send nothing (`adapters/hosted.py`). Its issue stays in its
-    own `digests` table.
+    until operator alerts land, senders that send nothing (`adapters/hosted.py`).
+    Its pages go to its own site in its Durable Object (`HostedPages`), never to
+    Pages, whatever `html_output` and `promote` say, and its links point at the
+    hosted Worker (ADR-0029).
     """
     from cyris.adapters.store.archive_meta import D1ArchiveMeta
     from cyris.adapters.store.areas import D1AreaStore
@@ -539,7 +545,8 @@ def build_deps(
     publish_site = None
     page_serves = None
     site_filenames: Callable[[], list[str]] = list
-    if cfg.app.html_output.enabled and not hosted:
+    worker_domains = None if hosted else build_worker_domains()
+    if hosted or cfg.app.html_output.enabled:
         from cyris.adapters.output.html_digest import HtmlDigestWriter
 
         html_writer = HtmlDigestWriter(
@@ -547,23 +554,35 @@ def build_deps(
             language=language,
             starts=D1ArchiveMeta(d1).issue_starts,
         )
-        if cfg.app.promote.publish_enabled:
-            # The site's file list lives in D1, so the archive does not have
-            # to live on this machine.
-            from cyris.adapters.output.pages_manifest import D1PagesManifest
-            from cyris.adapters.output.pages_receipt import D1PagesDeployReceipt
-            from cyris.adapters.output.publish import page_serves as _serves
-            from cyris.adapters.output.publish import publish_site as _site
+    if hosted:
+        # The tenant's site is its own Durable Object, which the hosted Worker serves behind
+        # sign-in. The digest link's "Worker domain" is that site's root on the hosted Worker,
+        # so `run_digest` links https://<hosted domain>/t/<tenant>/<slug> (ADR-0029).
+        from cyris.adapters.output.hosted_pages import HostedPages, tenant_site
 
-            manifest = D1PagesManifest(d1)
-            publish_site = partial(
-                _site,
-                manifest_store=manifest,
-                pages_project=cfg.app.promote.pages_project,
-                receipt_store=D1PagesDeployReceipt(d1),
-            )
-            page_serves = partial(_serves, cfg.app.promote.pages_project)
-            site_filenames = lambda: [p.lstrip("/") for p in manifest.load()]  # noqa: E731
+        site = HostedPages(d1)
+        publish_site = site.publish
+        page_serves = site.serves
+        site_filenames = site.filenames
+        tenant_root = tenant_site(cfg.app.store.hosted_domain, cfg.app.store.tenant_id)
+        worker_domains = lambda: [tenant_root]  # noqa: E731
+    elif html_writer is not None and cfg.app.promote.publish_enabled:
+        # The site's file list lives in D1, so the archive does not have
+        # to live on this machine.
+        from cyris.adapters.output.pages_manifest import D1PagesManifest
+        from cyris.adapters.output.pages_receipt import D1PagesDeployReceipt
+        from cyris.adapters.output.publish import page_serves as _serves
+        from cyris.adapters.output.publish import publish_site as _site
+
+        manifest = D1PagesManifest(d1)
+        publish_site = partial(
+            _site,
+            manifest_store=manifest,
+            pages_project=cfg.app.promote.pages_project,
+            receipt_store=D1PagesDeployReceipt(d1),
+        )
+        page_serves = partial(_serves, cfg.app.promote.pages_project)
+        site_filenames = lambda: [p.lstrip("/") for p in manifest.load()]  # noqa: E731
 
     topic_store = build_topic_store(cfg, d1)
     sync = None if dry_run else build_promotion_sync(cfg, store, topic_store)
@@ -611,7 +630,7 @@ def build_deps(
         archive_starts=D1ArchiveMeta(d1).issue_starts,
         digest_store=D1DigestStore(d1),
         digest_input_store=D1DigestInputStore(d1),
-        worker_domains=None if hosted else build_worker_domains(),
+        worker_domains=worker_domains,
         send_discord=notify_discord,
         send_email=send_email,
         send_email_alert=send_email_alert,

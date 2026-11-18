@@ -112,6 +112,24 @@ call() {
   fi
 }
 
+# fetch_page TENANT OUTFILE: the tenant's latest page, GET /t/TENANT/, signed in as call() is.
+# The page is kept for hosted_check.py only when it answered 200; it is not printed. Returns
+# non-zero, never ending the script, when it did not answer 200.
+fetch_page() {
+  local tenant=$1 out=$2 status
+  status=$(
+    printf 'header = "CF-Access-Client-Id: %s"\nheader = "CF-Access-Client-Secret: %s"\n' \
+      "$ACCESS_ID" "$ACCESS_SECRET" |
+      curl -sS --config - --max-time 60 -o "$out" -w '%{http_code}' "$HOSTED_URL/t/$tenant/"
+  ) || status=000
+  echo "GET /t/$tenant/ -> HTTP $status" >&2
+  if [[ "$status" != 200 ]]; then
+    rm -f "$out"
+    echo "FAILED $tenant: its latest page answered HTTP $status" >&2
+    return 1
+  fi
+}
+
 # finish FAILED_TENANT...: say which tenants failed, if any, and exit 1 when one did.
 finish() {
   if (($#)); then
@@ -138,6 +156,7 @@ case "${1:-}" in
     fi
     ;;
   secrets)
+    [[ -n "${HOSTED_URL:-}" ]] || { echo "no HOSTED_URL in $STATE; run: scripts/hosted.sh deploy" >&2; exit 1; }
     ask_account
     confirm_account "set the secrets of"
     ask TEAM_DOMAIN "CYRIS_ACCESS_TEAM_DOMAIN, the Access team domain without a scheme (yourteam.cloudflareaccess.com)"
@@ -146,6 +165,9 @@ case "${1:-}" in
     put_secret CYRIS_ACCESS_TEAM_DOMAIN "$TEAM_DOMAIN"
     put_secret CYRIS_ACCESS_AUD "$AUD"
     put_secret ANTHROPIC_API_KEY "$ANTHROPIC"
+    # The host deploy kept, which every tenant's links point at (ADR-0029). Not a secret, but
+    # `secret put` is how wrangler sets one value without editing wrangler.hosted.toml.
+    put_secret CYRIS_STORE_HOSTED_DOMAIN "${HOSTED_URL#https://}"
     ;;
   containers)
     ask_account
@@ -188,11 +210,13 @@ case "${1:-}" in
     for tenant in $TENANTS; do
       if call "$tenant" GET "/hosted/tenants/$tenant/report" "$out/$tenant.json"; then
         files+=("$out/$tenant.json")
+        # Beside its report, where hosted_check.py looks for it.
+        fetch_page "$tenant" "$out/$tenant.html" || failed+=("$tenant")
       else
         failed+=("$tenant")
       fi
     done
-    echo "reports kept in $out" >&2
+    echo "reports and pages kept in $out" >&2
     # The reports that came back are still judged; a tenant without one fails the check.
     verdict=0
     if ((${#files[@]})); then python3 scripts/hosted_check.py "${files[@]}" || verdict=$?; fi

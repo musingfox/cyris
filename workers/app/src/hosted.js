@@ -3,16 +3,18 @@
 // default Worker in index.js, which shares no binding, class or route with it.
 // docs/decisions/0028-one-sqlite-durable-object-per-hosted-tenant.md.
 //
-// It serves the operator's routes behind Access (hosted_router.js) and runs the hourly tick
-// for every tenant. Until later cards land, a tenant is served no page, its run publishes
-// nothing and notifies nobody. The tenant list is the operator's registry (tenant_registry.js).
+// It serves the operator's routes and each tenant's pages behind Access (hosted_router.js,
+// hosted_site.js) and runs the hourly tick for every tenant. Until later cards land, a run
+// notifies nobody. The tenant list is the operator's registry (tenant_registry.js).
 import { env } from "cloudflare:workers";
+import HOSTED_SCHEMA_SQL from "../../../src/cyris/adapters/store/hosted_schema.sql";
 import SCHEMA_SQL from "../../../src/cyris/adapters/store/schema.sql";
 import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json";
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json";
 import { accessKeys } from "./access_keys.js";
 import SEED from "./hosted_seed.json";
 import { handleHostedRequest } from "./hosted_router.js";
+import { createSitePage } from "./hosted_site.js";
 import { seedTenant, tenantReport } from "./hosted_seed.js";
 import { planTick, readTimeZone } from "./schedule.js";
 import { LOCATION_HINT, tenantDb, tenantRows } from "./tenant_db.js";
@@ -28,6 +30,9 @@ const tenantRun = (tenant) => env.TENANT_RUN.getByName(tenant, { locationHint: L
 
 const startRun = (tenant, period, date) => tenantRun(tenant).startRun({ period, date });
 
+// One memo of each tenant's type size per isolate, as module scope holds it.
+const sitePage = createSitePage(env);
+
 export default {
   async fetch(request) {
     return handleHostedRequest(request, env, {
@@ -39,6 +44,7 @@ export default {
           db: tenantDb(env, tenant),
           tenant,
           schemaSql: SCHEMA_SQL,
+          hostedSchemaSql: HOSTED_SCHEMA_SQL,
           startingValues: STARTING_VALUES,
           seed: SEED,
           catalog: FEED_CATALOG,
@@ -46,6 +52,7 @@ export default {
       report: (tenant) => tenantReport({ db: tenantDb(env, tenant), tenant }),
       timeZone: (tenant) => readTimeZone({ env, read: tenantRows(env, tenant) }),
       startRun,
+      page: sitePage,
     });
   },
 

@@ -16,9 +16,10 @@ from urllib.parse import urlsplit
 
 import pytest
 
+from cyris.adapters.output.hosted_pages import SITE_PATH
 from cyris.adapters.store.source_store import source_from_row
 from cyris.adapters.store.tenant_gateway import GATEWAY_ORIGIN
-from cyris.config import REQUIRED_KEYS, TENANT_ID, validate_setting
+from cyris.config import HOSTED_B_GRADE_ENV_VARS, REQUIRED_KEYS, TENANT_ID, validate_setting
 
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
@@ -143,6 +144,25 @@ def test_the_gateway_host_and_the_tenant_pattern_are_one_on_both_sides() -> None
 
     assert urlsplit(GATEWAY_ORIGIN).hostname == host
     assert pattern == TENANT_ID.pattern
+
+
+def test_the_tenants_site_path_is_one_shape_on_both_sides() -> None:
+    """The run links `<domain>/t/<tenant>/<page>`, and the Worker serves the tenant's site there."""
+    [route] = re.findall(r"^export const SITE_ROUTE = /(.+)/;", _js("hosted_pages.js"), re.M)
+    site = SITE_PATH.format(tenant="alpha")
+
+    for page in ("/", "/2026-11-18-morning", "/2026-11-18-morning-raw.html"):
+        match = re.fullmatch(route, site + page)
+        assert match is not None
+        assert match.groups() == ("alpha", page)
+
+
+def test_the_hosted_domain_is_one_name_from_the_worker_to_the_container() -> None:
+    [name] = re.findall(r'^export const HOSTED_DOMAIN = "(\w+)";', _js("hosted_container.js"), re.M)
+
+    assert name == HOSTED_B_GRADE_ENV_VARS["store.hosted_domain"]
+    # The runbook sets it on the Worker under that same name.
+    assert f"put_secret {name} " in (ROOT / "scripts/hosted.sh").read_text(encoding="utf-8")
 
 
 def test_a_hosted_container_is_handed_only_names_the_default_worker_knows() -> None:

@@ -36,13 +36,28 @@ def tokens() -> dict[str, str]:
     return dict(re.findall(r"--([\w-]+):\s*([^;]+);", source))
 
 
+def _site_of(digest_url: str) -> str:
+    """The site the digest link's page is in: its host, and a hosted tenant's `/t/<tenant>`."""
+    parts = urlsplit(digest_url)
+    return f"{parts.scheme}://{parts.netloc}{parts.path.rsplit('/', 1)[0]}"
+
+
+def archive_url(site: str) -> str:
+    """The archive of `site`: its root on a Pages site, its `index.html` in a hosted tenant's.
+
+    A hosted tenant's site root serves its latest issue, not the archive (ADR-0029), and both
+    Pages and the hosted Worker serve `index.html`. A site at a host's root keeps `/`, the
+    address a self-hosted mail has always linked.
+    """
+    return f"{site}/index.html" if urlsplit(site).path else f"{site}/"
+
+
 def raw_page_url(content: DigestContent, digest_url: str, raw_page: bool) -> str:
-    """The issue's raw page on the digest link's own host, or "" when there is none."""
+    """The issue's raw page beside the digest link's page, or "" when there is none."""
     if not (digest_url and raw_page):
         return ""
-    parts = urlsplit(digest_url)
     raw_name = HtmlDigestWriter.raw_filename(content.date, content.period)
-    return f"{parts.scheme}://{parts.netloc}/{raw_name.removesuffix('.html')}"
+    return f"{_site_of(digest_url)}/{raw_name.removesuffix('.html')}"
 
 
 def render_digest_email(
@@ -59,10 +74,7 @@ def render_digest_email(
     Worded in the issue's `output_language`, or `language`, the current setting, when the
     issue stored none.
     """
-    site = ""
-    if digest_url:
-        parts = urlsplit(digest_url)
-        site = f"{parts.scheme}://{parts.netloc}"
+    site = _site_of(digest_url) if digest_url else ""
     raw_url = raw_page_url(content, digest_url, raw_page)
 
     # Our own tokens, not feed text: escaping would turn a font stack's quotes into
@@ -77,6 +89,7 @@ def render_digest_email(
         digest_url=digest_url,
         raw_url=raw_url,
         site=site,
+        archive_url=archive_url(site) if site else "",
         publish_failed=publish_failed,
         degraded=degraded,
         tok=dark,

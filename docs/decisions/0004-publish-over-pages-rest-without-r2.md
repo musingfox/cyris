@@ -66,3 +66,7 @@ Extracted on 2026-10-08 from these sources at commit `c353d3f`:
 The publish timing budget and how `_page_is_live` and Cloudflare's reported stage decide what
 `pages_manifest` records are current behaviour, described in `docs/architecture.md` §6 under
 *Publishing*.
+
+In hosted mode, [ADR-0029](0029-a-hosted-tenants-pages-live-in-its-durable-object.md) replaces the
+destination: a hosted tenant's run publishes to no Pages project, and its pages are rows of its own
+Durable Object. A self-hosted deployment still publishes as this record describes.
