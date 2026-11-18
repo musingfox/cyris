@@ -1,0 +1,72 @@
+# Hosted mode: the Worker `cyris-hosted`, a separate deployment from `cyris-app`.
+# Many tenants' digests, each run against the tenant's own SQLite Durable Object
+# (docs/decisions/0028-one-sqlite-durable-object-per-hosted-tenant.md).
+#
+# Its own file, not an environment of wrangler.toml: wrangler.toml stays exactly
+# what a push to main deploys to production (ADR-0024), and a second environment
+# there would make every production deploy warn that none was named. This file
+# is deployed by hand to the trial account (docs/hosted-tenants.md), never by a
+# workflow: `wrangler deploy --config wrangler.hosted.toml`. It shares no name,
+# class, binding, container application or migration with wrangler.toml, which
+# tests/test_hosted_config.py holds. It sits at the repo root for the reason
+# wrangler.toml does: the image is built from the whole repository.
+name = "cyris-hosted"
+main = "workers/app/src/hosted.js"
+# As wrangler.toml's, so the shared modules run on the same runtime semantics.
+compatibility_date = "2026-06-01"
+
+# workers.dev only, as a clone of wrangler.toml: every route checks the Access JWT
+# itself (ADR-0015), so the hostname's Access application is what lets a request
+# through. No Preview URLs: each would be another public hostname.
+workers_dev = true
+preview_urls = false
+
+# Each tenant's tick asks its own database whether this hour is a digest hour.
+[triggers]
+crons = ["0 * * * *"]
+
+[vars]
+# STUB: the hosted tenants, hard-coded until `hosted-tenant-registry` replaces this
+# list. Grade A (docs/architecture.md §5): changing it is a commit and a deploy.
+# Each id names the tenant's Durable Objects; workers/app/src/hosted_seed.json
+# names each one's sources.
+CYRIS_HOSTED_TENANTS = ["alpha", "bravo"]
+
+[[containers]]
+# Its own container application and registry repository, never production's.
+name = "cyris-hosted-tenantcontainer"
+class_name = "TenantContainer"
+image = "./Dockerfile"
+# One run per tenant at a time; the two tenants' digest hours coincide. A start
+# made while both are held retries for up to 90 s (hosted_container.js).
+max_instances = 2
+instance_type = "basic"
+
+# One region, the one every tenant database is hinted to (`LOCATION_HINT` in
+# workers/app/src/tenant_db.js), so the 123 queries of a run stay in it.
+[containers.constraints]
+regions = ["WNAM"]
+
+# The container's output is the only log of a tenant's run, as in wrangler.toml.
+[observability]
+enabled = true
+
+[observability.logs]
+invocation_logs = true
+
+[[durable_objects.bindings]]
+class_name = "TenantContainer"
+name = "TENANT_RUN"
+
+[[durable_objects.bindings]]
+class_name = "TenantDb"
+name = "TENANT_DB"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TenantContainer"]
+
+# The tenant databases: one SQLite-backed object per tenant, named by its id.
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["TenantDb"]

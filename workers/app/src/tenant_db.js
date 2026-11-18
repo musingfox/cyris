@@ -19,7 +19,7 @@ export const TENANT = /^[a-z0-9-]{1,40}$/;
 
 // Only an object's first get() honours a location hint, and the operator's seed may be that
 // first get(), from anywhere: so every get() names the one region the hosted container runs in
-// (`[env.hosted.containers.constraints] regions` in wrangler.toml), where the probe measured
+// (`[containers.constraints] regions` in wrangler.hosted.toml), where the probe measured
 // 42 ms a read and 66 ms a write.
 // https://developers.cloudflare.com/durable-objects/reference/data-location/#provide-a-location-hint
 export const LOCATION_HINT = "wnam";
@@ -30,7 +30,7 @@ export const tenantDb = (env, tenant) => env.TENANT_DB.getByName(tenant, { locat
 // "sqlite_"; neither is the tenant's, so no count of the tenant's tables includes them.
 export const isTenantTable = (name) => !name.startsWith("_") && !name.startsWith("sqlite_");
 
-// The hosted tenants, from `CYRIS_HOSTED_TENANTS` in `[env.hosted.vars]`. A list that is
+// The hosted tenants, from `CYRIS_HOSTED_TENANTS` in wrangler.hosted.toml's `[vars]`. A list that is
 // missing or names an id outside TENANT stops the Worker rather than serve part of it.
 export function hostedTenants(env) {
   const tenants = env.CYRIS_HOSTED_TENANTS;

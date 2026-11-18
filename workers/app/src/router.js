@@ -44,7 +44,7 @@ const privateArchive = (env) => String(env.CYRIS_PRIVATE_ARCHIVE) === "true";
 const VOTE_ONLY = (path) => path === "/api/vote";
 
 // `cyris run --period` takes these; anything else would reach the container and fail there.
-const RUN_PERIODS = ["morning", "evening"];
+export const RUN_PERIODS = ["morning", "evening"];
 
 // The deployment's own calendar day, YYYY-MM-DD, at `now`.
 const dayIn = (timeZone, now) =>
@@ -65,7 +65,7 @@ const dayBefore = (day) => {
 // taken: the wizard, the one caller, can try again.
 const UNCHECKED = [503, "could not read the deployment's time zone to check the date; try again"];
 
-async function refuseRunDate(date, deps) {
+export async function refuseRunDate(date, deps) {
   const parsed = new Date(`${date}T00:00:00Z`);
   const real = /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(parsed.getTime()) &&
     parsed.toISOString().slice(0, 10) === date;
@@ -98,8 +98,9 @@ const NOT_SIGNED_IN = "This page needs a Cloudflare Access sign-in, and this req
 
 // null when the request carries a valid Access JWT, else the detail a 403 names.
 // Errors from parsing, signature, claims or the key fetch all mean refused, and
-// the token never reaches the detail or the console.
-async function accessRefusal(request, env, deps) {
+// the token never reaches the detail or the console. The hosted Worker's operator
+// routes (hosted_router.js) are gated by this same check.
+export async function accessRefusal(request, env, deps) {
   const unset = ACCESS_SETTINGS.filter((name) => !env[name]);
   if (unset.length) {
     return `The Worker has no ${unset.join(" and ")} set, so no Access sign-in can be checked.`;
