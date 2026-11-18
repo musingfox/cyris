@@ -33,7 +33,8 @@ HOSTED_NAMES = (
     "TenantDb",
     "TENANT_RUN",
     "TENANT_DB",
-    "CYRIS_HOSTED_TENANTS",
+    "TenantRegistry",
+    "REGISTRY",
 )
 
 
@@ -84,7 +85,7 @@ def test_the_default_worker_bundles_no_hosted_module() -> None:
     reached = _imports("index.js")
 
     assert "container.js" in reached
-    assert [m for m in reached if m.startswith(("hosted", "tenant_db"))] == []
+    assert [m for m in reached if m.startswith(("hosted", "tenant_"))] == []
 
 
 def test_the_hosted_file_shares_nothing_with_the_default_one() -> None:
@@ -92,14 +93,14 @@ def test_the_hosted_file_shares_nothing_with_the_default_one() -> None:
 
     assert hosted["name"] == "cyris-hosted" != default["name"]
     assert hosted["main"] == "workers/app/src/hosted.js"
-    assert _classes(hosted) == {"TenantContainer", "TenantDb"}
+    assert _classes(hosted) == {"TenantContainer", "TenantDb", "TenantRegistry"}
     assert _classes(hosted) & _classes(default) == set()
     [container] = hosted["containers"]
     assert container["name"] not in {c["name"] for c in default["containers"]}
     bindings = {b["name"] for b in hosted["durable_objects"]["bindings"]}
-    assert bindings == {"TENANT_RUN", "TENANT_DB"}
+    assert bindings == {"TENANT_RUN", "TENANT_DB", "REGISTRY"}
     assert bindings & {b["name"] for b in default["durable_objects"]["bindings"]} == set()
-    assert "CYRIS_APP_WORKER_NAME" not in hosted["vars"]
+    assert "CYRIS_APP_WORKER_NAME" not in hosted.get("vars", {})
 
 
 def test_the_hosted_file_runs_the_same_image_on_the_same_runtime() -> None:
@@ -173,12 +174,21 @@ def _seeded_settings() -> dict:
     return {**starting, **_seed()["settings"]}
 
 
-def test_the_seed_seeds_every_listed_tenant_and_only_those() -> None:
-    tenants = _toml("wrangler.hosted.toml")["vars"]["CYRIS_HOSTED_TENANTS"]
+def test_the_hosted_file_lists_no_tenant() -> None:
+    """The registry is the tenant list (ADR-0030): a tenant is a row, never a line of config."""
+    text = (ROOT / "wrangler.hosted.toml").read_text(encoding="utf-8")
 
-    assert len(tenants) == 2
+    assert "CYRIS_HOSTED_TENANTS" not in text
+    assert "vars" not in _toml("wrangler.hosted.toml")
+    assert [m for m in _imports("hosted.js") if "hostedTenants" in _js(m)] == []
+
+
+def test_the_seed_names_the_two_tenants_the_runbook_registers() -> None:
+    """scripts/hosted.sh registers, seeds, runs and checks the tenants the seed names."""
+    tenants = list(_seed()["sources"])
+
+    assert tenants == ["alpha", "bravo"]
     assert all(TENANT_ID.fullmatch(t) for t in tenants)
-    assert set(_seed()["sources"]) == set(tenants)
 
 
 def test_the_seeded_settings_are_every_required_key_each_valid() -> None:

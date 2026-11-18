@@ -25,13 +25,6 @@ preview_urls = false
 [triggers]
 crons = ["0 * * * *"]
 
-[vars]
-# STUB: the hosted tenants, hard-coded until `hosted-tenant-registry` replaces this
-# list. Grade A (docs/architecture.md §5): changing it is a commit and a deploy.
-# Each id names the tenant's Durable Objects; workers/app/src/hosted_seed.json
-# names each one's sources.
-CYRIS_HOSTED_TENANTS = ["alpha", "bravo"]
-
 [[containers]]
 # Its own container application and registry repository, never production's.
 name = "cyris-hosted-tenantcontainer"
@@ -62,6 +55,12 @@ name = "TENANT_RUN"
 class_name = "TenantDb"
 name = "TENANT_DB"
 
+# The operator's registry: one object, the tenant list among what it holds, so a
+# tenant is a row the operator registers, not a line of this file (ADR-0030).
+[[durable_objects.bindings]]
+class_name = "TenantRegistry"
+name = "REGISTRY"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["TenantContainer"]
@@ -70,3 +69,8 @@ new_sqlite_classes = ["TenantContainer"]
 [[migrations]]
 tag = "v2"
 new_sqlite_classes = ["TenantDb"]
+
+# The registry: one SQLite-backed object under a fixed name (tenant_registry.js).
+[[migrations]]
+tag = "v3"
+new_sqlite_classes = ["TenantRegistry"]

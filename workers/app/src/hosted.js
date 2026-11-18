@@ -5,7 +5,7 @@
 //
 // It serves the operator's routes behind Access (hosted_router.js) and runs the hourly tick
 // for every tenant. Until later cards land, a tenant is served no page, its run publishes
-// nothing and notifies nobody, and the tenant list is the stub in wrangler.hosted.toml.
+// nothing and notifies nobody. The tenant list is the operator's registry (tenant_registry.js).
 import { env } from "cloudflare:workers";
 import SCHEMA_SQL from "../../../src/cyris/adapters/store/schema.sql";
 import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json";
@@ -15,10 +15,13 @@ import SEED from "./hosted_seed.json";
 import { handleHostedRequest } from "./hosted_router.js";
 import { seedTenant, tenantReport } from "./hosted_seed.js";
 import { planTick, readTimeZone } from "./schedule.js";
-import { LOCATION_HINT, hostedTenants, tenantDb, tenantRows } from "./tenant_db.js";
+import { LOCATION_HINT, tenantDb, tenantRows } from "./tenant_db.js";
+import { tenantRegistry } from "./tenant_registry.js";
+import { ACTIVE } from "./tenant_status.js";
 
 export { TenantContainer } from "./hosted_container.js";
 export { TenantDb, TenantDbGateway } from "./tenant_db.js";
+export { TenantRegistry } from "./tenant_registry.js";
 
 // The same hint as the tenant's database: only an object's first get() honours one.
 const tenantRun = (tenant) => env.TENANT_RUN.getByName(tenant, { locationHint: LOCATION_HINT });
@@ -29,7 +32,8 @@ export default {
   async fetch(request) {
     return handleHostedRequest(request, env, {
       accessKeys: accessKeys(env.CYRIS_ACCESS_TEAM_DOMAIN),
-      tenants: hostedTenants(env),
+      register: (tenant, status) => tenantRegistry(env).register(tenant, { status }),
+      tenant: (tenant) => tenantRegistry(env).tenant(tenant),
       seed: (tenant) =>
         seedTenant({
           db: tenantDb(env, tenant),
@@ -45,11 +49,12 @@ export default {
     });
   },
 
-  // Each tenant's tick asks its own database whether this is a digest hour or one to catch up.
-  // A tenant whose schedule cannot be read gets no start: its container would reach the same
-  // object. One tenant's failure is logged and leaves the others' ticks alone.
+  // Each active tenant of the registry asks its own database whether this is a digest hour or
+  // one to catch up; a tenant of any other status gets no tick. A tenant whose schedule cannot
+  // be read gets no start: its container would reach the same object. One tenant's failure is
+  // logged and leaves the others' ticks alone.
   async scheduled() {
-    const tenants = hostedTenants(env);
+    const tenants = (await tenantRegistry(env).tenants({ status: ACTIVE })).map((row) => row.id);
     const ticks = await Promise.allSettled(
       tenants.map(async (tenant) => {
         const plan = await planTick({ env, read: tenantRows(env, tenant), unreadable: null });

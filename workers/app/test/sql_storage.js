@@ -1,8 +1,9 @@
-// Stand-ins for a hosted tenant's Durable Objects over real SQLite (node:sqlite), shared by the
-// tenant database's tests and the hosted Worker's.
+// Stand-ins for the hosted Worker's SQLite Durable Objects, a tenant's database and the
+// operator's registry, over real SQLite (node:sqlite), shared by their tests and the Worker's.
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { TenantDb } from "../src/tenant_db.js";
+import { TenantRegistry } from "../src/tenant_registry.js";
 
 export const SCHEMA_SQL = readFileSync(
   new URL("../../../src/cyris/adapters/store/schema.sql", import.meta.url),
@@ -33,7 +34,8 @@ export function tenantDb() {
 }
 
 // TENANT_DB as the runtime binds it: getByName returns the tenant's own object, made once.
-export function namespace() {
+// `make` builds each object; REGISTRY's is `registryNamespace`.
+export function namespace(make = () => tenantDb().db) {
   const objects = new Map();
   const gets = [];
   return {
@@ -41,8 +43,14 @@ export function namespace() {
     objects,
     getByName(name, options) {
       gets.push({ name, options });
-      if (!objects.has(name)) objects.set(name, tenantDb().db);
+      if (!objects.has(name)) objects.set(name, make());
       return objects.get(name);
     },
   };
 }
+
+// The operator's registry as the runtime builds one: its constructor creates its tables.
+export const registryObject = () => new TenantRegistry({ storage: { sql: sqlStorage() } }, {});
+
+// REGISTRY as the runtime binds it.
+export const registryNamespace = () => namespace(registryObject);

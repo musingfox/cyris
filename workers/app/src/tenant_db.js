@@ -30,18 +30,6 @@ export const tenantDb = (env, tenant) => env.TENANT_DB.getByName(tenant, { locat
 // "sqlite_"; neither is the tenant's, so no count of the tenant's tables includes them.
 export const isTenantTable = (name) => !name.startsWith("_") && !name.startsWith("sqlite_");
 
-// The hosted tenants, from `CYRIS_HOSTED_TENANTS` in wrangler.hosted.toml's `[vars]`. A list that is
-// missing or names an id outside TENANT stops the Worker rather than serve part of it.
-export function hostedTenants(env) {
-  const tenants = env.CYRIS_HOSTED_TENANTS;
-  if (!Array.isArray(tenants) || tenants.length === 0) {
-    throw new Error("CYRIS_HOSTED_TENANTS must list the hosted tenants");
-  }
-  const bad = tenants.filter((tenant) => typeof tenant !== "string" || !TENANT.test(tenant));
-  if (bad.length) throw new Error(`CYRIS_HOSTED_TENANTS names ids outside ${TENANT}: ${bad.join(", ")}`);
-  return tenants;
-}
-
 // One query on a tenant's database, for the Worker's own reads (schedule.js): its rows, or
 // null when it cannot answer, with a warning naming `what` and the tenant.
 export const tenantRows = (env, tenant) => async (sql, params, what) => {
@@ -87,7 +75,8 @@ const refuse = (status, message) => Response.json({ errors: [{ message }] }, { s
 export class TenantDbGateway extends WorkerEntrypoint {
   async fetch(request) {
     // Every other request is refused 403 before any object is reached: another tenant's
-    // query, or any other path or method.
+    // query, one aimed at the operator's registry (tenant_registry.js, which this gateway never
+    // names and whose name no tenant id can take), or any other path or method.
     const parts = new URL(request.url).pathname.split("/").filter(Boolean);
     if (request.method !== "POST" || parts.length !== 3 || parts[0] !== "t" || parts[2] !== "query") {
       return refuse(403, "this gateway answers only POST /t/<tenant>/query");

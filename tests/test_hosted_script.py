@@ -65,7 +65,12 @@ sys.stdout.write("200")
 @pytest.fixture
 def repo(tmp_path: Path) -> Path:
     """The files the script reads, in a tree of their own, with stub commands first on PATH."""
-    for rel in ("scripts/hosted.sh", "scripts/hosted_check.py", "wrangler.hosted.toml"):
+    for rel in (
+        "scripts/hosted.sh",
+        "scripts/hosted_check.py",
+        "wrangler.hosted.toml",
+        "workers/app/src/hosted_seed.json",
+    ):
         (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(ROOT / rel, tmp_path / rel)
     bin_dir = tmp_path / "bin"
@@ -223,9 +228,28 @@ def test_a_run_names_a_period_the_worker_takes(repo: Path) -> None:
     ]
 
 
+def test_register_registers_each_seeded_tenant_with_the_token_on_stdin(repo: Path) -> None:
+    """The seed route seeds only a registered tenant, so the runbook registers both first."""
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, calls = _run(repo, ["register"], ["client-id.access", "client-SECRET"])
+
+    assert done.returncode == 0, done.stderr
+    curls = [c for c in calls if c["cmd"] == "curl"]
+    assert [c["args"][-1] for c in curls] == [
+        f"{URL}/hosted/tenants/alpha/register",
+        f"{URL}/hosted/tenants/bravo/register",
+    ]
+    for c in curls:
+        assert c["args"][c["args"].index("-X") + 1] == "POST"
+        assert "CF-Access-Client-Secret: client-SECRET" in c["stdin"]
+        assert "client-SECRET" not in " ".join(c["args"])
+
+
 @pytest.mark.parametrize(
     ("args", "route"),
     [
+        (["register"], "register"),
         (["seed"], "seed"),
         (["run", "morning"], "run?period=morning"),
         (["check"], "report"),

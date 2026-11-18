@@ -1,12 +1,14 @@
 # Hosted tenants on the trial account
 
 This deploys the hosted Worker `cyris-hosted` (`wrangler.hosted.toml`) to the **trial** account.
-It then seeds the two hard-coded tenants, `alpha` and `bravo`, and runs one digest for each.
+It then registers two tenants, `alpha` and `bravo`, in the Worker's registry, seeds each, and
+runs one digest for each.
 Last, it checks that each tenant's `digest_runs` and `digests` hold only that tenant's own rows.
 Why each tenant has a SQLite Durable Object of its own is
 [ADR-0028](decisions/0028-one-sqlite-durable-object-per-hosted-tenant.md). What the hosted Worker
 is, and what it does not do yet, is in `docs/architecture.md` §6, *Hosted mode is a separate
-Worker*.
+Worker*. Why the tenant list is a registry Durable Object and not a line of config is
+[ADR-0030](decisions/0030-the-operator-registry-is-one-sqlite-durable-object.md).
 
 `cyris-hosted` is a separate Worker from `cyris-app`. Nothing here deploys or changes
 `wrangler.toml`, which a push to main deploys to production (ADR-0024).
@@ -52,9 +54,11 @@ scripts/hosted.sh deploy
 ```
 
 This runs `wrangler deploy --config wrangler.hosted.toml --env-file /dev/null`, after you
-confirm the account. It deploys the Worker, its two Durable Object classes (`TenantContainer`
-and `TenantDb`) and the container application `cyris-hosted-tenantcontainer`. It never reads
-`.env`.
+confirm the account. It deploys the Worker, its three Durable Object classes
+(`TenantContainer`, `TenantDb` and `TenantRegistry`) and the container application
+`cyris-hosted-tenantcontainer`. It never reads `.env`. A first deploy's registry is empty, so
+until step 5 the Worker has no tenant: the hourly tick starts nothing, and every tenant route
+answers 404.
 
 Until step 3 sets the Access secrets, every request to the Worker is answered with 403.
 
@@ -98,14 +102,21 @@ scripts/hosted.sh containers
 A first deploy can take several minutes before an instance can start. Wait until
 `cyris-hosted-tenantcontainer` is listed and ready.
 
-## 5. Seed both tenants
+## 5. Register and seed both tenants
 
 ```bash
+scripts/hosted.sh register
 scripts/hosted.sh seed
 ```
 
-This runs `POST /hosted/tenants/<tenant>/seed` for `alpha`, then `bravo`. Each seed writes three
-things into the tenant's own database:
+`register` runs `POST /hosted/tenants/<tenant>/register` for `alpha`, then `bravo`. Each answer is
+the tenant's row in the registry, with `"status": "active"`. Registering again leaves the
+tenant active and keeps its `created_at`. The tenants are the two the seed names
+(`workers/app/src/hosted_seed.json`).
+
+The seed route seeds only a registered tenant: for any other it answers 404 and writes nothing,
+and so do the run and report routes. `seed` runs `POST /hosted/tenants/<tenant>/seed` for `alpha`,
+then `bravo`. Each seed writes three things into the tenant's own database:
 
 - `schema.sql`;
 - every required setting: provider `anthropic`, model `claude-haiku-5-5`, digests at 08:00 and
@@ -115,6 +126,11 @@ things into the tenant's own database:
 
 Each answer names the tenant, how many settings it wrote, its sources and how many tables it
 has. Seeding again writes the same rows back and leaves other rows alone.
+
+To stop a tenant's runs without deleting anything, register it again as paused. The script has
+no subcommand for it; send `POST /hosted/tenants/<tenant>/register?status=paused` with the
+service token's two headers, and `?status=active` to resume it. The tick skips a paused tenant,
+and its run route answers 409. Its seed and report routes still answer.
 
 ## 6. Run one digest for each
 
@@ -160,7 +176,7 @@ result.
 A tenant that has no `ok` run yet may still be running. Check again a few minutes later. A run
 that ended in `error` has its reason in that tenant's Workers Logs.
 
-The hourly tick also runs each tenant at 08:00 and 20:00 UTC. A check after one of those hours
+The hourly tick also runs each active registered tenant at 08:00 and 20:00 UTC. A check after one of those hours
 counts two runs, and each is still that tenant's own.
 
 ## 8. Tear down (when you are done)
@@ -170,6 +186,6 @@ scripts/hosted.sh delete
 ```
 
 This asks for the account and a `yes`, then deletes `cyris-hosted` and its Durable Objects,
-tenant databases included. Afterwards, check the dashboard's Containers page (*label
+tenant databases and the registry included. Afterwards, check the dashboard's Containers page (*label
 unverified*) for a leftover `cyris-hosted-tenantcontainer` application, and delete the Access
 application from step 2.

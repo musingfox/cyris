@@ -1,6 +1,6 @@
 // The operator's seed of one hosted tenant, and the report that shows what its database holds.
-// STUB, beside the tenant list: per-tenant onboarding replaces the seed, and the registry
-// (`hosted-tenant-registry`) the list. Both run on a TenantDb stub's `query` and `tables`, so a
+// STUB: per-tenant onboarding replaces the seed. The route seeds only a tenant the operator's
+// registry holds (hosted_router.js). Both run on a TenantDb stub's `query` and `tables`, so a
 // test hands them an object over local SQLite. No workerd-only imports: vitest runs this under Node.
 
 const SETTING_UPSERT =

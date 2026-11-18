@@ -34,7 +34,10 @@ while IFS='=' read -r key value; do
   [[ "$key" == HOSTED_URL ]] && HOSTED_URL=$value
 done <"$STATE"
 
-TENANTS=$(python3 -c 'import sys, tomllib; print(" ".join(tomllib.load(open(sys.argv[1], "rb"))["vars"]["CYRIS_HOSTED_TENANTS"]))' "$CONFIG")
+# The runbook's tenants are the ones the seed names sources for. The Worker's own list is its
+# registry (ADR-0030), which `register` writes them into before anything else addresses them.
+SEED=workers/app/src/hosted_seed.json
+TENANTS=$(python3 -c 'import json, sys; print(" ".join(json.load(open(sys.argv[1]))["sources"]))' "$SEED")
 
 # ask NAME PROMPT [secret]: read a value typed now; a secret is read without echo.
 ask() {
@@ -148,6 +151,15 @@ case "${1:-}" in
     ask_account
     run_wrangler containers list
     ;;
+  register)
+    ask_access
+    out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-register.XXXXXX")
+    failed=()
+    for tenant in $TENANTS; do
+      call "$tenant" POST "/hosted/tenants/$tenant/register" "$out/$tenant.json" || failed+=("$tenant")
+    done
+    finish ${failed[@]+"${failed[@]}"}
+    ;;
   seed)
     ask_access
     out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-seed.XXXXXX")
@@ -197,7 +209,7 @@ case "${1:-}" in
     run_wrangler delete
     ;;
   *)
-    echo "usage: $0 deploy|secrets|containers|seed|run [morning|evening]|check|tail|delete" >&2
+    echo "usage: $0 deploy|secrets|containers|register|seed|run [morning|evening]|check|tail|delete" >&2
     exit 2
     ;;
 esac

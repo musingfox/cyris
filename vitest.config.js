@@ -1,7 +1,18 @@
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
+// wrangler bundles a `.sql` import as its text (a Text module rule it applies by default), so
+// hosted.js imports schema.sql that way; this does the same under vitest, so a test can import
+// the hosted Worker's entry itself.
+const sqlAsText = {
+  name: "sql-as-text",
+  transform(code, id) {
+    if (id.endsWith(".sql")) return { code: `export default ${JSON.stringify(code)};`, map: null };
+  },
+};
+
 export default defineConfig({
+  plugins: [sqlAsText],
   resolve: {
     alias: {
       "cloudflare:workers": fileURLToPath(new URL("workers/app/test/cloudflare_workers_stub.js", import.meta.url)),
