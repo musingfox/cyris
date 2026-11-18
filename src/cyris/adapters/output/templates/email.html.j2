@@ -157,7 +157,7 @@
         {% endif %}
         <footer class="footer">
             <div>// {% if content.usage.api_calls and content.usage.estimated_cost is not none %}{{ t("mail.generated_by_cost", tokens=content.usage.total_tokens, calls=content.usage.api_calls, cost="%.4f" | format(content.usage.estimated_cost), elements={"link": ("a", {"href": project_url})}) }}{% else %}{{ t("issue.generated_by", tokens=content.usage.total_tokens, calls=content.usage.api_calls, elements={"link": ("a", {"href": project_url})}) }}{% endif %}</div>
-            {% if site %}<div>{{ t("mail.footer_links", elements={"archive": ("a", {"href": site ~ "/"}), "settings": ("a", {"href": site ~ "/settings"})}) }}</div>{% endif %}
+            {% if site %}<div>{{ t("mail.footer_links", elements={"archive": ("a", {"href": archive_url}), "settings": ("a", {"href": site ~ "/settings"})}) }}</div>{% endif %}
         </footer>
     </div>
 </body>

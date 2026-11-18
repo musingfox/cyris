@@ -42,6 +42,16 @@ def _site_of(digest_url: str) -> str:
     return f"{parts.scheme}://{parts.netloc}{parts.path.rsplit('/', 1)[0]}"
 
 
+def archive_url(site: str) -> str:
+    """The archive of `site`: its root on a Pages site, its `index.html` in a hosted tenant's.
+
+    A hosted tenant's site root serves its latest issue, not the archive (ADR-0029), and both
+    Pages and the hosted Worker serve `index.html`. A site at a host's root keeps `/`, the
+    address a self-hosted mail has always linked.
+    """
+    return f"{site}/index.html" if urlsplit(site).path else f"{site}/"
+
+
 def raw_page_url(content: DigestContent, digest_url: str, raw_page: bool) -> str:
     """The issue's raw page beside the digest link's page, or "" when there is none."""
     if not (digest_url and raw_page):
@@ -79,6 +89,7 @@ def render_digest_email(
         digest_url=digest_url,
         raw_url=raw_url,
         site=site,
+        archive_url=archive_url(site) if site else "",
         publish_failed=publish_failed,
         degraded=degraded,
         tok=dark,
