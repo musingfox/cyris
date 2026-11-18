@@ -174,12 +174,47 @@ def _seeded_settings() -> dict:
     return {**starting, **_seed()["settings"]}
 
 
-def test_the_hosted_file_lists_no_tenant() -> None:
-    """The registry is the tenant list (ADR-0030): a tenant is a row, never a line of config."""
-    text = (ROOT / "wrangler.hosted.toml").read_text(encoding="utf-8")
+def _tenant_vars(variables: dict, tenants: list[str]) -> list[str]:
+    """The vars that name or list tenants: a name for a tenant list, or a value naming a tenant.
 
-    assert "CYRIS_HOSTED_TENANTS" not in text
-    assert "vars" not in _toml("wrangler.hosted.toml")
+    A value names one when it, an item of it, or a comma-separated part of it is a tenant id.
+    Any other var, which a later hosted card may add, is not this test's business.
+    """
+    flagged = []
+    for name, value in variables.items():
+        items = value if isinstance(value, list) else [value]
+        parts = {
+            part.strip() for item in items if isinstance(item, str) for part in item.split(",")
+        }
+        if re.search(r"TENANTS|TENANT_IDS|TENANT_LIST", name) or parts & set(tenants):
+            flagged.append(name)
+    return flagged
+
+
+def test_the_tenant_var_check_flags_a_tenant_list_and_nothing_else() -> None:
+    tenants = ["alpha", "bravo"]
+
+    assert _tenant_vars({"CYRIS_HOSTED_TENANTS": ["alpha", "bravo"]}, tenants) == [
+        "CYRIS_HOSTED_TENANTS"
+    ]
+    assert _tenant_vars({"CYRIS_HOSTED_TENANT_IDS": []}, tenants) == ["CYRIS_HOSTED_TENANT_IDS"]
+    assert _tenant_vars({"ROSTER": "alpha, bravo", "ONLY": ["bravo"]}, tenants) == [
+        "ROSTER",
+        "ONLY",
+    ]
+    assert _tenant_vars({"CYRIS_HOSTED_DIGEST_ORIGIN": "https://alpha.example"}, tenants) == []
+    assert _tenant_vars({"CYRIS_HOSTED_TENANT_LIMIT": "20", "FLAG": True}, tenants) == []
+
+
+def test_the_hosted_file_lists_no_tenant() -> None:
+    """The registry is the tenant list (ADR-0030): a tenant is a row, never a line of config.
+
+    A hosted var of any other kind may come with a later card; only one naming or listing
+    tenants is refused.
+    """
+    hosted = _toml("wrangler.hosted.toml")
+
+    assert _tenant_vars(hosted.get("vars", {}), list(_seed()["sources"])) == []
     assert [m for m in _imports("hosted.js") if "hostedTenants" in _js(m)] == []
 
 
