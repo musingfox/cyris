@@ -244,3 +244,58 @@ describe("readTimeZone", () => {
     expect(unused.calls).toHaveLength(0);
   });
 });
+
+describe("the hosted Worker's reads go to the tenant's own database", () => {
+  // A tenant's database as tenant_db.js `tenantRows` answers it: the rows a query selects, or
+  // null (having warned) when it cannot answer. No REST API is involved.
+  function tenantRead({ schedule = SCHEDULE, runs = [], answers = true } = {}) {
+    const read = async (sql, params, what) => {
+      read.calls.push({ sql, params, what });
+      if (!answers) return null;
+      if (sql.includes("digest_runs")) {
+        const [period, since] = params;
+        return runs.filter((row) => row.period === period && row.finished_at >= since);
+      }
+      return Object.entries(schedule)
+        .filter(([key]) => params.includes(key))
+        .map(([key, value]) => ({ key, value: JSON.stringify(value) }));
+    };
+    read.calls = [];
+    return read;
+  }
+
+  const noRest = () => d1(() => {
+    throw new Error("a hosted read must not reach the REST API");
+  });
+
+  it("plans a digest hour from the tenant's settings", async () => {
+    const read = tenantRead();
+    const fetchImpl = noRest();
+
+    expect(await planTick({ env: ENV, fetchImpl, now: () => TAIPEI_8AM, read })).toEqual({});
+    expect(read.calls.map((call) => call.what)).toEqual(["schedule"]);
+    expect(fetchImpl.calls).toEqual([]);
+  });
+
+  it("catches up an hour the tenant's digest_runs holds no ok run of", async () => {
+    const read = tenantRead();
+
+    const plan = await planTick({ env: ENV, fetchImpl: noRest(), now: () => TAIPEI_9AM, read });
+
+    expect(plan).toEqual(MORNING_CATCH_UP);
+    expect(read.calls.map((call) => call.what)).toEqual(["schedule", "digest_runs"]);
+  });
+
+  it("starts nothing for a tenant whose schedule cannot be read, when the caller says so", async () => {
+    const read = tenantRead({ answers: false });
+    const at = () => TAIPEI_8AM;
+
+    expect(await planTick({ env: ENV, fetchImpl: noRest(), now: at, read, unreadable: null })).toBeNull();
+    // The production tick keeps its rule: an unread schedule still wakes the container.
+    expect(await planTick({ env: ENV, fetchImpl: noRest(), now: at, read })).toEqual({});
+  });
+
+  it("reads the time zone a manual run's date is checked against", async () => {
+    expect(await readTimeZone({ env: ENV, fetchImpl: noRest(), read: tenantRead() })).toBe("Asia/Taipei");
+  });
+});
