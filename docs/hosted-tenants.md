@@ -11,9 +11,7 @@ Worker*.
 `cyris-hosted` is a separate Worker from `cyris-app`. Nothing here deploys or changes
 `wrangler.toml`, which a push to main deploys to production (ADR-0024).
 
-Step 0 checks the branch `muster/hosted-skeleton` out of the main repository into a fresh
-worktree at `~/workspace/cyris-hosted`. Every command after it runs, as pasted, from that
-worktree's root. `scripts/hosted.sh` asks for each value by name:
+Every command runs, as pasted, from the root of a checkout of this repository. `scripts/hosted.sh` asks for each value by name:
 
 - `ACCOUNT_ID`: the trial account's Account ID (dashboard > Account home > Account ID). You
   type it for every command that runs wrangler. It is never stored, and it is never read from
@@ -40,15 +38,11 @@ You need:
 - Workers Paid on the trial account, because the Worker runs containers.
 
 ```bash
-git -C /Users/nickhuang/workspace/cyris worktree add ~/workspace/cyris-hosted muster/hosted-skeleton
-cd ~/workspace/cyris-hosted
 bun install --frozen-lockfile
 bun x wrangler login
 ```
 
-`git worktree add` refuses a branch another worktree of that repository has checked out;
-`git -C /Users/nickhuang/workspace/cyris worktree list` shows which one does. Log in as a user
-who can see the trial account: that login is the credential every wrangler call of the script
+Log in as a user who can see the trial account: that login is the credential every wrangler call of the script
 acts as, since none of them reads `.env`.
 
 ## 1. Deploy
@@ -178,8 +172,4 @@ scripts/hosted.sh delete
 This asks for the account and a `yes`, then deletes `cyris-hosted` and its Durable Objects,
 tenant databases included. Afterwards, check the dashboard's Containers page (*label
 unverified*) for a leftover `cyris-hosted-tenantcontainer` application, and delete the Access
-application from step 2. Last, remove the worktree:
-
-```bash
-git -C /Users/nickhuang/workspace/cyris worktree remove ~/workspace/cyris-hosted
-```
+application from step 2.

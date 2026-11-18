@@ -76,8 +76,8 @@ How it is built:
 
 ### Evidence
 
-The probe on branch `muster/hosted-probe-3` (`proto/tenant-db/`) measured these facts on the
-trial account on 2026-11-18:
+A throwaway probe Worker, kept outside this repository, measured these facts on the trial
+account on 2026-11-18:
 
 * The whole path works with `enableInternet: true`: from the container to
   `http://db.cyris/t/<tenant>/query`, through the app Worker's
@@ -173,8 +173,6 @@ trial account on 2026-11-18:
 
 ## More Information
 
-* The probe: branch `muster/hosted-probe-3`, `proto/tenant-db/` (`src/index.js`,
-  `container/probe.py`, `RUNBOOK.md`). It is reference only and is not merged.
 * `docs/architecture.md` §4 has the row for a hosted tenant's database. §5 grades the tenant id,
   the tenant list, the gateway host, the location hint and the start retry.
 * `docs/hosted-tenants.md` is the procedure. It deploys the hosted Worker to the trial account,
