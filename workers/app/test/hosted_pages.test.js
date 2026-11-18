@@ -1,11 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { generateKeyPair, exportJWK, SignJWT, createLocalJWKSet } from "jose";
 import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json" with { type: "json" };
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json" with { type: "json" };
 import SEED from "../src/hosted_seed.json" with { type: "json" };
 import { serveTenantPage, sha256Hex } from "../src/hosted_pages.js";
 import { handleHostedRequest } from "../src/hosted_router.js";
+import { createSitePage } from "../src/hosted_site.js";
 import { seedTenant, tenantReport } from "../src/hosted_seed.js";
+import { LOCATION_HINT } from "../src/tenant_db.js";
 import { typeScaleStyle } from "../src/type_scale.js";
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace } from "./sql_storage.js";
 
@@ -225,5 +227,71 @@ describe("a hosted tenant's pages", () => {
     expect(report.latest_page).toEqual({ path: "/2026-11-18-morning.html", sha256: await sha256Hex(served) });
     expect(report.latest_page.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(other.latest_page.sha256).not.toBe(report.latest_page.sha256);
+  });
+});
+
+// The wiring hosted.js hands the router, built by the same factory it calls: only the databases
+// and workerd's HTMLRewriter are stand-ins. HTMLRewriter is the one global the factory reads.
+describe("the hosted Worker's page wiring", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  class FakeHTMLRewriter {
+    on(selector, handlers) {
+      this.selector = selector;
+      this.handlers = handlers;
+      return this;
+    }
+    transform(response) {
+      const appended = [];
+      this.handlers.element({ append: (html, options) => appended.push([html, options]) });
+      expect(this.selector).toBe("head");
+      return injectStyle(response, appended.map(([html]) => html).join(""));
+    }
+  }
+
+  async function wired() {
+    vi.stubGlobal("HTMLRewriter", FakeHTMLRewriter);
+    const TENANT_DB = namespace();
+    for (const tenant of ["alpha", "bravo"]) await seed(TENANT_DB, tenant);
+    await publish(TENANT_DB.getByName("alpha"), "2026-11-18", "morning", { savedAt: "2026-11-18T08:05:00+00:00", tenant: "alpha" });
+    await publish(TENANT_DB.getByName("bravo"), "2026-11-18", "evening", { savedAt: "2026-11-18T20:05:00+00:00", tenant: "bravo" });
+    TENANT_DB.gets.length = 0;
+    const setScale = (tenant, scale) =>
+      TENANT_DB.getByName(tenant).query("UPDATE settings SET value = ? WHERE key = 'digest.type_scale'", [JSON.stringify(scale)]);
+    const sitePage = createSitePage({ TENANT_DB });
+    const get = (tenant, path = "/") => sitePage(new Request(`${ORIGIN}/t/${tenant}${path}`), tenant, path);
+    return { get, setScale, TENANT_DB };
+  }
+
+  it("reads a tenant's page from that tenant's object, and never from another's", async () => {
+    const { get, TENANT_DB } = await wired();
+
+    expect(await (await get("alpha")).text()).toBe(page("alpha", "2026-11-18-morning"));
+    expect(await (await get("bravo")).text()).toBe(page("bravo", "2026-11-18-evening"));
+    expect((await get("alpha", "/2026-11-18-evening")).status).toBe(404);
+
+    expect(new Set(TENANT_DB.gets.map(({ name }) => name))).toEqual(new Set(["alpha", "bravo"]));
+    expect(TENANT_DB.gets.every(({ options }) => options.locationHint === LOCATION_HINT)).toBe(true);
+    // Nothing read for alpha's request touched bravo's object: every read of the first request names alpha.
+    TENANT_DB.gets.length = 0;
+    await get("alpha");
+    expect(TENANT_DB.gets.map(({ name }) => name)).toEqual(expect.arrayContaining(["alpha"]));
+    expect(TENANT_DB.gets.map(({ name }) => name)).not.toContain("bravo");
+  });
+
+  it("reads each tenant's type size from its own object, and holds it per tenant", async () => {
+    const { get, setScale } = await wired();
+    await setScale("alpha", 1.125);
+
+    const alpha = await (await get("alpha")).text();
+    const bravo = await (await get("bravo")).text();
+
+    expect(alpha).toContain(`${typeScaleStyle(1.125)}</head>`);
+    expect(bravo).toBe(page("bravo", "2026-11-18-evening"));
+    // Each tenant's size is held on its own: a change to bravo's is not read as alpha's.
+    await setScale("bravo", 0.875);
+    await setScale("alpha", 1);
+    expect(await (await get("alpha")).text()).toContain(typeScaleStyle(1.125));
+    expect(await (await get("bravo")).text()).toBe(page("bravo", "2026-11-18-evening"));
   });
 });

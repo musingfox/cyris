@@ -13,12 +13,11 @@ import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json";
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json";
 import { accessKeys } from "./access_keys.js";
 import SEED from "./hosted_seed.json";
-import { serveTenantPage } from "./hosted_pages.js";
 import { handleHostedRequest } from "./hosted_router.js";
+import { createSitePage } from "./hosted_site.js";
 import { seedTenant, tenantReport } from "./hosted_seed.js";
 import { planTick, readTimeZone } from "./schedule.js";
 import { LOCATION_HINT, hostedTenants, tenantDb, tenantRows } from "./tenant_db.js";
-import { createTypeScale } from "./type_scale.js";
 
 export { TenantContainer } from "./hosted_container.js";
 export { TenantDb, TenantDbGateway } from "./tenant_db.js";
@@ -28,23 +27,8 @@ const tenantRun = (tenant) => env.TENANT_RUN.getByName(tenant, { locationHint: L
 
 const startRun = (tenant, period, date) => tenantRun(tenant).startRun({ period, date });
 
-// Each tenant's type size, read from its own object; module scope, so one memo per isolate and
-// tenant, as index.js holds one for the deployment (ADR-0013).
-const typeScales = new Map();
-const typeScaleOf = (tenant) => {
-  if (!typeScales.has(tenant)) typeScales.set(tenant, createTypeScale({ env, read: tenantRows(env, tenant) }));
-  return typeScales.get(tenant);
-};
-
-// As index.js's: the style goes at the end of <head>.
-const injectStyle = (response, html) =>
-  new HTMLRewriter()
-    .on("head", {
-      element(head) {
-        head.append(html, { html: true });
-      },
-    })
-    .transform(response);
+// One memo of each tenant's type size per isolate, as module scope holds it.
+const sitePage = createSitePage(env);
 
 export default {
   async fetch(request) {
@@ -64,13 +48,7 @@ export default {
       report: (tenant) => tenantReport({ db: tenantDb(env, tenant), tenant }),
       timeZone: (tenant) => readTimeZone({ env, read: tenantRows(env, tenant) }),
       startRun,
-      page: (request, tenant, rest) =>
-        serveTenantPage(request, {
-          tenant,
-          rest,
-          db: tenantDb(env, tenant),
-          deps: { typeScale: typeScaleOf(tenant), injectStyle },
-        }),
+      page: sitePage,
     });
   },
 
