@@ -157,3 +157,117 @@ describe("forward", () => {
     expect(response.status).toBe(502);
   });
 });
+
+describe("a start with interception and a retry (the hosted run)", () => {
+  const NO_INSTANCE_ERROR =
+    "There is no container instance that can be provided to this Durable Object, try again later";
+  const RETRY = { maxWaitMs: 90_000, backoffMs: [1_000, 2_000, 4_000, 8_000, 10_000] };
+
+  // The fake container refuses `refusals` starts in turn, each as start() itself (`"start"`) or
+  // as the port's first answer (`"port"`), then grants one; `order` logs what was called.
+  function held(refusals = []) {
+    const ctx = fakeContext();
+    const order = [];
+    const container = ctx.container;
+    const start = container.start.bind(container);
+    let pending = null;
+    container.start = (options) => {
+      order.push("start");
+      const refusal = refusals.shift();
+      if (refusal === "start") throw new Error(NO_INSTANCE_ERROR);
+      start(options);
+      pending = refusal ?? null;
+    };
+    container.destroy = async () => {
+      order.push("destroy");
+      container.running = false;
+    };
+    container.getTcpPort = () => ({
+      fetch: async () => {
+        if (pending === "port") throw new Error(`Network connection lost. ${NO_INSTANCE_ERROR}`);
+        throw new Error("connection refused: the run listens on no port");
+      },
+    });
+    return { ctx, order };
+  }
+
+  // A clock that only the backoff moves, so 90 s pass without waiting them.
+  function clocked(ctx, order, intercept = async () => order.push("intercept")) {
+    let clock = 0;
+    const slept = [];
+    const lifecycle = new Lifecycle(ctx, 900_000, {
+      intercept,
+      startRetry: RETRY,
+      now: () => clock,
+      sleep: async (ms) => {
+        slept.push(ms);
+        clock += ms;
+      },
+    });
+    return { lifecycle, slept };
+  }
+
+  it("registers its interception before start(), and again before every start", async () => {
+    const { ctx, order } = held(["start"]);
+    const { lifecycle } = clocked(ctx, order);
+
+    expect(await lifecycle.start(ENV)).toBe(true);
+    expect(order).toEqual(["intercept", "start", "intercept", "start"]);
+    expect(ctx.container.starts).toEqual([{ env: ENV, enableInternet: true }]);
+  });
+
+  it("does not start a container whose interception could not be registered", async () => {
+    const { ctx, order } = held();
+    const { lifecycle } = clocked(ctx, order, async () => {
+      throw new Error("interceptOutboundHttp failed");
+    });
+
+    await expect(lifecycle.start(ENV)).rejects.toThrow("interceptOutboundHttp failed");
+    expect(order).toEqual([]);
+  });
+
+  it("starts again after each backoff while no instance can be provided", async () => {
+    const { ctx, order } = held(["start", "port", "start"]);
+    const { lifecycle, slept } = clocked(ctx, order);
+
+    expect(await lifecycle.start(ENV)).toBe(true);
+    expect(slept).toEqual([1_000, 2_000, 4_000]);
+    // The start the port refused had left the container running; it is destroyed before the next.
+    const starts = order.filter((step) => step !== "intercept");
+    expect(starts).toEqual(["start", "start", "destroy", "start", "start"]);
+    expect(ctx.container.timeouts).toEqual([900_000]);
+  });
+
+  it("gives up once the next wait would pass 90 seconds", async () => {
+    const { ctx, order } = held(Array(50).fill("start"));
+    const { lifecycle, slept } = clocked(ctx, order);
+
+    await expect(lifecycle.start(ENV)).rejects.toThrow(NO_INSTANCE_ERROR);
+    // 15 s of rising backoff, then 10 s at a time: 85 s, since one more wait would end at 95.
+    expect(slept).toEqual([1_000, 2_000, 4_000, 8_000, ...Array(7).fill(10_000)]);
+    expect(slept.reduce((sum, ms) => sum + ms, 0)).toBeLessThanOrEqual(RETRY.maxWaitMs);
+  });
+
+  it("throws any other failure at once", async () => {
+    const { ctx, order } = held();
+    ctx.container.start = () => {
+      throw new Error("image not found");
+    };
+    const { lifecycle, slept } = clocked(ctx, order);
+
+    await expect(lifecycle.start(ENV)).rejects.toThrow("image not found");
+    expect(slept).toEqual([]);
+  });
+
+  it("leaves a start without them as it was: one start(), and no retry", async () => {
+    const ctx = fakeContext();
+    let starts = 0;
+    ctx.container.start = () => {
+      starts++;
+      throw new Error(NO_INSTANCE_ERROR);
+    };
+
+    await expect(new Lifecycle(ctx, 900_000).start(ENV)).rejects.toThrow(NO_INSTANCE_ERROR);
+    expect(starts).toBe(1);
+  });
+});

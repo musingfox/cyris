@@ -1,0 +1,115 @@
+// A hosted tenant's tables: one SQLite Durable Object per tenant, and the gateway its run
+// container reaches it through. Why a Durable Object and not D1:
+// docs/decisions/0028-one-sqlite-durable-object-per-hosted-tenant.md.
+//
+// The container sends each query to http://db.cyris/t/<tenant>/query. Its Durable Object
+// (hosted_container.js) intercepts that host before the container starts and hands it to
+// TenantDbGateway with `props.tenant` set to its own name, so a gateway answers one tenant
+// and refuses every other with 403; the container holds no token and no binding.
+
+import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
+
+// The host the container queries; `GATEWAY_ORIGIN` in src/cyris/adapters/store/tenant_gateway.py
+// names the same one, and tests/test_hosted_config.py holds the two together.
+export const DB_HOST = "db.cyris";
+
+// A tenant id: one path segment, and the name of the tenant's Durable Objects. `config.TENANT_ID`
+// in the container holds the same pattern.
+export const TENANT = /^[a-z0-9-]{1,40}$/;
+
+// Only an object's first get() honours a location hint, and the operator's seed may be that
+// first get(), from anywhere: so every get() names the one region the hosted container runs in
+// (`[env.hosted.containers.constraints] regions` in wrangler.toml), where the probe measured
+// 42 ms a read and 66 ms a write.
+// https://developers.cloudflare.com/durable-objects/reference/data-location/#provide-a-location-hint
+export const LOCATION_HINT = "wnam";
+
+export const tenantDb = (env, tenant) => env.TENANT_DB.getByName(tenant, { locationHint: LOCATION_HINT });
+
+// The object's own tables start with "_" (`_cf_KV`, `_cf_METADATA`) and SQLite's with
+// "sqlite_"; neither is the tenant's, so no count of the tenant's tables includes them.
+export const isTenantTable = (name) => !name.startsWith("_") && !name.startsWith("sqlite_");
+
+// The hosted tenants, from `CYRIS_HOSTED_TENANTS` in `[env.hosted.vars]`. A list that is
+// missing or names an id outside TENANT stops the Worker rather than serve part of it.
+export function hostedTenants(env) {
+  const tenants = env.CYRIS_HOSTED_TENANTS;
+  if (!Array.isArray(tenants) || tenants.length === 0) {
+    throw new Error("CYRIS_HOSTED_TENANTS must list the hosted tenants");
+  }
+  const bad = tenants.filter((tenant) => typeof tenant !== "string" || !TENANT.test(tenant));
+  if (bad.length) throw new Error(`CYRIS_HOSTED_TENANTS names ids outside ${TENANT}: ${bad.join(", ")}`);
+  return tenants;
+}
+
+// One query on a tenant's database, for the Worker's own reads (schedule.js): its rows, or
+// null when it cannot answer, with a warning naming `what` and the tenant.
+export const tenantRows = (env, tenant) => async (sql, params, what) => {
+  try {
+    return (await tenantDb(env, tenant).query(sql, params)).rows;
+  } catch (error) {
+    console.warn(`${what} read failed for tenant ${tenant}:`, String(error?.message ?? error));
+    return null;
+  }
+};
+
+export class TenantDb extends DurableObject {
+  // `D1Queryable.query`'s shape: SQL and its bound values in, rows and rows changed out.
+  // `changes` is the difference of two `total_changes()` readings, the rows-affected figure D1
+  // reports; `rowsWritten` would count index writes too (2 for a one-row insert with a key).
+  query(sql, params = []) {
+    const storage = this.ctx.storage.sql;
+    const total = () => storage.exec("SELECT total_changes() AS n").one().n;
+    const before = total();
+    const rows = storage.exec(sql, ...params).toArray();
+    return { rows, changes: total() - before };
+  }
+
+  // Each of the tenant's tables with its row count, in name order.
+  tables() {
+    const storage = this.ctx.storage.sql;
+    const names = storage
+      .exec("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+      .toArray()
+      .map((row) => row.name)
+      .filter(isTenantTable);
+    return Object.fromEntries(
+      names.map((name) => [name, storage.exec(`SELECT count(*) AS n FROM "${name}"`).one().n]),
+    );
+  }
+}
+
+// D1's error shape, so the container's client reads the reason the way it reads D1's.
+const refuse = (status, message) => Response.json({ errors: [{ message }] }, { status });
+
+// The container's only way to a database. It runs in the Workers runtime, so it holds the
+// binding; `props.tenant` is set by the Durable Object that registered it, never by the container.
+export class TenantDbGateway extends WorkerEntrypoint {
+  async fetch(request) {
+    const parts = new URL(request.url).pathname.split("/").filter(Boolean);
+    if (request.method !== "POST" || parts.length !== 3 || parts[0] !== "t" || parts[2] !== "query") {
+      return refuse(404, "POST /t/<tenant>/query");
+    }
+    // A gateway registered without a tenant is a wiring fault, never a gateway to every tenant.
+    const tenant = this.ctx.props?.tenant;
+    if (!tenant || parts[1] !== tenant) return refuse(403, `tenant ${parts[1]} is not this run's`);
+    let body;
+    try {
+      body = await request.json();
+    } catch (error) {
+      return refuse(400, `the body is not JSON: ${error}`);
+    }
+    const params = body?.params ?? [];
+    if (typeof body?.sql !== "string" || !Array.isArray(params)) {
+      return refuse(400, "the body must be {sql, params}");
+    }
+    try {
+      return Response.json(await tenantDb(this.env, tenant).query(body.sql, params));
+    } catch (error) {
+      // A reset object says it can be retried, and the client retries a 5xx; a statement
+      // SQLite refused is the request's own fault, and repeating it would only delay saying so.
+      // https://developers.cloudflare.com/durable-objects/best-practices/error-handling/
+      return refuse(error?.retryable ? 503 : 400, String(error?.message ?? error));
+    }
+  }
+}
