@@ -120,6 +120,42 @@ def test_deploy_ships_the_hosted_config_without_dotenv_and_keeps_its_url(repo: P
     assert stat.S_IMODE(state.stat().st_mode) == 0o600
 
 
+@pytest.mark.parametrize(
+    ("args", "typed", "whoami"),
+    [
+        (["deploy"], [ACCOUNT, "yes"], True),
+        (["deploy"], [ACCOUNT, "no"], True),
+        (
+            ["secrets"],
+            [ACCOUNT, "yes", "team.cloudflareaccess.com", "AUD-1", "sk-ant-SECRET"],
+            True,
+        ),
+        (["containers"], [ACCOUNT], False),
+        (["tail"], [ACCOUNT], False),
+        (["delete"], [ACCOUNT, "yes"], True),
+    ],
+)
+def test_every_wrangler_call_reads_the_hosted_config_and_never_dotenv(
+    repo: Path, args: list[str], typed: list[str], whoami: bool
+) -> None:
+    """The confirmation's whoami too: a token from `.env` would make it check another credential.
+
+    A checkout's root `.env` holds production's CLOUDFLARE_API_TOKEN; wrangler reads it unless
+    told `--env-file /dev/null`, so a whoami without it would name the account that token sees
+    while deploy acted as the logged-in user.
+    """
+    (repo / ".env").write_text("CLOUDFLARE_API_TOKEN=production-token\n", encoding="utf-8")
+
+    _, calls = _run(repo, args, typed)
+
+    wrangler = [c["args"] for c in calls if c["cmd"] == "bun"]
+    assert wrangler
+    assert any(a[2] == "whoami" for a in wrangler) is whoami
+    for argv in wrangler:
+        assert argv[:2] == ["x", "wrangler"], argv
+        assert argv[-4:] == ["--config", "wrangler.hosted.toml", "--env-file", "/dev/null"], argv
+
+
 def test_the_account_typed_is_the_one_wrangler_acts_on_whatever_the_environment_held(
     repo: Path,
 ) -> None:

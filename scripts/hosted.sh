@@ -19,6 +19,13 @@ WRANGLER=(bun x wrangler)
 # .env holds production's secrets; wrangler must not read it into a hosted deploy.
 NO_DOTENV=(--env-file /dev/null)
 
+# Every wrangler call goes through here, whoami included: the hosted config, and never .env,
+# whose CLOUDFLARE_API_TOKEN would make one call act as another credential than the next, so
+# the account a confirmation names could differ from the one deploy acts on.
+run_wrangler() {
+  "${WRANGLER[@]}" "$@" --config "$CONFIG" "${NO_DOTENV[@]}"
+}
+
 unset ACCOUNT_ID CLOUDFLARE_ACCOUNT_ID HOSTED_URL ACCESS_ID ACCESS_SECRET
 touch "$STATE"
 chmod 600 "$STATE"
@@ -52,7 +59,7 @@ ask_account() {
 confirm_account() {
   local action=$1 name answer
   # </dev/null: whoami must not take the answer you type next.
-  name=$("${WRANGLER[@]}" whoami --json </dev/null 2>/dev/null | python3 -c '
+  name=$(run_wrangler whoami --json </dev/null 2>/dev/null | python3 -c '
 import json, sys
 text = sys.stdin.read()
 whoami, _ = json.JSONDecoder().raw_decode(text[text.find("{"):])
@@ -71,7 +78,7 @@ print(names[0]) if names else sys.exit(1)
 
 # put_secret NAME VALUE: VALUE reaches wrangler on stdin.
 put_secret() {
-  printf '%s' "$2" | "${WRANGLER[@]}" secret put "$1" --config "$CONFIG" "${NO_DOTENV[@]}"
+  printf '%s' "$2" | run_wrangler secret put "$1"
 }
 
 ask_access() {
@@ -100,7 +107,7 @@ case "${1:-}" in
     ask_account
     confirm_account deploy
     log=$(mktemp "${TMPDIR:-/tmp}/cyris-hosted-deploy.XXXXXX")
-    "${WRANGLER[@]}" deploy --config "$CONFIG" "${NO_DOTENV[@]}" | tee "$log"
+    run_wrangler deploy | tee "$log"
     url=$(grep -oE 'https://cyris-hosted\.[A-Za-z0-9.-]+\.workers\.dev' "$log" | head -1 || true)
     if [[ -n "$url" ]]; then
       grep -v '^HOSTED_URL=' "$STATE" >"$STATE.new" || true
@@ -124,7 +131,7 @@ case "${1:-}" in
     ;;
   containers)
     ask_account
-    "${WRANGLER[@]}" containers list --config "$CONFIG" "${NO_DOTENV[@]}"
+    run_wrangler containers list
     ;;
   seed)
     ask_access
@@ -151,12 +158,12 @@ case "${1:-}" in
     ;;
   tail)
     ask_account
-    "${WRANGLER[@]}" tail --config "$CONFIG" "${NO_DOTENV[@]}"
+    run_wrangler tail
     ;;
   delete)
     ask_account
     confirm_account delete
-    "${WRANGLER[@]}" delete --config "$CONFIG" "${NO_DOTENV[@]}"
+    run_wrangler delete
     ;;
   *)
     echo "usage: $0 deploy|secrets|containers|seed|run [morning|evening]|check|tail|delete" >&2
