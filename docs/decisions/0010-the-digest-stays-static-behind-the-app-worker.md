@@ -60,3 +60,8 @@ Extracted on 2026-10-08 from these sources at commit `c353d3f`:
 * `docs/hosting-and-cost.md:141-142` (§7, *The digest stays static*).
 
 `docs/hosting-and-cost.md` stays the measurement record, with the vendor sources for every figure.
+
+In hosted mode, [ADR-0029](0029-a-hosted-tenants-pages-live-in-its-durable-object.md) keeps this
+decision's reason, that a page view must not wake a container, and replaces its means: the hosted Worker
+serves a tenant's stored pages from the tenant's Durable Object, behind sign-in, and proxies no Pages
+project. A self-hosted deployment is unchanged.
