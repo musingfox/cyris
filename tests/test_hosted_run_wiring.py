@@ -16,7 +16,7 @@ from pathlib import Path
 import httpx
 import pytest
 import respx
-from fakes import TEST_SETTINGS, SqliteD1, load_files, seed_d1_settings
+from fakes import TEST_SETTINGS, FakeLLM, SqliteD1, load_files, seed_d1_settings
 from test_run_digest import FakeSource
 from test_tenant_gateway import FakeGateway
 from typer.testing import CliRunner
@@ -199,6 +199,8 @@ async def test_a_hosted_run_keeps_its_issue_and_neither_publishes_nor_notifies(
 
     assert report.status == "ok"
     assert anywhere.call_count == 0
+    # The stores are fail-soft, so a write the tenant's database refused would not fail the run.
+    assert gateway.refused == []
     [issue] = gateway.db.query("SELECT date, period, content FROM digests").rows
     assert issue["period"] == "morning"
     assert article.url in issue["content"]
@@ -208,6 +210,34 @@ async def test_a_hosted_run_keeps_its_issue_and_neither_publishes_nor_notifies(
     assert summary["discord_notification"] == NOT_SENT
     assert summary["mail_notification"] == NOT_SENT
     assert summary["digest_url"] == ""
+
+
+async def test_every_write_of_a_scored_run_is_one_a_durable_object_can_bind(hosted_cfg) -> None:
+    """Scores, tags and topics too: each value the stores bind is a string, a number or null."""
+    cfg, gateway = hosted_cfg
+    article = Article(
+        id=1,
+        title="A model release",
+        url="https://a.test/model",
+        content="A lab released a model.",
+        published_at=datetime.now(UTC) - timedelta(hours=1),
+        source_name="A",
+        source_lane=Lane.READ,
+        source_tags=["ai"],
+    )
+    scores = {"scores": [{"id": 0, "score": 80, "language": "en", "tags": ["ai", "models"]}]}
+    deps = replace(
+        bootstrap.build_deps(cfg),
+        llm=FakeLLM([json.dumps(scores)]),
+        fetch_sources=[FakeSource([article])],
+    )
+
+    report = await run_digest(deps, RunOptions(period="evening"))
+
+    assert report.status == "ok"
+    assert gateway.refused == []
+    [row] = gateway.db.query("SELECT score FROM stored_articles").rows
+    assert row["score"] == 80
 
 
 def test_a_hosted_tick_that_cannot_start_alerts_no_channel(

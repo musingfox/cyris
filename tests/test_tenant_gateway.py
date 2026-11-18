@@ -23,7 +23,10 @@ class FakeGateway:
     """Answers `POST /t/<tenant>/query` as the hosted Worker's gateway does, over real SQL.
 
     Only `tenant` is this run's; any other is refused with 403, as the gateway refuses a
-    tenant its props do not name. `failures` are answered before the first real query.
+    tenant its props do not name. A bound value a Durable Object's SQL cannot take is refused
+    as it would be: `SqlStorageValue` is a string, a number, an ArrayBuffer or null, so a
+    JSON boolean is not one. `failures` are answered before the first real query, and every
+    statement refused is kept in `refused`.
     """
 
     def __init__(self, tenant: str, *, failures: list = ()) -> None:
@@ -31,6 +34,7 @@ class FakeGateway:
         self.db = SqliteD1()
         self.failures = list(failures)
         self.requests: list[httpx.Request] = []
+        self.refused: list[str] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
@@ -45,9 +49,13 @@ class FakeGateway:
         if parts[1] != self.tenant:
             return _errors(403, f"tenant {parts[1]} is not this run's")
         body = json.loads(request.content)
+        unbindable = [p for p in body["params"] if isinstance(p, bool | dict | list)]
         try:
+            if unbindable:
+                raise TypeError(f"a Durable Object cannot bind {unbindable!r}")
             result = self.db.query(body["sql"], body["params"])
         except Exception as e:  # noqa: BLE001 - the gateway answers a failed statement with 400
+            self.refused.append(f"{body['sql'][:80]}: {e}")
             return _errors(400, str(e))
         return httpx.Response(200, json={"rows": result.rows, "changes": result.changes})
 
@@ -136,6 +144,15 @@ def test_another_tenants_database_is_refused_and_not_retried(sleeps: list[float]
 
     assert len(gateway.requests) == 1
     assert sleeps == []
+
+
+def test_a_value_a_durable_object_cannot_bind_is_refused_as_it_would_be() -> None:
+    gateway = FakeGateway("alpha")
+
+    with pytest.raises(TenantDbError, match="cannot bind"):
+        _client(gateway).query("SELECT ? AS flag", [True])
+
+    assert len(gateway.refused) == 1
 
 
 def test_an_answer_without_rows_and_changes_is_an_error_not_an_empty_table() -> None:
