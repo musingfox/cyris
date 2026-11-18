@@ -124,8 +124,10 @@ How it is built:
 ### Workers KV
 
 * Good, because reads are cheap and cached at the edge.
-* Bad, because it is eventually consistent. A write can take up to 60 seconds to reach other
-  locations, so a revoked session or a used invite could still be accepted.
+* Bad, because it is eventually consistent. A change "may take up to 60 seconds or more to be
+  visible in other global network locations"
+  ([How KV works](https://developers.cloudflare.com/kv/concepts/how-kv-works/)), so a revoked
+  session or a used invite could still be accepted.
 * Bad, because it has no queries or transactions. A spend rollup and an invite redemption are
   read-modify-write.
 
