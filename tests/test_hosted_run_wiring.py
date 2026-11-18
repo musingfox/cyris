@@ -197,6 +197,35 @@ def test_a_tenant_id_written_in_cyris_toml_stops_the_load_whatever_the_worker_se
         load_files(config_path, sources_path)
 
 
+@pytest.mark.parametrize("from_file", [False, True])
+def test_a_custom_domain_beside_a_tenant_id_stops_the_load_from_the_environment_or_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, from_file: bool
+) -> None:
+    """`run_digest` links a custom domain ahead of the hosted site, so a tenant may carry none."""
+    _hosted_env(monkeypatch)
+    monkeypatch.delenv("CYRIS_PROMOTE_CUSTOM_DOMAIN", raising=False)
+    config_path, sources_path = _files(tmp_path)
+    if from_file:
+        with config_path.open("a", encoding="utf-8") as config:
+            config.write('\n[promote]\ncustom_domain = "digest.example.com"\n')
+    else:
+        monkeypatch.setenv("CYRIS_PROMOTE_CUSTOM_DOMAIN", "digest.example.com")
+
+    with pytest.raises(ValueError, match=r"\[promote\] custom_domain .* hosted tenant id"):
+        load_files(config_path, sources_path)
+
+
+def test_a_custom_domain_without_a_tenant_id_still_loads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("CYRIS_STORE_TENANT_ID", raising=False)
+    monkeypatch.setenv("CYRIS_PROMOTE_CUSTOM_DOMAIN", "digest.example.com")
+
+    cfg = load_files(*_files(tmp_path))
+
+    assert cfg.app.promote.custom_domain == "digest.example.com"
+
+
 def test_the_tenant_id_the_worker_set_is_the_one_the_store_carries(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

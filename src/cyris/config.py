@@ -552,6 +552,20 @@ class AppConfig(BaseModel):
             "to a file outside the vault."
         )
 
+    @model_validator(mode="after")
+    def a_tenant_has_no_custom_domain(self) -> "AppConfig":
+        # A hosted run's links are the hosted Worker's (ADR-0029), and its promote settings make
+        # no difference to it; but `run_digest` puts a custom domain ahead of that site, so one
+        # set here would send the tenant's reader to a host that serves none of its pages.
+        if self.store.is_hosted and self.promote.custom_domain:
+            raise ValueError(
+                f"[promote] custom_domain ({self.promote.custom_domain}) is set beside a hosted "
+                f"tenant id ({self.store.tenant_id}): a hosted run links its tenant's site on "
+                f"{HOSTED_B_GRADE_ENV_VARS['store.hosted_domain']}, so unset "
+                f"{B_GRADE_ENV_VARS['promote.custom_domain']} and custom_domain"
+            )
+        return self
+
 
 def _within(path: Path, directory: Path) -> bool:
     """Whether `path` lies in `directory`, by the directory's identity on disk.
