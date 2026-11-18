@@ -62,7 +62,7 @@ class D1Client:
         )
 
     def query(self, sql: str, params: list[Any] | None = None) -> QueryResult:
-        body = self._post_with_retries({"sql": sql, "params": params or []})
+        body = post_with_retries(self._http, self._url, {"sql": sql, "params": params or []})
 
         if not body.get("success"):
             errors = body.get("errors") or [{"message": "unknown error"}]
@@ -75,36 +75,46 @@ class D1Client:
             changes += (statement.get("meta") or {}).get("changes", 0) or 0
         return QueryResult(rows=rows, changes=changes)
 
-    def _post_with_retries(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Retry transport failures, because a bulk write is thousands of requests.
-
-        At any realistic per-request failure rate, "give up on the first timeout"
-        means a large write never finishes. A 4xx is not retried: the request itself is
-        wrong, and repeating it only delays saying so.
-        """
-        last: Exception | None = None
-        for attempt in range(MAX_ATTEMPTS):
-            try:
-                resp = self._http.post(self._url, json=payload)
-            except httpx.HTTPError as e:
-                last = e
-            else:
-                # D1 puts the reason a statement was rejected in the body, so read
-                # it before deciding anything — raise_for_status() would throw the
-                # only useful part of a 400 away.
-                if resp.status_code < 400:
-                    return resp.json()
-                if resp.status_code < 500:
-                    raise D1Error(_message(resp))
-                last = httpx.HTTPStatusError(_message(resp), request=resp.request, response=resp)
-
-            if attempt < MAX_ATTEMPTS - 1:
-                logger.warning("D1 request failed (%s); retrying", last)
-                time.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
-        raise D1Error(f"D1 request failed after {MAX_ATTEMPTS} attempts: {last}")
-
     def close(self) -> None:
         self._http.close()
+
+
+def post_with_retries(
+    http: httpx.Client,
+    url: str,
+    payload: dict[str, Any],
+    *,
+    what: str = "D1",
+    error: type[D1Error] = D1Error,
+) -> dict[str, Any]:
+    """Retry transport failures, because a bulk write is thousands of requests.
+
+    At any realistic per-request failure rate, "give up on the first timeout"
+    means a large write never finishes. A 4xx is not retried: the request itself is
+    wrong, and repeating it only delays saying so. Every client that answers
+    `D1Queryable` over HTTP keeps these rules; `what` names its store in the log
+    and the error, which is `error`.
+    """
+    last: Exception | None = None
+    for attempt in range(MAX_ATTEMPTS):
+        try:
+            resp = http.post(url, json=payload)
+        except httpx.HTTPError as e:
+            last = e
+        else:
+            # D1 puts the reason a statement was rejected in the body, so read
+            # it before deciding anything — raise_for_status() would throw the
+            # only useful part of a 400 away.
+            if resp.status_code < 400:
+                return resp.json()
+            if resp.status_code < 500:
+                raise error(_message(resp))
+            last = httpx.HTTPStatusError(_message(resp), request=resp.request, response=resp)
+
+        if attempt < MAX_ATTEMPTS - 1:
+            logger.warning("%s request failed (%s); retrying", what, last)
+            time.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
+    raise error(f"{what} request failed after {MAX_ATTEMPTS} attempts: {last}")
 
 
 def _message(resp: httpx.Response) -> str:

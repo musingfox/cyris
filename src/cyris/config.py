@@ -108,6 +108,20 @@ LOCAL_B_GRADE_ENV_VARS: dict[str, str] = {
     "store.sqlite_path": "CYRIS_STORE_SQLITE_PATH",
 }
 
+# Grade-B identity only a hosted tenant's run container has. The hosted Worker sets it on
+# each container it starts, from its own tenant list and the container's own name, so no
+# deployer sets it and no Worker forwards it (docs/architecture.md §5, ADR-0028).
+HOSTED_B_GRADE_ENV_VARS: dict[str, str] = {
+    "store.tenant_id": "CYRIS_STORE_TENANT_ID",
+}
+
+# A hosted tenant's id: what the hosted Worker names a tenant's Durable Objects by and puts
+# in the gateway's path. The same pattern as `TENANT` in workers/app/src/tenant_db.js.
+TENANT_ID = re.compile(r"[a-z0-9-]{1,40}")
+
+# Where a hosted tenant's settings and sources come from until per-tenant serving lands.
+HOSTED_SEED_HINT = "Seed the tenant through the hosted Worker (docs/hosted-tenants.md)."
+
 
 # Every grade-D setting (docs/architecture.md §5), as `table.field`, with the
 # /settings field that edits it: its category, controls and save route. Its label is
@@ -257,6 +271,9 @@ class StoreConfig(BaseModel):
     # it, and a host process and a container on one SQLite file corrupt it (ADR-0025).
     # AppConfig refuses such a path.
     sqlite_path: Path = Path("state/cyris.sqlite3")
+    # Set only in a hosted tenant's run container: the tables are then that tenant's SQLite
+    # Durable Object behind the hosted Worker's gateway, not D1 over REST (ADR-0028).
+    tenant_id: str = ""
 
     @model_validator(mode="before")
     @classmethod
@@ -267,6 +284,7 @@ class StoreConfig(BaseModel):
                 "backend": B_GRADE_ENV_VARS["store.backend"],
                 "database_id": B_GRADE_ENV_VARS["store.database_id"],
                 "sqlite_path": LOCAL_B_GRADE_ENV_VARS["store.sqlite_path"],
+                "tenant_id": HOSTED_B_GRADE_ENV_VARS["store.tenant_id"],
             },
         )
 
@@ -276,6 +294,14 @@ class StoreConfig(BaseModel):
         # `sqlite_path = ""` is unset, as an empty grade-B value is everywhere else.
         return cls.model_fields["sqlite_path"].default if value == "" else value
 
+    @field_validator("tenant_id")
+    @classmethod
+    def tenant_id_is_one_path_segment(cls, value: str) -> str:
+        # It is a segment of the gateway's path; anything else would address another one.
+        if value and not TENANT_ID.fullmatch(value):
+            raise ValueError(f"must match {TENANT_ID.pattern}, not {value!r}")
+        return value
+
     @model_validator(mode="after")
     def inject_credentials(self) -> "StoreConfig":
         if not self.account_id:
@@ -284,10 +310,24 @@ class StoreConfig(BaseModel):
             self.api_token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
         return self
 
+    @model_validator(mode="after")
+    def a_tenant_runs_on_cloudflare(self) -> "StoreConfig":
+        # A local file and a tenant's Durable Object are two homes, never a pair (ADR-0003).
+        if self.tenant_id and self.backend != "d1":
+            raise ValueError(
+                f"a hosted tenant id ({self.tenant_id}) needs the d1 backend, not {self.backend}"
+            )
+        return self
+
     @property
     def is_cloudflare(self) -> bool:
-        """The tables are Cloudflare D1, reached over REST with Cloudflare credentials."""
+        """The tables are on Cloudflare: D1 over REST, or a hosted tenant's Durable Object."""
         return self.backend == "d1"
+
+    @property
+    def is_hosted(self) -> bool:
+        """The tables are a hosted tenant's Durable Object, reached through the gateway."""
+        return bool(self.tenant_id)
 
     @property
     def sqlite_not_created(self) -> bool:
@@ -303,7 +343,9 @@ class StoreConfig(BaseModel):
 
     @property
     def sql_home(self) -> str:
-        """The SQL store as a reader names it: `D1`, or the local file."""
+        """The SQL store as a reader names it: D1, a hosted tenant's database, or the file."""
+        if self.is_hosted:
+            return f"tenant {self.tenant_id}'s database"
         return "D1" if self.is_cloudflare else "the SQLite store"
 
 
@@ -557,7 +599,8 @@ class SourcesConfig(BaseModel):
 
 def _missing_store_keys(app_config: "AppConfig") -> list[str]:
     """Env vars a Cloudflare D1 store needs and does not have; empty otherwise."""
-    if not app_config.store.is_cloudflare:
+    # A hosted tenant's store needs none: the Worker's gateway holds the binding.
+    if not app_config.store.is_cloudflare or app_config.store.is_hosted:
         return []
     missing = []
     if not app_config.store.database_id:
@@ -626,6 +669,11 @@ class Config(BaseModel):
         if not self.missing_settings:
             return
         keys = ", ".join(self.missing_settings)
+        if self.app.store.is_hosted:
+            # No /settings serves a tenant yet, and `settings push` writes D1.
+            raise IncompleteSettingsError(
+                f"Missing settings in {self.app.store.sql_home}: {keys}. {HOSTED_SEED_HINT}"
+            )
         if self.app.store.is_cloudflare:
             raise IncompleteSettingsError(
                 f"Missing settings in D1: {keys}. Set them on /settings, or run "
@@ -648,7 +696,9 @@ class Config(BaseModel):
 
     def onboarding_wait(self) -> str:
         """Why a run with no source does nothing, and where a source comes from."""
-        if self.app.store.is_cloudflare:
+        if self.app.store.is_hosted:
+            where = HOSTED_SEED_HINT
+        elif self.app.store.is_cloudflare:
             where = "Add one on /settings, or run `cyris sources push`."
         else:
             # Not `sources push`: it writes to Cloudflare D1, never to this file.

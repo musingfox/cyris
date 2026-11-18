@@ -205,6 +205,21 @@ def build_send_email_alert() -> Callable[..., Any] | None:
     return partial(send_alert_mail, account_id=account_id, token=token)
 
 
+def build_alert_senders(cfg: Config) -> tuple[Callable[..., Any], Callable[..., Any] | None]:
+    """The failure alert's Discord and mail senders; a hosted tenant's send nothing.
+
+    `build_deps` and the CLI's could-not-start alert both take them from here, so no alert
+    path of a hosted run reaches a channel (`adapters/hosted.py`).
+    """
+    if cfg.app.store.is_hosted:
+        from cyris.adapters.hosted import skip_alert
+
+        return skip_alert, skip_alert
+    from cyris.adapters import notify
+
+    return notify.send_discord_alert, build_send_email_alert()
+
+
 def clef_credentials() -> tuple[str, str] | None:
     """The account and the Workers AI token, else the embedding one; None without either.
 
@@ -231,7 +246,14 @@ def build_ask_clef() -> AskClef | None:
 
 
 def build_d1_client(cfg: Config) -> Any:
-    """The D1 connection: Cloudflare's, or the local SQLite file."""
+    """The D1 connection: a hosted tenant's Durable Object, Cloudflare's D1, or the local file."""
+    if cfg.app.store.is_hosted:
+        # The hosted Worker started this container with the tenant's id and intercepts the
+        # gateway's host for it; the container holds no D1 credentials (ADR-0028).
+        from cyris.adapters.store.tenant_gateway import GatewayD1Client
+
+        return GatewayD1Client(cfg.app.store.tenant_id)
+
     if not cfg.app.store.is_cloudflare:
         from cyris.adapters.store.local_d1 import LocalD1Client
 
@@ -402,7 +424,9 @@ def build_promotion_sync(
     creates its file.
     """
     promote = cfg.app.promote
-    if not (promote.worker_url and promote.token):
+    # The vote Worker's queue is one deployment's: a hosted tenant draining it would
+    # acknowledge another reader's votes it cannot match (ADR-0028).
+    if cfg.app.store.is_hosted or not (promote.worker_url and promote.token):
         return None
     store = store if store is not None else build_store(cfg)
     topics = topics if topics is not None else build_topic_store(cfg)
@@ -415,8 +439,11 @@ def build_rss_source(cfg: Config) -> FetchSource:
     Direct polling is the fallback — correct only for feeds whose snapshot
     outlives the window (measured: a digest-time poll missed 141 of 317
     articles). See docs/decisions/0001-rss-arrives-through-an-hourly-buffer.md.
+
+    A hosted tenant always polls directly: the rss Worker's buffer is another
+    deployment's, read from a D1 the tenant does not have.
     """
-    if cfg.app.rss.worker_url and cfg.app.rss.token:
+    if not cfg.app.store.is_hosted and cfg.app.rss.worker_url and cfg.app.rss.token:
         from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
 
         return CloudflareRssSource(cfg.app.rss.worker_url, cfg.app.rss.token)
@@ -469,6 +496,12 @@ def build_deps(
     Neither is undone by not saving afterwards, so a preview must be handed
     sources that do not consume — which is a wiring decision, and this is where
     every other one lives.
+
+    A hosted tenant's run is wired the same way for the same reason: it gets no
+    newsletter queue and no vote sync, which are another deployment's queues, and,
+    until per-tenant serving and operator alerts land, no page writer, no publisher
+    and senders that send nothing (`adapters/hosted.py`). Its issue stays in its
+    own `digests` table.
     """
     from cyris.adapters.store.archive_meta import D1ArchiveMeta
     from cyris.adapters.store.areas import D1AreaStore
@@ -486,9 +519,10 @@ def build_deps(
     vote = cfg.app.vote_similarity
     # The current setting: the archive's language, and an issue's when it stored none.
     language = cfg.app.digest.output_language if cfg.app.digest else ""
+    hosted = cfg.app.store.is_hosted
 
     fetch_sources: list[FetchSource] = []
-    if cfg.app.newsletter.worker_url and cfg.app.newsletter.token:
+    if not hosted and cfg.app.newsletter.worker_url and cfg.app.newsletter.token:
         from cyris.adapters.fetch.newsletter_worker_source import CloudflareNewsletterSource
 
         fetch_sources.append(
@@ -505,7 +539,7 @@ def build_deps(
     publish_site = None
     page_serves = None
     site_filenames: Callable[[], list[str]] = list
-    if cfg.app.html_output.enabled:
+    if cfg.app.html_output.enabled and not hosted:
         from cyris.adapters.output.html_digest import HtmlDigestWriter
 
         html_writer = HtmlDigestWriter(
@@ -540,6 +574,16 @@ def build_deps(
 
         lengthen_articles = partial(_lengthen, sources=cfg.sources)
 
+    send_discord_alert_to, send_email_alert = build_alert_senders(cfg)
+    if hosted:
+        from cyris.adapters.hosted import skip_digest_notification
+
+        notify_discord: Callable[..., Any] = skip_digest_notification
+        send_email: Callable[..., Any] | None = skip_digest_notification
+    else:
+        notify_discord = partial(send_discord, language=language)
+        send_email = build_send_email(language)
+
     return Deps(
         cfg=cfg,
         store=store,
@@ -567,10 +611,11 @@ def build_deps(
         archive_starts=D1ArchiveMeta(d1).issue_starts,
         digest_store=D1DigestStore(d1),
         digest_input_store=D1DigestInputStore(d1),
-        worker_domains=build_worker_domains(),
-        send_discord=partial(send_discord, language=language),
-        send_email=build_send_email(language),
-        send_email_alert=build_send_email_alert(),
+        worker_domains=None if hosted else build_worker_domains(),
+        send_discord=notify_discord,
+        send_email=send_email,
+        send_email_alert=send_email_alert,
+        send_discord_alert=send_discord_alert_to,
         ask_clef=build_ask_clef(),
         lengthen_articles=lengthen_articles,
         process_usage=process_usage.read_process_usage if process_usage.available() else None,
