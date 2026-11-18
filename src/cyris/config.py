@@ -272,12 +272,23 @@ class StoreConfig(BaseModel):
     # AppConfig refuses such a path.
     sqlite_path: Path = Path("state/cyris.sqlite3")
     # Set only in a hosted tenant's run container: the tables are then that tenant's SQLite
-    # Durable Object behind the hosted Worker's gateway, not D1 over REST (ADR-0028).
+    # Durable Object behind the hosted Worker's gateway, not D1 over REST (ADR-0028). It comes
+    # from CYRIS_STORE_TENANT_ID alone, which the hosted Worker sets from the container's own
+    # name; unlike every other grade-B key, a file may not set it (`inject_b_grade`).
     tenant_id: str = ""
 
     @model_validator(mode="before")
     @classmethod
     def inject_b_grade(cls, data: object) -> object:
+        # Checked before the environment fills anything, while `data` is the `[store]` table as
+        # written: a file value would win over the Worker's, and a container would then reach
+        # whichever tenant's database a mounted cyris.toml named instead of its own.
+        if isinstance(data, dict) and "tenant_id" in data:
+            raise ValueError(
+                "[store] tenant_id cannot be set in a config file: the hosted Worker sets "
+                f"{HOSTED_B_GRADE_ENV_VARS['store.tenant_id']} on each tenant's run container, "
+                "and nothing else names a tenant"
+            )
         return _fill_from_env(
             data,
             {

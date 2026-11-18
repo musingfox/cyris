@@ -138,6 +138,36 @@ def test_a_tenant_id_off_cloudflare_or_outside_one_path_segment_stops_the_load(
         load_files(*_files(tmp_path))
 
 
+@pytest.mark.parametrize("worker_set", ["bravo", None])
+@pytest.mark.parametrize("written", ['"alpha"', '""'])
+def test_a_tenant_id_written_in_cyris_toml_stops_the_load_whatever_the_worker_set(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, worker_set: str | None, written: str
+) -> None:
+    """Only the hosted Worker names a container's tenant; a file value would win over it."""
+    monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
+    if worker_set is None:
+        monkeypatch.delenv("CYRIS_STORE_TENANT_ID", raising=False)
+    else:
+        monkeypatch.setenv("CYRIS_STORE_TENANT_ID", worker_set)
+    config_path, sources_path = _files(tmp_path)
+    with config_path.open("a", encoding="utf-8") as config:
+        config.write(f'\n[store]\nbackend = "d1"\ntenant_id = {written}\n')
+
+    with pytest.raises(ValueError, match=r"\[store\] tenant_id cannot be set in a config file"):
+        load_files(config_path, sources_path)
+
+
+def test_the_tenant_id_the_worker_set_is_the_one_the_store_carries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _hosted_env(monkeypatch, "bravo")
+    config_path, sources_path = _files(tmp_path)
+    with config_path.open("a", encoding="utf-8") as config:
+        config.write('\n[store]\nbackend = "d1"\n')
+
+    assert load_files(config_path, sources_path).app.store.tenant_id == "bravo"
+
+
 def test_the_schema_and_its_steps_land_through_the_gateway() -> None:
     gateway = FakeGateway("alpha")
     gateway.db = fresh = SqliteD1(with_schema=False)
