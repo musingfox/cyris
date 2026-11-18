@@ -136,6 +136,18 @@ def test_a_rejected_statement_is_raised_at_once_with_the_gateways_reason(
     assert sleeps == []
 
 
+def test_an_overloaded_database_is_raised_at_once_and_not_retried(sleeps: list[float]) -> None:
+    """The gateway answers an overloaded object 429: a retry would add to the load it refused."""
+    overloaded = _errors(429, "Durable Object is overloaded. Too many requests queued.")
+    gateway = FakeGateway("alpha", failures=[overloaded])
+
+    with pytest.raises(TenantDbError, match="HTTP 429: Durable Object is overloaded"):
+        _client(gateway).query("SELECT 1")
+
+    assert len(gateway.requests) == 1
+    assert sleeps == []
+
+
 def test_another_tenants_database_is_refused_and_not_retried(sleeps: list[float]) -> None:
     gateway = FakeGateway("alpha")
 

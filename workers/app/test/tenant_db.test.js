@@ -3,6 +3,7 @@ import {
   DB_HOST,
   LOCATION_HINT,
   TenantDbGateway,
+  failureStatus,
   hostedTenants,
   isTenantTable,
   tenantRows,
@@ -136,6 +137,30 @@ describe("TenantDbGateway", () => {
     const { gateway: alpha } = gateway({ tenant: "alpha" }, TENANT_DB);
 
     expect((await alpha.fetch(query("alpha", { sql: "SELECT 1" }))).status).toBe(503);
+  });
+
+  it("answers an overloaded object with 429, which the client does not retry", async () => {
+    // Whatever `retryable` says: a retry adds to the load that refused the query.
+    for (const retryable of [true, false, undefined]) {
+      const message = "Durable Object is overloaded. Too many requests queued.";
+      const overloaded = Object.assign(new Error(message), { overloaded: true, retryable });
+      const TENANT_DB = { getByName: () => ({ query: () => Promise.reject(overloaded) }) };
+      const { gateway: alpha } = gateway({ tenant: "alpha" }, TENANT_DB);
+
+      const response = await alpha.fetch(query("alpha", { sql: "SELECT 1" }));
+
+      expect(response.status).toBe(429);
+      expect((await response.json()).errors[0].message).toMatch(/overloaded/);
+    }
+  });
+});
+
+describe("failureStatus", () => {
+  it("is 429 for an overloaded object, 503 for one that can be retried, else 400", () => {
+    expect(failureStatus({ overloaded: true, retryable: true })).toBe(429);
+    expect(failureStatus({ retryable: true })).toBe(503);
+    expect(failureStatus(new Error("no such table: nowhere"))).toBe(400);
+    expect(failureStatus("a thrown string")).toBe(400);
   });
 });
 

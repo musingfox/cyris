@@ -106,10 +106,18 @@ export class TenantDbGateway extends WorkerEntrypoint {
     try {
       return Response.json(await tenantDb(this.env, tenant).query(body.sql, params));
     } catch (error) {
-      // A reset object says it can be retried, and the client retries a 5xx; a statement
-      // SQLite refused is the request's own fault, and repeating it would only delay saying so.
-      // https://developers.cloudflare.com/durable-objects/best-practices/error-handling/
-      return refuse(error?.retryable ? 503 : 400, String(error?.message ?? error));
+      return refuse(failureStatus(error), String(error?.message ?? error));
     }
   }
+}
+
+// The status a failed query is answered with; the container's client retries a 5xx and no 4xx.
+// An overloaded object is answered 429 whatever `retryable` says: Cloudflare's guidance is not
+// to retry it, since a retry adds to the load that refused it. A reset object that can be
+// retried is 503. A statement SQLite refused is the request's own fault, 400: repeating it
+// would only delay saying so.
+// https://developers.cloudflare.com/durable-objects/best-practices/error-handling/
+export function failureStatus(error) {
+  if (error?.overloaded) return 429;
+  return error?.retryable ? 503 : 400;
 }
