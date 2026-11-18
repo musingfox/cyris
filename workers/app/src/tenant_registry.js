@@ -60,9 +60,11 @@ CREATE TABLE IF NOT EXISTS spend_rollup (
 `;
 
 const TENANT_COLUMNS = "id, status, digest_times, created_at, updated_at";
+const TENANT_INSERT = "INSERT INTO tenants (id, status, created_at, updated_at) VALUES (?, ?, ?, ?)";
+// A status named sets it; none named adds an absent tenant as active and leaves a present one alone.
 const TENANT_UPSERT =
-  "INSERT INTO tenants (id, status, created_at, updated_at) VALUES (?, ?, ?, ?) " +
-  "ON CONFLICT(id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at";
+  `${TENANT_INSERT} ON CONFLICT(id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at`;
+const TENANT_ADD = `${TENANT_INSERT} ON CONFLICT(id) DO NOTHING`;
 
 // The time a row is written at, as the container's stores write it (seconds, UTC offset).
 const stamp = (now) => `${now.toISOString().slice(0, 19)}+00:00`;
@@ -93,18 +95,20 @@ export class TenantRegistry extends DurableObject {
     return row ? { ...row } : null;
   }
 
-  // Registers `id` with `status`, or sets the status of a tenant already registered, and
-  // answers `{tenant}`, its row. An id outside TENANT, which names the tenant's Durable Objects
-  // and is one path segment, or a status outside TENANT_STATUSES writes nothing and answers
-  // `{refused}`, the reason: an answer and not a throw, so the caller can tell the operator's
-  // mistake from a registry that failed.
-  register(id, { status = ACTIVE, now = new Date() } = {}) {
+  // Registers `id` and answers `{tenant}`, its row. With `status`, the tenant gets it whether or
+  // not it was registered. Without one, an absent tenant is registered as active and a present
+  // one keeps its status, so registering again never resumes a paused tenant. An id outside
+  // TENANT, which names the tenant's Durable Objects and is one path segment, or a status
+  // outside TENANT_STATUSES writes nothing and answers `{refused}`, the reason: an answer and
+  // not a throw, so the caller can tell the operator's mistake from a registry that failed.
+  register(id, { status, now = new Date() } = {}) {
     if (typeof id !== "string" || !TENANT.test(id)) return { refused: `a tenant id matches ${TENANT}: ${id}` };
-    if (!TENANT_STATUSES.includes(status)) {
+    if (status !== undefined && !TENANT_STATUSES.includes(status)) {
       return { refused: `a tenant's status is one of ${TENANT_STATUSES.join(", ")}, not ${status}` };
     }
     const at = stamp(now);
-    this.ctx.storage.sql.exec(TENANT_UPSERT, id, status, at, at);
+    if (status === undefined) this.ctx.storage.sql.exec(TENANT_ADD, id, ACTIVE, at, at);
+    else this.ctx.storage.sql.exec(TENANT_UPSERT, id, status, at, at);
     return { tenant: this.tenant(id) };
   }
 }

@@ -110,8 +110,9 @@ scripts/hosted.sh seed
 ```
 
 `register` runs `POST /hosted/tenants/<tenant>/register` for `alpha`, then `bravo`. Each answer is
-the tenant's row in the registry, with `"status": "active"`. Registering again leaves the
-tenant active and keeps its `created_at`. The tenants are the two the seed names
+the tenant's row in the registry. A tenant registered for the first time is `"active"`. One
+already registered keeps its status and its `created_at`, so running `register` again does not
+resume a tenant you paused. The tenants are the two the seed names
 (`workers/app/src/hosted_seed.json`).
 
 The seed route seeds only a registered tenant: for any other it answers 404 and writes nothing,
@@ -129,7 +130,8 @@ has. Seeding again writes the same rows back and leaves other rows alone.
 
 To stop a tenant's runs without deleting anything, register it again as paused. The script has
 no subcommand for it; send `POST /hosted/tenants/<tenant>/register?status=paused` with the
-service token's two headers, and `?status=active` to resume it. The tick skips a paused tenant,
+service token's two headers, and `?status=active` to resume it. Only a named status changes a
+registered tenant's status. The tick skips a paused tenant,
 and its run route answers 409. Its seed and report routes still answer.
 
 ## 6. Run one digest for each

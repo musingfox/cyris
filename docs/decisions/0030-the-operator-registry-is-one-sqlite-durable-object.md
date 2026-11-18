@@ -55,8 +55,11 @@ How it is built:
 * A tenant's status is `active` or `paused` (`tenant_status.js`). Only an active tenant is
   scheduled or started.
 * The operator registers a tenant with `POST /hosted/tenants/<tenant>/register[?status=S]`, behind
-  the Access check (ADR-0015). Registering again sets the status and keeps `created_at`. An id
-  outside the tenant pattern, or an unknown status, is answered 400 and writes nothing.
+  the Access check (ADR-0015). A named status is set whether or not the tenant was registered.
+  With no status named, an absent tenant is registered as active and a registered one keeps its
+  status, so re-running the runbook's `register` never resumes a paused tenant. Either way the
+  row keeps its `created_at`. An id outside the tenant pattern, or an unknown status, is answered
+  400 and writes nothing.
 * The seed route requires a registered tenant. It does not register one. So do the run and report
   routes: each answers 404 for a tenant the registry does not hold. The run route answers 409 for
   a paused one. Registering is one deliberate step, and a mistyped tenant in a seed creates no

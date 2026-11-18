@@ -51,6 +51,21 @@ describe("the operator's registry", () => {
     expect(registry.tenants()).toHaveLength(1);
   });
 
+  it("keeps a paused tenant paused when it is registered again with no status named", () => {
+    const registry = registryObject();
+    registry.register("alpha", { now: AT });
+    registry.register("alpha", { status: "paused", now: AT });
+
+    const later = new Date("2026-11-19T06:00:00Z");
+    const { tenant } = registry.register("alpha", { now: later });
+
+    expect(tenant).toMatchObject({ status: "paused", created_at: STAMP, updated_at: STAMP });
+    expect(registry.register("alpha", { status: "active", now: later }).tenant).toMatchObject({
+      status: "active",
+      updated_at: "2026-11-19T06:00:00+00:00",
+    });
+  });
+
   it("refuses an id outside the tenant pattern, or a status it does not know, and writes nothing", () => {
     const registry = registryObject();
 
@@ -227,6 +242,19 @@ describe("the hosted Worker's operator routes, over the registry", () => {
     expect((await operator("POST", "/hosted/tenants/alpha/register?status=paused")).status).toBe(200);
     expect((await operator("POST", "/hosted/tenants/alpha/run?period=morning")).status).toBe(409);
     expect(bound.starts).toHaveLength(1);
+  });
+
+  it("leave a paused tenant paused on a bare register, and resume it only when told", async () => {
+    expect((await operator("POST", "/hosted/tenants/alpha/register?status=paused")).status).toBe(200);
+
+    const again = await operator("POST", "/hosted/tenants/alpha/register");
+
+    expect(again.status).toBe(200);
+    expect((await again.json()).status).toBe("paused");
+    expect((await operator("POST", "/hosted/tenants/alpha/run?period=morning")).status).toBe(409);
+    expect((await operator("POST", "/hosted/tenants/alpha/register?status=active")).status).toBe(200);
+    expect((await operator("POST", "/hosted/tenants/alpha/run?period=morning")).status).toBe(200);
+    expect(bound.starts).toEqual([["alpha", { period: "morning", date: undefined }]]);
   });
 
   it("refuse to register an id or a status the registry does not take", async () => {
