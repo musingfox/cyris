@@ -43,6 +43,11 @@ with open(os.environ["CALLS"], "a") as log:
     log.write(json.dumps({"cmd": "curl", "args": args, "stdin": config}) + "\\n")
 url = args[-1]
 tenant = url.split("/hosted/tenants/")[1].split("/")[0]
+if tenant == os.environ.get("UNREACHABLE"):
+    # What curl does when it never gets an answer: no file, 000, and exit 7.
+    sys.stderr.write("curl: (7) Failed to connect to cyris-hosted\\n")
+    sys.stdout.write("000")
+    sys.exit(7)
 sources = {"alpha": ["Hacker News"], "bravo": ["Aeon"]}[tenant]
 report = {
     "tenant": tenant,
@@ -73,7 +78,7 @@ def repo(tmp_path: Path) -> Path:
 
 
 def _run(
-    repo: Path, args: list[str], typed: list[str]
+    repo: Path, args: list[str], typed: list[str], **env: str
 ) -> tuple[subprocess.CompletedProcess, list[dict]]:
     calls = repo / "calls.jsonl"
     done = subprocess.run(
@@ -86,6 +91,7 @@ def _run(
             "CALLS": str(calls),
             "TMPDIR": str(repo),
             "CLOUDFLARE_ACCOUNT_ID": "f" * 32,
+            **env,
         },
         timeout=60,
     )
@@ -215,3 +221,40 @@ def test_a_run_names_a_period_the_worker_takes(repo: Path) -> None:
         f"{URL}/hosted/tenants/alpha/run?period=evening",
         f"{URL}/hosted/tenants/bravo/run?period=evening",
     ]
+
+
+@pytest.mark.parametrize(
+    ("args", "route"),
+    [
+        (["seed"], "seed"),
+        (["run", "morning"], "run?period=morning"),
+        (["check"], "report"),
+    ],
+)
+def test_a_tenant_that_never_answers_fails_alone_and_the_next_is_still_asked(
+    repo: Path, args: list[str], route: str
+) -> None:
+    """A curl that gets no answer writes no file: the loop must not end on it, nor pass."""
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, calls = _run(repo, args, ["client-id.access", "client-SECRET"], UNREACHABLE="alpha")
+
+    assert done.returncode == 1
+    assert [c["args"][-1] for c in calls if c["cmd"] == "curl"] == [
+        f"{URL}/hosted/tenants/alpha/{route}",
+        f"{URL}/hosted/tenants/bravo/{route}",
+    ]
+    assert "-> HTTP 000" in done.stderr
+    assert "FAILED alpha:" in done.stderr
+    assert "failed for: alpha" in done.stderr
+    assert "FAILED bravo" not in done.stderr
+
+
+def test_check_still_judges_the_reports_that_came_back(repo: Path) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, _ = _run(repo, ["check"], ["client-id.access", "client-SECRET"], UNREACHABLE="bravo")
+
+    assert done.returncode == 1
+    assert "PASS alpha" in done.stdout
+    assert "failed for: bravo" in done.stderr

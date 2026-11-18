@@ -87,19 +87,34 @@ ask_access() {
   ask ACCESS_SECRET "CF-Access-Client-Secret of that service token" secret
 }
 
-# call METHOD PATH OUTFILE: one operator route, signed in with the service token. The headers
-# go in as curl config on stdin; printf is a builtin, so the secret is in no process's argv.
+# call TENANT METHOD PATH OUTFILE: one operator route, signed in with the service token. The
+# headers go in as curl config on stdin; printf is a builtin, so the secret is in no process's
+# argv. Never ends the script: a route that did not answer 200, or never answered (HTTP 000, no
+# file written), is reported for TENANT and returns non-zero, so the caller goes on to the next.
 call() {
-  local method=$1 path=$2 out=$3 status
+  local tenant=$1 method=$2 path=$3 out=$4 status
   status=$(
     printf 'header = "CF-Access-Client-Id: %s"\nheader = "CF-Access-Client-Secret: %s"\n' \
       "$ACCESS_ID" "$ACCESS_SECRET" |
       curl -sS --config - --max-time 300 -X "$method" -o "$out" -w '%{http_code}' "$HOSTED_URL$path"
   ) || status=000
   echo "$method $path -> HTTP $status" >&2
-  python3 -m json.tool "$out" 2>/dev/null || cat "$out"
-  echo
-  [[ "$status" == 200 ]]
+  if [[ -s "$out" ]]; then
+    python3 -m json.tool "$out" 2>/dev/null || cat "$out"
+    echo
+  fi
+  if [[ "$status" != 200 ]]; then
+    echo "FAILED $tenant: $method $path answered HTTP $status" >&2
+    return 1
+  fi
+}
+
+# finish FAILED_TENANT...: say which tenants failed, if any, and exit 1 when one did.
+finish() {
+  if (($#)); then
+    echo "failed for: $*" >&2
+    exit 1
+  fi
 }
 
 case "${1:-}" in
@@ -136,25 +151,41 @@ case "${1:-}" in
   seed)
     ask_access
     out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-seed.XXXXXX")
-    for tenant in $TENANTS; do call POST "/hosted/tenants/$tenant/seed" "$out/$tenant.json"; done
+    failed=()
+    for tenant in $TENANTS; do
+      call "$tenant" POST "/hosted/tenants/$tenant/seed" "$out/$tenant.json" || failed+=("$tenant")
+    done
+    finish ${failed[@]+"${failed[@]}"}
     ;;
   run)
     period=${2:-morning}
     [[ "$period" == morning || "$period" == evening ]] || { echo "period is morning or evening" >&2; exit 2; }
     ask_access
     out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-run.XXXXXX")
-    for tenant in $TENANTS; do call POST "/hosted/tenants/$tenant/run?period=$period" "$out/$tenant.json"; done
+    failed=()
+    for tenant in $TENANTS; do
+      call "$tenant" POST "/hosted/tenants/$tenant/run?period=$period" "$out/$tenant.json" || failed+=("$tenant")
+    done
+    finish ${failed[@]+"${failed[@]}"}
     ;;
   check)
     ask_access
     out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-report.XXXXXX")
     files=()
+    failed=()
     for tenant in $TENANTS; do
-      call GET "/hosted/tenants/$tenant/report" "$out/$tenant.json"
-      files+=("$out/$tenant.json")
+      if call "$tenant" GET "/hosted/tenants/$tenant/report" "$out/$tenant.json"; then
+        files+=("$out/$tenant.json")
+      else
+        failed+=("$tenant")
+      fi
     done
     echo "reports kept in $out" >&2
-    python3 scripts/hosted_check.py "${files[@]}"
+    # The reports that came back are still judged; a tenant without one fails the check.
+    verdict=0
+    if ((${#files[@]})); then python3 scripts/hosted_check.py "${files[@]}" || verdict=$?; fi
+    finish ${failed[@]+"${failed[@]}"}
+    exit "$verdict"
     ;;
   tail)
     ask_account
