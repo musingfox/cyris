@@ -106,15 +106,17 @@ describe("TenantDbGateway", () => {
     }
   });
 
-  it("answers only POST /t/<tenant>/query", async () => {
-    const { gateway: alpha } = gateway({ tenant: "alpha" });
+  it("answers only POST /t/<tenant>/query, and refuses every other request with 403", async () => {
+    const { gateway: alpha, TENANT_DB } = gateway({ tenant: "alpha" });
     for (const request of [
       new Request(`http://${DB_HOST}/t/alpha/query`),
       new Request(`http://${DB_HOST}/t/alpha`, { method: "POST", body: "{}" }),
       new Request(`http://${DB_HOST}/t/alpha/query/more`, { method: "POST", body: "{}" }),
+      new Request(`http://${DB_HOST}/`, { method: "POST", body: "{}" }),
     ]) {
-      expect((await alpha.fetch(request)).status).toBe(404);
+      expect((await alpha.fetch(request)).status).toBe(403);
     }
+    expect(TENANT_DB.gets).toEqual([]);
   });
 
   it("answers a body it cannot read, and a statement SQLite refuses, with 400 and the reason", async () => {

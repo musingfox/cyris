@@ -22,11 +22,11 @@ pytestmark = pytest.mark.unit
 class FakeGateway:
     """Answers `POST /t/<tenant>/query` as the hosted Worker's gateway does, over real SQL.
 
-    Only `tenant` is this run's; any other is refused with 403, as the gateway refuses a
-    tenant its props do not name. A bound value a Durable Object's SQL cannot take is refused
-    as it would be: `SqlStorageValue` is a string, a number, an ArrayBuffer or null, so a
-    JSON boolean is not one. `failures` are answered before the first real query, and every
-    statement refused is kept in `refused`.
+    Only `tenant` is this run's; any other, and any other path or method, is refused with 403,
+    as the gateway refuses a request its props do not name. A bound value a Durable Object's
+    SQL cannot take is refused as it would be: `SqlStorageValue` is a string, a number, an
+    ArrayBuffer or null, so a JSON boolean is not one. `failures` are answered before the
+    first real query, and every statement refused is kept in `refused`.
     """
 
     def __init__(self, tenant: str, *, failures: list = ()) -> None:
@@ -45,7 +45,7 @@ class FakeGateway:
             return failure
         parts = request.url.path.strip("/").split("/")
         if request.method != "POST" or len(parts) != 3 or parts[0] != "t" or parts[2] != "query":
-            return _errors(404, "POST /t/<tenant>/query")
+            return _errors(403, "this gateway answers only POST /t/<tenant>/query")
         if parts[1] != self.tenant:
             return _errors(403, f"tenant {parts[1]} is not this run's")
         body = json.loads(request.content)

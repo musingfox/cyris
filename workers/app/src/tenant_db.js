@@ -5,7 +5,7 @@
 // The container sends each query to http://db.cyris/t/<tenant>/query. Its Durable Object
 // (hosted_container.js) intercepts that host before the container starts and hands it to
 // TenantDbGateway with `props.tenant` set to its own name, so a gateway answers one tenant
-// and refuses every other with 403; the container holds no token and no binding.
+// and refuses every other request with 403; the container holds no token and no binding.
 
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
 
@@ -86,9 +86,11 @@ const refuse = (status, message) => Response.json({ errors: [{ message }] }, { s
 // binding; `props.tenant` is set by the Durable Object that registered it, never by the container.
 export class TenantDbGateway extends WorkerEntrypoint {
   async fetch(request) {
+    // Every other request is refused 403 before any object is reached: another tenant's
+    // query, or any other path or method.
     const parts = new URL(request.url).pathname.split("/").filter(Boolean);
     if (request.method !== "POST" || parts.length !== 3 || parts[0] !== "t" || parts[2] !== "query") {
-      return refuse(404, "POST /t/<tenant>/query");
+      return refuse(403, "this gateway answers only POST /t/<tenant>/query");
     }
     // A gateway registered without a tenant is a wiring fault, never a gateway to every tenant.
     const tenant = this.ctx.props?.tenant;
