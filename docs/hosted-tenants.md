@@ -11,8 +11,9 @@ Worker*.
 `cyris-hosted` is a separate Worker from `cyris-app`. Nothing here deploys or changes
 `wrangler.toml`, which a push to main deploys to production (ADR-0024).
 
-Run every command from the root of a checkout of the commit that carries this file, as
-pasted. `scripts/hosted.sh` asks for each value by name:
+Step 0 checks the branch `muster/hosted-skeleton` out of the main repository into a fresh
+worktree at `~/workspace/cyris-hosted`. Every command after it runs, as pasted, from that
+worktree's root. `scripts/hosted.sh` asks for each value by name:
 
 - `ACCOUNT_ID`: the trial account's Account ID (dashboard > Account home > Account ID). You
   type it for every command that runs wrangler. It is never stored, and it is never read from
@@ -39,12 +40,16 @@ You need:
 - Workers Paid on the trial account, because the Worker runs containers.
 
 ```bash
-cd "$(git rev-parse --show-toplevel)"
+git -C /Users/nickhuang/workspace/cyris worktree add ~/workspace/cyris-hosted muster/hosted-skeleton
+cd ~/workspace/cyris-hosted
 bun install --frozen-lockfile
 bun x wrangler login
 ```
 
-Log in as a user who can see the trial account.
+`git worktree add` refuses a branch another worktree of that repository has checked out;
+`git -C /Users/nickhuang/workspace/cyris worktree list` shows which one does. Log in as a user
+who can see the trial account: that login is the credential every wrangler call of the script
+acts as, since none of them reads `.env`.
 
 ## 1. Deploy
 
@@ -62,16 +67,22 @@ Until step 3 sets the Access secrets, every request to the Worker is answered wi
 ## 2. Put Access in front of it (dashboard)
 
 The Worker checks the Access JWT itself (ADR-0015), so Access must sign a request in before the
-Worker sees it:
+Worker sees it.
 
-1. Workers & Pages > `cyris-hosted` > Settings > Domains & Routes: turn on Cloudflare Access
-   for the `workers.dev` route. This creates an Access application for that hostname. Open it
-   from there and note its **Application Audience (AUD) Tag**.
-2. In Zero Trust > Access > Service credentials, create a service token, or reuse the trial's.
-   Note its Client ID and Client Secret. The secret is shown once.
-3. In the step-1 application, add a policy with the action **Service Auth** that includes that
-   token.
-4. Note the team domain (Zero Trust > Settings), `<team>.cloudflareaccess.com`.
+The dashboard labels in this step, and the two in steps 6 and 8, were written from memory of
+the dashboard and have not been checked against it. Each is marked *(label unverified)*. What
+each step has to achieve is what counts; find it under whatever name the dashboard now uses.
+
+1. Workers & Pages > `cyris-hosted` > Settings > Domains & Routes *(label unverified)*: turn on
+   Cloudflare Access for the `workers.dev` route. This creates an Access application for that
+   hostname. Open it from there and note its Application Audience (AUD) Tag *(label
+   unverified)*.
+2. In Zero Trust > Access > Service credentials *(label unverified)*, create a service token, or
+   reuse the trial's. Note its Client ID and Client Secret. The secret is shown once.
+3. In the step-1 application, add a policy whose action is Service Auth *(label unverified)* and
+   that includes that token.
+4. Note the team domain, `<team>.cloudflareaccess.com` (Zero Trust > Settings, *label
+   unverified*).
 
 ## 3. Set the Worker's secrets
 
@@ -130,7 +141,7 @@ scripts/hosted.sh tail
 ```
 
 Stop it with Ctrl-C. The containers' own output is in Workers Logs (Workers & Pages >
-`cyris-hosted` > Logs).
+`cyris-hosted` > Logs, *label unverified*).
 
 ## 7. Check that each tenant holds only its own rows
 
@@ -165,5 +176,10 @@ scripts/hosted.sh delete
 ```
 
 This asks for the account and a `yes`, then deletes `cyris-hosted` and its Durable Objects,
-tenant databases included. Afterwards, check the dashboard's Containers page for a leftover
-`cyris-hosted-tenantcontainer` application, and delete the Access application from step 2.
+tenant databases included. Afterwards, check the dashboard's Containers page (*label
+unverified*) for a leftover `cyris-hosted-tenantcontainer` application, and delete the Access
+application from step 2. Last, remove the worktree:
+
+```bash
+git -C /Users/nickhuang/workspace/cyris worktree remove ~/workspace/cyris-hosted
+```
