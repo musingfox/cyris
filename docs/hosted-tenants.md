@@ -2,11 +2,13 @@
 
 This deploys the hosted Worker `cyris-hosted` (`wrangler.hosted.toml`) to the **trial** account.
 It then seeds the two hard-coded tenants, `alpha` and `bravo`, and runs one digest for each.
-Last, it checks that each tenant's `digest_runs` and `digests` hold only that tenant's own rows.
+Last, it checks that each tenant's `digest_runs` and `digests` hold only that tenant's own rows,
+and that each tenant's latest page, `/t/<tenant>/`, answers 200 and is that tenant's own issue.
 Why each tenant has a SQLite Durable Object of its own is
-[ADR-0028](decisions/0028-one-sqlite-durable-object-per-hosted-tenant.md). What the hosted Worker
-is, and what it does not do yet, is in `docs/architecture.md` §6, *Hosted mode is a separate
-Worker*.
+[ADR-0028](decisions/0028-one-sqlite-durable-object-per-hosted-tenant.md), and why its pages are
+stored there too is [ADR-0029](decisions/0029-a-hosted-tenants-pages-live-in-its-durable-object.md).
+What the hosted Worker is, and what it does not do yet, is in `docs/architecture.md` §6, *Hosted
+mode is a separate Worker*.
 
 `cyris-hosted` is a separate Worker from `cyris-app`. Nothing here deploys or changes
 `wrangler.toml`, which a push to main deploys to production (ADR-0024).
@@ -27,7 +29,8 @@ Every command runs, as pasted, from the root of a checkout of this repository. `
 The secrets are read without echo each time, and they are never written down. They reach
 wrangler and curl on stdin, never on a command line. The one value the script keeps is the
 Worker's URL, `HOSTED_URL`, which `deploy` reads from wrangler's output. It goes in
-`.env.hosted`, which is gitignored and has mode 600.
+`.env.hosted`, which is gitignored and has mode 600. `secrets` sets the Worker's
+`CYRIS_STORE_HOSTED_DOMAIN` from it, so you never type the domain.
 
 ## 0. Before you start
 
@@ -85,9 +88,12 @@ scripts/hosted.sh secrets
 ```
 
 This asks for `CYRIS_ACCESS_TEAM_DOMAIN`, `CYRIS_ACCESS_AUD` and `ANTHROPIC_API_KEY`, and sets
-each one as a secret of `cyris-hosted` on stdin. No other secret is needed. A hosted container is
-handed only the model keys and the account id; it gets no D1 token, no Pages project and no
-Worker URL (`hostedContainerEnv`).
+each one as a secret of `cyris-hosted` on stdin. It also sets `CYRIS_STORE_HOSTED_DOMAIN` to the
+host of the `HOSTED_URL` that step 1 kept, so it refuses to start without one. Every link a
+tenant's run gives points at that host. No other secret is needed. A hosted container is handed
+only the model keys, the account id and the hosted domain. It gets no D1 token, no Pages project
+and no Worker URL (`hostedContainerEnv`). The Worker starts no run before the hosted domain is
+set.
 
 ## 4. Wait for the container application
 
@@ -107,7 +113,7 @@ scripts/hosted.sh seed
 This runs `POST /hosted/tenants/<tenant>/seed` for `alpha`, then `bravo`. Each seed writes three
 things into the tenant's own database:
 
-- `schema.sql`;
+- `schema.sql`, then `hosted_schema.sql`, which adds the tenant's `hosted_pages` table;
 - every required setting: provider `anthropic`, model `claude-haiku-5-5`, digests at 08:00 and
   20:00 UTC, language `en`, and no notification target;
 - four RSS feeds from the onboarding catalog. No feed is shared between the two tenants
@@ -127,8 +133,9 @@ container starts with the gateway to that tenant's database registered before `s
 start made while both instances are held is retried for up to 90 seconds. Each answer is
 `{"started": true, "tenant": ...}`, or `"started": false` when that tenant's run is already up.
 
-Runs poll their feeds directly. They do not publish and do not notify: the finished issue stays
-in the tenant's `digests` table. Allow about five minutes. To watch the Worker side of it:
+Runs poll their feeds directly. Each run writes its issue into the tenant's `digests`, and its
+digest page and raw page into the tenant's own `hosted_pages`. No Pages project is touched. Runs
+notify nobody yet. Allow about five minutes. To watch the Worker side of it:
 
 ```bash
 scripts/hosted.sh tail
@@ -143,25 +150,46 @@ Stop it with Ctrl-C. The containers' own output is in Workers Logs (Workers & Pa
 scripts/hosted.sh check
 ```
 
-This reads `GET /hosted/tenants/<tenant>/report` for each tenant. Each report has the tenant's
+This reads `GET /hosted/tenants/<tenant>/report` for each tenant, then fetches that tenant's
+latest page, `GET /t/<tenant>/`, with the same service token. Each report has the tenant's
 tables with their row counts, its sources, the sources of its stored articles, its
-`digest_runs` and its `digests`. `scripts/hosted_check.py` judges the reports and prints one line
-per tenant. It exits 1 when any tenant fails. A tenant passes when all four of these hold:
+`digest_runs`, its `digests`, and the path and SHA-256 of the page its site root serves.
+`scripts/hosted_check.py` judges the reports and the pages and prints one line per tenant. It
+exits 1 when any tenant fails. A tenant passes when all of these hold:
 
 - its database holds at least one finished, non-dry `ok` run;
 - its database holds at least one issue;
 - every article it stored came from one of its own sources;
-- it shares no source with the other tenant.
+- it shares no source with the other tenant;
+- its latest page answered 200;
+- the page's `cyris-issue` receipt names the issue the tenant saved last;
+- the page's SHA-256 is the one the tenant's own database reports, and not the other tenant's.
+  The type size the Worker may add to the page is left out of the hash.
 
-`PASS alpha: 1 run(s), 1 issue(s), only its own sources`, and the same for `bravo`, is the
-milestone. The reports are kept in the temporary directory the script names. Keep them with the
-result.
+`PASS alpha: 1 run(s), 1 issue(s), only its own sources, and its latest page is its own newest
+issue`, and the same for `bravo`, is the milestone. The reports and the pages are kept in the
+temporary directory the script names. Keep them with the result.
 
 A tenant that has no `ok` run yet may still be running. Check again a few minutes later. A run
 that ended in `error` has its reason in that tenant's Workers Logs.
 
 The hourly tick also runs each tenant at 08:00 and 20:00 UTC. A check after one of those hours
 counts two runs, and each is still that tenant's own.
+
+### Reading a tenant's pages in a browser (optional)
+
+The check signs in with the service token. To read the pages yourself, add a policy to the
+step-2 Access application whose action is Allow *(label unverified)* and that includes your own
+email. Then open each of these, with `HOSTED_URL` from `.env.hosted`:
+
+- `HOSTED_URL/t/alpha/`: alpha's latest issue;
+- `HOSTED_URL/t/alpha/<date>-<period>`: one issue, from the archive at
+  `HOSTED_URL/t/alpha/index.html`;
+- `HOSTED_URL/t/alpha/<date>-<period>-raw`: that issue's raw page.
+
+The same paths under `/t/bravo/` are bravo's. Until tenant sessions land, Access admits only the
+operator, so these are your pages to check, not a tenant's sign-in. The vote buttons and the
+Settings link stay hidden, because the hosted Worker has no `/api/vote` or `/settings` yet.
 
 ## 8. Tear down (when you are done)
 

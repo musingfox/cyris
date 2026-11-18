@@ -280,6 +280,7 @@ describe("the seed and the report", () => {
       stored_articles: [],
       digest_runs: [],
       digests: [],
+      latest_page: null,
     });
   });
 });

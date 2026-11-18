@@ -34,30 +34,51 @@ elif args[2:3] == ["deploy"]:
     print("Deployed cyris-hosted triggers\\n  URL")
 """.replace("ACCOUNT", ACCOUNT).replace("URL", URL)
 
-# Records its argv and the config it reads on stdin, and answers each route with a report.
+# Records its argv and the config it reads on stdin, and answers each route: a report, or the
+# tenant's latest page, which the report names by its hash. NO_PAGE names a tenant whose page
+# answers 404.
 CURL = """#!/usr/bin/env python3
-import json, os, sys
+import hashlib, json, os, sys
 args = sys.argv[1:]
 config = sys.stdin.read()
 with open(os.environ["CALLS"], "a") as log:
     log.write(json.dumps({"cmd": "curl", "args": args, "stdin": config}) + "\\n")
 url = args[-1]
-tenant = url.split("/hosted/tenants/")[1].split("/")[0]
+if "/hosted/tenants/" in url:
+    tenant = url.split("/hosted/tenants/")[1].split("/")[0]
+else:
+    tenant = url.split("/t/")[1].split("/")[0]
 if tenant == os.environ.get("UNREACHABLE"):
     # What curl does when it never gets an answer: no file, 000, and exit 7.
     sys.stderr.write("curl: (7) Failed to connect to cyris-hosted\\n")
     sys.stdout.write("000")
     sys.exit(7)
+page = ('<html><head><meta name="cyris-issue" content="2026-11-18-morning"></head>'
+        f'<body>{tenant}</body></html>').encode()
+out = args[args.index("-o") + 1]
+if "/t/" in url:
+    if tenant == os.environ.get("NO_PAGE"):
+        with open(out, "w") as body:
+            body.write('{"error": "no issue yet"}')
+        sys.stdout.write("404")
+        sys.exit(0)
+    with open(out, "wb") as body:
+        body.write(page)
+    sys.stdout.write("200")
+    sys.exit(0)
 sources = {"alpha": ["Hacker News"], "bravo": ["Aeon"]}[tenant]
 report = {
     "tenant": tenant,
     "sources": sources,
     "stored_articles": [{"source_name": sources[0], "articles": 2}],
     "digest_runs": [{"id": 1, "status": "ok", "dry_run": 0}],
-    "digests": [{"date": "2026-11-18", "period": "morning"}],
+    "digests": [
+        {"date": "2026-11-18", "period": "morning", "saved_at": "2026-11-18T08:05:00+00:00"}
+    ],
+    "latest_page": {"path": "/2026-11-18-morning.html", "sha256": hashlib.sha256(page).hexdigest()},
 }
-with open(args[args.index("-o") + 1], "w") as out:
-    json.dump(report, out)
+with open(out, "w") as body:
+    json.dump(report, body)
 sys.stdout.write("200")
 """
 
@@ -203,7 +224,9 @@ def test_secrets_needs_the_url_deploy_kept_before_asking_for_anything(repo: Path
     assert calls == []
 
 
-def test_check_reads_every_tenant_with_the_token_on_stdin_and_judges_them(repo: Path) -> None:
+def test_check_reads_every_tenant_and_its_page_with_the_token_on_stdin_and_judges_them(
+    repo: Path,
+) -> None:
     (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
 
     done, calls = _run(repo, ["check"], ["client-id.access", "client-SECRET"])
@@ -212,8 +235,13 @@ def test_check_reads_every_tenant_with_the_token_on_stdin_and_judges_them(repo: 
     curls = [c for c in calls if c["cmd"] == "curl"]
     assert [c["args"][-1] for c in curls] == [
         f"{URL}/hosted/tenants/alpha/report",
+        f"{URL}/t/alpha/",
         f"{URL}/hosted/tenants/bravo/report",
+        f"{URL}/t/bravo/",
     ]
+    assert "GET /t/alpha/ -> HTTP 200" in done.stderr
+    # The page is judged, not printed.
+    assert "<meta" not in done.stdout
     for c in curls:
         assert "CF-Access-Client-Secret: client-SECRET" in c["stdin"]
         assert "client-SECRET" not in " ".join(c["args"])
@@ -252,14 +280,29 @@ def test_a_tenant_that_never_answers_fails_alone_and_the_next_is_still_asked(
     done, calls = _run(repo, args, ["client-id.access", "client-SECRET"], UNREACHABLE="alpha")
 
     assert done.returncode == 1
+    # check also fetches the page of each tenant whose report came back.
+    page = [f"{URL}/t/bravo/"] if args == ["check"] else []
     assert [c["args"][-1] for c in calls if c["cmd"] == "curl"] == [
         f"{URL}/hosted/tenants/alpha/{route}",
         f"{URL}/hosted/tenants/bravo/{route}",
+        *page,
     ]
     assert "-> HTTP 000" in done.stderr
     assert "FAILED alpha:" in done.stderr
     assert "failed for: alpha" in done.stderr
     assert "FAILED bravo" not in done.stderr
+
+
+def test_a_tenant_whose_page_does_not_answer_200_fails_the_check(repo: Path) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, _ = _run(repo, ["check"], ["client-id.access", "client-SECRET"], NO_PAGE="bravo")
+
+    assert done.returncode == 1
+    assert "PASS alpha" in done.stdout
+    assert "FAIL bravo: its latest page did not answer 200" in done.stdout
+    assert "FAILED bravo: its latest page answered HTTP 404" in done.stderr
+    assert "failed for: bravo" in done.stderr
 
 
 def test_check_still_judges_the_reports_that_came_back(repo: Path) -> None:

@@ -31,6 +31,13 @@ const LATEST_SQL =
 // The page /t/<tenant>/ serves, as its row: path, body and content_type; undefined for none.
 export const latestPage = async (db) => (await db.query(LATEST_SQL, [])).rows[0];
 
+// A page's SHA-256 as hex, over its UTF-8 bytes: what the runbook's check compares the page it
+// fetched with (scripts/hosted_check.py).
+export async function sha256Hex(text) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 

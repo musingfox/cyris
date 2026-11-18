@@ -3,9 +3,9 @@ import { generateKeyPair, exportJWK, SignJWT, createLocalJWKSet } from "jose";
 import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json" with { type: "json" };
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json" with { type: "json" };
 import SEED from "../src/hosted_seed.json" with { type: "json" };
-import { serveTenantPage } from "../src/hosted_pages.js";
+import { serveTenantPage, sha256Hex } from "../src/hosted_pages.js";
 import { handleHostedRequest } from "../src/hosted_router.js";
-import { seedTenant } from "../src/hosted_seed.js";
+import { seedTenant, tenantReport } from "../src/hosted_seed.js";
 import { typeScaleStyle } from "../src/type_scale.js";
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace } from "./sql_storage.js";
 
@@ -213,5 +213,17 @@ describe("a hosted tenant's pages", () => {
     expect(head.status).toBe(200);
     expect(await head.text()).toBe("");
     expect(post.status).toBe(405);
+  });
+
+  it("are named in the tenant's report by the page its site root serves and that page's hash", async () => {
+    const { get, TENANT_DB } = await hosted();
+
+    const served = await (await get("/t/alpha/")).text();
+    const report = await tenantReport({ db: TENANT_DB.getByName("alpha"), tenant: "alpha" });
+    const other = await tenantReport({ db: TENANT_DB.getByName("bravo"), tenant: "bravo" });
+
+    expect(report.latest_page).toEqual({ path: "/2026-11-18-morning.html", sha256: await sha256Hex(served) });
+    expect(report.latest_page.sha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(other.latest_page.sha256).not.toBe(report.latest_page.sha256);
   });
 });
