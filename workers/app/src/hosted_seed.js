@@ -30,13 +30,24 @@ export function seedSources(catalog, seed, tenant) {
 // The time a row is written at, as the container's stores write it (seconds, UTC offset).
 const stamp = (now) => `${now.toISOString().slice(0, 19)}+00:00`;
 
-// Writes the schema, then the settings and the sources, into a tenant's database, and says
-// what it wrote. Every write is an upsert, so seeding again puts these values back and leaves
-// any other row alone. The container's first run applies the schema's versioned steps.
-export async function seedTenant({ db, tenant, schemaSql, startingValues, seed, catalog, now = new Date() }) {
+// Writes the schema and the hosted tables (hosted_schema.sql: the tenant's pages), then the
+// settings and the sources, into a tenant's database, and says what it wrote. Every write is an
+// upsert, so seeding again puts these values back and leaves any other row alone. The
+// container's first run applies the schema's versioned steps.
+export async function seedTenant({
+  db,
+  tenant,
+  schemaSql,
+  hostedSchemaSql,
+  startingValues,
+  seed,
+  catalog,
+  now = new Date(),
+}) {
   const settings = seedSettings(startingValues, seed);
   const sources = seedSources(catalog, seed, tenant);
   await db.query(schemaSql, []);
+  await db.query(hostedSchemaSql, []);
   for (const [key, value] of Object.entries(settings)) {
     await db.query(SETTING_UPSERT, [key, JSON.stringify(value), stamp(now)]);
   }

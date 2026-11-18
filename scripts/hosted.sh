@@ -135,6 +135,7 @@ case "${1:-}" in
     fi
     ;;
   secrets)
+    [[ -n "${HOSTED_URL:-}" ]] || { echo "no HOSTED_URL in $STATE; run: scripts/hosted.sh deploy" >&2; exit 1; }
     ask_account
     confirm_account "set the secrets of"
     ask TEAM_DOMAIN "CYRIS_ACCESS_TEAM_DOMAIN, the Access team domain without a scheme (yourteam.cloudflareaccess.com)"
@@ -143,6 +144,9 @@ case "${1:-}" in
     put_secret CYRIS_ACCESS_TEAM_DOMAIN "$TEAM_DOMAIN"
     put_secret CYRIS_ACCESS_AUD "$AUD"
     put_secret ANTHROPIC_API_KEY "$ANTHROPIC"
+    # The host deploy kept, which every tenant's links point at (ADR-0029). Not a secret, but
+    # `secret put` is how wrangler sets one value without editing wrangler.hosted.toml.
+    put_secret CYRIS_STORE_HOSTED_DOMAIN "${HOSTED_URL#https://}"
     ;;
   containers)
     ask_account

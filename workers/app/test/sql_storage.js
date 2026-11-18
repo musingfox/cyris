@@ -9,16 +9,25 @@ export const SCHEMA_SQL = readFileSync(
   "utf8",
 );
 
+export const HOSTED_SCHEMA_SQL = readFileSync(
+  new URL("../../../src/cyris/adapters/store/hosted_schema.sql", import.meta.url),
+  "utf8",
+);
+
+// One SQL statement's limit on a Durable Object (ADR-0028); a bound value may be far larger.
+export const MAX_STATEMENT_BYTES = 100_000;
+
 // `ctx.storage.sql` as the runtime answers: exec() takes the bindings as arguments and returns a
 // cursor. A script with no bindings runs whole, as the probe measured schema.sql run in one
 // exec; node's prepare() would stop at the first statement. The object's own `_cf_KV` table is
-// there as in a real one.
+// there as in a real one, and a statement over the runtime's limit is refused as it would be.
 export function sqlStorage() {
   const db = new DatabaseSync(":memory:");
   db.exec("CREATE TABLE _cf_KV (key TEXT PRIMARY KEY, value BLOB)");
   return {
     db,
     exec(sql, ...params) {
+      if (new TextEncoder().encode(sql).length > MAX_STATEMENT_BYTES) throw new Error("SQLITE_TOOBIG: statement too long");
       let rows = [];
       if (params.length === 0 && /;\s*\S/.test(sql.replace(/--.*$/gm, ""))) db.exec(sql);
       else rows = db.prepare(sql).all(...params).map((row) => ({ ...row }));

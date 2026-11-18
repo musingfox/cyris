@@ -151,6 +151,7 @@ def test_every_wrangler_call_reads_the_hosted_config_and_never_dotenv(
     while deploy acted as the logged-in user.
     """
     (repo / ".env").write_text("CLOUDFLARE_API_TOKEN=production-token\n", encoding="utf-8")
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
 
     _, calls = _run(repo, args, typed)
 
@@ -172,6 +173,7 @@ def test_the_account_typed_is_the_one_wrangler_acts_on_whatever_the_environment_
 
 
 def test_each_secret_reaches_wrangler_on_stdin_and_never_in_argv(repo: Path) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
     typed = [ACCOUNT, "yes", "team.cloudflareaccess.com", "AUD-1", "sk-ant-SECRET"]
 
     done, calls = _run(repo, ["secrets"], typed)
@@ -182,6 +184,8 @@ def test_each_secret_reaches_wrangler_on_stdin_and_never_in_argv(repo: Path) -> 
         ("CYRIS_ACCESS_TEAM_DOMAIN", "team.cloudflareaccess.com"),
         ("CYRIS_ACCESS_AUD", "AUD-1"),
         ("ANTHROPIC_API_KEY", "sk-ant-SECRET"),
+        # The host deploy kept: every tenant's links point at it.
+        ("CYRIS_STORE_HOSTED_DOMAIN", "cyris-hosted.trial.workers.dev"),
     ]
     assert all(
         c["args"][5:] == ["--config", "wrangler.hosted.toml", "--env-file", "/dev/null"]
@@ -189,6 +193,14 @@ def test_each_secret_reaches_wrangler_on_stdin_and_never_in_argv(repo: Path) -> 
     )
     assert not any("sk-ant-SECRET" in " ".join(c["args"]) for c in calls)
     assert "sk-ant-SECRET" not in done.stdout + done.stderr
+
+
+def test_secrets_needs_the_url_deploy_kept_before_asking_for_anything(repo: Path) -> None:
+    done, calls = _run(repo, ["secrets"], [ACCOUNT, "yes"])
+
+    assert done.returncode == 1
+    assert "no HOSTED_URL in .env.hosted; run: scripts/hosted.sh deploy" in done.stderr
+    assert calls == []
 
 
 def test_check_reads_every_tenant_with_the_token_on_stdin_and_judges_them(repo: Path) -> None:

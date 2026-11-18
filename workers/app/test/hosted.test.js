@@ -7,7 +7,7 @@ import { START_RETRY, TenantContainer, hostedContainerEnv } from "../src/hosted_
 import { handleHostedRequest } from "../src/hosted_router.js";
 import { seedSettings, seedTenant, tenantReport } from "../src/hosted_seed.js";
 import { DB_HOST } from "../src/tenant_db.js";
-import { SCHEMA_SQL, namespace } from "./sql_storage.js";
+import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace } from "./sql_storage.js";
 
 // Everything the default Worker forwards (index.js `SECRETS` and `DEPLOYMENT`), set.
 const EVERY_BINDING = {
@@ -31,6 +31,8 @@ const EVERY_BINDING = {
   CYRIS_NEWSLETTER_WORKER_URL: "https://cyris-newsletter.example.workers.dev",
   CYRIS_RSS_WORKER_URL: "https://cyris-rss.example.workers.dev",
   CYRIS_APP_WORKER_NAME: "cyris-app",
+  // The hosted Worker's own hostname, which every tenant's links point at.
+  CYRIS_STORE_HOSTED_DOMAIN: "cyris-hosted.example.workers.dev",
 };
 
 const WORKER_URLS = ["CYRIS_PROMOTE_WORKER_URL", "CYRIS_NEWSLETTER_WORKER_URL", "CYRIS_RSS_WORKER_URL"];
@@ -92,9 +94,16 @@ describe("a hosted tenant's run container", () => {
       CYRIS_ROLE: "run",
       CYRIS_STORE_BACKEND: "d1",
       CYRIS_STORE_TENANT_ID: "alpha",
-      CYRIS_HTML_OUTPUT_ENABLED: "false",
+      CYRIS_STORE_HOSTED_DOMAIN: "cyris-hosted.example.workers.dev",
       CYRIS_PROMOTE_PUBLISH_ENABLED: "false",
     });
+  });
+
+  it("is not started without the hosted domain its links would point at", async () => {
+    const { object, container } = runObject("alpha", { ...EVERY_BINDING, CYRIS_STORE_HOSTED_DOMAIN: "" });
+
+    await expect(object.startRun({ period: "morning" })).rejects.toThrow("CYRIS_STORE_HOSTED_DOMAIN is not set");
+    expect(container.starts).toEqual([]);
   });
 
   it("registers the gateway for its own tenant before the container starts", async () => {
@@ -145,6 +154,7 @@ describe("the seed and the report", () => {
       db,
       tenant,
       schemaSql: SCHEMA_SQL,
+      hostedSchemaSql: HOSTED_SCHEMA_SQL,
       startingValues: STARTING_VALUES,
       seed: SEED,
       catalog: FEED_CATALOG,
@@ -183,8 +193,11 @@ describe("the seed and the report", () => {
       tenant: "alpha",
       settings: Object.keys(expected).length,
       sources: SEED.sources.alpha,
-      tables: [...SCHEMA_SQL.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].length,
+      tables: [...(SCHEMA_SQL + HOSTED_SCHEMA_SQL).matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].length,
     });
+    // The tenant's pages table is the hosted schema's, never schema.sql's.
+    expect(SCHEMA_SQL).not.toContain("hosted_pages");
+    expect(Object.keys(await db.tables())).toContain("hosted_pages");
   });
 
   it("puts the same rows back when seeded again", async () => {
