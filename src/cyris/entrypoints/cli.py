@@ -37,7 +37,15 @@ def _echo_d1_failure(error: Exception) -> None:
     has none of them, and the error names the file to look at instead.
     """
     from cyris.adapters.store.local_d1 import LocalD1Error
+    from cyris.adapters.store.tenant_gateway import TenantDbError
 
+    if isinstance(error, TenantDbError):
+        typer.echo(f"✗ tenant database — {error}")
+        typer.echo(
+            "  A hosted tenant's run reaches its database only through the hosted Worker, "
+            "which sets CYRIS_STORE_TENANT_ID when it starts the container."
+        )
+        return
     if isinstance(error, LocalD1Error):
         typer.echo(f"✗ sqlite — {error}")
         typer.echo(
@@ -133,7 +141,6 @@ def _alert_could_not_start(cfg, error: Exception) -> None:
     where to send, alert nobody. Never raises: the run's own exit code stands.
     """
     from cyris import bootstrap
-    from cyris.adapters import notify
     from cyris.i18n import ENGLISH
     from cyris.service_layer.alerts import RunAlert
     from cyris.service_layer.run_digest import failure_alert_text, send_alert
@@ -156,14 +163,8 @@ def _alert_could_not_start(cfg, error: Exception) -> None:
             language=digest.output_language if digest is not None else ENGLISH,
             error=failure_alert_text(error),
         )
-        asyncio.run(
-            send_alert(
-                cfg.app.notify,
-                notify.send_discord_alert,
-                bootstrap.build_send_email_alert(),
-                alert,
-            )
-        )
+        # A hosted tenant's senders send nothing (bootstrap.build_alert_senders).
+        asyncio.run(send_alert(cfg.app.notify, *bootstrap.build_alert_senders(cfg), alert))
     except Exception as e:
         logger.error("Could not send the alert that the run did not start: %s", e)
 

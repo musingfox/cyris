@@ -228,3 +228,37 @@ describe("TypeScaleReadsAreMemoised", () => {
     expect(fetchImpl.calls).toHaveLength(2);
   });
 });
+
+describe("TypeScaleReadsATenantsDatabase", () => {
+  const noRest = () =>
+    d1(() => {
+      throw new Error("a hosted read must not reach the REST API");
+    });
+
+  it("asks the read it is given, and no REST API", async () => {
+    const asked = [];
+    const fetchImpl = noRest();
+    const scale = createTypeScale({
+      env: {},
+      fetchImpl,
+      read: async (sql, params, what) => {
+        asked.push({ sql, params, what });
+        return [{ value: "1.125" }];
+      },
+    });
+
+    expect(await scale.current()).toBe(1.125);
+    expect(asked).toEqual([
+      { sql: "SELECT value FROM settings WHERE key = ?", params: ["digest.type_scale"], what: "type size" },
+    ]);
+    expect(fetchImpl.calls).toEqual([]);
+  });
+
+  it("is 1 when the tenant's database cannot answer, holds no value, or holds an invalid one", async () => {
+    for (const rows of [null, [], [{ value: "2" }], [{ value: "not json" }]]) {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const scale = createTypeScale({ env: {}, fetchImpl: noRest(), read: async () => rows });
+      expect(await scale.current()).toBe(1);
+    }
+  });
+});

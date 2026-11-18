@@ -6,7 +6,9 @@
 // The schedule is read from D1 `settings` over REST on every tick, never
 // remembered, so a change on /settings applies at the next tick. Off a digest
 // hour the tick also reads `digest_runs`, to catch up an hour whose run never
-// finished (`planTick`). No workerd-only imports: vitest runs this under Node.
+// finished (`planTick`). The hosted Worker hands every read here a `read` of its
+// own, which asks the tenant's Durable Object directly (tenant_db.js `tenantRows`).
+// No workerd-only imports: vitest runs this under Node.
 
 const ACCOUNTS_API = "https://api.cloudflare.com/client/v4/accounts";
 const SCHEDULE_KEY = "general.digest_schedule";
@@ -73,16 +75,18 @@ async function queryD1({ env, fetchImpl, timeoutMs, sql, params, what }) {
   }
 }
 
+// Every read below goes through a `read(sql, params, what)` that answers rows, or null
+// when it cannot, having warned. Without one it is D1 over REST.
+const restRead = ({ env, fetchImpl, timeoutMs }) => (sql, params, what) =>
+  queryD1({ env, fetchImpl, timeoutMs, sql, params, what });
+
 // The schedule and time zone as stored, or null when either cannot be read.
-async function readSchedule({ env, fetchImpl, timeoutMs }) {
-  const rows = await queryD1({
-    env,
-    fetchImpl,
-    timeoutMs,
-    sql: "SELECT key, value FROM settings WHERE key IN (?, ?)",
-    params: [SCHEDULE_KEY, TIMEZONE_KEY],
-    what: "schedule",
-  });
+async function readSchedule({ read }) {
+  const rows = await read(
+    "SELECT key, value FROM settings WHERE key IN (?, ?)",
+    [SCHEDULE_KEY, TIMEZONE_KEY],
+    "schedule",
+  );
   if (!rows) return null;
   let values;
   try {
@@ -100,8 +104,13 @@ async function readSchedule({ env, fetchImpl, timeoutMs }) {
 
 // The deployment's time zone as stored, or null when it cannot be read: what a
 // manual run's named date is checked against (router.js).
-export async function readTimeZone({ env, fetchImpl, timeoutMs = 5000 }) {
-  const schedule = await readSchedule({ env, fetchImpl, timeoutMs });
+export async function readTimeZone({
+  env,
+  fetchImpl,
+  timeoutMs = 5000,
+  read = restRead({ env, fetchImpl, timeoutMs }),
+}) {
+  const schedule = await readSchedule({ read });
   return schedule ? schedule.timeZone : null;
 }
 
@@ -162,27 +171,33 @@ function missedDigestHour(now, times, timeZone) {
 // - null to leave the container asleep, which is also the answer when
 //   `digest_runs` cannot be read: a missed catch-up loses nothing the lost run
 //   had not already lost.
-export async function planTick({ env, fetchImpl, now = () => new Date(), timeoutMs = 5000 }) {
+// `unreadable` is the answer when the schedule cannot be read, `{}` unless given:
+// the hosted Worker passes null, since its container would read the same object.
+export async function planTick({
+  env,
+  fetchImpl,
+  now = () => new Date(),
+  timeoutMs = 5000,
+  read = restRead({ env, fetchImpl, timeoutMs }),
+  unreadable = {},
+}) {
   const at = now();
-  const schedule = await readSchedule({ env, fetchImpl, timeoutMs });
-  if (!schedule) return {};
+  const schedule = await readSchedule({ read });
+  if (!schedule) return unreadable;
   let missed;
   try {
     if (duePeriod(at, schedule.times, schedule.timeZone) !== null) return {};
     missed = missedDigestHour(at, schedule.times, schedule.timeZone);
   } catch {
     console.warn("schedule read failed: unknown time zone");
-    return {};
+    return unreadable;
   }
   if (!missed) return null;
-  const runs = await queryD1({
-    env,
-    fetchImpl,
-    timeoutMs,
-    sql: "SELECT status, dry_run FROM digest_runs WHERE period = ? AND finished_at >= ?",
-    params: [missed.period, missed.since],
-    what: "digest_runs",
-  });
+  const runs = await read(
+    "SELECT status, dry_run FROM digest_runs WHERE period = ? AND finished_at >= ?",
+    [missed.period, missed.since],
+    "digest_runs",
+  );
   if (!runs) return null;
   const done = runs.some((row) => row.status === "ok" && Number(row.dry_run) === 0);
   return done ? null : { period: missed.period, date: missed.date };
