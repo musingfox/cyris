@@ -2058,6 +2058,21 @@ class TestTheStepsMatchThePage:
         assert walker.parse_args(ARGS).first_issue_timeout == walker.FIRST_ISSUE_TIMEOUT_S
 
 
+def test_a_server_that_exits_at_start_fails_with_its_log(tmp_path: Path, monkeypatch) -> None:
+    real_popen = subprocess.Popen
+
+    def exits_at_once(args, **kwargs):
+        return real_popen(["sh", "-c", "echo cannot start; exit 3"], **kwargs)
+
+    monkeypatch.setattr(local_run.subprocess, "Popen", exits_at_once)
+
+    with (
+        pytest.raises(SystemExit, match="exited early:\ncannot start"),
+        local_run.triage_ui(tmp_path),
+    ):
+        pass
+
+
 def test_the_local_feeds_newest_half_is_inside_the_runs_window() -> None:
     now = datetime(2026, 11, 9, 12, tzinfo=UTC)
     window_start = now - timedelta(hours=24)

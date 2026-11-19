@@ -26,7 +26,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -140,8 +140,27 @@ def triage_ui(install: Path) -> Iterator[str]:
         _wait_until_up(url, process, log_path)
         yield url
     finally:
-        os.killpg(process.pid, signal.SIGTERM)
+        _end(process)
+
+
+def _end(process: subprocess.Popen) -> None:
+    """Stop the server's group, killing it past SERVER_STOP_S.
+
+    A server that already exited may leave no group to signal, and that must not replace
+    the failure it exited with.
+    """
+    _signal_group(process.pid, signal.SIGTERM)
+    try:
         process.wait(timeout=SERVER_STOP_S)
+    except subprocess.TimeoutExpired:
+        _signal_group(process.pid, signal.SIGKILL)
+        process.wait(timeout=SERVER_STOP_S)
+
+
+def _signal_group(group: int, sent: signal.Signals) -> None:
+    # macOS answers EPERM for a group left with only zombies.
+    with suppress(ProcessLookupError, PermissionError):
+        os.killpg(group, sent)
 
 
 def store_a_source(url: str, feed: str) -> None:
