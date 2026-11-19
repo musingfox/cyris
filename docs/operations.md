@@ -312,14 +312,27 @@ worded in, the page opens the schedule step in a reload, in the saved language, 
 carries on in the new document; a reload under any other step fails the walk.
 
 - **The store** is `--d1 <database id>`, with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` set,
-  or `--sqlite <path>`. It refuses to start while `sources` holds a row. To clear a trial first, see
+  or `--sqlite <path>`, and it must be the store of the deployment at `--url`. It refuses to start
+  while the store's `sources` holds a row, or while the site's own `/api/onboarding/feeds` says it
+  has sources, and names which. Before the browser opens it reads the store's settings and the
+  site's own `/api/settings`, and picks a language, timezone and publish hours that neither holds:
+  `en`, `UTC`, 08:00 and 20:00 first, else the next one along. With none left it refuses, naming
+  the setting. So the language step always saves, on a trial cleared by `reset_trial.py` too, where
+  the shipped defaults are stored. Until the store holds exactly that language and timezone, that
+  save is the one write the site receives. The walk fails at any other non-GET request to the
+  `--url` origin, which it never sends, naming its method and URL; at a redirect in answer to the
+  save, naming the status and where it pointed; and at a store that does not hold them, naming
+  `--url`, the store flag, the setting and what the store holds instead, or naming the store flag
+  alone when the store cannot be read. So a pair naming two installs leaves the site with that one
+  save. A walk that passes leaves what it picked stored. To clear a trial first, see
   [The trial deployment](#the-trial-deployment-after-production).
 - **The feed** must be reachable from the deployment at a public address: the wizard's own check
   refuses a private or local one. Its newest articles must fall inside the digest window, or the
   run ends `no_articles` and the walk fails. Repeat `--feed` to add several.
 - **Behind Access**, set `CYRIS_ACCESS_CLIENT_ID` and `CYRIS_ACCESS_CLIENT_SECRET`. Both headers go
-  only on browser requests to the `--url` origin, so no third party receives them, not even through a
-  redirect off the deployment, such as to the Access login when the token is refused.
+  only on requests to the `--url` origin, the browser's and the script's own reads of the site, so no
+  third party receives them, not even through a redirect off the deployment, such as to the Access
+  login when the token is refused.
 - **`--break feed-check`** answers the feed check with an error in the browser, to see the walk fail.
 - **`--skip-feed-checker`** is not for a run against a URL. A run against a URL with a public feed
   does not use it, and exercises the real check. It exists for `scripts/e2e_onboarding_local.py

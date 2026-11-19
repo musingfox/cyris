@@ -10,8 +10,11 @@ starts the first issue, waits for it to end, and reads the store.
 It exits 0 only when the store holds at least one `sources` row and the first
 issue's `digest_runs` row has `status=ok`. Anything else exits non-zero and names
 the step or receipt, with the last browser console errors. It refuses to start
-on a store whose `sources` is not empty, because the wizard would not be walking
-a new install. It judges page actions and store receipts, never what a model wrote.
+on a store whose `sources` is not empty, or a site that says its own are not,
+because the wizard would not be walking a new install. The walk writes to the
+site and the verdict reads the store, so its language step saves a language and
+timezone neither held, and no other write reaches the site until the store holds
+them. It judges page actions and store receipts, never what a model wrote.
 
 `--skip-feed-checker` is for `e2e_onboarding_local.py` alone. The real check refuses a
 local address by design, so a loopback feed can only get past it by the browser answering
@@ -32,8 +35,9 @@ import io
 import json
 import os
 import sys
+import zoneinfo
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -68,15 +72,24 @@ CARDS_S = 300
 # What every step but the first issue and the feed checks can take in all, as the kill behind
 # their own limits, each of which fails its step first and with a reason.
 WALK_MARGIN_S = 30 * 60
+# What a driver that has stopped the walk takes to fail what it holds and end, past which it
+# is killed.
+HALT_S = 10
 
 # The last errors a failure prints: the newest are nearest the failure.
 CONSOLE_ERRORS_KEPT = 10
 CONSOLE_ERROR_MAX_CHARS = 500
 
-# What the reader answers on a step that opens with nothing in it. A stored value is left alone.
+# What the reader answers first on the language and schedule steps. Each is passed over for
+# the next the page offers while --url or the store already holds it, so the language step's
+# save is always sent, and what it writes is this run's own on both sides.
 READER_LANGUAGE = "en"
 READER_TIMEZONE = "UTC"
-READER_HOURS = {"#o-morning": 8, "#o-evening": 20}
+READER_HOURS = (8, 20)
+HOUR_FIELDS = ("#o-morning", "#o-evening")
+LANGUAGE_KEY = "digest.output_language"
+TIMEZONE_KEY = "general.timezone"
+SCHEDULE_KEY = "general.digest_schedule"
 
 ACCESS_HEADERS = {
     "CF-Access-Client-Id": "CYRIS_ACCESS_CLIENT_ID",
@@ -84,6 +97,12 @@ ACCESS_HEADERS = {
 }
 
 FEED_CHECK_PATH = "/api/onboarding/feed-check"
+# What the wizard page itself reads to decide whether this is a new install.
+SITE_SOURCES_PATH = "/api/onboarding/feeds"
+# What it reads the stored settings and the languages it offers from.
+SITE_SETTINGS_PATH = "/api/settings"
+# The language step's save, the one write let through before the store is found to hold it.
+LANGUAGE_SAVE = {"step": "language", "path": "/api/settings/values"}
 # Where `--skip-feed-checker` is allowed: the addresses the real check refuses and this
 # machine answers. Anything else can reach the real check, so nothing may stand in for it.
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
@@ -99,13 +118,68 @@ BREAKS = {
 }
 
 
-def wizard_prelude(feeds: list[str], first_issue_s: int) -> str:
+@dataclass(frozen=True)
+class Choice:
+    """What the walk answers on the language and schedule steps."""
+
+    language: str
+    timezone: str
+    hours: tuple[int, int]
+
+    @property
+    def saved(self) -> dict[str, str]:
+        """What the language step's save writes."""
+        return {LANGUAGE_KEY: self.language, TIMEZONE_KEY: self.timezone}
+
+
+FIRST_CHOICE = Choice(READER_LANGUAGE, READER_TIMEZONE, READER_HOURS)
+
+
+def schedule_of(hours: tuple[int, int]) -> list[str]:
+    """The publish hours as the store holds them."""
+    return [f"{hour:02d}:00" for hour in hours]
+
+
+def choose(
+    languages: list[str], site: Mapping[str, object], store: Mapping[str, object], flag: str
+) -> Choice:
+    """The first answer to each step's settings that neither the site nor the store holds.
+
+    `languages` are the tags the page offers. Raises ValueError naming a setting the page
+    offers no such answer for.
+    """
+
+    def first(key: str, label: str, offered: list, held_as: Callable = lambda option: option):
+        held = (site.get(key), store.get(key))
+        for option in offered:
+            if held_as(option) not in held:
+                return option
+        raise ValueError(
+            f"the walk needs {label} that neither --url ({json.dumps(held[0])}) nor {flag} "
+            f"({json.dumps(held[1])}) holds, so that the store can show the language step's "
+            f"save as this run's, and the page offers no other ({len(offered)} offered)"
+        )
+
+    offered_languages = [READER_LANGUAGE] if READER_LANGUAGE in languages else []
+    offered_languages = list(dict.fromkeys([*offered_languages, *languages]))
+    # The page lists the zones its browser knows; the server takes any its tz database does.
+    zones = [READER_TIMEZONE, *sorted(zoneinfo.available_timezones() - {READER_TIMEZONE})]
+    # The first choice an hour later each time: two sides hold two pairs at most.
+    hours = [tuple(sorted((hour + shift) % 24 for hour in READER_HOURS)) for shift in range(24)]
+    return Choice(
+        language=first(LANGUAGE_KEY, "an output language", offered_languages),
+        timezone=first(TIMEZONE_KEY, "a timezone", zones),
+        hours=first(SCHEDULE_KEY, "a pair of publish hours", hours, schedule_of),
+    )
+
+
+def wizard_prelude(feeds: list[str], first_issue_s: int, choice: Choice) -> str:
     """The page-side helpers of this walk, on top of `base_prelude`."""
     return f"""
 const FEEDS = {json.dumps(feeds)};
-const READER_LANGUAGE = {json.dumps(READER_LANGUAGE)};
-const READER_TIMEZONE = {json.dumps(READER_TIMEZONE)};
-const READER_HOURS = {json.dumps(READER_HOURS)};
+const READER_LANGUAGE = {json.dumps(choice.language)};
+const READER_TIMEZONE = {json.dumps(choice.timezone)};
+const READER_HOURS = {json.dumps(dict(zip(HOUR_FIELDS, choice.hours, strict=True)))};
 const LOAD_MS = {LOAD_S * 1000};
 const SAVE_MS = {SAVE_S * 1000};
 const FEED_CHECK_MS = {FEED_CHECK_S * 1000};
@@ -160,19 +234,19 @@ await waitFor(() => visible($('.step[data-step="language"]')), "the language ste
         """
 await waitFor(() => !$(".step [data-loading]"), "the settings to load", LOAD_MS);
 expect(!refusal("#o-result"), refusal("#o-result"));
-if (!$("#o-output-language").value) enter($("#o-output-language"), READER_LANGUAGE);
-expect($("#o-output-language").value, `no language ${READER_LANGUAGE} is offered`);
-if (!$("#o-timezone").value) enter($("#o-timezone"), READER_TIMEZONE);
-expect($("#o-timezone").value, `no timezone ${READER_TIMEZONE} is offered`);
+const answer = (selector, value, what) => {
+  enter($(selector), value);
+  expect($(selector).value === value, `no ${what} ${value} is offered`);
+};
+answer("#o-output-language", READER_LANGUAGE, "language");
+answer("#o-timezone", READER_TIMEZONE, "timezone");
 await next("schedule", '.step[data-step="schedule"]');
 """,
     ),
     _step(
         "schedule",
         """
-for (const [selector, hour] of Object.entries(READER_HOURS)) {
-  if ($(selector).value === "") enter($(selector), hour);
-}
+for (const [selector, hour] of Object.entries(READER_HOURS)) enter($(selector), hour);
 await next("sources", '.step[data-step="sources"]');
 """,
     ),
@@ -261,14 +335,101 @@ WALK_DRIVER = (
     CDP_SESSION
     + """
 const report = (event) => process.stdout.write(JSON.stringify(event) + '\\n');
-let input = '';
-for await (const chunk of process.stdin) input += chunk;
-const job = JSON.parse(input);
+const { createInterface } = await import('node:readline');
+const input = createInterface({ input: process.stdin });
+const lines = input[Symbol.asyncIterator]();
+const job = JSON.parse((await lines.next()).value);
 const deployment = new URL(job.url).origin;
 const brief = (text) => String(text).slice(0, job.consoleMaxChars);
+// Until the caller has found the language step's save in the store the verdict reads, that
+// save is the one write let through to the site, so a --url and a store naming two installs
+// stop there with nothing else written.
+let walking = null;
+let saveSent = false;
+let checked = false;
+let stopped = false;
+let halt;
+const halted = new Promise((resolve) => { halt = resolve; });
+// Failed rather than left paused: a session that ends lets go on what it has paused.
+const stop = async (requestId, event) => {
+  stopped = true;
+  await call('Fetch.failRequest', { requestId, errorReason: 'BlockedByClient' }).catch(() => {});
+  if (event) report(event);
+  halt();
+};
+const isSave = (url, method) => url.origin === deployment && method === 'POST'
+  && url.pathname === job.save.path;
+const sent = async (params) => {
+  const { requestId, request } = params;
+  if (stopped) return stop(requestId);
+  const url = new URL(request.url);
+  const rule = job.intercepts.find((r) => url.pathname === r.path);
+  if (rule) {
+    report({ intercepted: rule.path });
+    // In `--feed` order: the walk waits for each check before it starts the next.
+    const body = rule.answers ? JSON.stringify(rule.answers.shift()) : rule.body;
+    await call('Fetch.fulfillRequest', {
+      requestId,
+      responseCode: rule.status,
+      responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
+      body: Buffer.from(body).toString('base64'),
+    });
+    return;
+  }
+  const own = url.origin === deployment;
+  if (own && request.method !== 'GET' && !checked) {
+    if (saveSent || walking !== job.save.step || !isSave(url, request.method)) {
+      return stop(requestId, { blocked: { method: request.method, url: request.url } });
+    }
+    saveSent = true;
+  }
+  const headers = { ...request.headers, ...(own ? job.headers : {}) };
+  // A request the page has dropped since it paused cannot be continued, and nothing
+  // waits on it; a live one left paused fails its step on that step's own limit.
+  await call('Fetch.continueRequest', Object.keys(job.headers).length
+    ? { requestId, headers: Object.entries(headers).map(([name, value]) => ({ name, value })) }
+    : { requestId });
+};
+const answered = async (params) => {
+  const { requestId, request } = params;
+  if (stopped) return stop(requestId);
+  if (params.responseErrorReason) {
+    await call('Fetch.continueRequest', { requestId });
+    return;
+  }
+  // A redirect has no body to read back, and following it would send the request again. Its
+  // status alone makes it one: the protocol may pause a response without its headers.
+  if (Math.floor(params.responseStatusCode / 100) === 3) {
+    const location = (params.responseHeaders ?? []).find(({ name }) => /^location$/i.test(name));
+    return stop(requestId, { redirected: {
+      method: request.method, url: request.url,
+      status: params.responseStatusCode, location: location?.value ?? null,
+    } });
+  }
+  const { body, base64Encoded } = await call('Fetch.getResponseBody', { requestId });
+  const text = base64Encoded ? Buffer.from(body, 'base64').toString() : body;
+  let answer = null;
+  try { answer = JSON.parse(text); } catch {}
+  if (saveSent && !checked && answer?.ok && isSave(new URL(request.url), request.method)) {
+    report({ saved: { path: job.save.path, answer } });
+    if ((await lines.next()).value !== 'go') return stop(requestId);
+    checked = true;
+  }
+  await call('Fetch.fulfillRequest', {
+    requestId,
+    responseCode: params.responseStatusCode,
+    // The body read back is decoded, and an edge may have compressed what it sent.
+    responseHeaders: (params.responseHeaders ?? []).filter(
+      ({ name }) => !/^content-(encoding|length)$/i.test(name)),
+    body: Buffer.from(text).toString('base64'),
+  });
+};
 socket.addEventListener('message', (event) => {
   const { method, params } = JSON.parse(event.data);
-  if (method === 'Runtime.exceptionThrown') {
+  if (method === 'Fetch.requestPaused') {
+    const atResponse = params.responseStatusCode !== undefined || params.responseErrorReason;
+    (atResponse ? answered : sent)(params).catch(() => {});
+  } else if (method === 'Runtime.exceptionThrown') {
     const { exception, text } = params.exceptionDetails;
     report({ console: brief(exception?.description ?? text) });
   } else if (method === 'Runtime.consoleAPICalled' && params.type === 'error') {
@@ -279,29 +440,6 @@ socket.addEventListener('message', (event) => {
   } else if (method === 'Network.requestWillBeSent' && params.request.method === 'POST') {
     const url = new URL(params.request.url);
     if (url.pathname === '/run') report({ run: Object.fromEntries(url.searchParams) });
-  } else if (method === 'Fetch.requestPaused') {
-    const url = new URL(params.request.url);
-    const rule = job.intercepts.find((r) => url.pathname === r.path);
-    if (!rule) {
-      const own = url.origin === deployment;
-      const headers = { ...params.request.headers, ...(own ? job.headers : {}) };
-      // A request the page has dropped since it paused cannot be continued, and nothing
-      // waits on it; a live one left paused fails its step on that step's own limit.
-      call('Fetch.continueRequest', {
-        requestId: params.requestId,
-        headers: Object.entries(headers).map(([name, value]) => ({ name, value })),
-      }).catch(() => {});
-      return;
-    }
-    report({ intercepted: rule.path });
-    // In `--feed` order: the walk waits for each check before it starts the next.
-    const body = rule.answers ? JSON.stringify(rule.answers.shift()) : rule.body;
-    call('Fetch.fulfillRequest', {
-      requestId: params.requestId,
-      responseCode: rule.status,
-      responseHeaders: [{ name: 'Content-Type', value: 'application/json' }],
-      body: Buffer.from(body).toString('base64'),
-    });
   }
 });
 await call('Page.enable');
@@ -309,12 +447,15 @@ await call('Network.enable');
 await call('Runtime.enable');
 await call('Log.enable');
 await blockFonts();
-const patterns = job.intercepts.map((rule) => ({ urlPattern: `*${rule.path}` }));
-// Every request pauses so each is judged by its own origin: extra headers set once for the
-// session go to every host, a redirect's next hop included, such as Access's login page or
-// an identity provider when the token is refused. A hop pauses again with its own URL.
-if (Object.keys(job.headers).length) patterns.push({ urlPattern: '*' });
-if (patterns.length) await call('Fetch.enable', { patterns });
+// Every request pauses, so each is judged by its own origin and method: a write waits on
+// the store check, and extra headers set once for the session would go to every host, a
+// redirect's next hop included, such as Access's login page or an identity provider when
+// the token is refused. A hop pauses again with its own URL.
+await call('Fetch.enable', { patterns: [
+  { urlPattern: `${deployment}${job.save.path}`, requestStage: 'Response' },
+  ...job.intercepts.map((rule) => ({ urlPattern: `*${rule.path}` })),
+  { urlPattern: '*' },
+] });
 // What Runtime.evaluate answers when the document it runs in is replaced under it.
 const LEFT = /navigated or closed|context was destroyed/i;
 // A step the page reloaded under, judged in the new document once it has loaded.
@@ -338,6 +479,7 @@ const walk = async () => {
     return;
   }
   for (const step of job.steps) {
+    walking = step.id;
     let result;
     try {
       // Marks the document the step runs in, so the one that replaces it is told apart.
@@ -351,8 +493,10 @@ const walk = async () => {
     if (!result.ok) return;
   }
 };
-await walk();
+await Promise.race([walk(), halted]);
 socket.close();
+input.close();
+process.stdin.destroy();
 """
 )
 
@@ -374,6 +518,24 @@ class Walk:
             print(f"RUN started: {json.dumps(self.run)}", flush=True)
         elif "intercepted" in event:
             print(f"INTERCEPTED {event['intercepted']}", flush=True)
+        elif "saved" in event:
+            print(f"SAVED through {event['saved']['path']}: checking the store", flush=True)
+        elif "redirected" in event:
+            redirected = event["redirected"]
+            self.fail(
+                self.waiting_on,
+                f"--url answered {redirected['method']} {redirected['url']} with "
+                f"{redirected['status']}, a redirect to {redirected['location'] or 'nowhere'}: "
+                "the walk follows no redirect of an answer it holds, so it stopped there",
+            )
+        elif "blocked" in event:
+            blocked = event["blocked"]
+            self.fail(
+                self.waiting_on,
+                f"the page sent {blocked['method']} {blocked['url']} before the store was found "
+                "to hold the language step's save, the one write let through until then, so it "
+                "was stopped there and never sent",
+            )
         elif event["ok"]:
             self.passed.append(event["step"])
             print(f"PASS {event['step']}", flush=True)
@@ -381,6 +543,9 @@ class Walk:
             self.fail(event["step"], event["detail"])
 
     def fail(self, step: str, detail: str) -> None:
+        """The first failure is the walk's; what a stop sets off after it is not."""
+        if self.failure:
+            return
         self.failure = f"step {step}: {detail}"
         print(f"FAIL {self.failure}", flush=True)
 
@@ -401,15 +566,17 @@ def build_job(
     headers: dict[str, str],
     broken: str | None,
     feed_check_answers: list[dict] | None = None,
+    choice: Choice = FIRST_CHOICE,
 ) -> dict:
     """What the driver needs to walk the wizard at `url`."""
-    prelude = base_prelude() + wizard_prelude(feeds, first_issue_s)
+    prelude = base_prelude() + wizard_prelude(feeds, first_issue_s, choice)
     intercepts = [BREAKS[broken]] if broken else []
     if feed_check_answers:
         intercepts.append({"path": FEED_CHECK_PATH, "status": 200, "answers": feed_check_answers})
     return {
         "url": f"{url.rstrip('/')}{PAGE}",
         "headers": headers,
+        "save": LANGUAGE_SAVE,
         "intercepts": intercepts,
         "consoleMaxChars": CONSOLE_ERROR_MAX_CHARS,
         "steps": [
@@ -427,7 +594,15 @@ def build_job(
     }
 
 
-async def drive_walk(socket_url: str, job: dict, budget_s: int, walk: Walk) -> None:
+async def drive_walk(
+    socket_url: str,
+    job: dict,
+    budget_s: int,
+    walk: Walk,
+    confirm: Callable[[dict], str] = lambda saved: "",
+) -> None:
+    """Walk the job; `confirm` is shown the language step's save and answers why the walk must
+    stop there."""
     process = await asyncio.create_subprocess_exec(
         "node",
         "--input-type=module",
@@ -438,15 +613,33 @@ async def drive_walk(socket_url: str, job: dict, budget_s: int, walk: Walk) -> N
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    # A driver that died on the socket leaves a closed pipe, and its stderr says why.
-    with contextlib.suppress(BrokenPipeError, ConnectionResetError):
-        process.stdin.write(json.dumps(job).encode())
-        await process.stdin.drain()
-        process.stdin.close()
+
+    async def say(line: str) -> None:
+        # A driver that died on the socket leaves a closed pipe, and its stderr says why.
+        with contextlib.suppress(BrokenPipeError, ConnectionResetError):
+            process.stdin.write(f"{line}\n".encode())
+            await process.stdin.drain()
+
+    await say(json.dumps(job))
+
+    def kill() -> None:
+        with contextlib.suppress(ProcessLookupError):
+            process.kill()
+
+    halting: list[asyncio.TimerHandle] = []
 
     async def events() -> None:
         async for line in process.stdout:
-            walk.take(json.loads(line))
+            event = json.loads(line)
+            walk.take(event)
+            if "saved" in event:
+                stop = await asyncio.to_thread(confirm, event["saved"])
+                if stop:
+                    walk.fail(walk.waiting_on, stop)
+                # The driver fails a save told to stop, so the page never reads it as stored.
+                await say("stop" if stop else "go")
+            if walk.failure and not halting:
+                halting.append(asyncio.get_running_loop().call_later(HALT_S, kill))
 
     try:
         _, stderr, _ = await asyncio.wait_for(
@@ -457,6 +650,10 @@ async def drive_walk(socket_url: str, job: dict, budget_s: int, walk: Walk) -> N
         await process.wait()
         walk.fail(walk.waiting_on, f"no end after {budget_s} seconds")
         return
+    finally:
+        process.stdin.close()
+        for handle in halting:
+            handle.cancel()
     if process.returncode != 0 and not walk.failure:
         walk.fail(walk.waiting_on, f"the driver failed: {stderr.decode().strip()}")
     elif not walk.finished and not walk.failure:
@@ -514,6 +711,94 @@ def open_store(args: argparse.Namespace) -> D1Queryable:
 
 def source_names(store: D1Queryable) -> list[str]:
     return [row["name"] for row in store.query("SELECT name FROM sources").rows]
+
+
+def site_read(url: str, path: str, headers: dict[str, str]) -> httpx.Response:
+    """The site's answer at `path`, read as the wizard page reads it.
+
+    A redirect is an answer that is not the route's, so it is not followed: the token
+    goes to `url` and nowhere else.
+    """
+    response = httpx.get(
+        f"{url.rstrip('/')}{path}", headers=headers, timeout=LOAD_S, trust_env=False
+    )
+    response.raise_for_status()
+    return response
+
+
+def site_awaits_sources(url: str, headers: dict[str, str]) -> bool:
+    """Whether the site at `url` says, as it tells the wizard, that it has no source yet.
+
+    An answer that says neither raises ValueError.
+    """
+    response = site_read(url, SITE_SOURCES_PATH, headers)
+    answer = response.json()
+    awaiting = answer.get("awaiting") if isinstance(answer, dict) else None
+    if not isinstance(awaiting, bool):
+        raise ValueError(
+            f"it answered {response.text[:200]}, which says neither that it awaits "
+            "its first source nor that it does not"
+        )
+    return awaiting
+
+
+def site_settings(url: str, headers: dict[str, str]) -> tuple[list[str], dict[str, object]]:
+    """The language tags the site's wizard offers, and the settings it says it holds.
+
+    An answer that names neither raises ValueError.
+    """
+    response = site_read(url, SITE_SETTINGS_PATH, headers)
+    answer = response.json()
+    values = answer.get("values") if isinstance(answer, dict) else None
+    languages = answer.get("languages") if isinstance(answer, dict) else None
+    tags = [
+        language.get("tag") if isinstance(language, dict) else None
+        for language in (languages if isinstance(languages, list) else [None])
+    ]
+    if not isinstance(values, dict) or not all(isinstance(tag, str) for tag in tags):
+        raise ValueError(
+            f"it answered {response.text[:200]}, which names no settings and languages"
+        )
+    return tags, values
+
+
+def store_settings(store: D1Queryable) -> tuple[dict[str, object], dict[str, str]]:
+    """Every setting the store holds, decoded, and apart from them each one that is not JSON,
+    which the production reader skips."""
+    decoded: dict[str, object] = {}
+    undecodable: dict[str, str] = {}
+    for row in store.query("SELECT key, value FROM settings").rows:
+        try:
+            decoded[row["key"]] = json.loads(row["value"])
+        except json.JSONDecodeError:
+            undecodable[row["key"]] = row["value"]
+    return decoded, undecodable
+
+
+def store_flag(args: argparse.Namespace) -> str:
+    return f"--sqlite {args.sqlite}" if args.sqlite else f"--d1 {args.d1}"
+
+
+def store_mismatch(store: D1Queryable, flag: str, choice: Choice) -> str:
+    """Why the store does not hold what the language step saved; empty when it does.
+
+    Neither side held those values before the walk, so a store that holds them now is the
+    one the site wrote them to.
+    """
+    try:
+        held, undecodable = store_settings(store)
+    except D1Error as e:
+        return f"could not read {flag} for the language step's save: {e}"
+    for key, value in choice.saved.items():
+        if key not in held or held[key] != value:
+            found = json.dumps(held[key]) if key in held else "nothing"
+            if key in undecodable:
+                found = f"a value that is not JSON, {undecodable[key][:80]!r}"
+            return (
+                f"--url and {flag} are not one install: the walk saved {key} = "
+                f"{json.dumps(value)} at --url, and {flag} holds {found}"
+            )
+    return ""
 
 
 def newest_run_id(store: D1Queryable) -> int:
@@ -622,16 +907,49 @@ def main(argv: list[str] | None = None) -> int:
         store = open_store(args)
         names = source_names(store)
         after = newest_run_id(store)
+        stored, _ = store_settings(store)
     except (ValueError, D1Error) as e:
         print(f"REFUSED: {e}", file=sys.stderr)
         return EXIT_REFUSED
+    flag = store_flag(args)
     if names:
         print(
-            f"REFUSED: sources holds {len(names)} row(s), {json.dumps(names, ensure_ascii=False)}: "
+            f"REFUSED: the store, {flag}, holds {len(names)} sources row(s), "
+            f"{json.dumps(names, ensure_ascii=False)}: "
             "the wizard would not be walking a new install.",
             file=sys.stderr,
         )
         return EXIT_REFUSED
+    # The store read above may be another install's: the site's own answer is what the
+    # wizard acts on, and what the walk would write to.
+    try:
+        awaiting = site_awaits_sources(args.url, headers)
+    except (ValueError, httpx.HTTPError) as e:
+        print(f"REFUSED: could not read {SITE_SOURCES_PATH} at --url: {e}", file=sys.stderr)
+        return EXIT_REFUSED
+    if not awaiting:
+        print(
+            f"REFUSED: the site, --url {args.url}, says its sources are not empty "
+            f"({SITE_SOURCES_PATH} is not awaiting them), while {flag} holds none: "
+            "the wizard would not be walking a new install, and the two are not one install.",
+            file=sys.stderr,
+        )
+        return EXIT_REFUSED
+    try:
+        languages, site_values = site_settings(args.url, headers)
+    except (ValueError, httpx.HTTPError) as e:
+        print(f"REFUSED: could not read {SITE_SETTINGS_PATH} at --url: {e}", file=sys.stderr)
+        return EXIT_REFUSED
+    try:
+        choice = choose(languages, site_values, stored, flag)
+    except ValueError as e:
+        print(f"REFUSED: {e}", file=sys.stderr)
+        return EXIT_REFUSED
+    print(
+        f"ANSWERING language {choice.language}, timezone {choice.timezone} and publish hours "
+        f"{' and '.join(schedule_of(choice.hours))}: neither --url nor {flag} holds them",
+        flush=True,
+    )
     answers = None
     if args.skip_feed_checker:
         try:
@@ -644,10 +962,16 @@ def main(argv: list[str] | None = None) -> int:
     browser = find_browser(args.browser)
     require_node()
     walk = Walk()
-    job = build_job(args.url, args.feed, args.first_issue_timeout, headers, args.broken, answers)
+    job = build_job(
+        args.url, args.feed, args.first_issue_timeout, headers, args.broken, answers, choice
+    )
     budget_s = args.first_issue_timeout + FEED_CHECK_S * len(args.feed) + WALK_MARGIN_S
     with chromium(browser) as socket_url:
-        asyncio.run(drive_walk(socket_url, job, budget_s, walk))
+        asyncio.run(
+            drive_walk(
+                socket_url, job, budget_s, walk, lambda saved: store_mismatch(store, flag, choice)
+            )
+        )
 
     try:
         problems = read_receipts(store, after, walk.run)
