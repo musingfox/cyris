@@ -740,7 +740,9 @@ def chromium(browser: str) -> Iterator[str]:
             except SystemExit as no_port:
                 # Without its own words a browser that exits at launch reads as a hang.
                 log.seek(0)
-                said = log.read().decode(errors="replace").strip()[-2000:]
+                said = log.read().decode(errors="replace").strip()
+                # A crash appends a stack dump, so the cause is at the head.
+                said = said if len(said) <= 3000 else f"{said[:2000]} ... {said[-1000:]}"
                 raise SystemExit(f"{no_port}; Chromium said: {said or 'nothing'}") from None
             yield _page_socket(port, deadline)
         finally:
