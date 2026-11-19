@@ -294,6 +294,62 @@ command to finish. A re-run that finds nothing stored still reads the live archi
 lists a named page, the re-run refuses. The last deploy may not be live yet, so wait and
 re-run. When the live archive lists none of the named pages, it prints `Nothing to prune.`
 
+## Walking onboarding against a URL
+
+`scripts/e2e_onboarding.py` drives headless Chromium through `/onboarding` on a deployment whose
+`sources` table is empty, starts the first issue, waits for it to end and reads the store. It needs
+Chromium and Node 22+.
+
+```sh
+uv run python scripts/e2e_onboarding.py --url https://cyris-app.<subdomain>.workers.dev \
+  --feed https://example.com/feed.xml --d1 <database id>
+```
+
+Point it only at a deployment you can leave changed. The walk does what a reader does: it stores
+settings, the feeds, one vote and a real issue, which publishes and notifies as any run does, and a
+provider whose key is present is called. When the language it saves is not the one the page is
+worded in, the page opens the schedule step in a reload, in the saved language, and the walk
+carries on in the new document; a reload under any other step fails the walk.
+
+- **The store** is `--d1 <database id>`, with `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` set,
+  or `--sqlite <path>`, and it must be the store of the deployment at `--url`. It refuses to start
+  while the store's `sources` holds a row, or while the site's own `/api/onboarding/feeds` says it
+  has sources, and names which. Before the browser opens it reads the store's settings and the
+  site's own `/api/settings`, and picks a language, timezone and publish hours that neither holds:
+  `en`, `UTC`, 08:00 and 20:00 first, else the next one along. With none left it refuses, naming
+  the setting. So the language step always saves, on a trial cleared by `reset_trial.py` too, where
+  the shipped defaults are stored. Until the store holds exactly that language and timezone, that
+  save is the one write the site receives. The walk fails at any other non-GET request to the
+  `--url` origin, which it never sends, naming its method and URL; at a redirect in answer to the
+  save, naming the status and where it pointed; and at a store that does not hold them, naming
+  `--url`, the store flag, the setting and what the store holds instead, or naming the store flag
+  alone when the store cannot be read. So a pair naming two installs leaves the site with that one
+  save. A walk that passes leaves what it picked stored. To clear a trial first, see
+  [The trial deployment](#the-trial-deployment-after-production).
+- **The feed** must be reachable from the deployment at a public address: the wizard's own check
+  refuses a private or local one. Its newest articles must fall inside the digest window, or the
+  run ends `no_articles` and the walk fails. Repeat `--feed` to add several.
+- **Behind Access**, set `CYRIS_ACCESS_CLIENT_ID` and `CYRIS_ACCESS_CLIENT_SECRET`. Both headers go
+  only on requests to the `--url` origin, the browser's and the script's own reads of the site, so no
+  third party receives them, not even through a redirect off the deployment, such as to the Access
+  login when the token is refused.
+- **`--break feed-check`** answers the feed check with an error in the browser, to see the walk fail.
+- **`--skip-feed-checker`** is not for a run against a URL. A run against a URL with a public feed
+  does not use it, and exercises the real check. It exists for `scripts/e2e_onboarding_local.py
+  pass`, whose loopback feed the real check refuses by design: the browser answers the check with
+  the feed's own title and address, so `FeedChecker` never runs. It has one answer per `--feed`,
+  and a check past them fails the walk. The script refuses the flag unless the URL and every feed
+  are on loopback.
+- **`--first-issue-timeout <seconds>`** is how long it waits for the run, 1200 by default: past the
+  page's own 15 minutes.
+
+It exits 0 only when the store has a `sources` row and the first issue's `digest_runs` row has
+`status=ok`, and prints that row. That row is the first of the issue's period whose run started
+at or after the time the page's `POST /run` answered with, so a catch-up or scheduled run started
+earlier in the walk does not count. One of the same period that starts after the page's and ends
+first would, so keep the walk off a publish hour on a deployment whose schedule is on. A refusal to start exits 2. Any other failure exits 1 and prints
+the step or receipt, and the last browser console errors.
+
 ## Routine
 
 - **Revoking a reader's session** is done in the Zero Trust dashboard. The reader meets the
