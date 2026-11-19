@@ -268,6 +268,24 @@ class TestD1Mode:
 
         assert "FAIL receipt digest_runs: no morning row" in capsys.readouterr().out
 
+    def test_a_row_of_the_period_ending_before_the_run_starts_is_not_the_issue(
+        self, d1: SqliteD1, browser: list[str], monkeypatch, capsys
+    ) -> None:
+        # A catch-up or scheduled run that ends while the walk is still adding feeds.
+        async def drive(socket_url, job, budget_s, walk: walker.Walk, confirm) -> None:
+            _add_run(d1, "no_articles")
+            walk.take({"run": RUN})
+            for event in _every_step_passes():
+                walk.take(event)
+            _add_source(d1)
+            _add_run(d1, "ok")
+
+        monkeypatch.setattr(walker, "drive_walk", drive)
+
+        assert walker.main(ARGS) == walker.EXIT_OK
+
+        assert '"status": "ok"' in capsys.readouterr().out
+
     def test_a_failed_step_fails_naming_it_and_prints_the_console_errors(
         self, d1: SqliteD1, browser: list[str], monkeypatch, capsys
     ) -> None:
@@ -1795,9 +1813,9 @@ class TestSkipFeedChecker:
             socket_url: str, job: dict, budget_s: int, walk: walker.Walk, confirm
         ) -> None:
             jobs.append(job)
+            walk.take({"run": RUN})
             _add_source(d1)
             _add_run(d1, "ok")
-            walk.take({"run": RUN})
             for event in _every_step_passes():
                 walk.take(event)
 

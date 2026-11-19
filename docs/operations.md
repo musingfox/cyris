@@ -344,7 +344,8 @@ carries on in the new document; a reload under any other step fails the walk.
   page's own 15 minutes.
 
 It exits 0 only when the store has a `sources` row and the first issue's `digest_runs` row has
-`status=ok`, and prints that row. A refusal to start exits 2. Any other failure exits 1 and prints
+`status=ok`, and prints that row. That row is the first of the issue's period written after the
+page posted `/run`, so a catch-up or scheduled run that ended earlier in the walk does not count. A refusal to start exits 2. Any other failure exits 1 and prints
 the step or receipt, and the last browser console errors.
 
 ## Routine
