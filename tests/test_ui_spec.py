@@ -1861,6 +1861,16 @@ const ran = async (ms) => {
   await sleep(ms);
   return (await evaluate('window.__ran')) - before;
 };
+// Polled, not one fixed glimpse, so a slow runner that starts the motion late still
+// sees it; a page that never moves still returns 0 at the deadline.
+const moving = async () => {
+  const before = await evaluate('window.__ran');
+  for (const end = Date.now() + job.deadline; Date.now() < end; await sleep(job.poll)) {
+    const now = await evaluate('window.__ran');
+    if (now > before) return now - before;
+  }
+  return 0;
+};
 const drawn = () => evaluate(`document.getElementById('pipeline').classList.contains('on7')`);
 await call('Page.enable');
 await call('Network.enable');
@@ -1872,7 +1882,7 @@ const seen = {};
 await open(true);
 seen.fromLoad = { ran: await ran(job.window), drawn: await drawn() };
 await open(false);
-const opening = await ran(job.glimpse);
+const opening = await moving();
 await reduce(true);
 await sleep(job.settle);
 seen.duringOpening = { before: opening, ran: await ran(job.window) };
@@ -1880,7 +1890,7 @@ await open(false);
 // The page's end sends the drawing to its last step, and a scroll settles the opening.
 await evaluate('scrollTo(0, document.documentElement.scrollHeight)');
 await sleep(job.skip);
-const drawing = await ran(job.glimpse);
+const drawing = await moving();
 await reduce(true);
 await sleep(job.settle);
 seen.duringDrawing = { before: drawing, ran: await ran(job.window), drawn: await drawn() };
@@ -1903,7 +1913,8 @@ def landing_motion() -> dict[str, dict]:
         "settle": 200,
         # A loop ticking slower than this window can pass unseen.
         "window": 1000,
-        "glimpse": 300,
+        "poll": 20,
+        "deadline": 5000,
         # Past the 280ms the opening takes to settle after a scroll.
         "skip": 400,
     }
