@@ -73,9 +73,12 @@ class RunOptions:
     dry_run: bool = False
     force: bool = False
     rerun_of: str | None = None
-    # The issue's date, YYYY-MM-DD, when a manual run names one; None dates it
-    # today in the deployment's timezone. The onboarding's first issue names
-    # yesterday when both of today's publish hours are still to come.
+    # The issue's date, YYYY-MM-DD. A `--if-due` tick names the date of the clock
+    # reading that chose its period, taken when it started, so one that waits past
+    # midnight for the digest-run lock keeps it. A manual run names one only when
+    # asked: the onboarding's first issue names yesterday when both of today's
+    # publish hours are still to come. None dates it today in the deployment's
+    # timezone when the pipeline writes it.
     date: str | None = None
 
 

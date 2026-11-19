@@ -35,7 +35,7 @@ Traditional Chinese.
 
 |  | Local | Cloudflare |
 |---|---|---|
-| Runs | on your machine: a server with a setup wizard (`cyris triage-ui`, or `docker compose up -d`), and an hourly schedule from cron or compose | on a schedule, in a Cloudflare Container |
+| Runs | on your machine: a server with a setup wizard (`cyris triage-ui`, or `docker compose up -d`), and an hourly schedule that runs while it does | on a schedule, in a Cloudflare Container |
 | You read it | in a web archive its own server shows on this machine | in a web archive at a URL |
 | Web votes, email-only newsletters | no | yes, with optional Workers |
 | Needs | Python 3.12+ and uv, or Docker with compose | Workers Paid (US$5/month), Docker and bun; your own domain for email features |

@@ -434,7 +434,8 @@ def triage_ui(run_dir: Path, env: dict[str, str]):
     with log_path.open("w") as log:
         proc = subprocess.Popen(
             [
-                str(VENV_BIN / "cyris"), "triage-ui",
+                # A test crossing the hour must not add a tick's requests to its count.
+                str(VENV_BIN / "cyris"), "triage-ui", "--no-schedule",
                 "--port", str(port),
                 "--config", str(run_dir / "cyris.toml"),
                 "--sources", str(run_dir / "sources.yaml"),

@@ -26,6 +26,9 @@ services:
   # would hand them to the network, with no sign-in in front of them.
   ui:
     build: .
+    # The `cyris` service's supercronic owns this install's schedule, and two schedulers
+    # publishing one place is the failure docs/install-local.md names.
+    command: ["/app/entrypoint.sh", "--no-schedule"]
     env_file: .env
     environment:
       - TZ=${TZ:-Asia/Taipei}

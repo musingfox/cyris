@@ -316,7 +316,8 @@ digest window, as `RssSource` does at digest time, so a blog's old history is no
 new. The Worker needs Workers Paid; the 2026-10-04 objection to polling from the cyris process,
 that the container would wake every hour, does not apply to a machine that is already on.
 `docker/crontab` runs `ingest` and `run --if-due` in sequence on one line so the digest reads what
-this hour's poll just stored. `ingest` does nothing where the Worker is configured. No new state: the
+this hour's poll just stored, and a uv install's `cyris triage-ui` starts the same line itself (§6).
+`ingest` does nothing where the Worker is configured. No new state: the
 rows are ordinary rows of §4's article store.
 
 **Email — a queue, drained with an ack.** Cloudflare Email Routing delivers to the `email()` handler
@@ -378,15 +379,33 @@ fills the ceiling logs a warning, since the window's earliest-buffered rows then
 
 An issue is keyed by `(date, period)`, and a run stores its issue over any other with its key
 (`adapters/store/digests.py`). The hourly tick (`cyris run --if-due`) takes the period from the
-schedule and the date from its own clock in `general.timezone`. A manual run (`POST /run?period=`,
+schedule and the date from one reading of its own clock in `general.timezone`, taken when it
+starts, and names both to the pipeline, so a tick that waits for the digest-run lock (below) past
+its hour or past midnight keeps the date and period it started with. A manual run (`POST /run?period=`,
 `cyris run --period`) names the period, and may name the date too (`&date=`, `--date`), which only
 `--if-due` refuses; the app Worker, and a local `cyris triage-ui` (§6), take a named date only when
 it is today or yesterday in the deployment's time zone, and refuse it with 503 when they cannot read
 that zone. Two callers name a
 date: the onboarding's first issue (§6), and a tick that catches up a digest hour whose run never
 finished (§5), which names that hour's period and the hour's own local date, so an evening caught
-up after midnight keeps its issue's date. Without one, the pipeline dates
-the issue when it writes it.
+up after midnight keeps its issue's date. A manual run naming no date leaves it to the pipeline,
+which dates the issue when it writes it.
+
+**On a `sqlite` store, one `cyris run` at a time and one tick per issue.** Before it builds anything, a
+non-dry `cyris run` takes the digest-run lock (§4), whichever period either run is for. One naming
+`--period`, such as `POST /run` spawns, that finds it held does nothing, says so and exits 0. A
+`--if-due` tick that finds it held waits for it, trying again every `DIGEST_LOCK_POLL_SECONDS` for up
+to `DIGEST_LOCK_WAIT_SECONDS` (§5), then makes the check below under the lock. Past the cap it says
+it waited for another digest and exits 0. The lock covers only a non-dry `cyris run`:
+`cyris regenerate --mode rerun --publish` takes none, so it can overlap a run. The lock is taken in `cyris run` and not in the
+server because under compose the tick and `POST /run` start in two containers. A tick then does
+nothing and says so if its key is already in `digests`, the only state the same-period check reads;
+a run naming `--period` still stores over it, which is how a reader makes an issue again. A manual
+run still going when a digest hour begins therefore delays that hour's issue by up to the cap, and
+costs it only when the run outlasts the cap or is for the same issue. A tick dates and labels its
+issue by the hour it started in, so one that gets the lock after that hour, or after midnight, still
+makes that hour's issue, late; after the wait its only check is the `digests` key. On `d1` none of this applies and `--if-due` asks only the schedule: the
+Worker decides when to start a run (§5), and `Lifecycle.start` holds one `run` instance.
 
 Each source carries a **lane**, which decides how much attention it gets:
 
@@ -738,6 +757,7 @@ table `schema.sql` creates must appear in the rows below, so a new table cannot 
 | ~~Embedding cache~~ | — | **nowhere** | Deleted 2026-08-27. Not moved: a full run is ~600 texts ≈ 20 neurons of a 10,000/day allowance, so the 415 MB existed to skip five seconds of arithmetic |
 | Run log (one `run_summary` JSON line per run, plus everything the container prints) | **Workers Logs**, 7 days | same | Not a record, and not state: it is the operational window — what last night's run fetched, spent and did. The `run_summary` dict itself is no longer only here: its durable copy is `digest_runs.summary` (one row per run, D1 only). Everything else the container prints stays in this window, and a longer retention is still not the answer |
 | HTML digest + raw pages | **published from memory** | same | A hosted tenant's are its `hosted_pages` rows (above), not a Pages project's. `agent-vault/html/` is a local install's; a local `cyris triage-ui` serves it at `/`. The deployed site is the archive of the pages as published; a digest page can also be re-rendered from D1 `digests`, and a raw page rebuilt from D1 `digest_inputs` with each article's state as it is now, so an issue recorded before `digest_inputs` has no raw page to rebuild |
+| A local install's digest-run lock | **an empty file beside the SQLite file**, `<sqlite_path>.run-lock`; under `docker compose`, in the volume both services mount | same | `take_digest_run_lock` in `adapters/store/local_d1.py`: the `flock` a non-dry `cyris run` holds for as long as it runs (§3.2). The state is the kernel's lock, not the file, which stays empty, so a killed run leaves nothing to clear and a backup or a restore can ignore it. A file of its own because `flock` on the store's file can conflict with SQLite's locks, and not a row because `digest_runs` gets its row only when a run ends. Never on `d1` |
 | Marketing website (outside the pipeline) | **`website/` source + separate Pages project `cyris-site`**; the launch film in **R2 `musingfox-media`** under `cyris/` | same | Static M2 branding and landing page; no D1 manifest, user data, or connection to the digest publisher |
 
 The article-store tables and the RSS buffer share one database (`cyris-rss`) on purpose
@@ -861,6 +881,8 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | RSS buffer poll: hourly, 4 feeds at a time, 20 s a feed, entries kept 8 days from buffer entry, for `workers/rss` and for each hosted tenant | A | `CONCURRENCY`, `FETCH_TIMEOUT_MS` and `RETENTION_DAYS` in `workers/rss/src/buffer.js`, which the hosted Worker imports (`workers/app/src/tenant_buffer.js`); the hour is the `0 * * * *` cron of `workers/rss/wrangler.toml` and of `wrangler.hosted.toml` | graded 2026-11-19 (ADR-0031), when the hosted poll began sharing them — one module, so a self-hosted buffer and a hosted tenant's keep one set of rules. The concurrency is Substack's 429 threshold (§3.1); the retention is the article store's dedup scan window, and onboarding's `BUFFER_DAYS` and `POLL_*` mirror these values (`tests/test_onboarding_cards.py`). A hosted tenant's poll fetches its feeds in its own object's invocation, so the tick's own cost grows by one call per tenant |
 | Hosted seed: the settings and sources the operator's seed writes into a tenant's database | A, **stub** | `workers/app/src/hosted_seed.json`, laid over `src/cyris/settings_starting_values.json`; its sources name `src/cyris/onboarding_feeds.json` entries | added 2026-11-18 — the provider and model are fixed to Anthropic's `claude-haiku-5-5`, the schedule to 08:00 and 20:00 in UTC, the language to `en` and every notification target blank; each tenant gets four feeds no other tenant has, so its stored articles show whose they are (`scripts/hosted_check.py`). Written once by `POST /hosted/tenants/<tenant>/seed` as upserts, and read by nothing else: the tenant's run reads its own `settings` and `sources` like any deployment's. Per-tenant onboarding replaces it. `tests/test_hosted_config.py` validates every value with `validate_setting` and every source as a fetchable `SourceConfig` |
 | A hosted container's environment | A | `hostedContainerEnv` and `HOSTED_SECRETS` in `workers/app/src/hosted_container.js` | added 2026-11-18 — an allow-list, not the default Worker's `SECRETS` and `DEPLOYMENT`: the model providers' keys and the account id, the tenant id from the object's own name, the hosted domain, `d1`, and Pages publishing off. No rss, promote or newsletter Worker URL or bearer, no D1 and Pages token and no deployment identity reach it. `tests/test_hosted_config.py` holds the list inside `SECRETS`; the hosted Worker's own secrets are set with `scripts/hosted.sh secrets` |
+| The local hourly tick: on, reading the wall clock at most 30 s apart | A | `TICK_WAKE_SECONDS` in `entrypoints/cli.py`; `cyris triage-ui --no-schedule` turns it off for one server, and compose's `ui` service passes that | added 2026-11-09 — asyncio's clock stops while a machine sleeps, so one wait for the next hour would fire late by as long as the lid was shut. A flag and not a setting, because what decides it is who else schedules this store, which is how the server was started and not a reader's preference |
+| An hourly tick waits for a running digest: tries the lock every 5 s, for up to 30 minutes | A | `DIGEST_LOCK_POLL_SECONDS`, `DIGEST_LOCK_WAIT_SECONDS` in `entrypoints/cli.py`; only `cyris run --if-due` waits, and a `--period` run is refused at once | added 2026-11-10 — the lock is not per period, so a manual run still going at a digest hour (the onboarding's first issue starts at 07:58) used to cost that hour its issue. The cap bounds only the wait: a tick that gets the lock at minute 29 then runs a whole digest, and wait plus digest can outlast the hour. The server's ticker then skips the next hour (`_tick_on_the_hour`, "the last tick is still running"), and with adjacent schedule hours that hour is a digest hour, so its issue is lost with only a warning. A tick that gets the lock after its publish hour has ended still makes its issue, late, dated and labelled by the hour it started in. A run that outlasts the cap leaves the issue unmade and says so |
 | The SQLite file's open: a 5-second busy timeout, and the first open's WAL switch retried 50 times, 0.1 s apart | A | `BUSY_TIMEOUT_SECONDS`, `FIRST_OPEN_ATTEMPTS`, `FIRST_OPEN_RETRY_SECONDS` in `adapters/store/local_d1.py` | added 2026-11-07 — a run writes single statements of at most 100 parameters, so a lock lasts milliseconds and five seconds is far past a healthy wait. The WAL switch takes a lock the busy handler does not wait on: two processes first-opening one file failed it 2 of 20 times with the timeout set, so it is retried on its own for up to five seconds |
 | Pages project name | B | `CYRIS_PROMOTE_PAGES_PROJECT` (a value set in `cyris.toml [promote]` wins) | done |
 | Marketing Pages project + hostname | B | `website/wrangler.toml`; Pages custom domain / DNS; canonical and social URLs in `website/index.html` | done — separate from the digest project |
@@ -1146,8 +1168,8 @@ schedule read, which happens once per tick; when either read fails it starts not
 unlike a digest hour, because a missed catch-up loses nothing the lost run had not already lost.
 Any other status without an `ok` row (a quiet window's `no_articles`, an onboarding wait that
 records no row) is retried as well; that costs two container passes, not an issue. The
-`docker compose` install has no catch-up: its crontab is unconditional and it has no Durable
-Object to lose. Votes therefore sync at the digest runs and their catch-ups only, not hourly; `run_digest` syncs them
+local install has no catch-up: its tick, from the compose crontab or `cyris triage-ui` (§6), is
+unconditional and it has no Durable Object to lose. Votes therefore sync at the digest runs and their catch-ups only, not hourly; `run_digest` syncs them
 before each issue, and the promote Worker's KV keeps them until then. Hour granularity is the contract, not a rounding: the write
 surface refuses `08:30` rather than firing at 08:00 and leaving the reader to work out why.
 
@@ -1327,7 +1349,8 @@ supercronic loop reading `docker/crontab`, the scheduler for a `docker compose` 
 bind-mounts `./agent-vault`, so the generated HTML survives a recreate, keeps
 the SQLite store in the named volume `cyris-state`, and runs a second container in the `ui` role,
 published on `127.0.0.1` only, with that directory writable, because a wizard's `POST /run` starts
-its run there.
+its run there. Its `command` hands the role `--no-schedule`, because supercronic owns compose's
+schedule.
 The two roles run as separate instances with separate idle timers, each set with the Durable
 Object's `ctx.container.setInactivityTimeout()`: `ui` sleeps after 5 minutes, and `run` gets
 `RUN_INACTIVITY_TIMEOUT_MS` (15 minutes) in `workers/app/src/index.js`, chosen from the Durable
@@ -1463,7 +1486,23 @@ server holds now (503 when it cannot read one). It then starts `cyris run --peri
 or `--if-due` with no period, on the server's own `--config` and `--sources`, in a session of its
 own so stopping the server does not stop the run, and answers `{"started": "run", "at": ...}` as
 the Worker's `startRun` does. The run's log goes where the server's does. Behind the Worker the
-route is not registered: the Worker answers `/run` and starts its own run container.
+route is not registered: the Worker answers `/run` and starts its own run container. The answer
+says only that the run was started: one naming a period that finds a digest under way (§3.2) does nothing and
+says so in that log, while one with no period runs `--if-due` and waits for the digest, up to the cap
+(§3.2, §5), and a wizard waiting on it reads the outcome of the run that held the lock when its
+period matches, and otherwise reports that no run ended.
+
+**The local server runs the hourly tick.** `cyris triage-ui` on a `sqlite` store (`StoreConfig.is_cloudflare`
+false) is a uv install's scheduler: when this machine's clock enters a new hour, `_tick_on_the_hour`
+in `entrypoints/cli.py` starts one `sh -c` line of `cyris ingest; cyris run --if-due; cyris
+promote-sync`, in that order and with `docker/crontab`'s `;`, in a session of its own and with the
+server's log. One line rather than a thread here waiting on each step, because a server stopped
+between the poll and the digest would otherwise lose that hour's issue; stopping the server stops no
+step, and only the ticks to come. A tick that cannot start is logged and the next hour tries again,
+and an hour whose last tick has not ended is skipped with a warning, as supercronic skips one. The
+schedule therefore exists only while the server does, and a machine that sleeps through an hour fires
+once on waking, within that wait, and makes no earlier hour up. `--no-schedule` turns it off, and
+compose passes that (above). A store on `d1` does not tick: its schedule is the Worker's (§5).
 
 **The reader-facing surfaces share one hostname, split by path.** The Worker proxies
 `DIGEST_ORIGIN` for anything not on the protected list, at the cost of one Worker request; why the

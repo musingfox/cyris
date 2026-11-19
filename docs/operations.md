@@ -204,7 +204,7 @@ A local install and the Cloudflare deployment run the same pipeline. Once both p
 the same D1 and the same Pages project, **two schedulers publishing one archive is the
 failure mode**: each publish is a full snapshot of the site, and the two would race.
 
-1. Stop the local scheduler first: remove the cron line, or `docker compose down` in
+1. Stop the local scheduler first: stop `cyris triage-ui`, or `docker compose down` in
    the local checkout.
 2. Verify the cloud side: `POST /run?period=morning` (or `evening`) as in
    [step 7 of the install](install-cloudflare.md#7-run-the-first-digest-now), then read
