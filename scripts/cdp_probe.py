@@ -412,7 +412,8 @@ return JSON.stringify({{ok: true}});
 }})()"""
 
 
-DRIVER = """
+# What every driver opens with: the socket, its calls, and the waits on a page.
+CDP_SESSION = """
 const socket = new WebSocket(process.env.CDP_WS);
 const pending = new Map();
 let nextId = 0;
@@ -445,10 +446,18 @@ const settled = async (condition) => {
   }
   throw new Error(`page never settled: ${condition}`);
 };
+// Fonts come from Google; a driver reads layout or state, not type, and waits on nothing.
+const blockFonts = () => call('Network.setBlockedURLs',
+  { urls: ['*fonts.googleapis.com*', '*fonts.gstatic.com*'] });
 await new Promise((resolve, reject) => {
   socket.addEventListener('open', resolve);
   socket.addEventListener('error', reject);
 });
+"""
+
+DRIVER = (
+    CDP_SESSION
+    + """
 const job = JSON.parse(process.env.PROBE_JOB);
 // Input goes through CDP rather than in-page events: only a real pointer is one
 // setPointerCapture accepts.
@@ -549,8 +558,7 @@ const perform = async (gestures) => {
 };
 await call('Page.enable');
 await call('Network.enable');
-// Fonts come from Google; the checks read layout, not type, and wait on nothing.
-await call('Network.setBlockedURLs', { urls: ['*fonts.googleapis.com*', '*fonts.gstatic.com*'] });
+await blockFonts();
 // --window-size has a ~500px floor; the emulation override reaches a phone.
 await call('Emulation.setDeviceMetricsOverride',
   { width: job.width, height: job.height, deviceScaleFactor: 1, mobile: false });
@@ -608,6 +616,7 @@ try {
 process.stdout.write(JSON.stringify(results));
 socket.close();
 """
+)
 
 
 @dataclass(frozen=True)
