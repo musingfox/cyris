@@ -172,7 +172,8 @@ const VALIDATORS = ["If-None-Match", "If-Modified-Since"];
 // Access sends the JWT as a header and keeps it in the CF_Authorization cookie; a static archive needs no cookie.
 const ACCESS_CREDENTIALS = ["Cf-Access-Jwt-Assertion", "Cookie"];
 
-function sized(response, scale, deps) {
+// hosted_pages.js sizes a hosted tenant's pages with this too (ADR-0013 carries over).
+export function sized(response, scale, deps) {
   if (scale === 1 || !isHtml(response)) return response;
   const injected = deps.injectStyle(response, typeScaleStyle(scale));
   const headers = new Headers(injected.headers);

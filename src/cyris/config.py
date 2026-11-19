@@ -108,16 +108,23 @@ LOCAL_B_GRADE_ENV_VARS: dict[str, str] = {
     "store.sqlite_path": "CYRIS_STORE_SQLITE_PATH",
 }
 
-# Grade-B identity only a hosted tenant's run container has. The hosted Worker sets it on
-# each container it starts, from its own tenant list and the container's own name, so no
-# deployer sets it and no Worker forwards it (docs/architecture.md §5, ADR-0028).
+# Grade-B identity only a hosted tenant's run container has. The hosted Worker sets both on
+# each container it starts: the tenant id from the container's own name, so no deployer sets
+# it (ADR-0028), and the hosted domain from the Worker's own variable of that name, which the
+# operator sets once (ADR-0029). docs/architecture.md §5.
 HOSTED_B_GRADE_ENV_VARS: dict[str, str] = {
     "store.tenant_id": "CYRIS_STORE_TENANT_ID",
+    "store.hosted_domain": "CYRIS_STORE_HOSTED_DOMAIN",
 }
 
 # A hosted tenant's id: what the hosted Worker names a tenant's Durable Objects by and puts
 # in the gateway's path. The same pattern as `TENANT` in workers/app/src/tenant_db.js.
 TENANT_ID = re.compile(r"[a-z0-9-]{1,40}")
+
+# The hosted Worker's hostname, without a scheme or a path: a tenant's links are
+# `https://<it>/t/<tenant>/...`.
+_LABEL = r"[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?"
+HOSTED_DOMAIN = re.compile(rf"{_LABEL}(?:\.{_LABEL})+")
 
 # Where a hosted tenant's settings and sources come from until per-tenant serving lands.
 HOSTED_SEED_HINT = "Seed the tenant through the hosted Worker (docs/hosted-tenants.md)."
@@ -276,6 +283,10 @@ class StoreConfig(BaseModel):
     # from CYRIS_STORE_TENANT_ID alone, which the hosted Worker sets from the container's own
     # name; unlike every other grade-B key, a file may not set it (`inject_b_grade`).
     tenant_id: str = ""
+    # Set only beside `tenant_id`: the hosted Worker's hostname, which a hosted run's links point
+    # at (`https://<it>/t/<tenant>/<issue>`). From CYRIS_STORE_HOSTED_DOMAIN, which the hosted
+    # Worker forwards from its own variable of that name (ADR-0029).
+    hosted_domain: str = ""
 
     @model_validator(mode="before")
     @classmethod
@@ -296,6 +307,7 @@ class StoreConfig(BaseModel):
                 "database_id": B_GRADE_ENV_VARS["store.database_id"],
                 "sqlite_path": LOCAL_B_GRADE_ENV_VARS["store.sqlite_path"],
                 "tenant_id": HOSTED_B_GRADE_ENV_VARS["store.tenant_id"],
+                "hosted_domain": HOSTED_B_GRADE_ENV_VARS["store.hosted_domain"],
             },
         )
 
@@ -313,6 +325,14 @@ class StoreConfig(BaseModel):
             raise ValueError(f"must match {TENANT_ID.pattern}, not {value!r}")
         return value
 
+    @field_validator("hosted_domain")
+    @classmethod
+    def hosted_domain_is_a_host(cls, value: str) -> str:
+        # A host alone: the links put the scheme before it and the tenant's path after it.
+        if value and not HOSTED_DOMAIN.fullmatch(value):
+            raise ValueError(f"must be a hostname without a scheme or a path, not {value!r}")
+        return value
+
     @model_validator(mode="after")
     def inject_credentials(self) -> "StoreConfig":
         if not self.account_id:
@@ -328,6 +348,16 @@ class StoreConfig(BaseModel):
             raise ValueError(
                 f"a hosted tenant id ({self.tenant_id}) needs the d1 backend, not {self.backend}"
             )
+        # A hosted run's pages are served on the hosted Worker alone, so its links have no other
+        # host to fall back to, and a hosted domain names no site without a tenant (ADR-0029).
+        domain_env = HOSTED_B_GRADE_ENV_VARS["store.hosted_domain"]
+        if self.tenant_id and not self.hosted_domain:
+            raise ValueError(
+                f"a hosted tenant id ({self.tenant_id}) needs {domain_env}, the hosted "
+                "Worker's hostname its links point at"
+            )
+        if self.hosted_domain and not self.tenant_id:
+            raise ValueError(f"{domain_env} is set without a hosted tenant id")
         return self
 
     @property
@@ -521,6 +551,20 @@ class AppConfig(BaseModel):
             "process and a container on one SQLite file corrupt it. Set [store] sqlite_path "
             "to a file outside the vault."
         )
+
+    @model_validator(mode="after")
+    def a_tenant_has_no_custom_domain(self) -> "AppConfig":
+        # A hosted run's links are the hosted Worker's (ADR-0029), and its promote settings make
+        # no difference to it; but `run_digest` puts a custom domain ahead of that site, so one
+        # set here would send the tenant's reader to a host that serves none of its pages.
+        if self.store.is_hosted and self.promote.custom_domain:
+            raise ValueError(
+                f"[promote] custom_domain ({self.promote.custom_domain}) is set beside a hosted "
+                f"tenant id ({self.store.tenant_id}): a hosted run links its tenant's site on "
+                f"{HOSTED_B_GRADE_ENV_VARS['store.hosted_domain']}, so unset "
+                f"{B_GRADE_ENV_VARS['promote.custom_domain']} and custom_domain"
+            )
+        return self
 
 
 def _within(path: Path, directory: Path) -> bool:

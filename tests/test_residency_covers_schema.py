@@ -17,6 +17,8 @@ import pytest
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
 SCHEMA = Path("src/cyris/adapters/store/schema.sql")
+# A hosted tenant's own tables, which only its Durable Object holds (ADR-0029).
+HOSTED_SCHEMA = Path("src/cyris/adapters/store/hosted_schema.sql")
 ARCHITECTURE = Path("docs/architecture.md")
 
 
@@ -35,6 +37,11 @@ def _rows_missing(sql: str, doc: str) -> list[str]:
 
 def test_every_schema_table_is_a_residency_row() -> None:
     assert _rows_missing(SCHEMA.read_text(), ARCHITECTURE.read_text()) == []
+
+
+def test_every_hosted_schema_table_is_a_residency_row() -> None:
+    assert _table_names(HOSTED_SCHEMA.read_text()) == ["hosted_pages"]
+    assert _rows_missing(HOSTED_SCHEMA.read_text(), ARCHITECTURE.read_text()) == []
 
 
 def test_a_new_table_without_a_row_is_named() -> None:

@@ -5,6 +5,8 @@
 import { DurableObject } from "cloudflare:workers";
 import { Lifecycle } from "./container.js";
 import { DB_HOST, TENANT } from "./tenant_db.js";
+import { tenantRegistry } from "./tenant_registry.js";
+import { ACTIVE } from "./tenant_status.js";
 
 // As index.js's run instance: the run exits when its pass ends, so this only caps a hung one.
 const RUN_INACTIVITY_TIMEOUT_MS = 900_000;
@@ -30,10 +32,16 @@ const HOSTED_SECRETS = [
   "CLOUDFLARE_AIG_TOKEN",
 ];
 
+// The hosted Worker's hostname, which a tenant's links point at (ADR-0029). The operator sets it
+// once (`scripts/hosted.sh secrets`), and every container gets it under the same name.
+export const HOSTED_DOMAIN = "CYRIS_STORE_HOSTED_DOMAIN";
+
 // The environment a tenant's run container starts with. The tenant id comes from the object's
-// own name, and publishing is off whatever the image defaults to: until per-tenant serving
-// lands, a hosted issue stays in the tenant's `digests` (bootstrap refuses to publish too).
+// own name. Pages publishing is off whatever the image defaults to: a hosted run stores its
+// pages in the tenant's own object (bootstrap wires that whatever this says). Without the hosted
+// domain a run would have no link to give, so it is not started.
 export function hostedContainerEnv(env, tenant) {
+  if (!env[HOSTED_DOMAIN]) throw new Error(`${HOSTED_DOMAIN} is not set; run: scripts/hosted.sh secrets`);
   const secrets = Object.fromEntries(
     HOSTED_SECRETS.filter((name) => env[name] != null && env[name] !== "").map((name) => [name, env[name]]),
   );
@@ -42,7 +50,7 @@ export function hostedContainerEnv(env, tenant) {
     CYRIS_ROLE: "run",
     CYRIS_STORE_BACKEND: "d1",
     CYRIS_STORE_TENANT_ID: tenant,
-    CYRIS_HTML_OUTPUT_ENABLED: "false",
+    [HOSTED_DOMAIN]: env[HOSTED_DOMAIN],
     CYRIS_PROMOTE_PUBLISH_ENABLED: "false",
   };
 }
@@ -66,8 +74,15 @@ export class TenantContainer extends DurableObject {
 
   // One run of this tenant's digest: `period` names it, as POST /run?period= does, and `date`,
   // checked by the caller, names the issue's date. Neither names a period lets --if-due decide.
+  // Only an active tenant of the registry is started, whoever asks: the routes and the tick
+  // ask the registry first, and this asks again so no other path can start an unregistered one.
   async startRun({ period, date } = {}) {
     if (!TENANT.test(this.tenant ?? "")) throw new Error(`not a tenant's run container: ${this.tenant}`);
+    const registered = await tenantRegistry(this.env).tenant(this.tenant);
+    if (registered?.status !== ACTIVE) {
+      const status = registered?.status ?? "unregistered";
+      throw new Error(`tenant ${this.tenant} is not an active registered tenant: ${status}`);
+    }
     const envVars = hostedContainerEnv(this.env, this.tenant);
     if (period) envVars.CYRIS_RUN_PERIOD = period;
     if (date) envVars.CYRIS_RUN_DATE = date;

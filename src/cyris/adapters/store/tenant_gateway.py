@@ -13,16 +13,31 @@ Blocking for the same reason `D1Client` is (ADR-0002), and with the same retry r
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import httpx
 
-from cyris.adapters.store.d1 import TIMEOUT_SECONDS, D1Error, QueryResult, post_with_retries
+from cyris.adapters.store.d1 import (
+    TIMEOUT_SECONDS,
+    D1Error,
+    D1Queryable,
+    QueryResult,
+    post_with_retries,
+)
 
 # The host the hosted Worker intercepts. Plain http: the request is answered inside the
 # Workers runtime and never crosses a network. `DB_HOST` in workers/app/src/tenant_db.js is
 # the same name; tests/test_hosted_config.py holds the two together.
 GATEWAY_ORIGIN = "http://db.cyris"
+
+# The tables only a hosted tenant has (its pages); the hosted Worker's seed applies the same file.
+HOSTED_SCHEMA_PATH = Path(__file__).with_name("hosted_schema.sql")
+
+
+def apply_hosted_schema(client: D1Queryable) -> None:
+    """Create a hosted tenant's own tables where they are missing; one idempotent query."""
+    client.query(HOSTED_SCHEMA_PATH.read_text(encoding="utf-8"))
 
 
 class TenantDbError(D1Error):

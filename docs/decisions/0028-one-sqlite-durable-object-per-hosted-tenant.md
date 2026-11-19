@@ -175,5 +175,11 @@ account on 2026-11-18:
 
 * `docs/architecture.md` §4 has the row for a hosted tenant's database. §5 grades the tenant id,
   the tenant list, the gateway host, the location hint and the start retry.
+* The hard-coded tenant list was replaced by the operator registry, one SQLite Durable Object
+  ([ADR-0030](0030-the-operator-registry-is-one-sqlite-durable-object.md)). `CYRIS_HOSTED_TENANTS`
+  and its §5 row are gone; a tenant is registered with `POST /hosted/tenants/<tenant>/register`.
 * `docs/hosted-tenants.md` is the procedure. It deploys the hosted Worker to the trial account,
   seeds two tenants, runs each once, and checks each tenant's rows.
+* [ADR-0029](0029-a-hosted-tenants-pages-live-in-its-durable-object.md) ends the "publishes nothing"
+  consequence above: a hosted run stores its pages in its tenant's Durable Object, and the hosted
+  Worker serves them at `/t/<tenant>/`.

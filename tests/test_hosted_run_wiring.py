@@ -1,17 +1,20 @@
 """A hosted tenant's run: its own database through the gateway, and no channel of any other kind.
 
-The hosted Worker starts a tenant's container with `CYRIS_STORE_TENANT_ID`. From that id alone
-`bootstrap` gives the run the tenant's Durable Object through the gateway and nothing that
-reaches outside it: no shared queue (the newsletter and vote Workers belong to another
-deployment), and until per-tenant serving and operator alerts land, no publish and no
-notification, whatever the environment or the tenant's settings name. The issue stays in the
-tenant's `digests` table (ADR-0028).
+The hosted Worker starts a tenant's container with `CYRIS_STORE_TENANT_ID` and the hosted
+domain. From those `bootstrap` gives the run the tenant's Durable Object through the gateway and
+nothing that reaches outside it: no shared queue (the newsletter and vote Workers belong to
+another deployment), no Pages project, and until operator alerts land no notification, whatever
+the environment or the tenant's settings name. The issue stays in the tenant's `digests` table
+(ADR-0028), and its pages go into the tenant's own `hosted_pages`, linked on the hosted domain
+(ADR-0029).
 """
 
 import json
+import re
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import urljoin
 
 import httpx
 import pytest
@@ -22,11 +25,14 @@ from test_tenant_gateway import FakeGateway
 from typer.testing import CliRunner
 
 from cyris import bootstrap
+from cyris.adapters import hosted
 from cyris.adapters.fetch.rss_source import RssSource
 from cyris.adapters.hosted import NOT_SENT, skip_alert, skip_digest_notification
+from cyris.adapters.output import publish
+from cyris.adapters.output.hosted_pages import HostedPages
 from cyris.adapters.store import tenant_gateway
 from cyris.adapters.store.d1 import D1Client, apply_schema
-from cyris.adapters.store.tenant_gateway import GatewayD1Client
+from cyris.adapters.store.tenant_gateway import GatewayD1Client, apply_hosted_schema
 from cyris.domain.models import Article, Lane
 from cyris.entrypoints.cli import app
 from cyris.service_layer.run_digest import RunOptions, run_digest
@@ -69,9 +75,14 @@ NOTIFY = {
 }
 
 
+# The hosted Worker's hostname, which the Worker hands every tenant's container.
+DOMAIN = "cyris-hosted.trial.workers.dev"
+
+
 def _hosted_env(monkeypatch: pytest.MonkeyPatch, tenant: str = "alpha") -> None:
     monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
     monkeypatch.setenv("CYRIS_STORE_TENANT_ID", tenant)
+    monkeypatch.setenv("CYRIS_STORE_HOSTED_DOMAIN", DOMAIN)
 
 
 def _files(tmp_path: Path) -> tuple[Path, Path]:
@@ -133,6 +144,35 @@ def test_a_tenant_id_off_cloudflare_or_outside_one_path_segment_stops_the_load(
 ) -> None:
     monkeypatch.setenv("CYRIS_STORE_BACKEND", backend)
     monkeypatch.setenv("CYRIS_STORE_TENANT_ID", tenant)
+    monkeypatch.setenv("CYRIS_STORE_HOSTED_DOMAIN", DOMAIN)
+
+    with pytest.raises(ValueError, match=refusal):
+        load_files(*_files(tmp_path))
+
+
+@pytest.mark.parametrize(
+    ("tenant", "domain", "refusal"),
+    [
+        ("alpha", None, "needs CYRIS_STORE_HOSTED_DOMAIN"),
+        (None, DOMAIN, "CYRIS_STORE_HOSTED_DOMAIN is set without a hosted tenant id"),
+        ("alpha", f"https://{DOMAIN}", "must be a hostname"),
+        ("alpha", f"{DOMAIN}/t/alpha", "must be a hostname"),
+    ],
+)
+def test_a_tenant_needs_the_hosted_domain_and_the_domain_a_tenant(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tenant: str | None,
+    domain: str | None,
+    refusal: str,
+) -> None:
+    """A hosted run's links have no host but the hosted Worker's to fall back to."""
+    monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
+    for name, value in (("CYRIS_STORE_TENANT_ID", tenant), ("CYRIS_STORE_HOSTED_DOMAIN", domain)):
+        if value is None:
+            monkeypatch.delenv(name, raising=False)
+        else:
+            monkeypatch.setenv(name, value)
 
     with pytest.raises(ValueError, match=refusal):
         load_files(*_files(tmp_path))
@@ -157,6 +197,35 @@ def test_a_tenant_id_written_in_cyris_toml_stops_the_load_whatever_the_worker_se
         load_files(config_path, sources_path)
 
 
+@pytest.mark.parametrize("from_file", [False, True])
+def test_a_custom_domain_beside_a_tenant_id_stops_the_load_from_the_environment_or_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, from_file: bool
+) -> None:
+    """`run_digest` links a custom domain ahead of the hosted site, so a tenant may carry none."""
+    _hosted_env(monkeypatch)
+    monkeypatch.delenv("CYRIS_PROMOTE_CUSTOM_DOMAIN", raising=False)
+    config_path, sources_path = _files(tmp_path)
+    if from_file:
+        with config_path.open("a", encoding="utf-8") as config:
+            config.write('\n[promote]\ncustom_domain = "digest.example.com"\n')
+    else:
+        monkeypatch.setenv("CYRIS_PROMOTE_CUSTOM_DOMAIN", "digest.example.com")
+
+    with pytest.raises(ValueError, match=r"\[promote\] custom_domain .* hosted tenant id"):
+        load_files(config_path, sources_path)
+
+
+def test_a_custom_domain_without_a_tenant_id_still_loads(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("CYRIS_STORE_TENANT_ID", raising=False)
+    monkeypatch.setenv("CYRIS_PROMOTE_CUSTOM_DOMAIN", "digest.example.com")
+
+    cfg = load_files(*_files(tmp_path))
+
+    assert cfg.app.promote.custom_domain == "digest.example.com"
+
+
 def test_the_tenant_id_the_worker_set_is_the_one_the_store_carries(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -178,6 +247,23 @@ def test_the_schema_and_its_steps_land_through_the_gateway() -> None:
 
     tables = {r["name"] for r in fresh.query("SELECT name FROM sqlite_master").rows}
     assert {"settings", "sources", "digests", "digest_runs", "schema_migrations"} <= tables
+    assert "hosted_pages" not in tables
+
+
+def test_a_hosted_load_creates_the_tenants_pages_table_through_the_gateway(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tenant seeded before its pages had a table gets one on its first load, as D1 does."""
+    _hosted_env(monkeypatch)
+    gateway = FakeGateway("alpha")
+    seed_d1_settings(gateway.db)
+    _through(gateway, monkeypatch)
+
+    bootstrap.load_effective_config(*_files(tmp_path))
+
+    tables = {r["name"] for r in gateway.db.query("SELECT name FROM sqlite_master").rows}
+    assert "hosted_pages" in tables
+    assert gateway.refused == []
 
 
 @pytest.fixture
@@ -186,12 +272,14 @@ def hosted_cfg(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv(name, value)
     _hosted_env(monkeypatch)
     gateway = FakeGateway("alpha")
+    # What the operator's seed creates beside schema.sql (hosted_seed.js).
+    apply_hosted_schema(gateway.db)
     _through(gateway, monkeypatch)
     cfg = load_files(*_files(tmp_path), {**TEST_SETTINGS, **NOTIFY})
     return cfg, gateway
 
 
-def test_a_hosted_run_is_wired_to_no_queue_no_page_and_no_channel(hosted_cfg) -> None:
+def test_a_hosted_run_is_wired_to_its_own_site_and_to_no_queue_page_or_channel(hosted_cfg) -> None:
     cfg, _ = hosted_cfg
 
     deps = bootstrap.build_deps(cfg)
@@ -199,17 +287,45 @@ def test_a_hosted_run_is_wired_to_no_queue_no_page_and_no_channel(hosted_cfg) ->
     assert [type(s) for s in deps.fetch_sources] == [RssSource]
     assert deps.sync_promotions is None
     assert bootstrap.build_promotion_sync(cfg) is None
-    assert (deps.html_writer, deps.publish_site, deps.page_serves) == (None, None, None)
-    assert deps.worker_domains is None
+    # Every environment switch for Pages is on, and still the publisher is the tenant's site.
+    assert deps.html_writer is not None
+    for wired in (deps.publish_site, deps.page_serves, deps.site_filenames):
+        assert isinstance(wired.__self__, HostedPages)
+    assert deps.worker_domains() == [f"{DOMAIN}/t/alpha"]
     assert deps.send_discord is skip_digest_notification
     assert deps.send_email is skip_digest_notification
     assert (deps.send_discord_alert, deps.send_email_alert) == (skip_alert, skip_alert)
 
 
-async def test_a_hosted_run_keeps_its_issue_and_neither_publishes_nor_notifies(
-    hosted_cfg,
+def test_a_self_hosted_run_still_publishes_to_its_pages_project(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("CYRIS_STORE_TENANT_ID", raising=False)
+    monkeypatch.delenv("CYRIS_STORE_HOSTED_DOMAIN", raising=False)
+    for name, value in EVERY_CHANNEL.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
+    cfg = load_files(*_files(tmp_path), TEST_SETTINGS)
+
+    deps = bootstrap.build_deps(cfg)
+
+    assert deps.publish_site.func is publish.publish_site
+    assert deps.publish_site.keywords["pages_project"] == "someones-pages"
+    assert deps.page_serves.func is publish.page_serves
+    assert deps.page_serves.args == ("someones-pages",)
+
+
+async def test_a_hosted_run_stores_its_pages_in_its_own_site_and_links_the_hosted_domain(
+    hosted_cfg, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     cfg, gateway = hosted_cfg
+    sent: list[dict] = []
+
+    async def stand_in(*args, **kwargs) -> dict[str, str]:
+        sent.append(kwargs)
+        return dict(NOT_SENT)
+
+    monkeypatch.setattr(hosted, "skip_digest_notification", stand_in)
     article = Article(
         id=1,
         title="A launch",
@@ -223,7 +339,8 @@ async def test_a_hosted_run_keeps_its_issue_and_neither_publishes_nor_notifies(
     deps = replace(bootstrap.build_deps(cfg), fetch_sources=[FakeSource([article])])
 
     with respx.mock:
-        # Every request that leaves the process lands here; the gateway's never does.
+        # Every request that leaves the process lands here, a Pages call included; the
+        # gateway's never does.
         anywhere = respx.route().mock(return_value=httpx.Response(500))
         report = await run_digest(deps, RunOptions(period="morning"))
 
@@ -234,12 +351,82 @@ async def test_a_hosted_run_keeps_its_issue_and_neither_publishes_nor_notifies(
     [issue] = gateway.db.query("SELECT date, period, content FROM digests").rows
     assert issue["period"] == "morning"
     assert article.url in issue["content"]
+    slug = f"{issue['date']}-morning"
+
+    pages = {
+        r["path"]: r["body"] for r in gateway.db.query("SELECT path, body FROM hosted_pages").rows
+    }
+    assert {f"/{slug}.html", f"/{slug}-raw.html", "/index.html", "/favicon.svg"} <= set(pages)
+    assert f'<meta name="cyris-issue" content="{slug}">' in pages[f"/{slug}.html"]
+    assert article.url in pages[f"/{slug}-raw.html"]
+
+    digest_url = f"https://{DOMAIN}/t/alpha/{slug}"
     [run] = gateway.db.query("SELECT status, summary FROM digest_runs").rows
     summary = json.loads(run["summary"])
     assert run["status"] == "ok"
     assert summary["discord_notification"] == NOT_SENT
     assert summary["mail_notification"] == NOT_SENT
-    assert summary["digest_url"] == ""
+    assert summary["digest_url"] == digest_url
+    # Both notifications were handed the hosted link, though neither is sent yet.
+    assert [call["digest_url"] for call in sent] == [digest_url, digest_url]
+    assert [call["publish_failed"] for call in sent] == [False, False]
+
+    # Every link a page makes to its own site lands on the hosted domain; the issue's own
+    # links (the digest, the raw page, the archive, the icon) stay inside the tenant's site.
+    for body in pages.values():
+        assert "pages.dev" not in body
+    hrefs = re.findall(r"""(?:href|src)=["']([^"']+)["']""", pages[f"/{slug}.html"])
+    own = [h for h in hrefs if not re.match(r"[a-z]+:", h) and not h.startswith("#")]
+    assert own
+    for href in own:
+        assert urljoin(digest_url, href).startswith(f"https://{DOMAIN}/")
+    for name in (f"{slug}-raw.html", "index.html", "favicon.svg"):
+        assert name in own
+        assert urljoin(digest_url, name) == f"https://{DOMAIN}/t/alpha/{name}"
+
+
+def test_a_page_over_a_statements_100_kb_round_trips_through_the_gateway() -> None:
+    gateway = FakeGateway("alpha")
+    apply_hosted_schema(gateway.db)
+    client = GatewayD1Client("alpha")
+    client._http = httpx.Client(transport=httpx.MockTransport(gateway))
+    site = HostedPages(client)
+    raw = ("<html>" + "原文 " * 40_000 + "</html>").encode("utf-8")
+    assert len(raw) > 150_000
+
+    assert site.publish({"/2026-11-18-morning-raw.html": raw}, "2026-11-18-morning")
+
+    assert site.serves("/2026-11-18-morning-raw.html", raw)
+    assert gateway.refused == []
+    # The same body written into the statement is refused, as the object refuses it.
+    with pytest.raises(tenant_gateway.TenantDbError, match="statement too long"):
+        client.query(f"SELECT '{raw.decode('utf-8')}'")
+
+
+async def test_a_hosted_run_republishes_an_issue_its_site_lacks(hosted_cfg) -> None:
+    """An issue stored before its tenant had a site is rendered from `digests` into it."""
+    cfg, gateway = hosted_cfg
+    article = Article(
+        id=1,
+        title="A launch",
+        url="https://a.test/launch",
+        content="Something launched today.",
+        published_at=datetime.now(UTC) - timedelta(hours=1),
+        source_name="A",
+        source_lane=Lane.FOLLOW,
+        source_tags=["tech"],
+    )
+    deps = replace(bootstrap.build_deps(cfg), fetch_sources=[FakeSource([article])])
+    await run_digest(deps, RunOptions(period="morning"))
+    [issue] = gateway.db.query("SELECT date FROM digests").rows
+    slug = f"{issue['date']}-morning"
+    gateway.db.query("DELETE FROM hosted_pages")
+
+    await run_digest(replace(deps, fetch_sources=[FakeSource([])]), RunOptions(period="evening"))
+
+    paths = {r["path"] for r in gateway.db.query("SELECT path FROM hosted_pages").rows}
+    assert f"/{slug}.html" in paths
+    assert gateway.refused == []
 
 
 async def test_every_write_of_a_scored_run_is_one_a_durable_object_can_bind(hosted_cfg) -> None:

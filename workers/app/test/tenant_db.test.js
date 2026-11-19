@@ -4,11 +4,11 @@ import {
   LOCATION_HINT,
   TenantDbGateway,
   failureStatus,
-  hostedTenants,
   isTenantTable,
   tenantRows,
 } from "../src/tenant_db.js";
-import { SCHEMA_SQL, namespace, tenantDb } from "./sql_storage.js";
+import { REGISTRY_NAME, tenantRegistry } from "../src/tenant_registry.js";
+import { SCHEMA_SQL, namespace, registryNamespace, tenantDb } from "./sql_storage.js";
 
 const query = (tenant, body) =>
   new Request(`http://${DB_HOST}/t/${tenant}/query`, { method: "POST", body: JSON.stringify(body) });
@@ -106,15 +106,55 @@ describe("TenantDbGateway", () => {
     }
   });
 
-  it("answers only POST /t/<tenant>/query", async () => {
-    const { gateway: alpha } = gateway({ tenant: "alpha" });
+  it("answers only POST /t/<tenant>/query, and refuses every other request with 403", async () => {
+    const { gateway: alpha, TENANT_DB } = gateway({ tenant: "alpha" });
     for (const request of [
       new Request(`http://${DB_HOST}/t/alpha/query`),
       new Request(`http://${DB_HOST}/t/alpha`, { method: "POST", body: "{}" }),
       new Request(`http://${DB_HOST}/t/alpha/query/more`, { method: "POST", body: "{}" }),
+      new Request(`http://${DB_HOST}/`, { method: "POST", body: "{}" }),
     ]) {
-      expect((await alpha.fetch(request)).status).toBe(404);
+      expect((await alpha.fetch(request)).status).toBe(403);
     }
+    expect(TENANT_DB.gets).toEqual([]);
+  });
+
+  it("answers 403 to anything aimed at the operator's registry, and never reaches it", async () => {
+    // The gateway runs with the Worker's whole env, the registry's binding included, so this
+    // holds a registry with a tenant in it beside the tenant databases and watches both.
+    const REGISTRY = registryNamespace();
+    await tenantRegistry({ REGISTRY }).register("alpha");
+    REGISTRY.gets.length = 0;
+    const TENANT_DB = namespace();
+    const alpha = new TenantDbGateway({ props: { tenant: "alpha" } }, { TENANT_DB, REGISTRY });
+    const tenantsTable = { sql: "SELECT id, status FROM tenants", params: [] };
+    const post = (path, body = tenantsTable) =>
+      new Request(`http://${DB_HOST}${path}`, { method: "POST", body: JSON.stringify(body) });
+
+    for (const request of [
+      post(`/t/${REGISTRY_NAME}/query`),
+      post(`/t/${encodeURIComponent(REGISTRY_NAME)}/query`),
+      post("/t/registry/query"),
+      post("/registry/query"),
+      post("/registry/tenants"),
+      post("/t/alpha/register"),
+      post("/t/alpha/tenants"),
+      post("/t/alpha/query/../../registry/query"),
+      new Request(`http://${DB_HOST}/registry/tenants`),
+      new Request(`http://${DB_HOST}/t/${REGISTRY_NAME}/query`),
+    ]) {
+      const response = await alpha.fetch(request);
+      expect(response.status, request.url).toBe(403);
+    }
+    expect(REGISTRY.gets).toEqual([]);
+    expect(TENANT_DB.gets).toEqual([]);
+
+    // Its own tenant's query reaches its own database only: the registry's tables are not there.
+    const own = await alpha.fetch(post("/t/alpha/query"));
+    expect(own.status).toBe(400);
+    expect((await own.json()).errors[0].message).toMatch(/no such table: tenants/);
+    expect(REGISTRY.gets).toEqual([]);
+    expect(TENANT_DB.gets.map((get) => get.name)).toEqual(["alpha"]);
   });
 
   it("answers a body it cannot read, and a statement SQLite refuses, with 400 and the reason", async () => {
@@ -171,17 +211,5 @@ describe("the Worker's own reads of a tenant", () => {
 
     expect(await read("SELECT 2 AS two", [], "schedule")).toEqual([{ two: 2 }]);
     expect(await read("SELECT key FROM settings", [], "schedule")).toBeNull();
-  });
-});
-
-describe("hostedTenants", () => {
-  it("is the list the hosted environment names", () => {
-    expect(hostedTenants({ CYRIS_HOSTED_TENANTS: ["alpha", "bravo"] })).toEqual(["alpha", "bravo"]);
-  });
-
-  it("refuses a missing list, an empty one, or an id that is not one path segment", () => {
-    for (const CYRIS_HOSTED_TENANTS of [undefined, [], ["alpha", "../bravo"], ["Alpha"], "alpha,bravo"]) {
-      expect(() => hostedTenants({ CYRIS_HOSTED_TENANTS })).toThrow(/CYRIS_HOSTED_TENANTS/);
-    }
   });
 });

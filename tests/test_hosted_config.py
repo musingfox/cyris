@@ -16,9 +16,10 @@ from urllib.parse import urlsplit
 
 import pytest
 
+from cyris.adapters.output.hosted_pages import SITE_PATH
 from cyris.adapters.store.source_store import source_from_row
 from cyris.adapters.store.tenant_gateway import GATEWAY_ORIGIN
-from cyris.config import REQUIRED_KEYS, TENANT_ID, validate_setting
+from cyris.config import HOSTED_B_GRADE_ENV_VARS, REQUIRED_KEYS, TENANT_ID, validate_setting
 
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
@@ -33,7 +34,8 @@ HOSTED_NAMES = (
     "TenantDb",
     "TENANT_RUN",
     "TENANT_DB",
-    "CYRIS_HOSTED_TENANTS",
+    "TenantRegistry",
+    "REGISTRY",
 )
 
 
@@ -84,7 +86,7 @@ def test_the_default_worker_bundles_no_hosted_module() -> None:
     reached = _imports("index.js")
 
     assert "container.js" in reached
-    assert [m for m in reached if m.startswith(("hosted", "tenant_db"))] == []
+    assert [m for m in reached if m.startswith(("hosted", "tenant_"))] == []
 
 
 def test_the_hosted_file_shares_nothing_with_the_default_one() -> None:
@@ -92,14 +94,14 @@ def test_the_hosted_file_shares_nothing_with_the_default_one() -> None:
 
     assert hosted["name"] == "cyris-hosted" != default["name"]
     assert hosted["main"] == "workers/app/src/hosted.js"
-    assert _classes(hosted) == {"TenantContainer", "TenantDb"}
+    assert _classes(hosted) == {"TenantContainer", "TenantDb", "TenantRegistry"}
     assert _classes(hosted) & _classes(default) == set()
     [container] = hosted["containers"]
     assert container["name"] not in {c["name"] for c in default["containers"]}
     bindings = {b["name"] for b in hosted["durable_objects"]["bindings"]}
-    assert bindings == {"TENANT_RUN", "TENANT_DB"}
+    assert bindings == {"TENANT_RUN", "TENANT_DB", "REGISTRY"}
     assert bindings & {b["name"] for b in default["durable_objects"]["bindings"]} == set()
-    assert "CYRIS_APP_WORKER_NAME" not in hosted["vars"]
+    assert "CYRIS_APP_WORKER_NAME" not in hosted.get("vars", {})
 
 
 def test_the_hosted_file_runs_the_same_image_on_the_same_runtime() -> None:
@@ -144,6 +146,25 @@ def test_the_gateway_host_and_the_tenant_pattern_are_one_on_both_sides() -> None
     assert pattern == TENANT_ID.pattern
 
 
+def test_the_tenants_site_path_is_one_shape_on_both_sides() -> None:
+    """The run links `<domain>/t/<tenant>/<page>`, and the Worker serves the tenant's site there."""
+    [route] = re.findall(r"^export const SITE_ROUTE = /(.+)/;", _js("hosted_pages.js"), re.M)
+    site = SITE_PATH.format(tenant="alpha")
+
+    for page in ("/", "/2026-11-18-morning", "/2026-11-18-morning-raw.html"):
+        match = re.fullmatch(route, site + page)
+        assert match is not None
+        assert match.groups() == ("alpha", page)
+
+
+def test_the_hosted_domain_is_one_name_from_the_worker_to_the_container() -> None:
+    [name] = re.findall(r'^export const HOSTED_DOMAIN = "(\w+)";', _js("hosted_container.js"), re.M)
+
+    assert name == HOSTED_B_GRADE_ENV_VARS["store.hosted_domain"]
+    # The runbook sets it on the Worker under that same name.
+    assert f"put_secret {name} " in (ROOT / "scripts/hosted.sh").read_text(encoding="utf-8")
+
+
 def test_a_hosted_container_is_handed_only_names_the_default_worker_knows() -> None:
     """The allow-list holds no Worker URL or bearer, and no name the default Worker lacks."""
     [block] = re.findall(r"const HOSTED_SECRETS = \[(.*?)\];", _js("hosted_container.js"), re.S)
@@ -173,12 +194,56 @@ def _seeded_settings() -> dict:
     return {**starting, **_seed()["settings"]}
 
 
-def test_the_seed_seeds_every_listed_tenant_and_only_those() -> None:
-    tenants = _toml("wrangler.hosted.toml")["vars"]["CYRIS_HOSTED_TENANTS"]
+def _tenant_vars(variables: dict, tenants: list[str]) -> list[str]:
+    """The vars that name or list tenants: a name for a tenant list, or a value naming a tenant.
 
-    assert len(tenants) == 2
+    A value names one when it, an item of it, or a comma-separated part of it is a tenant id.
+    Any other var, which a later hosted card may add, is not this test's business.
+    """
+    flagged = []
+    for name, value in variables.items():
+        items = value if isinstance(value, list) else [value]
+        parts = {
+            part.strip() for item in items if isinstance(item, str) for part in item.split(",")
+        }
+        if re.search(r"TENANTS|TENANT_IDS|TENANT_LIST", name) or parts & set(tenants):
+            flagged.append(name)
+    return flagged
+
+
+def test_the_tenant_var_check_flags_a_tenant_list_and_nothing_else() -> None:
+    tenants = ["alpha", "bravo"]
+
+    assert _tenant_vars({"CYRIS_HOSTED_TENANTS": ["alpha", "bravo"]}, tenants) == [
+        "CYRIS_HOSTED_TENANTS"
+    ]
+    assert _tenant_vars({"CYRIS_HOSTED_TENANT_IDS": []}, tenants) == ["CYRIS_HOSTED_TENANT_IDS"]
+    assert _tenant_vars({"ROSTER": "alpha, bravo", "ONLY": ["bravo"]}, tenants) == [
+        "ROSTER",
+        "ONLY",
+    ]
+    assert _tenant_vars({"CYRIS_HOSTED_DIGEST_ORIGIN": "https://alpha.example"}, tenants) == []
+    assert _tenant_vars({"CYRIS_HOSTED_TENANT_LIMIT": "20", "FLAG": True}, tenants) == []
+
+
+def test_the_hosted_file_lists_no_tenant() -> None:
+    """The registry is the tenant list (ADR-0030): a tenant is a row, never a line of config.
+
+    A hosted var of any other kind may come with a later card; only one naming or listing
+    tenants is refused.
+    """
+    hosted = _toml("wrangler.hosted.toml")
+
+    assert _tenant_vars(hosted.get("vars", {}), list(_seed()["sources"])) == []
+    assert [m for m in _imports("hosted.js") if "hostedTenants" in _js(m)] == []
+
+
+def test_the_seed_names_the_two_tenants_the_runbook_registers() -> None:
+    """scripts/hosted.sh registers, seeds, runs and checks the tenants the seed names."""
+    tenants = list(_seed()["sources"])
+
+    assert tenants == ["alpha", "bravo"]
     assert all(TENANT_ID.fullmatch(t) for t in tenants)
-    assert set(_seed()["sources"]) == set(tenants)
 
 
 def test_the_seeded_settings_are_every_required_key_each_valid() -> None:

@@ -7,7 +7,8 @@ import { START_RETRY, TenantContainer, hostedContainerEnv } from "../src/hosted_
 import { handleHostedRequest } from "../src/hosted_router.js";
 import { seedSettings, seedTenant, tenantReport } from "../src/hosted_seed.js";
 import { DB_HOST } from "../src/tenant_db.js";
-import { SCHEMA_SQL, namespace } from "./sql_storage.js";
+import { tenantRegistry } from "../src/tenant_registry.js";
+import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace, registryNamespace } from "./sql_storage.js";
 
 // Everything the default Worker forwards (index.js `SECRETS` and `DEPLOYMENT`), set.
 const EVERY_BINDING = {
@@ -31,13 +32,24 @@ const EVERY_BINDING = {
   CYRIS_NEWSLETTER_WORKER_URL: "https://cyris-newsletter.example.workers.dev",
   CYRIS_RSS_WORKER_URL: "https://cyris-rss.example.workers.dev",
   CYRIS_APP_WORKER_NAME: "cyris-app",
+  // The hosted Worker's own hostname, which every tenant's links point at.
+  CYRIS_STORE_HOSTED_DOMAIN: "cyris-hosted.example.workers.dev",
 };
 
 const WORKER_URLS = ["CYRIS_PROMOTE_WORKER_URL", "CYRIS_NEWSLETTER_WORKER_URL", "CYRIS_RSS_WORKER_URL"];
 
+// A registry that holds `alpha` and `bravo` as active, and `paused` as paused.
+async function registry() {
+  const REGISTRY = registryNamespace();
+  for (const tenant of ["alpha", "bravo"]) await tenantRegistry({ REGISTRY }).register(tenant);
+  await tenantRegistry({ REGISTRY }).register("paused", { status: "paused" });
+  return REGISTRY;
+}
+
 // A tenant's run object as the runtime builds it: named by the tenant, its container a fake
 // that logs, in order, each interception registered and each start.
-function runObject(name, env = EVERY_BINDING) {
+async function runObject(name, bindings = EVERY_BINDING) {
+  const env = { ...bindings, REGISTRY: await registry() };
   const order = [];
   const container = {
     running: false,
@@ -92,13 +104,20 @@ describe("a hosted tenant's run container", () => {
       CYRIS_ROLE: "run",
       CYRIS_STORE_BACKEND: "d1",
       CYRIS_STORE_TENANT_ID: "alpha",
-      CYRIS_HTML_OUTPUT_ENABLED: "false",
+      CYRIS_STORE_HOSTED_DOMAIN: "cyris-hosted.example.workers.dev",
       CYRIS_PROMOTE_PUBLISH_ENABLED: "false",
     });
   });
 
+  it("is not started without the hosted domain its links would point at", async () => {
+    const { object, container } = await runObject("alpha", { ...EVERY_BINDING, CYRIS_STORE_HOSTED_DOMAIN: "" });
+
+    await expect(object.startRun({ period: "morning" })).rejects.toThrow("CYRIS_STORE_HOSTED_DOMAIN is not set");
+    expect(container.starts).toEqual([]);
+  });
+
   it("registers the gateway for its own tenant before the container starts", async () => {
-    const { object, container, order } = runObject("bravo");
+    const { object, container, order } = await runObject("bravo");
 
     expect(await object.startRun({ period: "morning", date: "2026-11-18" })).toEqual({
       started: true,
@@ -116,7 +135,7 @@ describe("a hosted tenant's run container", () => {
   });
 
   it("takes its tenant from its own name, so no caller can hand it another", async () => {
-    const { object, container } = runObject("alpha");
+    const { object, container } = await runObject("alpha");
 
     await object.startRun({ period: "evening", CYRIS_STORE_TENANT_ID: "bravo" });
 
@@ -125,9 +144,23 @@ describe("a hosted tenant's run container", () => {
 
   it("refuses to start for an object that is not named by a tenant id", async () => {
     for (const name of [undefined, "../alpha", "Alpha"]) {
-      const { object, container } = runObject(name);
+      const { object, container } = await runObject(name);
       await expect(object.startRun({ period: "morning" })).rejects.toThrow("not a tenant's run container");
       expect(container.starts).toEqual([]);
+    }
+  });
+
+  it("refuses to start a tenant the registry does not hold as active, before any interception", async () => {
+    for (const [name, status] of [
+      ["charlie", "unregistered"],
+      ["paused", "paused"],
+    ]) {
+      const { object, container, order } = await runObject(name);
+      await expect(object.startRun({ period: "morning" })).rejects.toThrow(
+        `tenant ${name} is not an active registered tenant: ${status}`,
+      );
+      expect(container.starts).toEqual([]);
+      expect(order).toEqual([]);
     }
   });
 
@@ -145,6 +178,7 @@ describe("the seed and the report", () => {
       db,
       tenant,
       schemaSql: SCHEMA_SQL,
+      hostedSchemaSql: HOSTED_SCHEMA_SQL,
       startingValues: STARTING_VALUES,
       seed: SEED,
       catalog: FEED_CATALOG,
@@ -183,8 +217,11 @@ describe("the seed and the report", () => {
       tenant: "alpha",
       settings: Object.keys(expected).length,
       sources: SEED.sources.alpha,
-      tables: [...SCHEMA_SQL.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].length,
+      tables: [...(SCHEMA_SQL + HOSTED_SCHEMA_SQL).matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].length,
     });
+    // The tenant's pages table is the hosted schema's, never schema.sql's.
+    expect(SCHEMA_SQL).not.toContain("hosted_pages");
+    expect(Object.keys(await db.tables())).toContain("hosted_pages");
   });
 
   it("puts the same rows back when seeded again", async () => {
@@ -267,6 +304,7 @@ describe("the seed and the report", () => {
       stored_articles: [],
       digest_runs: [],
       digests: [],
+      latest_page: null,
     });
   });
 });
@@ -292,6 +330,13 @@ async function operator(method, path, { signedIn = true } = {}) {
   return new Request(`https://cyris-hosted.example.workers.dev${path}`, { method, headers });
 }
 
+// What the registry answers for each tenant the routes are asked about.
+const REGISTERED = {
+  alpha: { id: "alpha", status: "active" },
+  bravo: { id: "bravo", status: "active" },
+  paused: { id: "paused", status: "paused" },
+};
+
 function hostedDeps({ timeZone = "UTC" } = {}) {
   const calls = [];
   const record =
@@ -303,7 +348,8 @@ function hostedDeps({ timeZone = "UTC" } = {}) {
   return {
     calls,
     accessKeys: ACCESS_KEYS,
-    tenants: ["alpha", "bravo"],
+    register: record("register", { tenant: { id: "registered", status: "active" } }),
+    tenant: async (tenant) => REGISTERED[tenant] ?? null,
     seed: record("seed", { seeded: true }),
     report: record("report", { reported: true }),
     timeZone: record("timeZone", timeZone),
@@ -315,6 +361,7 @@ function hostedDeps({ timeZone = "UTC" } = {}) {
 describe("the hosted Worker's operator routes", () => {
   it("refuse every request without an Access sign-in, before naming any tenant", async () => {
     for (const [method, path] of [
+      ["POST", "/hosted/tenants/alpha/register"],
       ["POST", "/hosted/tenants/alpha/seed"],
       ["POST", "/hosted/tenants/alpha/run?period=morning"],
       ["GET", "/hosted/tenants/alpha/report"],
@@ -354,17 +401,66 @@ describe("the hosted Worker's operator routes", () => {
     ]);
   });
 
-  it("serve no page and no tenant outside the list", async () => {
+  it("serve no page and no tenant the registry does not hold", async () => {
     const deps = hostedDeps();
     for (const path of ["/", "/settings", "/run", "/hosted/tenants/charlie/report", "/hosted/tenants/alpha"]) {
       expect((await handleHostedRequest(await operator("GET", path), ENV, deps)).status).toBe(404);
     }
+    for (const path of ["/hosted/tenants/charlie/seed", "/hosted/tenants/charlie/run?period=morning"]) {
+      const response = await handleHostedRequest(await operator("POST", path), ENV, deps);
+      expect(response.status).toBe(404);
+      expect(await response.json()).toEqual({ error: "charlie is not a registered tenant" });
+    }
     expect(deps.calls).toEqual([]);
+  });
+
+  it("register a tenant, with the status the operator names or active", async () => {
+    const deps = hostedDeps();
+
+    const active = await handleHostedRequest(await operator("POST", "/hosted/tenants/charlie/register"), ENV, deps);
+    const paused = await operator("POST", "/hosted/tenants/charlie/register?status=paused");
+
+    expect(active.status).toBe(200);
+    expect(await active.json()).toEqual({ id: "registered", status: "active" });
+    expect((await handleHostedRequest(paused, ENV, deps)).status).toBe(200);
+    expect(deps.calls).toEqual([
+      ["register", "charlie", undefined],
+      ["register", "charlie", "paused"],
+    ]);
+  });
+
+  it("answer a registration the registry refuses with 400 and its reason", async () => {
+    const deps = { ...hostedDeps(), register: async () => ({ refused: "a tenant's status is one of active" }) };
+    const response = await handleHostedRequest(
+      await operator("POST", "/hosted/tenants/charlie/register?status=gone"),
+      ENV,
+      deps,
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "a tenant's status is one of active" });
+  });
+
+  it("start no run for a tenant that is not active, but still seed and report it", async () => {
+    const deps = hostedDeps();
+    const ask = async (method, path) => handleHostedRequest(await operator(method, path), ENV, deps);
+
+    const run = await ask("POST", "/hosted/tenants/paused/run?period=morning");
+
+    expect(run.status).toBe(409);
+    expect(await run.json()).toEqual({ error: "paused is paused, not active" });
+    expect((await ask("POST", "/hosted/tenants/paused/seed")).status).toBe(200);
+    expect((await ask("GET", "/hosted/tenants/paused/report")).status).toBe(200);
+    expect(deps.calls).toEqual([
+      ["seed", "paused"],
+      ["report", "paused"],
+    ]);
   });
 
   it("take each route by its own method only", async () => {
     const deps = hostedDeps();
     for (const [method, path] of [
+      ["GET", "/hosted/tenants/alpha/register"],
       ["GET", "/hosted/tenants/alpha/seed"],
       ["GET", "/hosted/tenants/alpha/run?period=morning"],
       ["POST", "/hosted/tenants/alpha/report"],

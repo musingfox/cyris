@@ -5,7 +5,7 @@
 // The container sends each query to http://db.cyris/t/<tenant>/query. Its Durable Object
 // (hosted_container.js) intercepts that host before the container starts and hands it to
 // TenantDbGateway with `props.tenant` set to its own name, so a gateway answers one tenant
-// and refuses every other with 403; the container holds no token and no binding.
+// and refuses every other request with 403; the container holds no token and no binding.
 
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
 
@@ -29,18 +29,6 @@ export const tenantDb = (env, tenant) => env.TENANT_DB.getByName(tenant, { locat
 // The object's own tables start with "_" (`_cf_KV`, `_cf_METADATA`) and SQLite's with
 // "sqlite_"; neither is the tenant's, so no count of the tenant's tables includes them.
 export const isTenantTable = (name) => !name.startsWith("_") && !name.startsWith("sqlite_");
-
-// The hosted tenants, from `CYRIS_HOSTED_TENANTS` in wrangler.hosted.toml's `[vars]`. A list that is
-// missing or names an id outside TENANT stops the Worker rather than serve part of it.
-export function hostedTenants(env) {
-  const tenants = env.CYRIS_HOSTED_TENANTS;
-  if (!Array.isArray(tenants) || tenants.length === 0) {
-    throw new Error("CYRIS_HOSTED_TENANTS must list the hosted tenants");
-  }
-  const bad = tenants.filter((tenant) => typeof tenant !== "string" || !TENANT.test(tenant));
-  if (bad.length) throw new Error(`CYRIS_HOSTED_TENANTS names ids outside ${TENANT}: ${bad.join(", ")}`);
-  return tenants;
-}
 
 // One query on a tenant's database, for the Worker's own reads (schedule.js): its rows, or
 // null when it cannot answer, with a warning naming `what` and the tenant.
@@ -86,9 +74,12 @@ const refuse = (status, message) => Response.json({ errors: [{ message }] }, { s
 // binding; `props.tenant` is set by the Durable Object that registered it, never by the container.
 export class TenantDbGateway extends WorkerEntrypoint {
   async fetch(request) {
+    // Every other request is refused 403 before any object is reached: another tenant's
+    // query, one aimed at the operator's registry (tenant_registry.js, which this gateway never
+    // names and whose name no tenant id can take), or any other path or method.
     const parts = new URL(request.url).pathname.split("/").filter(Boolean);
     if (request.method !== "POST" || parts.length !== 3 || parts[0] !== "t" || parts[2] !== "query") {
-      return refuse(404, "POST /t/<tenant>/query");
+      return refuse(403, "this gateway answers only POST /t/<tenant>/query");
     }
     // A gateway registered without a tenant is a wiring fault, never a gateway to every tenant.
     const tenant = this.ctx.props?.tenant;
