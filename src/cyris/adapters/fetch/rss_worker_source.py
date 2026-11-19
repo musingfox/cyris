@@ -1,8 +1,11 @@
-"""FetchSource that reads the Cloudflare RSS Worker's D1 buffer.
+"""FetchSources that read an hourly RSS buffer: the RSS Worker's D1, or a hosted tenant's own.
 
 The Worker polls feeds hourly; this only reads a window out of it. Unlike the
 newsletter Worker there is no ACK — the buffer is retention, not a queue, so a
-crashed digest simply reads the same window again.
+crashed digest simply reads the same window again. A hosted tenant's buffer is
+the same table in its own Durable Object, which the hosted Worker polls into
+hourly; `TenantRssSource` reads it through the run's gateway and maps its rows
+exactly as `CloudflareRssSource` maps the Worker's.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from datetime import UTC, datetime
 import httpx
 
 from cyris.adapters.fetch.html_text import plain_text
+from cyris.adapters.store.d1 import D1Queryable
 from cyris.domain.models import Article, Lane, SourceConfig
 
 logger = logging.getLogger(__name__)
@@ -79,6 +83,21 @@ def _articles_from_rows(rows: list[dict], sources: dict[str, SourceConfig]) -> l
     return articles
 
 
+async def _articles_from_window(
+    rows: list[dict], sources: dict[str, SourceConfig]
+) -> list[Article]:
+    """A window's rows as Articles, warning when the read filled the row ceiling."""
+    if len(rows) >= WORKER_ROW_CEILING:
+        logger.warning(
+            "RSS worker read hit its %d-row ceiling: the earliest-buffered rows in "
+            "this window were left in the buffer and not stored",
+            WORKER_ROW_CEILING,
+        )
+    # `plain_text` parses each entry and a read holds up to WORKER_ROW_CEILING
+    # rows: build the whole batch off the event loop in one hop.
+    return await asyncio.to_thread(_articles_from_rows, rows, sources)
+
+
 class CloudflareRssSource:
     """Read feed entries buffered in the Cloudflare RSS Worker's D1."""
 
@@ -111,17 +130,7 @@ class CloudflareRssSource:
                 headers={"Authorization": f"Bearer {self._token}"},
             )
         resp.raise_for_status()
-        rows = resp.json()
-        if len(rows) >= WORKER_ROW_CEILING:
-            logger.warning(
-                "RSS worker read hit its %d-row ceiling: the earliest-buffered rows in "
-                "this window were left in the buffer and not stored",
-                WORKER_ROW_CEILING,
-            )
-
-        # `plain_text` parses each entry and a read holds up to WORKER_ROW_CEILING
-        # rows: build the whole batch off the event loop in one hop.
-        articles = await asyncio.to_thread(_articles_from_rows, rows, sources)
+        articles = await _articles_from_window(resp.json(), sources)
 
         logger.info("Read %d buffered entries from the RSS worker", len(articles))
         return articles
@@ -152,3 +161,48 @@ class CloudflareRssSource:
             return resp.status_code == 200
         except httpx.HTTPError:
             return False
+
+
+# The Worker's own window read (`GET /articles` in `workers/rss/src/index.js`), run on a hosted
+# tenant's buffer, which `adapters/store/hosted_schema.sql` creates with the Worker's shape.
+TENANT_WINDOW_SQL = (
+    "SELECT url, guid, title, content, author, published_at, source_name, image_url "
+    "FROM articles WHERE fetched_at >= ? AND fetched_at < ? ORDER BY fetched_at DESC LIMIT ?"
+)
+
+
+class TenantRssSource:
+    """Read a hosted tenant's RSS buffer from its own Durable Object, through the run's gateway.
+
+    The hosted Worker polls the tenant's feeds into it hourly (ADR-0001, ADR-0031), so a run
+    reads a window rather than polling at digest time.
+    """
+
+    def __init__(self, d1: D1Queryable) -> None:
+        self._d1 = d1
+
+    async def fetch_articles(
+        self,
+        after: datetime,
+        before: datetime,
+        sources: dict[str, SourceConfig],
+    ) -> list[Article]:
+        """Read the window by buffer entry and map rows onto Articles as the Worker's are.
+
+        A failed read raises, as `CloudflareRssSource`'s does, so `fetch_all_articles` lists
+        the source in `failed_sources`. The one query blocks, as every store's does on this
+        client (ADR-0002); only the mapping, which parses each entry, leaves the loop.
+        """
+        params = [_worker_bound(after), _worker_bound(before), WORKER_ROW_CEILING]
+        result = self._d1.query(TENANT_WINDOW_SQL, params)
+        articles = await _articles_from_window(result.rows, sources)
+
+        logger.info("Read %d buffered entries from the tenant's RSS buffer", len(articles))
+        return articles
+
+    async def health_check(self) -> bool:
+        try:
+            self._d1.query("SELECT count(*) AS n FROM articles", [])
+        except Exception:  # noqa: BLE001 - any failure to read the buffer is an unhealthy source
+            return False
+        return True

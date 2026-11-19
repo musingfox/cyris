@@ -178,7 +178,9 @@ def test_a_vault_holding_the_json_stores_files_is_byte_identical_after_a_run(
         source_name="Feed",
         source_lane=Lane.SKIM,
     )
-    monkeypatch.setattr("cyris.bootstrap.build_rss_source", lambda cfg: FakeSource([article]))
+    monkeypatch.setattr(
+        "cyris.bootstrap.build_rss_source", lambda cfg, d1=None: FakeSource([article])
+    )
 
     async def no_pages(articles, **_kwargs):
         return articles

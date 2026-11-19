@@ -26,7 +26,9 @@ from typer.testing import CliRunner
 
 from cyris import bootstrap
 from cyris.adapters import hosted
+from cyris.adapters.fetch.onboarding_cards import OnboardingArticles
 from cyris.adapters.fetch.rss_source import RssSource
+from cyris.adapters.fetch.rss_worker_source import TenantRssSource
 from cyris.adapters.hosted import NOT_SENT, skip_alert, skip_digest_notification
 from cyris.adapters.output import publish
 from cyris.adapters.output.hosted_pages import HostedPages
@@ -284,7 +286,8 @@ def test_a_hosted_run_is_wired_to_its_own_site_and_to_no_queue_page_or_channel(h
 
     deps = bootstrap.build_deps(cfg)
 
-    assert [type(s) for s in deps.fetch_sources] == [RssSource]
+    # The rss Worker's URL and token are set, and still the edge is the tenant's own buffer.
+    assert [type(s) for s in deps.fetch_sources] == [TenantRssSource]
     assert deps.sync_promotions is None
     assert bootstrap.build_promotion_sync(cfg) is None
     # Every environment switch for Pages is on, and still the publisher is the tenant's site.
@@ -295,6 +298,42 @@ def test_a_hosted_run_is_wired_to_its_own_site_and_to_no_queue_page_or_channel(h
     assert deps.send_discord is skip_digest_notification
     assert deps.send_email is skip_digest_notification
     assert (deps.send_discord_alert, deps.send_email_alert) == (skip_alert, skip_alert)
+
+
+async def test_a_hosted_runs_rss_is_its_own_buffer_read_through_its_gateway(hosted_cfg) -> None:
+    cfg, gateway = hosted_cfg
+    apply_schema(gateway.db)
+    # What the hosted Worker's hourly poll wrote: `fetched_at` is the poll's `toISOString()`.
+    for url, fetched_at in (
+        ("https://a.test/in", "2026-11-18T07:00:00.000Z"),
+        ("https://a.test/out", "2026-11-17T07:00:00.000Z"),
+    ):
+        gateway.db.query(
+            "INSERT INTO articles (url, title, content, published_at, source_name, fetched_at) "
+            "VALUES (?, 't', 'body', '2026-11-18T06:00:00.000Z', 'A', ?)",
+            [url, fetched_at],
+        )
+    gateway.requests.clear()
+    [source] = bootstrap.build_deps(cfg).fetch_sources
+
+    articles = await source.fetch_articles(
+        datetime(2026, 11, 18, tzinfo=UTC), datetime(2026, 11, 18, 8, tzinfo=UTC), cfg.sources
+    )
+
+    assert [a.url for a in articles] == ["https://a.test/in"]
+    assert articles[0].source_lane == cfg.sources["A"].lane
+    assert {r.url.path for r in gateway.requests} == {"/t/alpha/query"}
+
+
+def test_a_hosted_tenants_onboarding_cards_still_poll_their_feeds_directly(hosted_cfg) -> None:
+    """Onboarding is out of the buffer's card: its cards are built as they were before it."""
+    cfg, _ = hosted_cfg
+
+    cards = bootstrap.build_onboarding_articles(cfg)
+
+    assert isinstance(cards, OnboardingArticles)
+    assert isinstance(cards._source, RssSource)
+    assert cards._poll is None
 
 
 def test_a_self_hosted_run_still_publishes_to_its_pages_project(
