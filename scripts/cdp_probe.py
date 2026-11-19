@@ -20,6 +20,7 @@ import contextlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -732,6 +733,8 @@ def chromium(browser: str) -> Iterator[str]:
             ],
             stdout=subprocess.DEVNULL,
             stderr=log,
+            # Its own group, so the helpers it starts can be waited for as one.
+            start_new_session=True,
         )
         try:
             deadline = time.monotonic() + 60
@@ -748,6 +751,28 @@ def chromium(browser: str) -> Iterator[str]:
         finally:
             process.terminate()
             process.wait(timeout=30)
+            _end_group(process.pid)
+
+
+def _end_group(group: int) -> None:
+    """Wait for every process left in the browser's group, killing them after 10 s.
+
+    The browser exits before its helper processes do, and a helper still writing
+    into the profile makes the profile's removal fail with "Directory not empty".
+    """
+    for last_signal in (signal.SIGKILL, None):
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(group, 0)
+            # macOS answers EPERM for a group whose last members are zombies, which
+            # write nothing more.
+            except (ProcessLookupError, PermissionError):
+                return
+            time.sleep(0.05)
+        if last_signal is None:
+            raise RuntimeError(f"Chromium's process group {group} outlived SIGKILL")
+        os.killpg(group, last_signal)
 
 
 async def run_all(
