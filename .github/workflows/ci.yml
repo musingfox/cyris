@@ -31,4 +31,9 @@ jobs:
       - run: uv sync --dev
       - run: uv run ruff check src/ tests/
       - run: uv run ruff format --check src/ tests/
+      # The runner's PATH Chromium is a downloaded build, which Ubuntu's AppArmor
+      # refuses a sandbox ("No usable sandbox!"); its packaged Google Chrome has a
+      # profile that allows one (Chromium docs/security/apparmor-userns-restrictions.md).
       - run: uv run pytest
+        env:
+          CYRIS_CHROMIUM: /opt/google/chrome/chrome

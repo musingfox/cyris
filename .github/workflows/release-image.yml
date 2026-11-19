@@ -50,8 +50,13 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
+      # The runner's PATH Chromium is a downloaded build, which Ubuntu's AppArmor
+      # refuses a sandbox ("No usable sandbox!"); its packaged Google Chrome has a
+      # profile that allows one (Chromium docs/security/apparmor-userns-restrictions.md).
       - id: check
         run: scripts/check.sh
+        env:
+          CYRIS_CHROMIUM: /opt/google/chrome/chrome
       # `wrangler containers push` resolves the account from the API token when this is
       # empty, so the `:<sha>` push would succeed and only the registry read-back after
       # it would fail — once the image was already published. Refuse before anything is.
