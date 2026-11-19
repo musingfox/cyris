@@ -750,8 +750,10 @@ def chromium(browser: str) -> Iterator[str]:
             yield _page_socket(port, deadline)
         finally:
             process.terminate()
-            process.wait(timeout=30)
-            _end_group(process.pid)
+            try:
+                process.wait(timeout=30)
+            finally:
+                _end_group(process.pid)
 
 
 def _end_group(group: int) -> None:
@@ -772,7 +774,10 @@ def _end_group(group: int) -> None:
             time.sleep(0.05)
         if last_signal is None:
             raise RuntimeError(f"Chromium's process group {group} outlived SIGKILL")
-        os.killpg(group, last_signal)
+        try:
+            os.killpg(group, last_signal)
+        except (ProcessLookupError, PermissionError):
+            return
 
 
 async def run_all(
