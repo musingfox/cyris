@@ -2,7 +2,10 @@
 
 import functools
 import json
+import os
 import re
+import subprocess
+import sys
 from collections.abc import AsyncIterator
 from html.parser import HTMLParser
 from pathlib import Path
@@ -42,6 +45,11 @@ from cyris.entrypoints.triage_server import (
     render_onboarding_page,
     render_settings_page,
 )
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+
+from cdp_probe import CHECK_TIMEOUT_S, DRIVER, chromium, require_node  # noqa: E402
+from css_computed import find_browser  # noqa: E402
 
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
@@ -1810,76 +1818,141 @@ def test_the_landing_h1_is_larger_than_every_h2(lang: str) -> None:
     assert [d for d in hero if d.startswith("font:") and ")/1.2 " in d]
 
 
-def _reduced_motion_name(script: str) -> str | None:
-    query = re.search(r"const (\w+) = matchMedia\('\(prefers-reduced-motion: reduce\)'\)", script)
-    return query[1] if query else None
-
-
-def _js_block(script: str, start: int) -> str:
-    """The text from `start` through the brace closing the first block after it."""
-    depth = 0
-    for i in range(script.index("{", start), len(script)):
-        depth += {"{": 1, "}": -1}.get(script[i], 0)
-        if not depth:
-            return script[start : i + 1]
-    return script[start:]
-
-
-def _frames_ignoring_reduced_motion(script: str) -> list[str]:
-    """Name each animation frame a loop asks for without asking about reduced motion.
-
-    A frame is allowed inside `if (!NAME.matches)`, after `if (NAME.matches)` in its own
-    function, or as its function calling itself again, since an allowed frame started it.
-    A frame with an arrow callback is not a loop, so the scroll handler's is not named.
-    """
-    name = _reduced_motion_name(script)
-    opening = script.find(f"if (!{name}.matches) {{")
-    rest = script
-    if opening >= 0:
-        rest = script[:opening] + script[opening + len(_js_block(script, opening)) :]
-    named = []
-    for frame in re.finditer(r"requestAnimationFrame\((\w+)\)", rest):
-        functions = [
-            f
-            for f in re.finditer(r"function (\w+)\(", rest[: frame.start()])
-            if f.start() + len(_js_block(rest, f.start())) > frame.start()
-        ]
-        function = functions[-1] if functions else None
-        if function and function[1] == frame[1]:
-            continue
-        if function and f"if ({name}.matches)" in rest[function.start() : frame.start()]:
-            continue
-        named.append(frame[0])
-    return named
-
-
-def test_a_frame_loop_that_ignores_reduced_motion_is_reported() -> None:
-    query = "const R = matchMedia('(prefers-reduced-motion: reduce)');\n"
-    loop = "function run() { requestAnimationFrame(run); }\n"
-    start = "requestAnimationFrame(run)"
-    assert _frames_ignoring_reduced_motion(query + loop + f"function aim() {{ {start}; }}") == [
-        start
-    ]
-    assert _frames_ignoring_reduced_motion(query + f"{start};") == [start]
-    assert _frames_ignoring_reduced_motion(loop + f"if (!R.matches) {{ {start}; }}") == [start]
-    guarded = f"function aim() {{ if (R.matches) {{ return; }} {start}; }}"
-    assert _frames_ignoring_reduced_motion(query + loop + guarded) == []
-    assert _frames_ignoring_reduced_motion(query + f"if (!R.matches) {{ {start}; }}") == []
-    assert _frames_ignoring_reduced_motion(query + "requestAnimationFrame(() => go());") == []
-
-
 def test_the_landing_page_stops_motion_on_request() -> None:
-    page = WEBSITE.read_text()
-    assert parse_style_block(page)[REDUCED_MOTION] == STILL
+    assert parse_style_block(WEBSITE.read_text())[REDUCED_MOTION] == STILL
 
-    # Script drives the opening and the drawing, and no stylesheet rule reaches either.
-    script = re.search(r"<script>(.*)</script>", page, re.DOTALL)[1]
-    assert _frames_ignoring_reduced_motion(script) == []
-    name = _reduced_motion_name(script)
-    # The drawing shows where the story leaves it, and turning the preference on mid-page
-    # stops both the opening and the drawing.
-    assert f"{name}.matches ? 6 :" in script
-    assert script.count(f"{name}.addEventListener('change'") == 2
+
+def _skip_unless_ci(reason: str) -> None:
+    """Skipping is right on a machine without a browser, and wrong in CI."""
+    assert not os.environ.get("CI"), f"CI must provide Chromium and Node: {reason}"
+    pytest.skip(reason)
+
+
+# Script drives the opening and the drawing, and no stylesheet rule reaches either, so
+# the page runs in Chromium, as the page probes run theirs, with reduced motion
+# emulated. Every frame and timer callback the page runs is counted, so a loop shows
+# however it is scheduled.
+COUNT_CALLBACKS = """(() => {
+  window.__ran = 0;
+  for (const name of ['requestAnimationFrame', 'setTimeout', 'setInterval']) {
+    const schedule = window[name];
+    window[name] = function (callback, ...rest) {
+      const counted = typeof callback !== 'function' ? callback
+        : function (...args) { window.__ran++; return callback.apply(this, args); };
+      return schedule.call(window, counted, ...rest);
+    };
+  }
+})();"""
+LANDING_MOTION = """
+const job = JSON.parse(process.env.PROBE_JOB);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const reduce = (on) => call('Emulation.setEmulatedMedia', { features: [
+  { name: 'prefers-reduced-motion', value: on ? 'reduce' : 'no-preference' }] });
+const open = async (reduced) => {
+  await reduce(reduced);
+  await call('Page.navigate', { url: 'about:blank' });
+  await settled(`location.href === 'about:blank'`);
+  await call('Page.navigate', { url: job.url });
+  await settled(`location.protocol === 'file:'`);
+  await sleep(job.settle);
+};
+const ran = async (ms) => {
+  const before = await evaluate('window.__ran');
+  await sleep(ms);
+  return (await evaluate('window.__ran')) - before;
+};
+// Polled, not one fixed glimpse, so a slow runner that starts the motion late still
+// sees it; a page that never moves still returns 0 at the deadline.
+const moving = async () => {
+  const before = await evaluate('window.__ran');
+  for (const end = Date.now() + job.deadline; Date.now() < end; await sleep(job.poll)) {
+    const now = await evaluate('window.__ran');
+    if (now > before) return now - before;
+  }
+  return 0;
+};
+const drawn = () => evaluate(`document.getElementById('pipeline').classList.contains('on7')`);
+await call('Page.enable');
+await call('Network.enable');
+await call('Network.setBlockedURLs', { urls: ['*fonts.googleapis.com*', '*fonts.gstatic.com*'] });
+await call('Emulation.setDeviceMetricsOverride',
+  { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false });
+await call('Page.addScriptToEvaluateOnNewDocument', { source: job.count });
+const seen = {};
+await open(true);
+seen.fromLoad = { ran: await ran(job.window), drawn: await drawn() };
+await open(false);
+const opening = await moving();
+await reduce(true);
+await sleep(job.settle);
+seen.duringOpening = { before: opening, ran: await ran(job.window) };
+await open(false);
+// The page's end sends the drawing to its last step, and a scroll settles the opening.
+await evaluate('scrollTo(0, document.documentElement.scrollHeight)');
+await sleep(job.skip);
+const drawing = await moving();
+await reduce(true);
+await sleep(job.settle);
+seen.duringDrawing = { before: drawing, ran: await ran(job.window), drawn: await drawn() };
+process.stdout.write(JSON.stringify(seen));
+socket.close();
+"""
+
+
+@pytest.fixture(scope="module")
+def landing_motion() -> dict[str, dict]:
+    """What the landing page ran under reduced motion, from the start and turned on later."""
+    try:
+        browser = find_browser(None)
+        require_node()
+    except SystemExit as missing:
+        _skip_unless_ci(f"no browser to run the landing page in ({missing})")
+    job = {
+        "url": WEBSITE.as_uri(),
+        "count": COUNT_CALLBACKS,
+        "settle": 200,
+        # A loop ticking slower than this window can pass unseen.
+        "window": 1000,
+        "poll": 20,
+        "deadline": 5000,
+        # Past the 280ms the opening takes to settle after a scroll.
+        "skip": 400,
+    }
+    # The driver's connection, up to where it reads its own job.
+    connect = DRIVER[: DRIVER.index("const job = ")]
+    with chromium(browser) as socket_url:
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", connect + LANDING_MOTION],
+            env={**os.environ, "CDP_WS": socket_url, "PROBE_JOB": json.dumps(job)},
+            capture_output=True,
+            text=True,
+            timeout=CHECK_TIMEOUT_S,
+        )
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def test_under_reduced_motion_the_landing_page_runs_no_loop_and_shows_the_end(
+    landing_motion: dict[str, dict],
+) -> None:
+    assert landing_motion["fromLoad"] == {"ran": 0, "drawn": True}
+
+
+def test_reduced_motion_turned_on_during_the_opening_stops_it(
+    landing_motion: dict[str, dict],
+) -> None:
+    seen = landing_motion["duringOpening"]
+    assert seen["before"] > 0, "the opening was not moving, so stopping it shows nothing"
+    assert seen["ran"] == 0
+
+
+def test_reduced_motion_turned_on_while_the_drawing_moves_stops_it_at_its_end(
+    landing_motion: dict[str, dict],
+) -> None:
+    seen = landing_motion["duringDrawing"]
+    assert seen["before"] > 0, "the drawing was not moving, so stopping it shows nothing"
+    assert seen["ran"] == 0
+    assert seen["drawn"]
 
 
 def _edition_cards() -> dict[str, str]:
@@ -1888,29 +1961,62 @@ def _edition_cards() -> dict[str, str]:
     return {"local": local, "cloud": cloud, "hosted": hosted}
 
 
-# Words a limit cannot be stated without, not its sentence. `Worker` alone, because
-# `Workers` is the Cloudflare plan the card also names.
+SENTENCE_ENDS = {"en": r"[.;!?]", "zh": r"[。；！？]"}
+# A limit that something is missing is stated with one of these. The Chinese are whole
+# negated forms, because a bare 不 or 無 also opens 不只, 不僅 and 無論.
+DENIALS = {
+    "en": r"\b(?:no|not|never|cannot|without)\b|n't",
+    "zh": r"沒有|不能|無法|不支援|不提供|未提供",
+}
+# What a limit says is needed stops being needed with one of these: `no` within a
+# few words of the need, or a denied verb of needing.
+NEEDS_NOTHING = {
+    "en": r"\bno\s+(?:[\w-]+\s+){{0,3}}?(?:{needs})"
+    r"|(?:\bnot|n't|\bnever)\s+(?:\w+\s+)?(?:need|requir)",
+    "zh": r"不需|無需|無須|毋須|不必|不用|免|不要",
+}
+
+
+# A limit is the words it cannot be stated without, found in one sentence, not the
+# sentence itself, and whether that sentence denies something or names a need.
+# `Worker` alone, because `Workers` is the Cloudflare plan the card also names.
 @pytest.mark.parametrize(
-    ("card", "english", "chinese"),
+    ("card", "limit", "en", "zh", "denied"),
     [
+        ("local", "vote", [r"\bvot"], ["投票"], True),
         (
             "local",
-            [r"\bvot", r"\bnewsletter", r"\bworker\b", r"\bdomain\b"],
-            ["投票", "電子報", r"Worker(?!s)", "網域"],
+            "newsletter",
+            [r"\bnewsletter", r"\bworker\b", r"\bdomain\b"],
+            ["電子報", r"Worker(?!s)", "網域"],
+            False,
         ),
         (
             "cloud",
+            "vote",
             [r"\bvot", r"\bworker\b", r"\bsign|\blog"],
             ["投票", r"Worker(?!s)", "登入"],
+            False,
         ),
     ],
 )
-def test_an_edition_card_names_its_limits_in_both_languages(
-    card: str, english: list[str], chinese: list[str]
+def test_an_edition_card_states_each_limit_in_both_languages(
+    card: str, limit: str, en: list[str], zh: list[str], denied: bool
 ) -> None:
     body = re.search(r'<p data-zh="([^"]*)">(.*?)</p>', _edition_cards()[card], re.DOTALL)
-    assert [word for word in english if not re.search(word, body[2], re.IGNORECASE)] == []
-    assert [word for word in chinese if not re.search(word, body[1])] == []
+    for language, text, words in (("en", body[2], en), ("zh", body[1], zh)):
+        sentences = [
+            sentence
+            for sentence in re.split(SENTENCE_ENDS[language], text)
+            if all(re.search(word, sentence, re.IGNORECASE) for word in words)
+        ]
+        assert sentences, f"{language}: no sentence names all of {words}"
+        if denied:
+            stated = [s for s in sentences if re.search(DENIALS[language], s, re.IGNORECASE)]
+        else:
+            nothing = NEEDS_NOTHING[language].format(needs="|".join(words[1:]))
+            stated = [s for s in sentences if not re.search(nothing, s, re.IGNORECASE)]
+        assert stated, f"{language}: {sentences} no longer state the {limit} limit"
 
 
 async def test_the_local_server_still_takes_no_vote_as_its_card_says() -> None:
@@ -1921,11 +2027,29 @@ async def test_the_local_server_still_takes_no_vote_as_its_card_says() -> None:
     assert json.loads(probe.text)["votes"] is False
 
 
-def test_the_landing_page_does_not_name_the_sources_example() -> None:
-    assert "sources.example.yaml" not in WEBSITE.read_text()
+@pytest.mark.parametrize(
+    "retired",
+    [
+        # A vote moves no published issue while topics last one issue (domain/topics.py).
+        "reorder",
+        "調整之後各期的排序",
+        "data-pre",
+        # News paragraphs are no longer written (ADR-0023): a Topics card lists its articles.
+        "cites each",
+        "引用每一篇",
+        # A new local install goes through the wizard (docs/install-local.md).
+        "sources.example.yaml",
+    ],
+)
+def test_the_landing_page_drops_a_claim_the_product_does_not_keep(retired: str) -> None:
+    assert retired not in WEBSITE.read_text()
 
 
-def test_every_landing_description_leads_with_the_owners_phrase() -> None:
+# The page's current lead, not yet confirmed as the owner's.
+DESCRIPTION_LEAD = {"en": "First things first", "zh": "要事第一"}
+
+
+def test_every_landing_description_is_one_text_per_language_with_the_same_lead() -> None:
     page = WEBSITE.read_text()
     head = re.findall(r'description" content="([^"]*)"', page)
     script = re.findall(r"[dD]escription: '([^']*)'", page)
@@ -1933,8 +2057,8 @@ def test_every_landing_description_leads_with_the_owners_phrase() -> None:
     assert len(head) == len(english) == len(chinese) == 3
     assert len({*head, *english}) == 1
     assert len(set(chinese)) == 1
-    assert head[0].startswith("First things first")
-    assert chinese[0].startswith("要事第一")
+    assert head[0].startswith(DESCRIPTION_LEAD["en"])
+    assert chinese[0].startswith(DESCRIPTION_LEAD["zh"])
 
 
 def test_an_unavailable_choice_dims_everything_but_its_state() -> None:

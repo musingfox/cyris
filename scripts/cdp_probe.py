@@ -20,6 +20,7 @@ import contextlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import tempfile
@@ -711,7 +712,10 @@ def require_node() -> None:
 
 @contextlib.contextmanager
 def chromium(browser: str) -> Iterator[str]:
-    with tempfile.TemporaryDirectory(prefix="cdp-probe-chromium-") as profile:
+    with (
+        tempfile.TemporaryDirectory(prefix="cdp-probe-chromium-") as profile,
+        tempfile.TemporaryFile() as log,
+    ):
         profile_dir = Path(profile)
         process = subprocess.Popen(
             [
@@ -728,14 +732,52 @@ def chromium(browser: str) -> Iterator[str]:
                 "about:blank",
             ],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=log,
+            # Its own group, so the helpers it starts can be waited for as one.
+            start_new_session=True,
         )
         try:
             deadline = time.monotonic() + 60
-            yield _page_socket(_devtools_port(profile_dir, deadline), deadline)
+            try:
+                port = _devtools_port(profile_dir, deadline)
+            except SystemExit as no_port:
+                # Without its own words a browser that exits at launch reads as a hang.
+                log.seek(0)
+                said = log.read().decode(errors="replace").strip()
+                # A crash appends a stack dump, so the cause is at the head.
+                said = said if len(said) <= 3000 else f"{said[:2000]} ... {said[-1000:]}"
+                raise SystemExit(f"{no_port}; Chromium said: {said or 'nothing'}") from None
+            yield _page_socket(port, deadline)
         finally:
             process.terminate()
-            process.wait(timeout=30)
+            try:
+                process.wait(timeout=30)
+            finally:
+                _end_group(process.pid)
+
+
+def _end_group(group: int) -> None:
+    """Wait for every process left in the browser's group, killing them after 10 s.
+
+    The browser exits before its helper processes do, and a helper still writing
+    into the profile makes the profile's removal fail with "Directory not empty".
+    """
+    for last_signal in (signal.SIGKILL, None):
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(group, 0)
+            # macOS answers EPERM for a group whose last members are zombies, which
+            # write nothing more.
+            except (ProcessLookupError, PermissionError):
+                return
+            time.sleep(0.05)
+        if last_signal is None:
+            raise RuntimeError(f"Chromium's process group {group} outlived SIGKILL")
+        try:
+            os.killpg(group, last_signal)
+        except (ProcessLookupError, PermissionError):
+            return
 
 
 async def run_all(
