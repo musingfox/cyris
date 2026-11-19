@@ -711,7 +711,10 @@ def require_node() -> None:
 
 @contextlib.contextmanager
 def chromium(browser: str) -> Iterator[str]:
-    with tempfile.TemporaryDirectory(prefix="cdp-probe-chromium-") as profile:
+    with (
+        tempfile.TemporaryDirectory(prefix="cdp-probe-chromium-") as profile,
+        tempfile.TemporaryFile() as log,
+    ):
         profile_dir = Path(profile)
         process = subprocess.Popen(
             [
@@ -728,11 +731,18 @@ def chromium(browser: str) -> Iterator[str]:
                 "about:blank",
             ],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=log,
         )
         try:
             deadline = time.monotonic() + 60
-            yield _page_socket(_devtools_port(profile_dir, deadline), deadline)
+            try:
+                port = _devtools_port(profile_dir, deadline)
+            except SystemExit as no_port:
+                # Without its own words a browser that exits at launch reads as a hang.
+                log.seek(0)
+                said = log.read().decode(errors="replace").strip()[-2000:]
+                raise SystemExit(f"{no_port}; Chromium said: {said or 'nothing'}") from None
+            yield _page_socket(port, deadline)
         finally:
             process.terminate()
             process.wait(timeout=30)
