@@ -28,7 +28,7 @@ from cyris.domain.models import Article, Lane, SourceConfig
 pytestmark = pytest.mark.unit
 
 ROOT = Path(__file__).parent.parent
-WORKER_JS = (ROOT / "workers" / "rss" / "src" / "index.js").read_text(encoding="utf-8")
+WORKER_JS = (ROOT / "workers" / "rss" / "src" / "buffer.js").read_text(encoding="utf-8")
 ARCHITECTURE = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
 NOW = datetime(2026, 10, 20, 12, tzinfo=UTC)
 WORKER = "https://rss.test"

@@ -30,7 +30,7 @@ TIMEOUT_SECONDS = 30
 WORKER_ROW_CEILING = 2000
 
 # The Worker's own poll shape (`CONCURRENCY` and `FETCH_TIMEOUT_MS` in
-# `workers/rss/src/index.js`): feeds are fetched four at a time, each batch
+# `workers/rss/src/buffer.js`): feeds are fetched four at a time, each batch
 # waiting at most 20 seconds, so a poll of N feeds takes at most
 # ceil(N / 4) * 20 seconds of fetching. The margin is the buffer writes and the
 # prune after them, which run once per poll rather than per feed.

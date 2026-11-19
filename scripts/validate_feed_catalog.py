@@ -52,7 +52,7 @@ RSS_WORKER_DIR = REPO_ROOT / "workers" / "rss"
 # article inside this window; an HTTP 200 with nothing recent does not count.
 RECENT_WINDOW_DAYS = 8
 
-# workers/rss/src/index.js polls 4 feeds per batch; mirrored here so a run of this
+# workers/rss/src/buffer.js polls 4 feeds per batch; mirrored here so a run of this
 # script is no harder on a publisher's host than production's own poll is.
 MAX_CONCURRENT_FEEDS = 4
 

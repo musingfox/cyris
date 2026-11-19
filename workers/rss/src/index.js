@@ -2,8 +2,8 @@
 // sees more than the 2-4h a feed snapshot holds. cyris reads the entries that
 // entered the buffer in a time window via GET /articles; there is no ack — this
 // is a retention buffer, not a queue.
+import { pollFeeds } from "./buffer.js";
 import { loadFeeds } from "./feeds.js";
-import { parseFeed } from "./parse.js";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -50,10 +50,6 @@ async function ensureSchema(env) {
   schemaApplied = true;
 }
 
-const RETENTION_DAYS = 8; // counted from buffer entry; matches the D1ArticleStore's dedup scan window
-const FETCH_TIMEOUT_MS = 20000;
-// Substack rate-limits Cloudflare's egress; 10 at once drew HTTP 429s.
-const CONCURRENCY = 4;
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -61,114 +57,12 @@ function json(data, status = 200) {
   });
 }
 
-async function fetchFeed(feed) {
-  const response = await fetch(feed.url, {
-    headers: { "User-Agent": "cyris-rss/1.0 (+https://github.com/musingfox/cyris)" },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    cf: { cacheTtl: 0 },
-  });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return parseFeed(await response.text(), feed.name);
-}
-
-// One upsert per polled feed, so a feed that keeps failing outlives Workers Logs'
-// 7 days. A success resets the streak but keeps the last error and its time.
-async function recordHealth(env, outcomes, now) {
-  if (!outcomes.length) return;
-  const ok = env.DB.prepare(
-    `INSERT INTO feed_health (name, consecutive_failures, last_ok_at) VALUES (?, 0, ?)
-     ON CONFLICT(name) DO UPDATE SET consecutive_failures = 0, last_ok_at = excluded.last_ok_at`
-  );
-  const failed = env.DB.prepare(
-    `INSERT INTO feed_health (name, consecutive_failures, last_error, last_failed_at)
-     VALUES (?, 1, ?, ?)
-     ON CONFLICT(name) DO UPDATE SET
-       consecutive_failures = feed_health.consecutive_failures + 1,
-       last_error = excluded.last_error,
-       last_failed_at = excluded.last_failed_at`
-  );
-  await env.DB.batch(
-    outcomes.map(({ name, error }) =>
-      error === null ? ok.bind(name, now) : failed.bind(name, error, now)
-    )
-  );
-}
-
+// The poll's rules are buffer.js's, which the hosted Worker shares; this Worker's part is
+// the `DB` binding's schema and its `sources` table.
 async function poll(env, feeds) {
   await ensureSchema(env);
   feeds = feeds ?? (await loadFeeds(env));
-  const fetchedAt = new Date().toISOString();
-  const rows = [];
-  const failures = [];
-  const outcomes = [];
-
-  for (let i = 0; i < feeds.length; i += CONCURRENCY) {
-    const batch = feeds.slice(i, i + CONCURRENCY);
-    const results = await Promise.allSettled(batch.map(fetchFeed));
-    results.forEach((result, index) => {
-      const name = batch[index].name;
-      if (result.status === "fulfilled") {
-        rows.push(...result.value);
-        outcomes.push({ name, error: null });
-      } else {
-        failures.push(`${name}: ${result.reason}`);
-        outcomes.push({ name, error: result.reason?.message ?? String(result.reason) });
-      }
-    });
-  }
-
-  // Blogs keep months of history in their feed. The read and the prune go by buffer
-  // entry, so an old entry inserted now would reach the next digest as new: drop
-  // whatever the feed dates past the retention window before it reaches the database.
-  const cutoff = new Date(Date.now() - RETENTION_DAYS * 86400_000).toISOString();
-  const fresh = rows.filter((r) => r.published_at >= cutoff);
-
-  // INSERT OR IGNORE: re-seeing an entry every hour must not overwrite or error.
-  let written = 0;
-  const insert = env.DB.prepare(
-    `INSERT OR IGNORE INTO articles
-       (url, guid, title, content, author, published_at, source_name, fetched_at, image_url)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  );
-  for (let i = 0; i < fresh.length; i += 50) {
-    const batch = fresh.slice(i, i + 50).map((r) =>
-      insert.bind(
-        r.url,
-        r.guid,
-        r.title,
-        r.content,
-        r.author,
-        r.published_at,
-        r.source_name,
-        fetchedAt,
-        r.image_url
-      )
-    );
-    const results = await env.DB.batch(batch);
-    written += results.reduce((sum, r) => sum + (r.meta?.changes ?? 0), 0);
-  }
-
-  const pruned = await env.DB.prepare(
-    `DELETE FROM articles WHERE fetched_at < ?`
-  )
-    .bind(cutoff)
-    .run();
-
-  // After the articles, and never fatal: losing one poll's health record costs a
-  // streak one count, while failing the poll would cost the articles.
-  try {
-    await recordHealth(env, outcomes, fetchedAt);
-  } catch (error) {
-    console.error(`could not record feed_health — ${error.message ?? error}`);
-  }
-
-  console.log(
-    `polled ${feeds.length} feeds: ${rows.length} entries, ${fresh.length} in window, ` +
-      `${written} new, ${pruned.meta?.changes ?? 0} pruned, ${failures.length} failed`
-  );
-  for (const failure of failures) console.warn(`feed failed — ${failure}`);
-
-  return { feeds: feeds.length, entries: rows.length, fresh: fresh.length, written, failures };
+  return pollFeeds(env.DB, feeds);
 }
 
 export default {
