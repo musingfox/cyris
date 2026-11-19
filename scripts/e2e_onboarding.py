@@ -39,6 +39,7 @@ import zoneinfo
 from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -418,6 +419,11 @@ const answered = async (params) => {
     if ((await lines.next()).value !== 'go') return stop(requestId);
     checked = true;
   }
+  const url = new URL(request.url);
+  if (url.origin === deployment && url.pathname === '/run' && request.method === 'POST'
+      && answer?.started) {
+    report({ run: { ...Object.fromEntries(url.searchParams), at: answer.at } });
+  }
   await call('Fetch.fulfillRequest', {
     requestId,
     responseCode: params.responseStatusCode,
@@ -440,9 +446,6 @@ socket.addEventListener('message', (event) => {
   } else if (method === 'Log.entryAdded' && params.entry.level === 'error'
       && !params.entry.text.includes('ERR_BLOCKED_BY_CLIENT')) {
     report({ console: brief(`${params.entry.text} ${params.entry.url ?? ''}`.trim()) });
-  } else if (method === 'Network.requestWillBeSent' && params.request.method === 'POST') {
-    const url = new URL(params.request.url);
-    if (url.pathname === '/run') report({ run: Object.fromEntries(url.searchParams) });
   }
 });
 await call('Page.enable');
@@ -456,6 +459,8 @@ await blockFonts();
 // the token is refused. A hop pauses again with its own URL.
 await call('Fetch.enable', { patterns: [
   { urlPattern: `${deployment}${job.save.path}`, requestStage: 'Response' },
+  // The run's answer names when it started, which tells its digest_runs row from any other.
+  { urlPattern: `${deployment}/run?*`, requestStage: 'Response' },
   ...job.intercepts.map((rule) => ({ urlPattern: `*${rule.path}` })),
   { urlPattern: '*' },
 ] });
@@ -512,18 +517,12 @@ class Walk:
     failure: str = ""
     console: deque[str] = field(default_factory=lambda: deque(maxlen=CONSOLE_ERRORS_KEPT))
     run: dict[str, str] | None = None
-    # The store's newest digest_runs id, read as the page starts its run: a run of the same
-    # period that ends earlier in the walk, a catch-up or a scheduled one, is not the issue.
-    newest_run: Callable[[], int | str] | None = None
-    run_after: int | str | None = None
 
     def take(self, event: dict) -> None:
         if "console" in event:
             self.console.append(event["console"])
         elif "run" in event:
             self.run = event["run"]
-            if self.newest_run:
-                self.run_after = self.newest_run()
             print(f"RUN started: {json.dumps(self.run)}", flush=True)
         elif "intercepted" in event:
             print(f"INTERCEPTED {event['intercepted']}", flush=True)
@@ -816,36 +815,30 @@ def store_mismatch(store: D1Queryable, flag: str, choice: Choice) -> str:
     return ""
 
 
-def newest_run_id(store: D1Queryable) -> int:
-    return store.query("SELECT COALESCE(MAX(id), 0) AS id FROM digest_runs").rows[0]["id"]
+def run_started_from(at: str) -> str:
+    """`at` as digest_runs summaries write `started_at`: UTC, to the second, rounded down."""
+    when = datetime.fromisoformat(at.replace("Z", "+00:00")).astimezone(UTC)
+    return when.replace(microsecond=0).isoformat()
 
 
-def newest_run_or_error(store: D1Queryable) -> int | str:
-    try:
-        return newest_run_id(store)
-    except D1Error as e:
-        return str(e)
+def first_issue_row(store: D1Queryable, period: str, started_from: str) -> dict | None:
+    """The first non-preview row of the run's period that started once the page's run did.
 
-
-def first_issue_row(store: D1Queryable, after: int, period: str) -> dict | None:
-    """The first non-preview row of the run's period since the page started its run.
-
-    The period keeps out a scheduled run of another period landing during the walk, as
-    the page's own wait does, and `after` an earlier run's row: an empty `sources` says
-    nothing of `digest_runs`, which a cleared deployment may still hold.
+    The run's own answer is the only mark of which row is its: a catch-up or scheduled run
+    of the same period that started earlier in the walk is not the issue, whenever it ends,
+    and neither is an earlier run's row a cleared deployment may still hold. A run of the
+    same period that starts after the page's and ends first would still be read as it.
     """
     rows = store.query(
         "SELECT id, finished_at, status, period, dry_run, fetched, failed_sources, degraded, "
-        "summary FROM digest_runs WHERE id > ? AND dry_run = 0 AND period = ? "
-        "ORDER BY id LIMIT 1",
-        [after, period],
+        "summary FROM digest_runs WHERE dry_run = 0 AND period = ? "
+        "AND json_extract(summary, '$.started_at') >= ? ORDER BY id LIMIT 1",
+        [period, started_from],
     ).rows
     return rows[0] if rows else None
 
 
-def read_receipts(
-    store: D1Queryable, after: int | str | None, run: dict[str, str] | None
-) -> list[str]:
+def read_receipts(store: D1Queryable, run: dict[str, str] | None) -> list[str]:
     """Print the store's receipts, and name each that does not hold."""
     problems = []
     names = source_names(store)
@@ -853,16 +846,14 @@ def read_receipts(
     if not names:
         problems.append("receipt sources: no row")
     if run is None:
-        problems.append("receipt digest_runs: the page never posted /run")
+        problems.append("receipt digest_runs: the page's /run never answered that it started")
         return problems
-    if not isinstance(after, int):
-        problems.append(
-            f"receipt digest_runs: could not read the store as the run started: {after}"
-        )
-        return problems
-    row = first_issue_row(store, after, run.get("period", ""))
+    started_from = run_started_from(run["at"])
+    row = first_issue_row(store, run.get("period", ""), started_from)
     if row is None:
-        problems.append(f"receipt digest_runs: no {run.get('period')} row with id over {after}")
+        problems.append(
+            f"receipt digest_runs: no {run.get('period')} row started at or after {started_from}"
+        )
         return problems
     summary = json.loads(row.pop("summary") or "{}")
     print(f"RECEIPT digest_runs: {json.dumps(row, ensure_ascii=False)}")
@@ -989,7 +980,7 @@ def main(argv: list[str] | None = None) -> int:
 
     browser = find_browser(args.browser)
     require_node()
-    walk = Walk(newest_run=lambda: newest_run_or_error(store))
+    walk = Walk()
     job = build_job(
         args.url, args.feed, args.first_issue_timeout, headers, args.broken, answers, choice
     )
@@ -1002,7 +993,7 @@ def main(argv: list[str] | None = None) -> int:
         )
 
     try:
-        problems = read_receipts(store, walk.run_after, walk.run)
+        problems = read_receipts(store, walk.run)
     except D1Error as e:
         problems = [f"receipt store: {e}"]
     for problem in problems:

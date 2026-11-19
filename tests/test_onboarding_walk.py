@@ -47,7 +47,10 @@ DATABASE_ID = "e2e-database"
 ACCOUNT_ID = "e2e-account"
 API_TOKEN = "e2e-token"
 ARGS = ["--url", URL, "--feed", FEED, "--d1", DATABASE_ID]
-RUN = {"period": "morning", "date": "2026-11-09"}
+# As the page's POST /run answers it: `at` is when the run was started.
+RUN = {"period": "morning", "date": "2026-11-09", "at": "2026-11-09T08:00:00.250Z"}
+AFTER_THE_RUN = "2026-11-09T08:00:01+00:00"
+BEFORE_THE_RUN = "2026-11-09T07:30:00+00:00"
 ACCESS = {"CF-Access-Client-Id": "the-id", "CF-Access-Client-Secret": "the-secret"}
 TIMEZONE = {"general.timezone": "UTC"}
 HOURS = ["08:00", "20:00"]
@@ -57,11 +60,19 @@ def _add_source(d1: SqliteD1) -> None:
     d1.query("INSERT INTO sources (name, url) VALUES (?, ?)", ["A feed", FEED])
 
 
-def _add_run(d1: SqliteD1, status: str, *, period: str = "morning", dry_run: int = 0) -> None:
+def _add_run(
+    d1: SqliteD1,
+    status: str,
+    *,
+    period: str = "morning",
+    dry_run: int = 0,
+    started_at: str = AFTER_THE_RUN,
+) -> None:
+    summary = {"error": "boom", "started_at": started_at}
     d1.query(
         "INSERT INTO digest_runs (finished_at, status, period, dry_run, summary) "
         "VALUES (?, ?, ?, ?, ?)",
-        ["2026-11-09T00:00:00+00:00", status, period, dry_run, json.dumps({"error": "boom"})],
+        ["2026-11-09T09:00:00+00:00", status, period, dry_run, json.dumps(summary)],
     )
 
 
@@ -240,7 +251,11 @@ class TestD1Mode:
     @pytest.mark.parametrize(
         ("earlier", "later"),
         [
-            pytest.param({"status": "ok"}, None, id="a row from before the walk"),
+            pytest.param(
+                {"status": "ok", "started_at": BEFORE_THE_RUN},
+                None,
+                id="a row from before the walk",
+            ),
             pytest.param(None, {"status": "ok", "dry_run": 1}, id="a preview's row"),
             pytest.param(None, {"status": "ok", "period": "evening"}, id="another period's row"),
         ],
@@ -268,17 +283,32 @@ class TestD1Mode:
 
         assert "FAIL receipt digest_runs: no morning row" in capsys.readouterr().out
 
-    def test_a_row_of_the_period_ending_before_the_run_starts_is_not_the_issue(
+    def test_a_row_of_the_period_started_before_the_pages_run_is_not_the_issue(
         self, d1: SqliteD1, browser: list[str], monkeypatch, capsys
     ) -> None:
-        # A catch-up or scheduled run that ends while the walk is still adding feeds.
+        # A catch-up or scheduled run started earlier in the walk, ending before or after
+        # the page's run: its row has the lower id, and is still not the issue.
+        def run_ends() -> None:
+            _add_source(d1)
+            _add_run(d1, "no_articles", started_at=BEFORE_THE_RUN)
+            _add_run(d1, "ok")
+
+        _walk_that(monkeypatch, {"run": RUN}, *_every_step_passes(), then=run_ends)
+
+        assert walker.main(ARGS) == walker.EXIT_OK
+
+        assert '"status": "ok"' in capsys.readouterr().out
+
+    def test_the_issues_row_counts_however_soon_it_is_written(
+        self, d1: SqliteD1, browser: list[str], monkeypatch, capsys
+    ) -> None:
+        # A fast run whose row is in the store before the walk hears its answer.
         async def drive(socket_url, job, budget_s, walk: walker.Walk, confirm) -> None:
-            _add_run(d1, "no_articles")
+            _add_source(d1)
+            _add_run(d1, "ok")
             walk.take({"run": RUN})
             for event in _every_step_passes():
                 walk.take(event)
-            _add_source(d1)
-            _add_run(d1, "ok")
 
         monkeypatch.setattr(walker, "drive_walk", drive)
 
@@ -301,7 +331,7 @@ class TestD1Mode:
         out = capsys.readouterr().out
         assert "FAIL step sources: feed check refused" in out
         assert "Failed to load resource: 500" in out
-        assert "FAIL receipt digest_runs: the page never posted /run" in out
+        assert "FAIL receipt digest_runs: the page's /run never answered that it started" in out
 
 
 SITE_FEEDS = f"{URL}/api/onboarding/feeds"
@@ -912,7 +942,9 @@ globalThis.WebSocket = class {
   close() {}
   answer(method, params) {
     if (method === 'Page.navigate') return { errorText: plan.navigateError };
-    if (method === 'Fetch.getResponseBody') return { body: plan.savedBody, base64Encoded: false };
+    if (method === 'Fetch.getResponseBody') {
+      return { body: plan.bodies?.[params.requestId] ?? plan.savedBody, base64Encoded: false };
+    }
     if (method !== 'Runtime.evaluate') return {};
     new vm.Script(params.expression);
     if (plan.exitOn && params.expression.includes(plan.exitOn)) {
@@ -968,18 +1000,33 @@ globalThis.WebSocket = class {
 };
 """
 
+# The page's POST /run, paused at its answer, which names when the run started.
 STARTS_THE_RUN = {
-    "method": "Network.requestWillBeSent",
-    "params": {"request": {"method": "POST", "url": f"{URL}/run?period=morning&date=2026-11-09"}},
+    "method": "Fetch.requestPaused",
+    "params": {
+        "requestId": "run-1",
+        "request": {
+            "method": "POST",
+            "url": f"{URL}/run?period=morning&date=2026-11-09",
+            "headers": {},
+        },
+        "responseStatusCode": 200,
+        "responseHeaders": [{"name": "Content-Type", "value": "application/json"}],
+    },
 }
+RUN_ANSWER = {"run-1": json.dumps({"started": "run", "at": RUN["at"]})}
 PAUSED_FEED_CHECK = {
     "method": "Fetch.requestPaused",
     "params": {"requestId": "paused-1", "request": {"url": f"{URL}/api/onboarding/feed-check"}},
 }
 PAGE_HEADERS = {"Accept": "text/html", "User-Agent": "HeadlessChrome"}
 LOGIN = "https://team.example/login"
-# The language step's save is held at the response, on the deployment's own origin only.
-HELD = [{"urlPattern": f"{URL}/api/settings/values", "requestStage": "Response"}]
+# The language step's save and the run are held at the response, on the deployment's own origin
+# only.
+HELD = [
+    {"urlPattern": f"{URL}/api/settings/values", "requestStage": "Response"},
+    {"urlPattern": f"{URL}/run?*", "requestStage": "Response"},
+]
 EVERY_REQUEST = {"urlPattern": "*"}
 # Where a redirect off the deployment can lead, and hosts that only look like the deployment's.
 ELSEWHERE = [
@@ -1222,9 +1269,13 @@ class TestDriver:
         assert walk.failure == "step sources: the driver ended before this step answered"
 
     async def test_the_run_and_the_console_errors_reach_the_walk(self, drive) -> None:
-        walk, _ = await drive(plan={"events": [STARTS_THE_RUN, *CONSOLE_EVENTS]})
+        walk, calls = await drive(
+            plan={"events": [STARTS_THE_RUN, *CONSOLE_EVENTS], "bodies": RUN_ANSWER}
+        )
 
         assert walk.run == RUN
+        fulfilled = [c["params"] for c in calls if c["method"] == "Fetch.fulfillRequest"]
+        assert [f["requestId"] for f in fulfilled] == ["run-1"]
         assert list(walk.console) == ["Failed to load " + f"{URL}/x", "bad", "Boom"]
 
     @staticmethod
