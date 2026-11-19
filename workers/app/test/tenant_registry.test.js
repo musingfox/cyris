@@ -152,7 +152,8 @@ describe("the hosted Worker's hourly tick", () => {
       ["alpha", { period: undefined, date: undefined }],
       ["delta", { period: undefined, date: undefined }],
     ]);
-    expect(bound.TENANT_DB.gets.map((get) => get.name)).toEqual(["alpha", "delta"]);
+    // Each is reached for its RSS poll and then its schedule; no other tenant's is reached at all.
+    expect([...new Set(bound.TENANT_DB.gets.map((get) => get.name))].sort()).toEqual(["alpha", "delta"]);
   });
 
   it("starts nothing when the registry holds no tenant", async () => {
@@ -211,10 +212,11 @@ describe("the hosted Worker's operator routes, over the registry", () => {
     return worker.fetch(request);
   };
 
-  it("refuse to seed, start or report a tenant before it is registered, touching none of its objects", async () => {
+  it("refuse to seed, start, poll or report a tenant before it is registered, touching none of its objects", async () => {
     for (const [method, path] of [
       ["POST", "/hosted/tenants/alpha/seed"],
       ["POST", "/hosted/tenants/alpha/run?period=morning"],
+      ["POST", "/hosted/tenants/alpha/poll"],
       ["GET", "/hosted/tenants/alpha/report"],
     ]) {
       const response = await operator(method, path);
@@ -242,6 +244,49 @@ describe("the hosted Worker's operator routes, over the registry", () => {
     expect((await operator("POST", "/hosted/tenants/alpha/register?status=paused")).status).toBe(200);
     expect((await operator("POST", "/hosted/tenants/alpha/run?period=morning")).status).toBe(409);
     expect(bound.starts).toHaveLength(1);
+  });
+
+  it("poll an active tenant's feeds into its buffer on request, and refuse a paused one", async () => {
+    const certs = globalThis.fetch;
+    const feeds = [];
+    // The seed's feeds answer one entry each; the Access certs are fetched as before.
+    vi.stubGlobal("fetch", async (url, init) => {
+      if (String(url).includes(TEAM)) return certs(url, init);
+      feeds.push(String(url));
+      const item = `<item><title>t</title><link>${url}/one</link><pubDate>${new Date().toUTCString()}</pubDate></item>`;
+      return new Response(`<?xml version="1.0"?><rss version="2.0"><channel>${item}</channel></rss>`);
+    });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await operator("POST", "/hosted/tenants/alpha/register");
+    await operator("POST", "/hosted/tenants/alpha/seed");
+
+    const polled = await operator("POST", "/hosted/tenants/alpha/poll");
+
+    expect(polled.status).toBe(200);
+    const body = await polled.json();
+    expect(body).toMatchObject({ tenant: "alpha", feeds: feeds.length, fetches: feeds.length, written: feeds.length });
+    expect(feeds.length).toBeGreaterThan(0);
+    const buffered = bound.TENANT_DB.getByName("alpha").query("SELECT count(*) AS n FROM articles").rows[0].n;
+    expect(buffered).toBe(feeds.length);
+    expect(bound.starts).toEqual([]);
+
+    await operator("POST", "/hosted/tenants/alpha/register?status=paused");
+    const paused = await operator("POST", "/hosted/tenants/alpha/poll");
+    expect(paused.status).toBe(409);
+    expect(feeds).toHaveLength(body.feeds);
+    vi.restoreAllMocks();
+  });
+
+  it("answer 502 with the reason when a tenant's poll fails", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    await operator("POST", "/hosted/tenants/alpha/register");
+
+    // Registered but never seeded: it has no sources table to read.
+    const polled = await operator("POST", "/hosted/tenants/alpha/poll");
+
+    expect(polled.status).toBe(502);
+    expect((await polled.json()).error).toContain("could not read sources");
+    vi.restoreAllMocks();
   });
 
   it("leave a paused tenant paused on a bare register, and resume it only when told", async () => {

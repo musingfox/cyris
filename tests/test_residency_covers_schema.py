@@ -40,7 +40,7 @@ def test_every_schema_table_is_a_residency_row() -> None:
 
 
 def test_every_hosted_schema_table_is_a_residency_row() -> None:
-    assert _table_names(HOSTED_SCHEMA.read_text()) == ["hosted_pages"]
+    assert _table_names(HOSTED_SCHEMA.read_text()) == ["hosted_pages", "articles"]
     assert _rows_missing(HOSTED_SCHEMA.read_text(), ARCHITECTURE.read_text()) == []
 
 

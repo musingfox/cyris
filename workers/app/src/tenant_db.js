@@ -8,6 +8,7 @@
 // and refuses every other request with 403; the container holds no token and no binding.
 
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
+import { pollTenantBuffer } from "./tenant_buffer.js";
 
 // The host the container queries; `GATEWAY_ORIGIN` in src/cyris/adapters/store/tenant_gateway.py
 // names the same one, and tests/test_hosted_config.py holds the two together.
@@ -51,6 +52,12 @@ export class TenantDb extends DurableObject {
     const before = total();
     const rows = storage.exec(sql, ...params).toArray();
     return { rows, changes: total() - before };
+  }
+
+  // One poll of the tenant's RSS feeds into its own buffer (tenant_buffer.js), which the hourly
+  // tick asks for: the feed requests are this object's invocation's, not the tick's.
+  pollRss() {
+    return pollTenantBuffer(this.ctx.storage);
   }
 
   // Each of the tenant's tables with its row count, in name order.

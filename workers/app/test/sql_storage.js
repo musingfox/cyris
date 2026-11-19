@@ -37,9 +37,28 @@ export function sqlStorage() {
   };
 }
 
+// `ctx.storage` as the runtime gives a SQLite-backed object: its SQL, and transactionSync, which
+// commits what the callback wrote or, when it throws, none of it.
+export function objectStorage(sql = sqlStorage()) {
+  return {
+    sql,
+    transactionSync(run) {
+      sql.db.exec("BEGIN");
+      try {
+        const result = run();
+        sql.db.exec("COMMIT");
+        return result;
+      } catch (error) {
+        sql.db.exec("ROLLBACK");
+        throw error;
+      }
+    },
+  };
+}
+
 export function tenantDb() {
-  const sql = sqlStorage();
-  return { db: new TenantDb({ storage: { sql } }, {}), sql };
+  const storage = objectStorage();
+  return { db: new TenantDb({ storage }, {}), sql: storage.sql };
 }
 
 // TENANT_DB as the runtime binds it: getByName returns the tenant's own object, made once.

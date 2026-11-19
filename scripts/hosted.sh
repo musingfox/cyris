@@ -202,6 +202,17 @@ case "${1:-}" in
     done
     finish ${failed[@]+"${failed[@]}"}
     ;;
+  poll)
+    # The hourly tick's RSS poll of each tenant, now: what it fetched and wrote into the
+    # tenant's own buffer, which the tick's "hosted tick" log line sums.
+    ask_access
+    out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-poll.XXXXXX")
+    failed=()
+    for tenant in $TENANTS; do
+      call "$tenant" POST "/hosted/tenants/$tenant/poll" "$out/$tenant.json" || failed+=("$tenant")
+    done
+    finish ${failed[@]+"${failed[@]}"}
+    ;;
   check)
     ask_access
     out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-report.XXXXXX")
@@ -233,7 +244,7 @@ case "${1:-}" in
     run_wrangler delete
     ;;
   *)
-    echo "usage: $0 deploy|secrets|containers|register|seed|run [morning|evening]|check|tail|delete" >&2
+    echo "usage: $0 deploy|secrets|containers|register|seed|run [morning|evening]|poll|check|tail|delete" >&2
     exit 2
     ;;
 esac
