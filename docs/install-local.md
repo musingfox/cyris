@@ -13,8 +13,9 @@ else, your settings and your feeds included, is saved through the wizard into th
 
 Either of these runs the same install:
 
-- **`uv`**: Python 3.12+ and [uv](https://github.com/astral-sh/uv). Every command runs on this
-  machine.
+- **`uv`**: Python 3.12+ and [uv](https://github.com/astral-sh/uv) on macOS or Linux. Every
+  command runs on this machine. Windows is not supported: the digest-run lock uses `fcntl` and the
+  hourly schedule runs through `sh`. On Windows, use `docker compose` or WSL.
 - **`docker compose`**: Docker with the compose plugin. Every command runs in a container.
 
 The file is opened from one side only, so pick one and stay on it: see
