@@ -1962,8 +1962,12 @@ def _edition_cards() -> dict[str, str]:
 
 
 SENTENCE_ENDS = {"en": r"[.;!?]", "zh": r"[。；！？]"}
-# A limit that something is missing is stated with one of these.
-DENIALS = {"en": r"\b(?:no|not|never|cannot|without)\b|n't", "zh": r"沒有|不|無|未"}
+# A limit that something is missing is stated with one of these. The Chinese are whole
+# negated forms, because a bare 不 or 無 also opens 不只, 不僅 and 無論.
+DENIALS = {
+    "en": r"\b(?:no|not|never|cannot|without)\b|n't",
+    "zh": r"沒有|不能|無法|不支援|不提供|未提供",
+}
 # What a limit says is needed stops being needed with one of these: `no` within a
 # few words of the need, or a denied verb of needing.
 NEEDS_NOTHING = {
