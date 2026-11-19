@@ -367,6 +367,9 @@ const sent = async (params) => {
   if (rule) {
     report({ intercepted: rule.path });
     // In `--feed` order: the walk waits for each check before it starts the next.
+    if (rule.answers && rule.answers.length === 0) {
+      return stop(requestId, { unanswered: rule.path });
+    }
     const body = rule.answers ? JSON.stringify(rule.answers.shift()) : rule.body;
     await call('Fetch.fulfillRequest', {
       requestId,
@@ -527,6 +530,12 @@ class Walk:
                 f"--url answered {redirected['method']} {redirected['url']} with "
                 f"{redirected['status']}, a redirect to {redirected['location'] or 'nowhere'}: "
                 "the walk follows no redirect of an answer it holds, so it stopped there",
+            )
+        elif "unanswered" in event:
+            self.fail(
+                self.waiting_on,
+                f"the page asked {event['unanswered']} more often than --skip-feed-checker has "
+                "answers, one per --feed, so the walk had none for it and stopped there",
             )
         elif "blocked" in event:
             blocked = event["blocked"]

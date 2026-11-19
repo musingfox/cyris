@@ -1155,6 +1155,22 @@ class TestDriver:
         ]
         assert [json.loads(base64.b64decode(f["body"])) for f in fulfilled] == answers
 
+    async def test_a_feed_check_past_the_answers_fails_and_is_named(self, drive) -> None:
+        answer = {"ok": True, "name": "First", "url": "http://127.0.0.1:1/a.xml"}
+        paused = [
+            {**PAUSED_FEED_CHECK, "params": {**PAUSED_FEED_CHECK["params"], "requestId": rid}}
+            for rid in ("paused-1", "paused-2")
+        ]
+
+        walk, calls = await drive(plan={"events": paused}, feed_check_answers=[answer])
+
+        assert "/api/onboarding/feed-check more often than --skip-feed-checker" in walk.failure
+        assert [
+            c["params"]["requestId"] for c in calls if c["method"] == "Fetch.fulfillRequest"
+        ] == ["paused-1"]
+        failed = [c["params"] for c in calls if c["method"] == "Fetch.failRequest"]
+        assert {"requestId": "paused-2", "errorReason": "BlockedByClient"} in failed
+
     async def test_a_failed_step_ends_the_walk_and_is_named(self, drive) -> None:
         walk, calls = await drive(plan={"failOn": "#o-own-add"})
 

@@ -337,8 +337,9 @@ carries on in the new document; a reload under any other step fails the walk.
 - **`--skip-feed-checker`** is not for a run against a URL. A run against a URL with a public feed
   does not use it, and exercises the real check. It exists for `scripts/e2e_onboarding_local.py
   pass`, whose loopback feed the real check refuses by design: the browser answers the check with
-  the feed's own title and address, so `FeedChecker` never runs. The script refuses the flag unless
-  the URL and every feed are on loopback.
+  the feed's own title and address, so `FeedChecker` never runs. It has one answer per `--feed`,
+  and a check past them fails the walk. The script refuses the flag unless the URL and every feed
+  are on loopback.
 - **`--first-issue-timeout <seconds>`** is how long it waits for the run, 1200 by default: past the
   page's own 15 minutes.
 
