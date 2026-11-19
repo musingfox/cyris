@@ -3,7 +3,9 @@
 import pytest
 from fakes import TEST_SETTINGS, load_files
 
-from cyris.bootstrap import build_deps
+from cyris.adapters.fetch.rss_source import RssSource
+from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
+from cyris.bootstrap import build_deps, build_rss_source
 
 pytestmark = pytest.mark.integration
 
@@ -59,3 +61,14 @@ def test_absent_section_falls_back_to_direct_polling(tmp_path, monkeypatch):
     names = [type(s).__name__ for s in build_deps(cfg).fetch_sources]
     assert "CloudflareRssSource" not in names
     assert "RssSource" in names
+
+
+def test_a_self_hosted_store_picks_its_rss_edge_as_before(tmp_path, monkeypatch):
+    """The Worker's buffer with a URL and a token, else direct polling; never a tenant's."""
+    monkeypatch.setenv("CYRIS_WORKER_TOKEN", "tok")
+    with_worker = _config(tmp_path, monkeypatch, '\n[rss]\nworker_url = "https://rss.test"\n')
+    monkeypatch.delenv("CYRIS_WORKER_TOKEN")
+    without = _config(tmp_path, monkeypatch, '\n[rss]\nworker_url = "https://rss.test"\n')
+
+    assert type(build_rss_source(with_worker)) is CloudflareRssSource
+    assert type(build_rss_source(without)) is RssSource

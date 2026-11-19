@@ -4,7 +4,8 @@
 // docs/decisions/0028-one-sqlite-durable-object-per-hosted-tenant.md.
 //
 // It serves the operator's routes and each tenant's pages behind Access (hosted_router.js,
-// hosted_site.js) and runs the hourly tick for every tenant. Until later cards land, a run
+// hosted_site.js) and runs the hourly tick for every tenant: each tenant's RSS poll into its own
+// buffer (tenant_buffer.js), then its run when one is due. Until later cards land, a run
 // notifies nobody. The tenant list is the operator's registry (tenant_registry.js).
 import { env } from "cloudflare:workers";
 import HOSTED_SCHEMA_SQL from "../../../src/cyris/adapters/store/hosted_schema.sql";
@@ -30,6 +31,51 @@ const tenantRun = (tenant) => env.TENANT_RUN.getByName(tenant, { locationHint: L
 
 const startRun = (tenant, period, date) => tenantRun(tenant).startRun({ period, date });
 
+// One poll of `tenant`'s buffer through `call`, which counts it, and what it did; a failed one is
+// logged and answers its error.
+async function pollTenant(tenant, call = (what) => what) {
+  try {
+    const polled = await call(tenantDb(env, tenant).pollRss());
+    console.log("rss poll", { tenant, ...pollMeasure(polled) });
+    return { tenant, ...polled };
+  } catch (error) {
+    console.log("rss poll failed", { tenant, error: String(error?.message ?? error) });
+    return { tenant, error: String(error?.message ?? error) };
+  }
+}
+
+// One tenant's poll in counts: its feeds, the feed requests it made, what they held, what it wrote.
+const pollMeasure = (polled) => ({
+  feeds: polled.feeds,
+  fetches: polled.fetches,
+  entries: polled.entries,
+  fresh: polled.fresh,
+  written: polled.written,
+  failed_feeds: polled.failures.length,
+});
+
+// The tick's own measurement, one log line for the operator to read beside the invocation's CPU
+// time in Workers Logs (docs/hosted-tenants.md): how many tenants it polled and how many polls
+// failed; `object_calls`, the Durable Object calls the tick made itself (the registry, each
+// tenant's poll, its schedule reads and its start), which are the tick's own subrequests if
+// Cloudflare counts them as such; `feed_fetches`, the feed requests the tenants' polls made, each
+// in that tenant's object's invocation; and its wall time.
+function tickMeasure(tick, tenants) {
+  const polled = tick.polls.filter((poll) => !poll.error);
+  const sum = (key) => polled.reduce((total, poll) => total + poll[key], 0);
+  return {
+    tenants: tenants.length,
+    polled: polled.length,
+    failed_polls: tick.polls.length - polled.length,
+    feeds: sum("feeds"),
+    feed_fetches: sum("fetches"),
+    max_tenant_fetches: Math.max(0, ...polled.map((poll) => poll.fetches)),
+    written: sum("written"),
+    object_calls: tick.calls,
+    wall_ms: Date.now() - tick.started,
+  };
+}
+
 // One memo of each tenant's type size per isolate, as module scope holds it.
 const sitePage = createSitePage(env);
 
@@ -52,28 +98,40 @@ export default {
       report: (tenant) => tenantReport({ db: tenantDb(env, tenant), tenant }),
       timeZone: (tenant) => readTimeZone({ env, read: tenantRows(env, tenant) }),
       startRun,
+      poll: (tenant) => pollTenant(tenant),
       page: sitePage,
     });
   },
 
-  // Each active tenant of the registry asks its own database whether this is a digest hour or
-  // one to catch up; a tenant of any other status gets no tick. A tenant whose schedule cannot
-  // be read gets no start: its container would reach the same object. One tenant's failure is
-  // logged and leaves the others' ticks alone.
+  // Each active tenant of the registry first polls its RSS feeds into its own buffer, then asks
+  // its own database whether this is a digest hour or one to catch up; a tenant of any other
+  // status is neither polled nor ticked. The poll comes first so that a run this tick starts reads
+  // this hour's entries: they are stamped when the poll starts, before the run's window closes.
+  // A poll that fails is logged, and its tenant's run still starts on what its buffer holds. A
+  // tenant whose schedule cannot be read gets no start: its container would reach the same
+  // object. One tenant's failure is logged and leaves the others' polls and ticks alone.
   async scheduled() {
-    const tenants = (await tenantRegistry(env).tenants({ status: ACTIVE })).map((row) => row.id);
+    const tick = { started: Date.now(), calls: 0, polls: [] };
+    const call = (what) => {
+      tick.calls += 1;
+      return what;
+    };
+    const tenants = (await call(tenantRegistry(env).tenants({ status: ACTIVE }))).map((row) => row.id);
     const ticks = await Promise.allSettled(
       tenants.map(async (tenant) => {
-        const plan = await planTick({ env, read: tenantRows(env, tenant), unreadable: null });
+        tick.polls.push(await pollTenant(tenant, call));
+        const read = tenantRows(env, tenant);
+        const plan = await planTick({ env, read: (...args) => call(read(...args)), unreadable: null });
         if (!plan) return;
         if (plan.period) console.log("catching up a digest hour with no ok run", { tenant, ...plan });
-        await startRun(tenant, plan.period, plan.date);
+        await call(startRun(tenant, plan.period, plan.date));
       }),
     );
-    ticks.forEach((tick, i) => {
-      if (tick.status === "rejected") {
-        console.log("tick failed", { tenant: tenants[i], error: String(tick.reason) });
+    ticks.forEach((result, i) => {
+      if (result.status === "rejected") {
+        console.log("tick failed", { tenant: tenants[i], error: String(result.reason) });
       }
     });
+    console.log("hosted tick", tickMeasure(tick, tenants));
   },
 };

@@ -11,6 +11,9 @@ stored there too is [ADR-0029](decisions/0029-a-hosted-tenants-pages-live-in-its
 What the hosted Worker is, and what it does not do yet, is in `docs/architecture.md` §6, *Hosted
 mode is a separate Worker*. Why the tenant list is a registry Durable Object and not a line of
 config is [ADR-0030](decisions/0030-the-operator-registry-is-one-sqlite-durable-object.md).
+Why each tenant's RSS is polled hourly by this Worker into a buffer in the tenant's own object,
+and what that costs against Cloudflare's limits, is
+[ADR-0031](decisions/0031-a-hosted-tenants-rss-is-polled-by-the-hosted-worker.md).
 
 `cyris-hosted` is a separate Worker from `cyris-app`. Nothing here deploys or changes
 `wrangler.toml`, which a push to main deploys to production (ADR-0024).
@@ -44,8 +47,13 @@ You need:
 
 ```bash
 bun install --frozen-lockfile
+(cd workers/rss && bun install --frozen-lockfile)
 bun x wrangler login
 ```
+
+The second install is for the hosted Worker's RSS poll. It uses `workers/rss`'s feed parser, and
+that parser's `fast-xml-parser` is installed only under `workers/rss`. Without it the deploy
+stops with "Could not resolve fast-xml-parser".
 
 Log in as a user who can see the trial account: that login is the credential every wrangler call of the script
 acts as, since none of them reads `.env`.
@@ -70,7 +78,7 @@ Until step 3 sets the Access secrets, every request to the Worker is answered wi
 The Worker checks the Access JWT itself (ADR-0015), so Access must sign a request in before the
 Worker sees it.
 
-The dashboard labels in this step, and the two in steps 6 and 8, were written from memory of
+The dashboard labels in this step, and the ones in steps 6, 7 and 9, were written from memory of
 the dashboard and have not been checked against it. Each is marked *(label unverified)*. What
 each step has to achieve is what counts; find it under whatever name the dashboard now uses.
 
@@ -125,7 +133,8 @@ The seed route seeds only a registered tenant: for any other it answers 404 and 
 and so do the run and report routes. `seed` runs `POST /hosted/tenants/<tenant>/seed` for `alpha`,
 then `bravo`. Each seed writes three things into the tenant's own database:
 
-- `schema.sql`, then `hosted_schema.sql`, which adds the tenant's `hosted_pages` table;
+- `schema.sql`, then `hosted_schema.sql`, which adds the tenant's `hosted_pages` table and its
+  RSS buffer, `articles`;
 - every required setting: provider `anthropic`, model `claude-haiku-5-5`, digests at 08:00 and
   20:00 UTC, language `en`, and no notification target;
 - four RSS feeds from the onboarding catalog. No feed is shared between the two tenants
@@ -140,7 +149,41 @@ service token's two headers, and `?status=active` to resume it. Only a named sta
 registered tenant's status. The tick skips a paused tenant,
 and its run route answers 409. Its seed and report routes still answer.
 
-## 6. Run one digest for each
+## 6. Poll each tenant's feeds, and measure a tick
+
+Every hour, on the hour, the Worker's tick polls each active tenant's `rss` sources into that
+tenant's own `articles`. It does this before it decides whether that tenant's digest is due, so
+a run started in that tick reads that hour's entries. A paused tenant is not polled. To poll now,
+without waiting for the hour:
+
+```bash
+scripts/hosted.sh poll
+```
+
+This runs `POST /hosted/tenants/<tenant>/poll` for each tenant. Each answer is that one poll:
+`feeds`, `fetches` (the feed requests it made), `entries`, `fresh` (the entries dated inside the
+8-day window), `written` (the new rows), and `failures`, one line per feed that failed. A tenant
+whose poll failed answers 502 with the reason. A paused tenant answers 409.
+
+To measure one real tick, run `scripts/hosted.sh tail` and wait for the top of an hour.
+Then read these lines in Workers Logs (Workers & Pages > `cyris-hosted` > Logs, *label
+unverified*):
+
+- one `hosted tick` line from the scheduled invocation, with `tenants`, `polled`,
+  `failed_polls`, `feeds`, `feed_fetches` (the feed requests the tenants' polls made),
+  `max_tenant_fetches` (the most any one tenant's poll made), `written`, `object_calls` (the
+  Durable Object calls the tick made itself) and `wall_ms`;
+- one `rss poll` line per tenant, with its own counts;
+- the CPU time and wall time of each invocation, which Workers Logs puts in the invocation log.
+  That covers the scheduled invocation and each tenant's `TenantDb` invocation, where the
+  fetching and parsing happen. `wrangler tail` may show the same, *unverified*.
+
+The scheduled invocation's subrequests are its `object_calls`, if Cloudflare counts a Durable
+Object call as one. Each tenant's poll invocation spends its `fetches`, plus any redirect a feed
+answers with. The limits these are measured against, and the arithmetic for 30 tenants, are in
+ADR-0031.
+
+## 7. Run one digest for each
 
 ```bash
 scripts/hosted.sh run morning
@@ -151,9 +194,11 @@ container starts with the gateway to that tenant's database registered before `s
 start made while both instances are held is retried for up to 90 seconds. Each answer is
 `{"started": true, "tenant": ...}`, or `"started": false` when that tenant's run is already up.
 
-Runs poll their feeds directly. Each run writes its issue into the tenant's `digests`, and its
-digest page and raw page into the tenant's own `hosted_pages`. No Pages project is touched. Runs
-notify nobody yet. Allow about five minutes. To watch the Worker side of it:
+Each run reads its RSS from the tenant's own buffer, `articles`, which step 6 and the hourly tick
+fill. It does not poll its feeds itself. A run started before any poll finds the buffer empty and
+has nothing to digest, which is why step 6 comes first. Each run writes its issue into the
+tenant's `digests`, and its digest page and raw page into the tenant's own `hosted_pages`. No
+Pages project is touched. Runs notify nobody yet. Allow about five minutes. To watch the Worker side of it:
 
 ```bash
 scripts/hosted.sh tail
@@ -162,7 +207,7 @@ scripts/hosted.sh tail
 Stop it with Ctrl-C. The containers' own output is in Workers Logs (Workers & Pages >
 `cyris-hosted` > Logs, *label unverified*).
 
-## 7. Check that each tenant holds only its own rows
+## 8. Check that each tenant holds only its own rows
 
 ```bash
 scripts/hosted.sh check
@@ -209,7 +254,7 @@ The same paths under `/t/bravo/` are bravo's. Until tenant sessions land, Access
 operator, so these are your pages to check, not a tenant's sign-in. The vote buttons and the
 Settings link stay hidden, because the hosted Worker has no `/api/vote` or `/settings` yet.
 
-## 8. Tear down (when you are done)
+## 9. Tear down (when you are done)
 
 ```bash
 scripts/hosted.sh delete

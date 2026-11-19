@@ -438,17 +438,23 @@ def build_promotion_sync(
     return partial(sync_promotions, promote.worker_url, promote.token, store, topics)
 
 
-def build_rss_source(cfg: Config) -> FetchSource:
-    """The run's RSS edge: the Worker's hourly D1 buffer, else direct polling.
+def build_rss_source(cfg: Config, d1: Any | None = None) -> FetchSource:
+    """The run's RSS edge: an hourly buffer, else direct polling.
 
     Direct polling is the fallback — correct only for feeds whose snapshot
     outlives the window (measured: a digest-time poll missed 141 of 317
     articles). See docs/decisions/0001-rss-arrives-through-an-hourly-buffer.md.
 
-    A hosted tenant always polls directly: the rss Worker's buffer is another
-    deployment's, read from a D1 the tenant does not have.
+    A hosted tenant reads its own buffer, which the hosted Worker polls into its
+    Durable Object hourly, through `d1` or a gateway client of its own (ADR-0031);
+    the rss Worker's buffer is another deployment's.
     """
-    if not cfg.app.store.is_hosted and cfg.app.rss.worker_url and cfg.app.rss.token:
+    if cfg.app.store.is_hosted:
+        from cyris.adapters.fetch.rss_worker_source import TenantRssSource
+
+        return TenantRssSource(d1 or build_d1_client(cfg))
+
+    if cfg.app.rss.worker_url and cfg.app.rss.token:
         from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
 
         return CloudflareRssSource(cfg.app.rss.worker_url, cfg.app.rss.token)
@@ -464,9 +470,18 @@ def build_onboarding_articles(cfg: Config) -> Any:
     Built from `build_rss_source`, so a card's URL comes through the parser and
     the URL normalisation the first run's fetch uses. With the Worker it polls
     first, since the feeds were picked a moment ago and the cron may be an hour off.
+
+    A hosted tenant's cards still poll the picked feeds directly, as they did before its
+    buffer existed: per-tenant onboarding is a card of its own, and the hosted Worker
+    serves no wizard yet.
     """
     from cyris.adapters.fetch.onboarding_cards import OnboardingArticles
     from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
+
+    if cfg.app.store.is_hosted:
+        from cyris.adapters.fetch.rss_source import RssSource
+
+        return OnboardingArticles(RssSource(), poll=None)
 
     source = build_rss_source(cfg)
     poll = source.poll if isinstance(source, CloudflareRssSource) else None
@@ -539,7 +554,7 @@ def build_deps(
             )
         )
 
-    fetch_sources.append(build_rss_source(cfg))
+    fetch_sources.append(build_rss_source(cfg, d1))
 
     html_writer = None
     publish_site = None

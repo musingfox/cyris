@@ -116,8 +116,10 @@ account on 2026-11-18:
 * Bad, because tenants share the container application's `max_instances`. A start that lands while
   every instance is held waits up to 90 seconds, and then fails that start.
 * Neutral, because a hosted tenant drains no shared queue. Its container gets none of the rss,
-  promote or newsletter Worker URLs. Its RSS is polled directly at run time. It has no newsletters
-  and no vote sync until those Workers are per tenant.
+  promote or newsletter Worker URLs. Its RSS was polled directly at run time until the hosted
+  Worker's hourly tick began polling each tenant's feeds into a buffer in the tenant's own object
+  ([ADR-0031](0031-a-hosted-tenants-rss-is-polled-by-the-hosted-worker.md)); a run now reads its
+  window from there. It has no newsletters and no vote sync until those Workers are per tenant.
 * Neutral, because until later cards add per-tenant serving and operator alerts, a hosted run
   publishes nothing and sends no Discord message and no mail. The finished issue stays in that
   tenant's `digests` table.
@@ -183,3 +185,6 @@ account on 2026-11-18:
 * [ADR-0029](0029-a-hosted-tenants-pages-live-in-its-durable-object.md) ends the "publishes nothing"
   consequence above: a hosted run stores its pages in its tenant's Durable Object, and the hosted
   Worker serves them at `/t/<tenant>/`.
+* [ADR-0031](0031-a-hosted-tenants-rss-is-polled-by-the-hosted-worker.md) ends the "polled directly
+  at run time" consequence above: the hosted Worker polls each tenant's feeds hourly into the
+  tenant's own `articles`, and a run reads its window from there.

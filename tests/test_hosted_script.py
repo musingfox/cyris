@@ -268,6 +268,24 @@ def test_a_run_names_a_period_the_worker_takes(repo: Path) -> None:
     ]
 
 
+def test_poll_polls_each_seeded_tenant_with_the_token_on_stdin(repo: Path) -> None:
+    """The tick's RSS poll on request, so the operator can see a buffer fill and measure one."""
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, calls = _run(repo, ["poll"], ["client-id.access", "client-SECRET"])
+
+    assert done.returncode == 0, done.stderr
+    curls = [c for c in calls if c["cmd"] == "curl"]
+    assert [c["args"][-1] for c in curls] == [
+        f"{URL}/hosted/tenants/alpha/poll",
+        f"{URL}/hosted/tenants/bravo/poll",
+    ]
+    for c in curls:
+        assert c["args"][c["args"].index("-X") + 1] == "POST"
+        assert "CF-Access-Client-Secret: client-SECRET" in c["stdin"]
+        assert "client-SECRET" not in " ".join(c["args"])
+
+
 def test_register_registers_each_seeded_tenant_with_the_token_on_stdin(repo: Path) -> None:
     """The seed route seeds only a registered tenant, so the runbook registers both first."""
     (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
@@ -292,6 +310,7 @@ def test_register_registers_each_seeded_tenant_with_the_token_on_stdin(repo: Pat
         (["register"], "register"),
         (["seed"], "seed"),
         (["run", "morning"], "run?period=morning"),
+        (["poll"], "poll"),
         (["check"], "report"),
     ],
 )

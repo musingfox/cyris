@@ -472,7 +472,7 @@ def ingest_command(
     """Poll the feeds and store new articles for the next digest (no LLM, no output)."""
     _setup_logging(verbose)
 
-    from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource
+    from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource, TenantRssSource
     from cyris.bootstrap import build_rss_source, build_store, load_effective_config
     from cyris.service_layer.ingest import ingest
 
@@ -493,7 +493,7 @@ def ingest_command(
         return
 
     source = build_rss_source(cfg)
-    if isinstance(source, CloudflareRssSource):
+    if isinstance(source, CloudflareRssSource | TenantRssSource):
         typer.echo("The RSS buffer Worker already polls hourly; nothing to ingest.")
         return
 

@@ -41,3 +41,26 @@ def test_feed_health_is_created_identically_by_the_worker_and_the_app() -> None:
     worker = (root / "workers" / "rss" / "src" / "index.js").read_text()
     app = (root / "src" / "cyris" / "adapters" / "store" / "schema.sql").read_text()
     assert _feed_health_create(worker) == _feed_health_create(app)
+
+
+def _buffer_statements(text: str) -> list[str]:
+    import re
+
+    buffer = r"CREATE (?:TABLE|INDEX) IF NOT EXISTS (?:articles|idx_articles_\w+)[^;]*;"
+    found = re.findall(buffer, text)
+    return [re.sub(r"\s+", " ", statement) for statement in found]
+
+
+def test_a_hosted_tenants_buffer_is_the_table_the_rss_worker_creates() -> None:
+    """A hosted tenant's `articles` is read with the self-hosted buffer's row mapping.
+
+    `hosted_schema.sql` creates it in the tenant's Durable Object, `workers/rss` in a
+    self-hosted D1; a column one lacks would map differently, and nothing would say so.
+    """
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    worker = (root / "workers" / "rss" / "src" / "index.js").read_text()
+    hosted = (root / "src" / "cyris" / "adapters" / "store" / "hosted_schema.sql").read_text()
+    assert len(_buffer_statements(worker)) == 3
+    assert _buffer_statements(hosted) == _buffer_statements(worker)
