@@ -87,6 +87,12 @@ put_secret() {
 
 ask_access() {
   [[ -n "${HOSTED_URL:-}" ]] || { echo "no HOSTED_URL in $STATE; run: scripts/hosted.sh deploy" >&2; exit 1; }
+  # A token already in the environment, as `aac run` puts it there, is used without asking, so
+  # one approval covers every call; these are the names `cyris --tenant` reads too.
+  if [[ -n "${CYRIS_ACCESS_CLIENT_ID:-}" && -n "${CYRIS_ACCESS_CLIENT_SECRET:-}" ]]; then
+    ACCESS_ID=$CYRIS_ACCESS_CLIENT_ID ACCESS_SECRET=$CYRIS_ACCESS_CLIENT_SECRET
+    return
+  fi
   ask ACCESS_ID "CF-Access-Client-Id of a service token the cyris-hosted Access application allows"
   ask ACCESS_SECRET "CF-Access-Client-Secret of that service token" secret
 }

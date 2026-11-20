@@ -304,6 +304,26 @@ def test_check_reads_every_tenant_and_its_page_with_the_token_on_stdin_and_judge
     assert "PASS bravo" in done.stdout
 
 
+def test_a_token_in_the_environment_is_used_on_stdin_without_asking(repo: Path) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, calls = _run(
+        repo,
+        ["run"],
+        [],
+        CYRIS_ACCESS_CLIENT_ID="client-id.access",
+        CYRIS_ACCESS_CLIENT_SECRET="client-SECRET",
+    )
+
+    assert done.returncode == 0, done.stderr
+    assert "CF-Access-Client-Id of a service token" not in done.stdout + done.stderr
+    curls = [c for c in calls if c["cmd"] == "curl"]
+    assert len(curls) == 2
+    for c in curls:
+        assert "CF-Access-Client-Secret: client-SECRET" in c["stdin"]
+        assert not any("client-SECRET" in a for a in c["args"])
+
+
 def test_a_run_names_a_period_the_worker_takes(repo: Path) -> None:
     (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
 

@@ -88,6 +88,16 @@ stops with "Could not resolve fast-xml-parser". The third is for its newsletter 
 parses mail with `workers/newsletter`'s `postal-mime`; without it the deploy stops with "Could
 not resolve postal-mime".
 
+Every route call below asks for the Access service token's id and secret. When
+`CYRIS_ACCESS_CLIENT_ID` and `CYRIS_ACCESS_CLIENT_SECRET` are both set, the script takes them
+from the environment instead, as `cyris --tenant` does. Bitwarden Agent Access can put them there
+for one shell, approved once, with the token stored as a login item whose username is the id and
+whose password is the secret:
+
+```bash
+aac run --domain <item-host> --env CYRIS_ACCESS_CLIENT_ID=username --env CYRIS_ACCESS_CLIENT_SECRET=password -- bash
+```
+
 Log in as a user who can see the trial account: that login is the credential every wrangler call of the script
 acts as, since none of them reads `.env`.
 
