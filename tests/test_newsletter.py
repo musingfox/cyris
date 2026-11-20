@@ -758,15 +758,18 @@ class TestAHostedIssueTakesNoLinkThatMayNameItsRecipient:
         assert hosted.ref_urls == ["https://news.example"]
         assert "SECRET" not in hosted.url + " ".join(hosted.ref_urls)
 
-    def test_a_fragment_is_dropped_as_a_query_is(self):
+    @pytest.mark.parametrize("fragment", ["#comments", "#sub=abc"])
+    def test_a_fragment_is_stripped_and_the_link_kept(self, fragment: str):
+        """A fragment never reaches the server; stripping it keeps a token off the page too."""
         p = _make_parsed(
             from_email="list@news.example",
-            html_content='<a href="https://news.example/p/issue-12#sub=abc">Read</a>',
+            html_content=f'<a href="https://news.example/p/issue-12{fragment}">Read</a>',
         )
 
-        assert newsletter_article(p, self._letter(), recipient_links=False).url.startswith(
-            "newsletter:"
-        )
+        hosted = newsletter_article(p, self._letter(), recipient_links=False)
+
+        assert hosted.url == "https://news.example/p/issue-12"
+        assert newsletter_article(p, self._letter()).url.endswith(fragment)
 
     def test_a_tracking_query_the_strip_removes_still_leaves_the_post_link(self):
         p = _make_parsed(
