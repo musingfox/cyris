@@ -11,9 +11,11 @@ import { seedTenant } from "../src/hosted_seed.js";
 import {
   SESSION_COOKIE,
   SESSION_TTL_MS,
-  SIGN_IN_DAILY_CAP,
+  SIGN_IN_ADDRESS_CAP,
+  SIGN_IN_DAILY_CEILING,
   SIGN_IN_GAP_MS,
-  SIGN_IN_HOURLY_CAP,
+  SIGN_IN_HOUR_MS,
+  SIGN_IN_TENANT_CAP,
   SIGN_IN_TTL_MS,
   tokenHash,
 } from "../src/hosted_session.js";
@@ -313,53 +315,101 @@ describe("the caps on sign-in mail", () => {
   // Every part of an answer a client sees: status, headers and body.
   const seen = async (response) => [response.status, [...response.headers], await response.text()];
   const ask = (email) => call("/login", { method: "POST", form: { email } });
-
-  it("answer an address past its daily cap as they answer one off the list, and mail neither", async () => {
-    for (let i = 0; i < SIGN_IN_DAILY_CAP; i++) {
-      vi.setSystemTime(new Date(AT.getTime() + i * (SIGN_IN_GAP_MS + 1000)));
-      await ask("ana@example.com");
+  const at = (ms) => vi.setSystemTime(new Date(AT.getTime() + ms));
+  const reInvite = (tenant, email) => call(`/hosted/tenants/${tenant}/invite`, { method: "POST", operator: true, body: { email } });
+  const mailedTo = (email) => bound.MAIL.sent.filter((mail) => mail.to === email).length;
+  // A stranger asks in `email`'s name `times` times, each a gap apart, from `from` ms on.
+  async function flood(email, times, from = 0) {
+    for (let i = 0; i < times; i++) {
+      at(from + i * (SIGN_IN_GAP_MS + 1000));
+      await ask(email);
     }
-    expect(bound.MAIL.sent).toHaveLength(SIGN_IN_DAILY_CAP);
-    vi.setSystemTime(new Date(AT.getTime() + SIGN_IN_DAILY_CAP * (SIGN_IN_GAP_MS + 1000)));
-    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+  }
+  beforeEach(() => vi.spyOn(console, "warn").mockImplementation(() => {}));
 
-    const capped = await seen(await ask("ana@example.com"));
-    const unlisted = await seen(await ask("stranger@example.com"));
+  it("let a reader a stranger asked for five times sign in again within the hour, and be re-invited at once (Q1, Q3)", async () => {
+    await flood("ana@example.com", 5);
+    expect(mailedTo("ana@example.com")).toBe(SIGN_IN_ADDRESS_CAP);
+    // No form field makes an ask an invitation.
+    await call("/login", { method: "POST", form: { email: "ana@example.com", invitation: "true" } });
+    expect(mailedTo("ana@example.com")).toBe(SIGN_IN_ADDRESS_CAP);
 
-    expect(capped).toEqual(unlisted);
-    expect(capped[0]).toBe(200);
-    expect(bound.MAIL.sent).toHaveLength(SIGN_IN_DAILY_CAP);
-    expect(warnings.mock.calls.flat().join("\n")).toBe("sign-in mail held: the daily cap is reached");
+    // The operator re-invites at once, with no revoke, and the link opens alpha.
+    const invited = await reInvite("alpha", "ana@example.com");
+    expect(invited.status).toBe(200);
+    expect((await invited.json()).mail).toMatchObject({ sent: true, tenant: "alpha" });
+    const opened = await call("/login/confirm", { method: "POST", form: { token: linkToken(bound.MAIL.sent.at(-1)) } });
+    expect(opened.headers.get("Location")).toBe("/t/alpha/");
+
+    // And ana's own ask an hour after the flood's first is mailed.
+    const sent = bound.MAIL.sent.length;
+    at(SIGN_IN_HOUR_MS + 1000);
+    await ask("ana@example.com");
+    expect(bound.MAIL.sent).toHaveLength(sent + 1);
+    expect(bound.MAIL.sent.at(-1).to).toBe("ana@example.com");
   });
 
-  it("answer every address past the hourly cap as they answer one off the list, and mail none", async () => {
-    // An hour's worth of links already went out, to a cohort the operator invited to charlie.
-    for (let i = 0; i < SIGN_IN_HOURLY_CAP; i++) {
-      registry().invite("charlie", `reader${i}@example.com`);
-      registry().issueSignIn(`reader${i}@example.com`, `h-${i}`);
+  it("keep one tenant's flood from every other tenant's readers and from the operator's invitations (Q2)", async () => {
+    // Six of alpha's addresses asked for five times each, as the review's global lockout did.
+    const known = Array.from({ length: 6 }, (_, i) => `known${i}@example.com`);
+    for (const email of known) registry().invite("alpha", email);
+    for (const email of known) await flood(email, 5);
+    expect(bound.MAIL.sent.length).toBeLessThanOrEqual(SIGN_IN_TENANT_CAP);
+    const sent = bound.MAIL.sent.length;
+
+    await ask("ana@example.com");
+    expect(bound.MAIL.sent).toHaveLength(sent);
+    // bravo's reader is mailed, and the operator still invites to alpha.
+    await ask("bea@example.com");
+    expect(bound.MAIL.sent.at(-1).to).toBe("bea@example.com");
+    expect((await (await reInvite("alpha", "ana@example.com")).json()).mail).toMatchObject({ sent: true });
+    // A cohort the operator invites at once is mailed whole, and takes none of its tenant's hour:
+    // once the gap has passed, each of its readers may still ask.
+    const cohort = Array.from({ length: SIGN_IN_TENANT_CAP * 3 }, (_, i) => `cohort${i}@example.com`);
+    for (const email of cohort) expect((await (await reInvite("charlie", email)).json()).mail).toMatchObject({ sent: true });
+    at(5 * (SIGN_IN_GAP_MS + 1000));
+    for (const email of cohort.slice(0, SIGN_IN_TENANT_CAP)) await ask(email);
+    expect(cohort.slice(0, SIGN_IN_TENANT_CAP).map(mailedTo)).toEqual(Array(SIGN_IN_TENANT_CAP).fill(2));
+  });
+
+  it("answer an ask past any cap as they answer an address off the list, and mail none", async () => {
+    const unlisted = async () => seen(await ask("stranger@example.com"));
+    const held = async (email) => {
+      const before = bound.MAIL.sent.length;
+      const answer = await seen(await ask(email));
+      expect(bound.MAIL.sent).toHaveLength(before);
+      return answer;
+    };
+    // The address's cap.
+    await flood("ana@example.com", SIGN_IN_ADDRESS_CAP);
+    at(SIGN_IN_ADDRESS_CAP * (SIGN_IN_GAP_MS + 1000));
+    expect(await held("ana@example.com")).toEqual(await unlisted());
+    // The tenant's cap, reached by bravo's readers.
+    for (let i = 0; i < SIGN_IN_TENANT_CAP; i++) {
+      registry().invite("bravo", `b${i}@example.com`);
+      await ask(`b${i}@example.com`);
     }
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    const before = rows("invites").length;
+    expect(await held("bea@example.com")).toEqual(await unlisted());
+    // The deployment's ceiling, reached by asks of other tenants.
+    const sql = registry().ctx.storage.sql;
+    for (let i = 0; i < SIGN_IN_DAILY_CEILING; i++) {
+      sql.exec("INSERT INTO sign_in_asks (email, tenant_id, asked_at) VALUES (?, ?, ?)", `r${i}@example.com`, `t${i}`, "2026-11-20T06:00:00+00:00");
+    }
+    registry().invite("charlie", "cy@example.com");
+    expect(await held("cy@example.com")).toEqual(await unlisted());
 
-    const listed = await seen(await ask("ana@example.com"));
-    const unlisted = await seen(await ask("stranger@example.com"));
-
-    expect(listed).toEqual(unlisted);
-    expect(bound.MAIL.sent).toEqual([]);
-    expect(rows("invites")).toHaveLength(before);
-    // The operator's invitation is held by the same cap, and the answer says so.
-    const invited = await call("/hosted/tenants/charlie/invite", { method: "POST", operator: true, body: { email: "cy@example.com" } });
-    expect(invited.status).toBe(200);
-    expect((await invited.json()).mail).toEqual({ refused: `${SIGN_IN_HOURLY_CAP} links were sent in an hour` });
-    expect(bound.MAIL.sent).toEqual([]);
+    const lines = console.warn.mock.calls.flat().join("\n");
+    expect(lines.split("\n")).toEqual(["address", "tenant", "daily"].map((cap) => `sign-in mail held: the ${cap} cap on asking is reached`));
+    expect(lines).not.toMatch(/@/);
   });
 
   it("leave the registry as it was however many addresses off the list ask", async () => {
-    const before = JSON.stringify([rows("members"), rows("invites"), rows("sessions"), rows("tenants")]);
+    const tables = ["members", "invites", "sessions", "tenants", "sign_in_asks"];
+    const before = JSON.stringify(tables.map(rows));
 
-    for (let i = 0; i < SIGN_IN_HOURLY_CAP * 2; i++) await ask(`stranger${i}@example.com`);
+    for (let i = 0; i < SIGN_IN_TENANT_CAP * 6; i++) await ask(`stranger${i}@example.com`);
 
-    expect(JSON.stringify([rows("members"), rows("invites"), rows("sessions"), rows("tenants")])).toBe(before);
+    expect(JSON.stringify(tables.map(rows))).toBe(before);
     expect(bound.MAIL.sent).toEqual([]);
     await ask("ana@example.com");
     expect(bound.MAIL.sent).toHaveLength(1);

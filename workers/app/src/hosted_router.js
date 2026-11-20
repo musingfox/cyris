@@ -87,9 +87,9 @@ async function bodyEmail(request) {
 // `poll(tenant)`, which answers what the poll did or `{error}`, `page(request, tenant, rest)`,
 // which answers under /t/<tenant> from that tenant's object, `invite(tenant, email)` and
 // `revoke(tenant, email)`, which answer the registry's `{member}`, `{revoked}` or
-// `{refused, status}`, `members(tenant)`, and `signIn(email)` (hosted_login.js's createSignIn).
-// For readers: `session(sessionHash)`, the registry's live session or null, and `login`, what
-// handleLogin takes.
+// `{refused, status}`, `members(tenant)`, and `signIn(email, {invitation})` (hosted_login.js's
+// createSignIn). For readers: `session(sessionHash)`, the registry's live session or null, and
+// `login`, what handleLogin takes.
 export async function handleHostedRequest(request, env, deps) {
   const url = new URL(request.url);
   const site = SITE_ROUTE.exec(url.pathname);
@@ -137,8 +137,9 @@ export async function handleHostedRequest(request, env, deps) {
     const answer = await deps.invite(tenant, await bodyEmail(request));
     if (answer.refused) return json({ error: answer.refused }, answer.status);
     // The invitation is the member's first sign-in link, the one /login would mail: single-use
-    // and short-lived. Mailed now, so the operator sees whether it went.
-    const mail = await deps.signIn(answer.member.email);
+    // and short-lived. Mailed now, so the operator sees whether it went, and held by no cap on
+    // readers' asking, so inviting again always rescues a reader a stranger has held.
+    const mail = await deps.signIn(answer.member.email, { invitation: true });
     return json({ ...answer.member, mail }, mail.error ? 502 : 200);
   }
 

@@ -11,20 +11,26 @@
 // alone and no other host under workers.dev can set or read it.
 export const SESSION_COOKIE = "__Host-reader_session";
 
-// How long a sign-in link opens a session, and the least time between two links mailed to one
-// address, so a stranger cannot fill a listed inbox by asking again and again.
+// How long a sign-in link opens a session, and the least time between two links a reader's asks
+// get for one address, so a stranger cannot fill a listed inbox by asking again and again.
 export const SIGN_IN_TTL_MS = 15 * 60 * 1000;
 export const SIGN_IN_GAP_MS = 60 * 1000;
-// The most sign-in mails, the operator's invitation among them, one address is sent in any 24
-// hours, and all addresses together in any hour, so no one asking can spend the operator's mail
-// quota: past either, no link is issued and the answer to /login is the one it always is. A
-// session lasts 14 days, so a reader needs one link a fortnight; five a day covers a few devices
-// and a mistyped confirm. Thirty an hour lets the operator invite a beta cohort at once, and held
-// for a whole day is 720 mails, a few dollars past Workers Paid's included 3,000 a month.
-export const SIGN_IN_DAILY_CAP = 5;
-export const SIGN_IN_HOURLY_CAP = 30;
-export const SIGN_IN_DAY_MS = 24 * 60 * 60 * 1000;
+// The most sign-in links readers may ask for at /login: one address in any hour, one tenant's
+// addresses together in any hour, and every tenant's in any 24 hours. Past one, no link is issued
+// and the answer to /login is the one it always is. The operator's invitation counts against none
+// and is held by none, so the operator can always invite, or re-invite a reader a stranger has
+// held. A session lasts 14 days, so a reader needs one link a fortnight: three an hour covers a
+// second device and a mistyped confirm, and a stranger asking in a reader's name holds that
+// reader for an hour at most. Ten an hour per tenant is far above a beta tenant's readers, and
+// holds only that tenant: its 240 a day at most are under half the deployment's ceiling, so no
+// tenant's flood reaches another's. The ceiling, 500 a day, is a cost backstop only, a hundred
+// times the beta's few links a day: held for a month it is 15,000 mails, about five dollars past
+// Workers Paid's included 3,000.
+export const SIGN_IN_ADDRESS_CAP = 3;
+export const SIGN_IN_TENANT_CAP = 10;
+export const SIGN_IN_DAILY_CEILING = 500;
 export const SIGN_IN_HOUR_MS = 60 * 60 * 1000;
+export const SIGN_IN_DAY_MS = 24 * 60 * 60 * 1000;
 // How long a session lasts from the sign-in that made it; it is not extended by use.
 export const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 

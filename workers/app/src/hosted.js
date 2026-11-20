@@ -88,7 +88,7 @@ export default {
     // The sign-in mail goes through the Email Service binding, from the operator's sender, with
     // links on the hosted domain: never the request's own Host.
     const signIn = createSignIn({
-      issue: (email, codeHash) => registry().issueSignIn(email, codeHash),
+      issue: (email, codeHash, options) => registry().issueSignIn(email, codeHash, options),
       mail: env.MAIL,
       from: env.CYRIS_HOSTED_MAIL_FROM,
       domain: env[HOSTED_DOMAIN],

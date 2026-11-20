@@ -104,15 +104,21 @@ How it works:
   the key. The registry alone answers which tenant a sign-in opens, so no request names one.
 * **The link.** `POST /login` takes an address. If the registry's list holds it, the Worker
   records a link and mails it. The registry is asked after the answer is sent (`waitUntil`), so
-  the page and its timing are the same for an address on the list and one off it. An address gets
-  at most one link a minute and five in any 24 hours, and all addresses together at most thirty
-  in any hour (`SIGN_IN_DAILY_CAP`, `SIGN_IN_HOURLY_CAP`), so asking again and again can neither
-  fill an inbox nor spend the operator's mail quota. Past a cap no link is mailed and the answer
-  is still the one an address off the list gets, so the cap tells the asker nothing. An address
-  off the list writes nothing to the registry, so a flood of strangers adds no row. The operator's
-  invitation is the first link, mailed by the invite route, and counts against the same caps. A link is 32 random bytes. The registry keeps only its SHA-256 (`invites.code`), bound
-  to the address and the tenant on the list. The link expires after 15 minutes and is spent the
-  first time it is used.
+  the page and its timing are the same for an address on the list and one off it. A reader's own
+  asks are capped, so asking again and again can neither fill an inbox nor spend the operator's
+  mail quota: one address gets at most one link a minute and three in any hour, one tenant's
+  addresses together at most ten in any hour, and every tenant's together at most 500 in any 24
+  hours, a cost backstop that no one tenant's ten an hour can reach (`SIGN_IN_ADDRESS_CAP`,
+  `SIGN_IN_TENANT_CAP`, `SIGN_IN_DAILY_CEILING`). The registry counts the asks in
+  `sign_in_asks`, a row per link a reader's ask was issued, kept a day. Past a cap no link is
+  mailed and the answer is still the one an address off the list gets, so the cap tells the asker
+  nothing. An address off the list writes nothing to the registry, so a flood of strangers adds
+  no row. The operator's invitation is the first link, mailed by the invite route. It is held by
+  no cap and by no gap, and counts against none, so the operator can always invite, or re-invite
+  a reader whom a stranger's asks hold, with no revoke, and a cohort invited at once takes none of
+  its tenant's hour. A link is 32 random bytes. The registry keeps only its SHA-256
+  (`invites.code`), bound to the address and the tenant on the list. The link expires after 15
+  minutes and is spent the first time it is used.
 * **The token rides in the fragment.** The link is `https://<hosted domain>/login/confirm#<token>`.
   A browser never sends a fragment, so the token is in no request URL, no Workers Logs
   invocation record and no `Referer`. The confirm page's one script moves it into a form and drops
@@ -174,9 +180,20 @@ self-hosted deployment, production, trials and forks, ADR-0015 is unchanged: `wr
 ### Consequences
 
 * Good, because a reader costs nothing per seat. The mail is within Workers Paid's included
-  3,000 a month until the beta is large, and the caps hold the worst case to 720 mails a day.
-* Bad, because past the hourly cap a reader's own link is held too, until the hour has passed.
-  The Worker logs that a cap was reached, so the operator can tell a flood from a lost mail.
+  3,000 a month until the beta is large, and the caps on asking hold the worst case to 500 mails
+  a day.
+* Bad, because the caps count asks by address and by tenant, not by who asks, so a stranger's
+  asks hold back the reader they name. Anyone who knows one reader's address holds that reader
+  for an hour with three asks, and anyone who knows four addresses of one tenant holds that
+  tenant's readers for an hour; the hold renews while the asking goes on. No other tenant is
+  held, and the operator's re-invite mails the reader a link at once. The Worker logs which cap
+  was reached, so the operator can tell a flood from a lost mail. Only a limit per client would
+  tell the stranger from the reader; see below.
+* Bad, because there is no limit per client on `POST /login`. Cloudflare's Workers Rate Limiting
+  binding, keyed by a hash of `CF-Connecting-IP`, was considered and not adopted: its
+  documentation could not be read when the caps were redesigned (2026-11-20), and its API was not
+  guessed. An address off the list writes nothing however often it asks, so the cost of a flood
+  of strangers is the registry's requests, not its rows or the mail.
 * Good, because the tenant a reader may read is decided by the Worker against the registry on
   every request, and is no longer whatever the Access policy admits.
 * Good, because no token is stored, logged or sent in a `Referer`, and a session ends at its next
@@ -212,14 +229,17 @@ self-hosted deployment, production, trials and forks, ADR-0015 is unchanged: `wr
 
 * `workers/app/test/tenant_registry.test.js` ("the registry's sign-in") checks five things. An
   address goes on one tenant's list only. A link is issued only to a listed address, for its
-  tenant, keyed by a hash, at most once a minute and within the daily and hourly caps, and an
-  address off the list writes nothing. A link opens one session once and none when
+  tenant, keyed by a hash, at most once a minute and within the caps per address, per tenant
+  and per day, while the operator's invitation is held by none, and an address off the list
+  writes nothing. A link opens one session once and none when
   expired or unknown. A session past its time is refused. A sign-out or a revoke ends a session at
   once. It also checks the reserved and hyphen-edged ids.
 * `workers/app/test/hosted_login.test.js` drives the router over the real registry and checks
   nine things:
   * a listed address is mailed a link and an unlisted one is not, with the same answer, and past
-    either cap a listed address gets that same answer and no mail;
+    any cap a listed address gets that same answer and no mail; a reader a stranger asked for
+    five times signs in again within the hour and is re-invited at once, and one tenant's flood
+    holds no other tenant's readers and no invitation;
   * the link opens the reader's own latest digest;
   * A's session is refused on every path of B, registered or not, with one answer;
   * an expired session, a reused link and an expired link are each refused;
@@ -281,8 +301,8 @@ self-hosted deployment, production, trials and forks, ADR-0015 is unchanged: `wr
 
 ## More Information
 
-* `docs/architecture.md` §4 has the registry's tables, §5 grades the sender, the lifetimes and
-  the reserved ids, and §6 describes the two doors.
+* `docs/architecture.md` §4 has the registry's tables, §5 grades the sender, the lifetimes, the
+  caps on asking and the reserved ids, and §6 describes the two doors.
 * `docs/hosted-tenants.md` has the operator's steps: onboard the sending domain, set the sender,
   narrow the Access application to `/hosted/*`, invite a reader, and check delivery to an
   unverified inbox.

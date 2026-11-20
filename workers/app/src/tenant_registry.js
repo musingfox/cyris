@@ -10,11 +10,12 @@ import { DurableObject } from "cloudflare:workers";
 import RESERVED_IDS from "./hosted_reserved_ids.json";
 import {
   SESSION_TTL_MS,
-  SIGN_IN_DAILY_CAP,
+  SIGN_IN_ADDRESS_CAP,
+  SIGN_IN_DAILY_CEILING,
   SIGN_IN_DAY_MS,
   SIGN_IN_GAP_MS,
-  SIGN_IN_HOURLY_CAP,
   SIGN_IN_HOUR_MS,
+  SIGN_IN_TENANT_CAP,
   SIGN_IN_TTL_MS,
   isEmail,
   normalEmail,
@@ -27,13 +28,14 @@ import { ACTIVE, TENANT_STATUSES } from "./tenant_status.js";
 export const REGISTRY_NAME = "cyris:registry";
 
 // The registry's own tables: not schema.sql, which is a tenant's. `tenants` is the tenant list.
-// The sign-in (ADR-0033) has three: `members`, the operator's invite list, one tenant per
+// The sign-in (ADR-0033) has four: `members`, the operator's invite list, one tenant per
 // address; `invites`, each single-use sign-in link, the operator's invitation and every later
-// one alike, keyed by its token's SHA-256 in `code` and never by the token; and `sessions`, keyed
-// the same way. `inbound_addresses` and `spend_rollup` are created empty for the newsletter and
-// budget cards, so those cards add code and no new home for state. `digest_times` is the
-// tenant's digest hours as a JSON list, kept for the scheduling card; until it lands the tick
-// still reads each tenant's schedule from the tenant's own database.
+// one alike, keyed by its token's SHA-256 in `code` and never by the token; `sessions`, keyed
+// the same way; and `sign_in_asks`, each link a reader asked for at /login, kept a day so the
+// caps on asking can count it. `inbound_addresses` and `spend_rollup` are created empty for the
+// newsletter and budget cards, so those cards add code and no new home for state. `digest_times`
+// is the tenant's digest hours as a JSON list, kept for the scheduling card; until it lands the
+// tick still reads each tenant's schedule from the tenant's own database.
 export const REGISTRY_SCHEMA = `
 CREATE TABLE IF NOT EXISTS tenants (
   id TEXT PRIMARY KEY,
@@ -66,6 +68,12 @@ CREATE TABLE IF NOT EXISTS members (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_members_tenant ON members(tenant_id);
+CREATE TABLE IF NOT EXISTS sign_in_asks (
+  email TEXT NOT NULL,
+  tenant_id TEXT NOT NULL,
+  asked_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sign_in_asks_asked ON sign_in_asks(asked_at);
 CREATE TABLE IF NOT EXISTS inbound_addresses (
   address TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
@@ -189,6 +197,7 @@ export class TenantRegistry extends DurableObject {
     const sessions = sql.exec("SELECT count(*) AS n FROM sessions WHERE email = ?", email).one().n;
     sql.exec("DELETE FROM sessions WHERE email = ?", email);
     sql.exec("DELETE FROM invites WHERE email = ?", email);
+    sql.exec("DELETE FROM sign_in_asks WHERE email = ?", email);
     sql.exec("DELETE FROM members WHERE email = ?", email);
     return { revoked: { email, tenant_id: tenant, sessions } };
   }
@@ -208,30 +217,26 @@ export class TenantRegistry extends DurableObject {
   // Records a sign-in link for `email`, keyed by `codeHash`, the SHA-256 of a token only the mail
   // will carry, and answers `{tenant, expires_at}`: the tenant the link opens, from the invite
   // list. An address on no registered tenant's list gets `{refused}` and writes no row, so a
-  // stranger asking adds nothing here. A listed address also gets `{refused}`, and no row, when it
-  // was sent a link less than SIGN_IN_GAP_MS ago, which that link still serves, or when a cap is
-  // reached: SIGN_IN_DAILY_CAP links to it in a day, or SIGN_IN_HOURLY_CAP to everyone in an
-  // hour, `capped` naming which. A link's row is kept a day past its issue, spent or expired, to
-  // count against the caps, so the table holds at most a day of the caps' links.
-  issueSignIn(rawEmail, codeHash, { now = new Date() } = {}) {
+  // stranger asking adds nothing here. With `invitation`, the operator's invite route, a listed
+  // address always gets its link. A reader's own ask also gets `{refused}`, and no row, when the
+  // address was sent a link less than SIGN_IN_GAP_MS ago, which that link still serves, or when a
+  // cap on asking is reached, `capped` naming which: SIGN_IN_ADDRESS_CAP asks for the address in
+  // an hour, SIGN_IN_TENANT_CAP for its tenant's addresses in an hour, or SIGN_IN_DAILY_CEILING
+  // for everyone in a day. Only an ask that is issued a link writes a `sign_in_asks` row, kept a
+  // day, so that table holds at most SIGN_IN_DAILY_CEILING rows.
+  issueSignIn(rawEmail, codeHash, { now = new Date(), invitation = false } = {}) {
     const email = normalEmail(rawEmail);
     const sql = this.ctx.storage.sql;
     const since = (ms) => stamp(new Date(now.getTime() - ms));
-    sql.exec("DELETE FROM invites WHERE created_at <= ?", since(SIGN_IN_DAY_MS));
+    sql.exec("DELETE FROM invites WHERE expires_at <= ?", stamp(now));
+    sql.exec("DELETE FROM sign_in_asks WHERE asked_at <= ?", since(SIGN_IN_DAY_MS));
     const [member] = sql.exec(MEMBER_SQL, email).toArray();
     if (!member) return { refused: "not invited" };
-    const recent = sql.exec(
-      "SELECT count(*) AS n FROM invites WHERE email = ? AND used_at IS NULL AND created_at > ?",
-      email,
-      since(SIGN_IN_GAP_MS),
-    );
-    if (recent.one().n > 0) return { refused: "a link was sent less than a minute ago" };
-    const today = sql.exec("SELECT count(*) AS n FROM invites WHERE email = ?", email).one().n;
-    if (today >= SIGN_IN_DAILY_CAP) {
-      return { refused: `${SIGN_IN_DAILY_CAP} links were sent to this address in a day`, capped: "daily" };
+    if (!invitation) {
+      const refused = this.#refuseAsk(email, member.tenant_id, since);
+      if (refused) return refused;
+      sql.exec("INSERT INTO sign_in_asks (email, tenant_id, asked_at) VALUES (?, ?, ?)", email, member.tenant_id, stamp(now));
     }
-    const hour = sql.exec("SELECT count(*) AS n FROM invites WHERE created_at > ?", since(SIGN_IN_HOUR_MS)).one().n;
-    if (hour >= SIGN_IN_HOURLY_CAP) return { refused: `${SIGN_IN_HOURLY_CAP} links were sent in an hour`, capped: "hourly" };
     const expires = after(now, SIGN_IN_TTL_MS);
     sql.exec(
       "INSERT INTO invites (code, email, tenant_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
@@ -242,6 +247,26 @@ export class TenantRegistry extends DurableObject {
       expires,
     );
     return { tenant: member.tenant_id, expires_at: expires };
+  }
+
+  // Why a reader's ask for `email`, a member of `tenant`, gets no link now, or null.
+  #refuseAsk(email, tenant, since) {
+    const sql = this.ctx.storage.sql;
+    const count = (where, ...values) => sql.exec(`SELECT count(*) AS n FROM ${where}`, ...values).one().n;
+    if (count("invites WHERE email = ? AND used_at IS NULL AND created_at > ?", email, since(SIGN_IN_GAP_MS)) > 0) {
+      return { refused: "a link was sent less than a minute ago" };
+    }
+    const hour = since(SIGN_IN_HOUR_MS);
+    if (count("sign_in_asks WHERE email = ? AND asked_at > ?", email, hour) >= SIGN_IN_ADDRESS_CAP) {
+      return { refused: `${SIGN_IN_ADDRESS_CAP} links were sent to this address in an hour`, capped: "address" };
+    }
+    if (count("sign_in_asks WHERE tenant_id = ? AND asked_at > ?", tenant, hour) >= SIGN_IN_TENANT_CAP) {
+      return { refused: `${SIGN_IN_TENANT_CAP} links were sent to ${tenant}'s readers in an hour`, capped: "tenant" };
+    }
+    if (count("sign_in_asks WHERE asked_at > ?", since(SIGN_IN_DAY_MS)) >= SIGN_IN_DAILY_CEILING) {
+      return { refused: `${SIGN_IN_DAILY_CEILING} links were sent in a day`, capped: "daily" };
+    }
+    return null;
   }
 
   // Spends the sign-in link `codeHash` and opens a session keyed by `sessionHash` for the address
