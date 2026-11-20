@@ -27,7 +27,9 @@ export class Lifecycle {
   // `logFields`, when given, goes on every line this logs: a hosted tenant's container names
   // its tenant, since every tenant's lines share one Workers Logs stream. `onAbnormalStop`, when
   // given, is awaited with monitor()'s error after a container that exited non-zero or was killed,
-  // before `onStop` is told of that stop.
+  // before `onStop` is told of that stop. `start(env, run)` may name what that start runs: `intercept`
+  // hears it before the start, and both stop hooks hear it, as their second argument, with that
+  // start's stop, so a stop heard late is never taken for a later start's.
   constructor(
     ctx,
     inactivityTimeoutMs,
@@ -57,8 +59,9 @@ export class Lifecycle {
   }
 
   // A Durable Object restart, a deploy for one, drops both the timeout and the
-  // monitor, so a restarted object calls this on a container it finds running.
-  adopt() {
+  // monitor, so a restarted object calls this on a container it finds running, with the `run`
+  // its start named, when it named one.
+  adopt(run) {
     this.ctx.waitUntil(
       this.ctx.container.monitor().then(
         () => {
@@ -67,11 +70,12 @@ export class Lifecycle {
         },
         // The abnormal stop's handler runs first, and its failure is only logged: the stop is still
         // reported, since a report can hand the container to a new start, which may clear what the
-        // handler reads (the ending report, hosted_container.js).
+        // handler reads (the ending report, hosted_container.js). The report waits on the handler, so
+        // a handler that posts anywhere bounds its post (ALERT_TIMEOUT_MS, hosted_alerts.js).
         async (error) => {
           console.log("container stopped", { ...this.logFields, exitCode: error?.exitCode, reason: String(error) });
           try {
-            await this.onAbnormalStop?.(error);
+            await this.onAbnormalStop?.(error, run);
           } catch (failure) {
             console.log("abnormal stop not handled", { ...this.logFields, reason: String(failure?.message ?? failure) });
           }
@@ -81,7 +85,7 @@ export class Lifecycle {
         this.listening = false;
         if (!this.onStop) return;
         try {
-          await this.onStop(stopped);
+          await this.onStop(stopped, run);
         } catch (error) {
           console.log("container stop not reported", { ...this.logFields, reason: String(error?.message ?? error) });
         }
@@ -93,19 +97,19 @@ export class Lifecycle {
   // start() throws on a running container, where the Container class skipped
   // it: an hourly tick landing on a manual run must not fail. Concurrent
   // callers share one start, so the second never sees a half-started one.
-  start(env) {
-    this.starting ??= this.#start(env).finally(() => {
+  start(env, run) {
+    this.starting ??= this.#start(env, run).finally(() => {
       this.starting = null;
     });
     return this.starting;
   }
 
-  async #start(env) {
+  async #start(env, run) {
     if (this.ctx.container.running) return false;
     const began = this.now();
     for (let attempt = 0; ; attempt++) {
       try {
-        if (this.intercept) await this.intercept();
+        if (this.intercept) await this.intercept(run);
         this.ctx.container.start({ env, enableInternet: true });
         if (this.startRetry) await this.#granted();
         break;
@@ -122,7 +126,7 @@ export class Lifecycle {
         await this.sleep(delay);
       }
     }
-    await this.adopt();
+    await this.adopt(run);
     return true;
   }
 

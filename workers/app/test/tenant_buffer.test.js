@@ -226,7 +226,7 @@ describe("the hosted tick polls each tenant's feeds into its own buffer", () => 
 
     await tick(bound);
 
-    expect(bound.starts).toEqual([{ tenant: "alpha", args: { period: "morning", date: "2026-11-18" }, buffered: 2 }]);
+    expect(bound.starts).toEqual([{ tenant: "alpha", args: { period: "morning", date: "2026-11-18", run: { id: 1, attempt: 1 } }, buffered: 2 }]);
     // Stamped when the poll started, which is before the run's window closes.
     expect(rows(bound.TENANT_DB, "alpha").map((row) => row.fetched_at)).toEqual([
       DIGEST_HOUR.toISOString(),

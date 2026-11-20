@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from cyris.adapters.hosted import OPERATOR_ORIGIN
+from cyris.adapters.hosted import OPERATOR_ORIGIN, OPERATOR_TIMEOUT_SECONDS
 from cyris.adapters.output.hosted_pages import SITE_PATH
 from cyris.adapters.store.source_store import source_from_row
 from cyris.adapters.store.tenant_gateway import GATEWAY_ORIGIN
@@ -200,6 +200,20 @@ def test_the_operator_alert_host_is_one_on_both_sides_and_not_the_databases() ->
 
     assert urlsplit(OPERATOR_ORIGIN).hostname == host
     assert host != urlsplit(GATEWAY_ORIGIN).hostname
+
+
+def test_the_operator_alert_gives_up_before_the_run_and_well_inside_the_lease() -> None:
+    """The gateway answers a run only once its webhook post ends, and a stop report waits on the
+    run object's alert, so the post's bound is under the run's own and far under the lease."""
+    [alert_ms] = re.findall(
+        r"^export const ALERT_TIMEOUT_MS = ([\d_]+);", _js("hosted_alerts.js"), re.M
+    )
+    [lease_minutes] = re.findall(
+        r"^export const RUN_LEASE_MS = (\d+) \* 60_000;", _js("run_queue.js"), re.M
+    )
+
+    assert int(alert_ms) < OPERATOR_TIMEOUT_SECONDS * 1000
+    assert int(alert_ms) * 100 <= int(lease_minutes) * 60_000
 
 
 def test_the_operators_webhook_is_no_name_a_container_is_handed() -> None:

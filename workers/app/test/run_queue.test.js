@@ -75,6 +75,11 @@ async function tenant(bound, id, times, timeZone, { dailyRunCap } = {}) {
 
 const runsOf = (bound, id) => registryOf(bound).runs(id);
 const held = (bound, id) => runsOf(bound, id).find((run) => run.state === "running");
+// The run `id`'s held start ran, as its run object names it in the stop report.
+const ran = (bound, id) => {
+  const run = held(bound, id);
+  return { id: run.id, attempt: run.attempts };
+};
 
 // `id`'s held run finishes: its container wrote its digest_runs row, exited 0, and its monitor
 // told the registry, which hands the slot on.
@@ -85,7 +90,7 @@ async function finish(bound, id) {
     "INSERT INTO digest_runs (finished_at, status, period, dry_run, fetched) VALUES (?, 'ok', ?, 0, 1)",
     [stamp(Date.now()), run.period],
   );
-  await registryOf(bound).runEnded(id, { exitCode: 0 });
+  await registryOf(bound).runEnded(id, { exitCode: 0, run: ran(bound, id) });
   await drainAlarms(registryOf(bound));
 }
 
@@ -167,7 +172,7 @@ describe("the hosted run queue", () => {
     // The trial account's failure: bravo's start looked granted, then its container stopped
     // with "no container instance". Its run goes back in the queue and starts again.
     at("2026-11-18T08:00:20Z");
-    await registryOf(bound).runEnded("bravo", { reason: NO_INSTANCE_ERROR });
+    await registryOf(bound).runEnded("bravo", { reason: NO_INSTANCE_ERROR, run: ran(bound, "bravo") });
     await drainAlarms(registryOf(bound));
     expect(bound.starts.map((start) => [start.tenant, start.period, start.date])).toEqual([
       ["alpha", "morning", "2026-11-18"],
@@ -458,7 +463,7 @@ describe("the hosted run queue", () => {
     at("2026-11-18T08:00:00Z");
     await tick(bound);
     at("2026-11-18T08:04:00Z");
-    await registryOf(bound).runEnded("alpha", { exitCode: 1, reason: "Error: exited with 1" });
+    await registryOf(bound).runEnded("alpha", { exitCode: 1, reason: "Error: exited with 1", run: ran(bound, "alpha") });
     at("2026-11-18T09:00:00Z");
     await tick(bound);
 
@@ -470,6 +475,22 @@ describe("the hosted run queue", () => {
       ["morning", "2026-11-18"],
       ["morning", "2026-11-18"],
     ]);
+  });
+
+  it("ends only the start a stop report names: one naming none, or another start, leaves the held run running", async () => {
+    at("2026-11-18T07:00:00Z");
+    await tenant(bound, "alpha", ["08:00", "20:00"], "UTC");
+    at("2026-11-18T08:00:00Z");
+    await tick(bound);
+    const { id, attempt } = ran(bound, "alpha");
+
+    at("2026-11-18T08:04:00Z");
+    for (const run of [undefined, { id: id + 1, attempt }, { id, attempt: attempt + 1 }]) {
+      expect(await registryOf(bound).runEnded("alpha", { exitCode: 1, reason: "Error: exited with 1", run })).toBeNull();
+    }
+    expect(runsOf(bound, "alpha").map((run) => [run.id, run.state])).toEqual([[id, "running"]]);
+
+    expect(await registryOf(bound).runEnded("alpha", { exitCode: 0, run: { id, attempt } })).toMatchObject({ id, state: "done" });
   });
 });
 

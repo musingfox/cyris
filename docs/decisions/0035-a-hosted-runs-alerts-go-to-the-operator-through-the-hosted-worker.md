@@ -108,7 +108,12 @@ How it is built:
     reported", with the exit code.
 
   `alertOperator(env, tenant, alert)` is one exported function that never throws. A future
-  caller, such as a run queue's "run failed" or "run lost", sends with it as these two do.
+  caller, such as a run queue's "run failed" or "run lost", sends with it as these two do. It
+  gives up a post the webhook has not answered within `ALERT_TIMEOUT_MS`, 5 seconds, and logs it
+  as not sent. Discord answers in well under a second. The bound is under the run's own 10-second
+  post to the gateway (`OPERATOR_TIMEOUT_SECONDS`), since the gateway answers the run only once
+  its post ends. It is also what keeps a stop report, which waits on the abnormal-stop alert, far
+  inside the run queue's 20-minute lease (More Information).
 * **One alert per failure.** A run that fails usually reports it and then exits non-zero, and the
   Worker would otherwise repeat that alert. So when the gateway receives an alert whose `kind`
   ends a run (`run_failed`, `could_not_start`, `fetched_nothing`), it records the kind in the
@@ -142,7 +147,8 @@ How it is built:
   * A tenant whose schedule the tick cannot read gets no start and no alert. Its warning line
     names the tenant when the read failed (`tenantRows`), and not when the stored time zone is
     unknown. An alert here would repeat every hour.
-  * An alert the webhook refuses (a 429 included) or cannot take is dropped, with its log line.
+  * An alert the webhook refuses (a 429 included), cannot take or does not answer within 5
+    seconds is dropped, with its log line.
   * A run that reported why it ended and is then killed has its kill unreported.
 * Bad, because every start now registers two interceptions, `db.cyris` and `ops.cyris`. Only one
   was measured on the trial account (ADR-0028), and the unit tests use a fake container. The
@@ -171,7 +177,8 @@ How it is built:
     tenant. It records only a run-ending kind. It never logs the webhook's URL.
   * A subject cannot forge a line or draw Markdown, and a body cannot leave its code block.
   * The cut keeps characters whole.
-  * `alertOperator` never throws.
+  * `alertOperator` never throws, and gives up a webhook that has not answered within
+    `ALERT_TIMEOUT_MS`, whether or not its fetch heeds the abort.
 * `workers/app/test/hosted.test.js` checks the run object:
   * Both interceptions are registered before `start()`, and no container is handed the webhook.
   * The lifecycle lines name the tenant.
@@ -181,9 +188,14 @@ How it is built:
     with no exit code tells the operator.
   * It does not when the run already reported, or exited 0, and a new start forgets the last
     start's report.
+  * A webhook that hangs holds the stop report for `ALERT_TIMEOUT_MS` and no longer. The run is
+    then ended as `failed`, the operator gets one alert and no lost alert, and the tenant's next
+    run starts and keeps running when the hung post finally answers. This is the integration
+    review's probe.
 * `tests/test_entrypoint.py` checks that the probe's line and the SIGTERM line name the tenant.
 * `tests/test_hosted_config.py` holds `ops.cyris` to one name on both sides, and keeps the
-  webhook out of `HOSTED_SECRETS`.
+  webhook out of `HOSTED_SECRETS`. It holds `ALERT_TIMEOUT_MS` under `OPERATOR_TIMEOUT_SECONDS`
+  and at a hundredth of `RUN_LEASE_MS` or less.
 
 ## Pros and Cons of the Options
 
@@ -237,6 +249,11 @@ failure twice.
   unless `TenantContainer.endTold` says this ADR's record (`reported`), or the run object's own
   record of its abnormal-stop alert (`told`), already covers that start. The abnormal-stop
   handler runs before the stop is reported to the registry, so a start the report frees cannot
-  clear the record first. Two cases can still alert twice: a start whose run object cannot reach
+  clear the record first. So the report waits on that handler's alert, and `ALERT_TIMEOUT_MS`
+  bounds that wait. Before the bound, a webhook that stalled past the 20-minute lease meant one
+  start was told twice, lost and then stopped. The late report then ended the next start's run
+  while its container ran. Now the report names the run and start it is about, and ends nothing
+  else (ADR-0032). `told` names that start too, and `endTold` is asked about one start, so an
+  alert that ends after the next start has begun does not cover the next start. Two cases can still alert twice: a start whose run object cannot reach
   the registry to ask, which alerts itself while the queue alerts too, and a run still running at
   its lease's end, which the 20-minute lease over the 15-minute inactivity cap is meant to rule out.

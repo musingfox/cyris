@@ -103,6 +103,45 @@ describe("adopt", () => {
     vi.restoreAllMocks();
   });
 
+  it("hands each start's stop hooks the run that start named, however late the stop is heard", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const ctx = fakeContext();
+    const exits = [];
+    ctx.container.monitor = () => new Promise((_, reject) => exits.push(reject));
+    const heard = [];
+    let release;
+    const lifecycle = new Lifecycle(ctx, 300_000, {
+      intercept: async (run) => heard.push(["intercept", run]),
+      // The first start's abnormal stop is held until the second start has begun.
+      onAbnormalStop: async (_error, run) => {
+        heard.push(["abnormal", run]);
+        if (run === "first") await new Promise((resolve) => (release = resolve));
+      },
+      onStop: async (stopped, run) => heard.push(["stop", run, stopped.exitCode]),
+    });
+
+    await lifecycle.start(ENV, "first");
+    ctx.container.running = false;
+    exits[0](Object.assign(new Error("exited"), { exitCode: 1 }));
+    await new Promise((resolve) => setImmediate(resolve));
+    await lifecycle.start(ENV, "second");
+    release();
+    await Promise.all(ctx.waited.slice(0, 1));
+
+    expect(heard).toEqual([
+      ["intercept", "first"],
+      ["abnormal", "first"],
+      ["intercept", "second"],
+      ["stop", "first", 1],
+    ]);
+    // With no run named and no hook passed, a start and its watch are what they always were.
+    const plain = fakeContext({ running: true });
+    plain.container.monitor = () => Promise.reject(new Error("exited"));
+    await new Lifecycle(plain, 300_000).adopt();
+    await expect(Promise.all(plain.waited)).resolves.toBeDefined();
+    vi.restoreAllMocks();
+  });
+
   it("logs a stop report that fails, and stops listening all the same", async () => {
     const logs = [];
     vi.spyOn(console, "log").mockImplementation((...args) => logs.push(args));

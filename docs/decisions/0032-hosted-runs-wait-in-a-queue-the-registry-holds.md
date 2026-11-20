@@ -110,6 +110,13 @@ How it is built (`workers/app/src/run_queue.js`, `tenant_registry.js`):
   instance and starts whose lease ran out both count. Every state is in the tenant's report
   (`runs`) and in the logs (`run queued`, `run started`, `run done`, `run failed`, `run lost`,
   `run queued again`).
+  * The report names the run it is about. The alarm hands `startRun` the row's id and start
+    number (`{ id, attempt }`), the run object keeps them with that start (its storage key `run`),
+    and `Lifecycle` hands them back to `onStop` with that start's stop. The registry ends that
+    row only while it still holds that start. A report of any other start, or one that names no
+    run, ends nothing and is logged as `container stopped with no run held`. So a report heard
+    after the lease already ended its run cannot end the run queued in its place, whose
+    container may be running.
 * **Each tenant has a cap in the registry.** A new column, `tenants.daily_run_cap`, is the most
   runs a tenant may start in any 24 hours. Its live runs count against it too. A run past the cap
   is refused, and the run route answers 429. The default is 6, `2 × CATCH_UP_HOURS`. That is two
@@ -144,9 +151,11 @@ How it is built (`workers/app/src/run_queue.js`, `tenant_registry.js`):
   trial account yet.
 * Bad, because a run lost with no stop report, when its object was replaced mid-run, holds its
   slot until its lease ends, 20 minutes after its start, before it is queued again.
-* Bad, because a stop report is matched to the tenant's newest held run, not to the run its
-  container started. A report delayed past its run's lease could end the run queued in its
-  place. At a 20-minute lease this is unlikely.
+* Neutral, because a stop report is matched to the run and start its container ran, not to the
+  tenant's newest held run. A report delayed past its run's lease ends nothing: the lease has
+  already ended that run as `lost`, and the run queued in its place ends by its own report or
+  lease. Until 2026-11-20 it was matched to the newest held run, and the integration review
+  showed a report held up by a stalled alert ending the next start's run.
 * Bad, because a tenant needs one more operator step, the schedule route, before the tick runs
   it. A registry created before this change keeps its tenants unscheduled until the operator sets
   each one.
@@ -180,7 +189,10 @@ How it is built (`workers/app/src/run_queue.js`, `tenant_registry.js`):
   * The registry gains its new columns in place.
 * `workers/app/test/hosted.test.js` checks that a tenant's run object reports its container's
   stops to the registry: a "no container instance" stop requeues the run, and exit 0 ends it. It
-  also checks the run and schedule routes' answers.
+  also checks the run and schedule routes' answers. A stop heard after the lease ended its run
+  ends nothing of the tenant's next run, whose container keeps running.
+* `workers/app/test/run_queue.test.js` checks that a stop report naming no run, another row or
+  another start of the held row leaves the held run running, and that one naming it ends it.
 * `workers/app/test/container.test.js` checks `onStop` and that a failed report is logged.
 * `tests/test_hosted_config.py` holds `RUN_SLOTS` equal to `max_instances`.
 * `tests/test_hosted_script.py` checks `scripts/hosted.sh schedule` and that a 202 is not a failure.
@@ -233,4 +245,7 @@ How it is built (`workers/app/src/run_queue.js`, `tenant_registry.js`):
   `lost` or `failed`. It tells nothing of a run its container's exit failed, which the run object
   or the run's own alert has told, and no lease end the run object says it already told
   (`TenantContainer.endTold`). The run object leaves a start the queue holds, and a no-instance
-  stop of a held run, to the queue, so a start the queue will try again alerts nobody.
+  stop of a held run, to the queue, so a start the queue will try again alerts nobody. The run
+  object's abnormal-stop alert is sent before the stop is reported, and is bounded by that ADR's
+  `ALERT_TIMEOUT_MS`, so a stalled webhook holds a stop report for 5 seconds at most, far inside
+  the lease.

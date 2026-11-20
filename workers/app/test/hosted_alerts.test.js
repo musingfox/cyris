@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  ALERT_TIMEOUT_MS,
   OPERATOR_WEBHOOK,
   OPS_HOST,
   OperatorAlertGateway,
@@ -217,5 +218,41 @@ describe("alertOperator", () => {
       status: 502,
     });
     log.mockRestore();
+  });
+
+  it("gives up a webhook that does not answer within ALERT_TIMEOUT_MS, whether or not its fetch heeds the abort", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      for (const heeds of [true, false]) {
+        const signals = [];
+        vi.stubGlobal("fetch", (_url, init) => {
+          signals.push(init.signal);
+          return new Promise((_, reject) => {
+            if (heeds) init.signal.addEventListener("abort", () => reject(init.signal.reason));
+          });
+        });
+        let answer = null;
+        const posting = alertOperator({ [OPERATOR_WEBHOOK]: WEBHOOK }, "bravo", workerAlert("stopped", "x")).then((a) => {
+          answer = a;
+        });
+
+        await vi.advanceTimersByTimeAsync(ALERT_TIMEOUT_MS - 1);
+        expect(answer, `heeds: ${heeds}`).toBeNull();
+        await vi.advanceTimersByTimeAsync(1);
+        await posting;
+
+        expect(answer).toEqual({ sent: false, status: 502 });
+        expect(signals[0].aborted).toBe(true);
+        expect(log).toHaveBeenLastCalledWith("operator alert not sent", {
+          tenant: "bravo",
+          subject: "Digest run stopped before it reported",
+          reason: `no answer within ${ALERT_TIMEOUT_MS} ms`,
+        });
+      }
+    } finally {
+      log.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });

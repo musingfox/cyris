@@ -3,8 +3,8 @@ import { generateKeyPair, exportJWK, SignJWT, createLocalJWKSet } from "jose";
 import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json" with { type: "json" };
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json" with { type: "json" };
 import SEED from "../src/hosted_seed.json" with { type: "json" };
-import { OPERATOR_WEBHOOK, OPS_HOST } from "../src/hosted_alerts.js";
-import { REPORTED, START_RETRY, TOLD, TenantContainer, hostedContainerEnv } from "../src/hosted_container.js";
+import { ALERT_TIMEOUT_MS, OPERATOR_WEBHOOK, OPS_HOST } from "../src/hosted_alerts.js";
+import { REPORTED, RUN, START_RETRY, TOLD, TenantContainer, hostedContainerEnv } from "../src/hosted_container.js";
 import { handleHostedRequest } from "../src/hosted_router.js";
 import { seedSettings, seedTenant, tenantReport } from "../src/hosted_seed.js";
 import { DISPATCH_EVERY_MS, MAX_START_ATTEMPTS, RUN_LEASE_MS } from "../src/run_queue.js";
@@ -512,7 +512,7 @@ describe("a queued run's end reaches the operator once, from the run queue or th
       container.running = false;
       exits[0](exit(1));
       await Promise.allSettled(watched);
-      expect(await object.endTold(), `run reported: ${runReported}`).toBe(true);
+      expect(await object.endTold({ id: 1, attempt: 1 }), `run reported: ${runReported}`).toBe(true);
       vi.setSystemTime(Date.now() + RUN_LEASE_MS + 1_000);
       await drainAlarms(registry);
 
@@ -567,6 +567,123 @@ describe("a queued run's end reaches the operator once, from the run queue or th
     ]);
     expect(ctx.storage.map.has(REPORTED)).toBe(false);
     expect(posted).toEqual([]);
+  });
+
+  it("reports the run its start ran from an object restarted mid-run, which adopts the container", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { container, ctx, env, registry } = await queuedRun();
+    const exits = [];
+    container.monitor = () => new Promise((resolve) => exits.push(resolve));
+    await registry.queueRun("alpha", morning);
+    await drainAlarms(registry);
+
+    // A deploy replaces the object; the new one finds the container running and watches it.
+    ctx.waited = [];
+    const restarted = new TenantContainer(ctx, env);
+    env.TENANT_RUN = { getByName: () => restarted };
+    await new Promise((resolve) => setImmediate(resolve));
+    exits[1]();
+    await Promise.allSettled(ctx.waited);
+
+    expect(registry.runs("alpha")[0]).toMatchObject({ id: 1, state: "done", outcome: "exit 0" });
+  });
+
+  // The webhook's first post hangs until `release()`, heeding no abort, as the review's probe had
+  // it; every later post is answered at once. `posted` is each post's first line.
+  function hangingWebhook() {
+    const posted = [];
+    let release;
+    vi.stubGlobal("fetch", (url, init) => {
+      posted.push(JSON.parse(init.body).content.split("\n")[0]);
+      if (posted.length > 1) return Promise.resolve(new Response(null, { status: 204 }));
+      return new Promise((resolve) => {
+        release = () => resolve(new Response(null, { status: 204 }));
+      });
+    });
+    return { posted, release: () => release() };
+  }
+  const turn = () => new Promise((resolve) => setImmediate(resolve));
+
+  it("reports an abnormal stop once its alert's post times out, so a hung webhook alerts once and the next run runs", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(new Date("2026-11-20T08:00:00Z"));
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { container, ctx, object, registry } = await queuedRun();
+    const { posted, release } = hangingWebhook();
+    const exits = [];
+    container.monitor = () => new Promise((_, reject) => exits.push(reject));
+    await registry.queueRun("alpha", morning);
+    await drainAlarms(registry);
+    const watched = [...ctx.waited];
+
+    container.running = false;
+    exits[0](exit(1));
+    await turn();
+    await vi.advanceTimersByTimeAsync(ALERT_TIMEOUT_MS - 1);
+    // The stop report waits on the alert, and no longer than its timeout.
+    expect(registry.runs("alpha")[0]).toMatchObject({ state: "running" });
+    await vi.advanceTimersByTimeAsync(1);
+    await Promise.allSettled(watched);
+    expect(registry.runs("alpha")[0]).toMatchObject({ state: "failed", outcome: "exit 1: Error: exit code 1" });
+
+    // Past the lease, which no longer holds the run, and on to the tenant's next run.
+    vi.setSystemTime(Date.now() + RUN_LEASE_MS + 1_000);
+    await drainAlarms(registry);
+    await registry.queueRun("alpha", { ...morning, period: "evening" });
+    await drainAlarms(registry);
+    release();
+    await turn();
+
+    expect(posted).toEqual(["[alpha] Digest run stopped before it reported"]);
+    expect(registry.runs("alpha").map((run) => [run.period, run.state, run.attempts])).toEqual([
+      ["evening", "running", 1],
+      ["morning", "failed", 1],
+    ]);
+    expect(container.running).toBe(true);
+    expect(container.starts).toHaveLength(2);
+    expect(ctx.storage.map.has(TOLD)).toBe(false);
+    expect(await object.endTold({ id: 2, attempt: 1 })).toBe(false);
+  });
+
+  it("ends nothing of the tenant's next run with a stop report heard after the lease ended its own", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    vi.setSystemTime(new Date("2026-11-20T08:00:00Z"));
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { container, ctx, object, registry } = await queuedRun();
+    const { posted } = hangingWebhook();
+    const exits = [];
+    container.monitor = () => new Promise((_, reject) => exits.push(reject));
+    await registry.queueRun("alpha", morning);
+    await drainAlarms(registry);
+    const watched = [...ctx.waited];
+
+    // The run stops a second before its lease ends, and its alert is still posting when the lease
+    // ends it as lost and starts its issue again.
+    vi.setSystemTime(Date.now() + RUN_LEASE_MS - 1_000);
+    container.running = false;
+    exits[0](exit(1));
+    await turn();
+    vi.setSystemTime(Date.now() + 2_000);
+    await drainAlarms(registry);
+    expect(registry.runs("alpha").map((run) => [run.id, run.state])).toEqual([
+      [2, "running"],
+      [1, "lost"],
+    ]);
+    expect(ctx.storage.map.get(RUN)).toEqual({ id: 2, attempt: 2 });
+
+    await vi.advanceTimersByTimeAsync(ALERT_TIMEOUT_MS);
+    await Promise.allSettled(watched);
+
+    // The first start's report names its own run, which the queue no longer holds.
+    expect(registry.runs("alpha").map((run) => [run.id, run.state, run.outcome])).toEqual([
+      [2, "running", null],
+      [1, "lost", "no stop reported within 20 minutes; queued again"],
+    ]);
+    expect(container.running).toBe(true);
+    // Its alert's record names its own start, so the second start's lease end still tells.
+    expect(ctx.storage.map.get(TOLD)).toEqual({ id: 1, attempt: 1 });
+    expect(await object.endTold({ id: 2, attempt: 2 })).toBe(false);
+    expect(posted).toEqual(["[alpha] Digest run stopped before it reported", "[alpha] Digest run lost: no stop report, queued again"]);
   });
 });
 

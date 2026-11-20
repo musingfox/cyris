@@ -470,8 +470,8 @@ describe("the hosted Worker's hourly tick", () => {
     await drainAlarms(registryOf(bound));
 
     expect(bound.starts).toEqual([
-      ["alpha", { period: "morning", date: "2026-11-18" }],
-      ["delta", { period: "morning", date: "2026-11-18" }],
+      ["alpha", { period: "morning", date: "2026-11-18", run: { id: 1, attempt: 1 } }],
+      ["delta", { period: "morning", date: "2026-11-18", run: { id: 2, attempt: 1 } }],
     ]);
     vi.restoreAllMocks();
     // Each is reached for its RSS poll and then its schedule; no other tenant's is reached at all.

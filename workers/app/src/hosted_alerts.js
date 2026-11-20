@@ -24,6 +24,14 @@ export const OPERATOR_WEBHOOK = "CYRIS_HOSTED_OPERATOR_WEBHOOK";
 // vote-similarity warning ends nothing and is not among them.
 export const ENDING_KINDS = new Set(["run_failed", "could_not_start", "fetched_nothing"]);
 
+// How long one post to the webhook may take before it is given up as not sent. Discord answers a
+// webhook in well under a second. A run container's own post to the gateway gives up after 10 s
+// (`OPERATOR_TIMEOUT_SECONDS` in src/cyris/adapters/hosted.py), and the gateway answers it only once
+// this post ends, so this is under that; and a stopped container's report to the run queue waits
+// on its object's alert (hosted_container.js), so this is what keeps that report far inside the
+// queue's 20-minute lease (`RUN_LEASE_MS` in run_queue.js). tests/test_hosted_config.py holds both.
+export const ALERT_TIMEOUT_MS = 5_000;
+
 // Discord refuses a message's content over 2,000 characters.
 const DISCORD_CONTENT_MAX = 2000;
 const SUBJECT_MAX = 200;
@@ -65,10 +73,29 @@ export function operatorMessage(tenant, { subject, body }) {
 // The Worker's own alert of `kind` (hosted_alerts.json words it) with `detail` as its body.
 export const workerAlert = (kind, detail) => ({ subject: WORDING[kind], body: detail });
 
+// What `work(signal)` answers, or a throw once `ms` have passed: `signal` aborts then, and the
+// answer is not waited for even if `work` ignores it.
+async function within(ms, work) {
+  const controller = new AbortController();
+  let timer;
+  const expired = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const error = new Error(`no answer within ${ms} ms`);
+      controller.abort(error);
+      reject(error);
+    }, ms);
+  });
+  try {
+    return await Promise.race([work(controller.signal), expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Post one alert about `tenant` to the operator's webhook, and leave one line in the Worker's logs,
-// sent or not. Never throws, so a caller's own failure stands. Answers `{ sent, status }`, the
-// status the gateway answers its container with. The registry's run queue calls this for a run it
-// failed or lost (tenant_registry.js), as the gateway and the run object do.
+// sent or not, within ALERT_TIMEOUT_MS. Never throws, so a caller's own failure stands. Answers
+// `{ sent, status }`, the status the gateway answers its container with. The registry's run queue
+// calls this for a run it failed or lost (tenant_registry.js), as the gateway and the run object do.
 export async function alertOperator(env, tenant, alert) {
   const webhook = env[OPERATOR_WEBHOOK];
   const notSent = (reason, status) => {
@@ -78,13 +105,17 @@ export async function alertOperator(env, tenant, alert) {
   if (!webhook) return notSent(`${OPERATOR_WEBHOOK} is not set`, 503);
   let response;
   try {
-    response = await fetch(webhook, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      // No mention in an error's text may ping anyone.
-      body: JSON.stringify({ content: operatorMessage(tenant, alert), allowed_mentions: { parse: [] } }),
+    response = await within(ALERT_TIMEOUT_MS, async (signal) => {
+      const answered = await fetch(webhook, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        // No mention in an error's text may ping anyone.
+        body: JSON.stringify({ content: operatorMessage(tenant, alert), allowed_mentions: { parse: [] } }),
+        signal,
+      });
+      await answered.body?.cancel();
+      return answered;
     });
-    await response.body?.cancel();
   } catch (error) {
     // The webhook's URL is its credential: no error text that could quote it is logged as is.
     return notSent(String(error?.message ?? error).replaceAll(webhook, "<webhook>"), 502);

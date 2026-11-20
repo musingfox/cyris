@@ -12,7 +12,8 @@
 // - A run whose container got no instance goes back in the queue, and so does one whose lease ran
 //   out with no stop report, within MAX_START_ATTEMPTS; any other end is recorded.
 // - While a run is held, the registry's alarm is set for its lease's end, so a stop report that
-//   never comes cannot hold the issue live for good.
+//   never comes cannot hold the issue live for good. A stop report ends only the row and start
+//   it names, so one that comes after the lease cannot end the run queued in its place.
 // - An end only this queue decides is handed to `tell` (the registry's, which alerts the
 //   operator through alertOperator, ADR-0035): a run failed by its start, or by its last start,
 //   and a run whose lease ran out, lost or failed. A run its container's exit failed is not: the
@@ -319,15 +320,26 @@ export async function dispatchRuns(sql, start, { now = Date.now, finished, tell 
 export const heldRun = (sql, tenant) =>
   one(sql.exec(`SELECT ${RUN_COLUMNS} FROM runs WHERE tenant_id = ? AND ${HELD} ORDER BY id DESC LIMIT 1`, tenant));
 
-// The stop of `tenant`'s container, as its object's monitor saw it, applied to the tenant's held
-// run: `done` on exit 0, back in the queue when no instance was ever given (the start looked
-// granted, then the container stopped with NO_INSTANCE), `failed` otherwise. Answers the run, or
-// null when the tenant had no held run (a container this queue did not start). Only a run that
-// used its last start is handed to `tell`: any other exit is the run object's to tell.
-export function endRun(sql, tenant, { exitCode, reason } = {}, nowMs, tell = () => {}) {
-  const run = heldRun(sql, tenant);
+// The stop of `tenant`'s container, as its object's monitor saw it, applied to the run its start
+// ran, `run` (`{ id, attempt }`), while the queue still holds that start: `done` on exit 0, back in
+// the queue when no instance was ever given (the start looked granted, then the container stopped
+// with NO_INSTANCE), `failed` otherwise. Answers the run, or null when the queue holds no such
+// start: a container this queue did not start, or a report heard after the lease ended its run,
+// which must not end the tenant's next run while that run's container is up. Only a run that used
+// its last start is handed to `tell`: any other exit is the run object's to tell.
+export function endRun(sql, tenant, { exitCode, reason, run: started } = {}, nowMs, tell = () => {}) {
+  const run = started
+    ? one(
+        sql.exec(
+          `SELECT ${RUN_COLUMNS} FROM runs WHERE id = ? AND tenant_id = ? AND attempts = ? AND ${HELD}`,
+          started.id,
+          tenant,
+          started.attempt,
+        ),
+      )
+    : null;
   if (!run) {
-    console.log("container stopped with no run held", { tenant, exitCode });
+    console.log("container stopped with no run held", { tenant, exitCode, run: started?.id, attempt: started?.attempt });
     return null;
   }
   if (NO_INSTANCE.test(String(reason ?? ""))) return requeue(sql, run, "no container instance", nowMs, tell);

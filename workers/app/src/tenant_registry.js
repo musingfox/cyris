@@ -234,8 +234,8 @@ export class TenantRegistry extends DurableObject {
     return answer;
   }
 
-  // `id`'s container stopped, `{ exitCode, reason }` as its monitor saw it: its held run ends or
-  // goes back in the queue, and the alarm hands the freed slot on.
+  // `id`'s container stopped, `{ exitCode, reason, run }` as its monitor saw it: the held run its
+  // start ran, `run`, ends or goes back in the queue, and the alarm hands the freed slot on.
   async runEnded(id, outcome, { now = new Date() } = {}) {
     const told = [];
     const run = endRun(this.ctx.storage.sql, id, outcome, now.getTime(), this.#tell(told));
@@ -259,7 +259,12 @@ export class TenantRegistry extends DurableObject {
   // held run's lease end (run_queue.js `nextPassAt`).
   async alarm() {
     const told = [];
-    const start = (run) => tenantRun(this.env, run.tenant_id).startRun({ period: run.period, date: run.date });
+    const start = (run) =>
+      tenantRun(this.env, run.tenant_id).startRun({
+        period: run.period,
+        date: run.date,
+        run: { id: run.id, attempt: run.attempts },
+      });
     await dispatchRuns(this.ctx.storage.sql, start, { finished: this.#finished, tell: this.#tell(told) });
     await this.#arm(Date.now(), false);
     await Promise.all(told);
@@ -297,7 +302,7 @@ export class TenantRegistry extends DurableObject {
   // it cannot say, so the alert is sent rather than lost.
   async #endTold(run) {
     try {
-      return Boolean(await tenantRun(this.env, run.tenant_id).endTold());
+      return Boolean(await tenantRun(this.env, run.tenant_id).endTold({ id: run.id, attempt: run.attempts }));
     } catch {
       return false;
     }
