@@ -49,9 +49,11 @@ export const PRIVATE_HEADERS = {
   "X-Content-Type-Options": "nosniff",
 };
 
-// `response` with the site's policy and the private headers set.
+// `response` with the site's policy and the private headers set. An answer that names no caching
+// of its own, a refusal or a redirect, is kept by no cache at all.
 export function siteHeaders(response) {
   const headers = new Headers(response.headers);
+  if (!headers.has("Cache-Control")) headers.set("Cache-Control", "no-store");
   headers.set("Content-Security-Policy", SITE_POLICY);
   for (const [name, value] of Object.entries(PRIVATE_HEADERS)) headers.set(name, value);
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });

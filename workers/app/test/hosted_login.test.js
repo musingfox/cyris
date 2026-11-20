@@ -440,7 +440,12 @@ describe("a tenant's site, as served", () => {
       expect(response.headers.get("X-Robots-Tag"), path).toBe("noindex, nofollow");
       expect(response.headers.get("X-Content-Type-Options"), path).toBe("nosniff");
       expect(response.headers.get("Referrer-Policy"), path).toBe("no-referrer");
+      // A page is private and revalidated; any other answer is never stored.
+      expect(["private, no-cache", "no-store"], path).toContain(response.headers.get("Cache-Control"));
     }
+    expect((await call("/t/alpha/", { session })).headers.get("Cache-Control")).toBe("private, no-cache");
+    expect((await call("/t/bravo/", { session })).headers.get("Cache-Control")).toBe("no-store");
+    expect((await call("/t/alpha/")).headers.get("Cache-Control")).toBe("no-store");
     expect(SITE_POLICY).toMatch(/^sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox; /);
     expect(SITE_POLICY).not.toContain("allow-same-origin");
     expect(SITE_POLICY).toContain("connect-src 'none'");
