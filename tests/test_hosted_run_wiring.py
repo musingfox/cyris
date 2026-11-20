@@ -306,10 +306,11 @@ async def test_a_hosted_runs_newsletters_are_its_own_queue_and_a_preview_leaves_
     hosted_cfg,
 ) -> None:
     cfg, gateway = hosted_cfg
+    # No source matches it and it arrived long past the hold, so a run acks it.
     gateway.db.query(
         "INSERT INTO newsletters (id, sender, subject, html, text, date, headers, received_at) "
-        "VALUES ('nl:1', 'x@a.test', 'S', '', 'body', '2026-11-18T06:00:00.000Z', '[]', "
-        "'2026-11-18T06:00:00.000Z')"
+        "VALUES ('nl:1', 'x@a.test', 'S', '', 'body', '2026-01-01T06:00:00.000Z', '[]', "
+        "'2026-01-01T06:00:00.000Z')"
     )
     gateway.requests.clear()
 

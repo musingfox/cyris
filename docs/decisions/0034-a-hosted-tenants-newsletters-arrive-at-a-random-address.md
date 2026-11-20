@@ -24,7 +24,9 @@ Worker served every tenant, three things would break:
   earlier, and one tenant loses the issue.
 * `GET /newsletters` and `/ack` span the whole namespace, so one tenant's run would read, and
   ack away, every other tenant's mail.
-* Nothing refuses mail sent to an address nobody holds.
+* Nothing keeps mail sent to an address nobody holds out of the queue.
+* A hosted tenant has no newsletter source, and a run deletes every issue no source matches,
+  so an issue that reached a tenant's queue would still reach no digest.
 
 The security review of 2026-11-19 adds conditions for this card. The random part must be
 unguessable and unrelated to the tenant id or email. The map from address to tenant must live
@@ -32,6 +34,21 @@ only in the registry, where no container can read it. A message to an unknown ad
 dropped without saying whether the address exists. Addresses must be revocable and rotatable.
 Mail links must be http(s), and a "view in browser" link carrying a recipient token must not
 appear where anyone else can see it.
+
+On 2026-11-20 the product owner decided how mail to an address nobody holds is answered: it is
+dropped in silence, not rejected. The card's 拒收 is reversed. Every refusal is answered the
+same way, whatever its reason: an unknown address, a revoked one, a subaddress, a malformed
+recipient, a message too large, a full queue. The answer the sender gets does not reveal whether
+the address exists.
+
+Which inbound domain the service uses is open. The owner is weighing a dedicated apex domain
+with a catch-all rule against a subdomain with one literal rule per address, created over the
+API. Cloudflare's documentation says a catch-all rule exists only on an apex domain, a subdomain
+takes literal rules only, and a domain holds at most 200 rules
+(https://developers.cloudflare.com/email-service/configuration/subdomains/,
+https://developers.cloudflare.com/email-service/platform/limits/). This record does not
+decide it: the handler reads only the recipient's local part, so either choice routes mail to
+the same code.
 
 ## Decision Drivers
 
@@ -41,6 +58,7 @@ appear where anyone else can see it.
 * Only the hosted Worker reaches the registry (ADR-0030).
 * The self-hosted `workers/newsletter` keeps its behaviour, and the parse is shared, not copied.
 * Spam to a catch-all address must cost little and store nothing.
+* The answer to a sender must not say whether an address exists (the owner, 2026-11-20).
 
 ## Considered Options
 
@@ -76,35 +94,65 @@ How it is built:
   synchronous turn of the registry, so a leaked address stops taking mail at once. A revocation
   deletes them all. An unregistered tenant gets 404, as on every other tenant route.
 * **Receiving.** `cyris-hosted` exports `email()` (`workers/app/src/hosted_inbound.js`). It reads
-  the local part of `message.to`. Anything outside the address pattern is refused without a
+  the local part of `message.to`. Anything outside the address pattern is dropped without a
   registry call, including a `+` subaddress or a tenant id. Otherwise it asks the registry for
   the tenant. It then parses the message with `workers/newsletter/src/record.js`, which the
   newsletter Worker now uses too, and hands the record to the tenant's object.
   `TenantDb.receiveNewsletter` stores it in the tenant's own `newsletters` table
-  (`hosted_schema.sql`), keyed by the same `nl:<sha256(from|subject|date)>`. A re-delivered copy
-  therefore replaces its own row, while two tenants each keep one. The address is not stored with
-  the message.
-* **Refusing.** Every refusal calls `setReject` with one fixed reason, `REFUSAL`. That covers an
-  unknown address, a revoked one, a message over 5 MiB, a record over 1 MiB, and a queue at its
-  200-message cap. The SMTP answer therefore says the message was not taken, and never which of
-  those reasons applied. The log line for an unknown address names neither the address nor a
-  tenant.
+  (`hosted_schema.sql`), keyed by the same `nl:<sha256(from|subject|date)>`. Two tenants each
+  keep one row. The first arrival of an id is kept, and a later one changes nothing. That covers
+  a re-delivered copy, and also a message whose forged From, Subject and Date give it a queued
+  issue's id, so anyone who knows an address cannot overwrite what is queued there. The address
+  is not stored with the message.
+* **The domain is not checked.** Only a rule on a zone of the operator's own account can route
+  mail to the Worker. The 128 bits that make an address unguessable are all in its local part,
+  and the inbound domain is not chosen yet. The change that chooses it adds the domain as a
+  setting and checks it in the handler.
+* **Dropping.** The handler never calls `setReject`, `forward` or `reply`. A message is either
+  stored or accepted and discarded, so every sender gets the same answer, the owner's decision
+  of 2026-11-20. That covers an unknown address, a revoked one, a subaddress, a malformed
+  recipient, a message over 5 MiB, a record over 1 MiB, and a queue at its 200-message cap. The
+  log line for an unknown address names neither the address nor a tenant.
+* **Sources.** A run ingests an issue only for a source whose `email_match` names its sender.
+  The operator adds one to a seeded tenant with
+  `POST /hosted/tenants/<tenant>/newsletter-source?name=&from=[&homepage=][&lane=]` behind
+  Access (`scripts/hosted.sh newsletter-source`). It writes the row a self-hosted `/settings`
+  writes: type `newsletter`, `email_match` `from:<address>`, lane `read` unless named. This
+  route was chosen over the seed because the seed names fixed catalog feeds per tenant, and a
+  tenant's newsletters are its own. The route refuses a name an RSS source already holds, and a
+  tenant not seeded yet. The tenant settings card replaces it.
 * **Pulling.** A hosted run's newsletter source is `TenantNewsletterSource`. It reads the queue
   through its gateway, matches senders exactly as `CloudflareNewsletterSource` does, and acks by
   deleting the processed ids in chunks of 50. A dry run reads without deleting.
+* **Unmatched mail waits.** A message no source matches stays queued for
+  `UNMATCHED_HOLD_DAYS` (8) from its arrival, and a run acks it only after that. The KV source
+  deletes such a message at once, which suits a self-hosted reader who adds a source before
+  subscribing. A hosted tenant subscribes with an address the operator gave it, and its source
+  may be added after the first issue arrives, so deleting at once would lose that issue
+  unread. Eight days is the RSS buffer's retention, so mail and feeds wait as long. The hold also
+  keeps Gmail's forwarding confirmation, which matches no source, readable in the operator's
+  report. The queue's 200-message cap bounds what waits.
 * **Links.** An issue's link must be http(s), or it is no link. That applies to the article URL
   `newsletter_article` picks and to a reference link `citation_links` draws.
-  `TenantNewsletterSource` passes `web_version=False`. For a hosted issue, the labelled "view in
-  browser" link and the ESP-archive link are therefore never the article URL. The issue keeps its
-  sender's canonical post link, or its source's homepage, or no link.
+  `TenantNewsletterSource` passes `recipient_links=False`, so a hosted issue takes no link that
+  may name its recipient. Two kinds of link are affected. The labelled "view in browser" link
+  and the ESP-archive link, the two fallbacks, are never taken. The structural step still
+  chooses as it does for every deployment, but a hosted issue drops its choice when it keeps a
+  query or a fragment after the tracking strip. A per-recipient token such as `?token=` cannot
+  be told from any other query by its shape, and the strip lists name only parameters known to
+  be one. The issue then keeps its source's homepage, or no link. The choice is filtered after
+  it is made, never before: dropping the token variant from the candidates first could make a
+  second page look like the one canonical post, against CLAUDE.md's rule that an ambiguous issue
+  gets no link.
 * **Authentication.** The handler logs Cloudflare's own SPF, DKIM and DMARC verdicts for each
   stored message. It reads them from the topmost `Authentication-Results` header, and only when
   its authserv-id is `mx.cloudflare.net`. It does not act on them yet (see Consequences).
 
 ### Consequences
 
-* Good, because two tenants sent one issue each get it. Each copy is a row in its tenant's own
-  object, and nothing is keyed across tenants.
+* Good, because two tenants sent one issue each get it in their digests. Each copy is a row in
+  its tenant's own object, nothing is keyed across tenants, and each tenant's run ingests it
+  through the source the operator added.
 * Good, because one tenant's run can neither read nor ack another's mail. Its only way to any
   table is a gateway that answers its own tenant alone.
 * Good, because the address carries 128 random bits and nothing else. Knowing a tenant says
@@ -112,17 +160,25 @@ How it is built:
   read the map, because only the registry holds it.
 * Good, because spam to the catch-all costs one Worker invocation and at most one registry read.
   A recipient outside the pattern costs no read at all.
-* Bad, because the SMTP answer itself still tells a sender whether this one message was taken.
-  The card requires a rejection rather than a silent drop, and the address can only be found by
-  guessing 128 bits, so the remaining signal is useless for finding one. A rejection also tells a
-  real sender who mistyped the address that the mail did not arrive.
+* Good, because every sender gets the same answer whether the address exists or not, so even
+  the one-message signal a rejection gave is gone.
+* Bad, because a sender who mistyped an address, or still sends to a rotated one, is never told
+  that the mail did not arrive. The owner accepted this on 2026-11-20.
+* Bad, because a forged message that pre-empts a future issue's exact From, Subject and Date is
+  kept, and the real issue is then taken as its copy. Doing that needs the address and the
+  issue's Date to the second. Keying by a random id instead would let every re-delivered copy
+  through as a duplicate.
+* Bad, because unmatched mail, spam included, takes queue space for up to 8 days, and the cap
+  then drops new mail to that address until a run acks the old. Rotating a leaked address stops
+  the flood.
 * Bad, because a hosted issue loses its 原文 link when the only candidate was a web-version
-  link. The view link of an ESP such as Substack signs in as the recipient, and today a hosted
-  page is read by the operator as well as by its tenant (ADR-0015 and the 2026-11-19 review, H1).
-  Losing the link is the price of keeping that token off the page. The body that holds the link is
-  stored only in the tenant's own object, and no page draws it.
-* Bad, because rotating an address bounces mail already in flight to the old one. No grace
-  period is kept: the reason to rotate is usually a leak.
+  link, or a post link with any query left, `?p=123` included. The view link of an ESP such as
+  Substack signs in as the recipient, and today a hosted page is read by the operator as well as
+  by its tenant (ADR-0015 and the 2026-11-19 review, H1). Losing the link is the price of keeping
+  that token off the page. A token written into a URL's path is not caught by this rule. The body
+  that holds the links is stored only in the tenant's own object, and no page draws it.
+* Bad, because rotating an address drops mail already in flight to the old one. No grace period
+  is kept: the reason to rotate is usually a leak.
 * Bad, because the Worker logs Cloudflare's DMARC verdict and does not yet require a pass. A
   message from a publisher whose DMARC policy is `p=none` can be spoofed in a tenant's queue. It
   still reaches no digest unless it also matches a source's `email_match`. Whether Gmail's filter
@@ -130,17 +186,23 @@ How it is built:
   written against the verdict.
 * Bad, because the hosted Worker now bundles `postal-mime` from `workers/newsletter`, so that
   package has to be installed before a hosted deploy and in CI, as `workers/rss` already is.
-* Neutral, because the catch-all rule is set in the zone's Email Routing, which is a dashboard
-  step. Nothing in `wrangler.hosted.toml` changes.
+* Neutral, because the routing rule, a catch-all or literal rules, is set in the zone's Email
+  Routing, outside `wrangler.hosted.toml`, which does not change.
 
 ### Confirmation
 
 * `workers/app/test/hosted_inbound.test.js` drives `hosted.js` itself over SQLite stand-ins for
   the registry and the tenant objects. It checks that:
   * one issue sent to two tenants is stored in both;
+  * a re-delivered copy and a forged copy with the same From, Subject and Date leave the first
+    arrival's row as it was;
   * an address never issued, a revoked one, a rotated one, a subaddress, a tenant id and a
-    malformed recipient are each refused with `REFUSAL`, and no tenant object is reached;
-  * oversize messages and a full queue are refused the same way;
+    malformed recipient are each dropped: the handler calls no `setReject`, `forward` or
+    `reply`, answers as it does for a live address, and reaches no tenant object;
+  * oversize messages and a full queue are dropped the same way;
+  * the `newsletter-source` route writes each row of `workers/app/test/newsletter_source_cases.json`,
+    refuses each refused case, an RSS source's name and an unseeded tenant, and lets two tenants
+    hold the same source;
   * a paused tenant still takes mail;
   * the address appears in none of the tenant's tables;
   * alpha's gateway reads only alpha's queue, its ack deletes nothing of bravo's, and it is
@@ -148,13 +210,19 @@ How it is built:
   * the address routes issue, read, rotate and revoke an address, and refuse unregistered
     tenants;
   * an address depends on the random bytes alone.
-* `tests/test_tenant_newsletter_source.py` checks that the run's source pulls and acks only
-  through its own tenant's gateway, leaves the queue alone on a preview, chunks its ack, and never
-  takes a web-version link. `tests/test_hosted_run_wiring.py` checks that `build_deps` wires it
-  for a hosted run.
+* `tests/test_tenant_newsletter_source.py` checks several things:
+  * the run's source pulls and acks only through its own tenant's gateway;
+  * it leaves the queue alone on a preview, and chunks its ack;
+  * it holds unmatched mail for 8 days and ingests it once its source is added;
+  * it never takes a link that may name the recipient;
+  * each case's row reads back as a fetchable newsletter source;
+  * one issue reaches both tenants' runs' articles through that source.
+* `tests/test_hosted_run_wiring.py` checks that `build_deps` wires the source for a hosted run.
 * `tests/test_newsletter.py` and `tests/test_html_digest.py` check the http(s) rule and the
-  `web_version` switch.
-* What runs on a real account: the catch-all rule and one Gmail filter forward to a tenant's
+  `recipient_links` switch, including the reviewer's probe:
+  `https://news.example/p/issue-12?token=SECRET` is no link for a hosted issue, and stays the
+  self-hosted choice.
+* What runs on a real account: the routing rule and one Gmail filter forward to a tenant's
   address are steps in `docs/hosted-tenants.md`, and nobody has run them yet.
 
 ## Pros and Cons of the Options
@@ -186,7 +254,7 @@ How it is built:
 * `docs/architecture.md` §3.1 describes the path, §4 has the `newsletters` row and the registry
   row's `inbound_addresses`, §5 grades the address shape and the caps, and §6 describes the
   Worker's `email()` handler and routes.
-* `docs/hosted-tenants.md` sets up the catch-all rule, issues each tenant an address, and
-  records a Gmail filter forward's `Authentication-Results`.
+* `docs/hosted-tenants.md` routes an inbound domain, issues each tenant an address, adds a
+  newsletter source, and records a Gmail filter forward's `Authentication-Results`.
 * ADR-0030 created `inbound_addresses` empty for this card. ADR-0031 is the RSS buffer this
   follows.

@@ -698,7 +698,7 @@ class TestAHostedIssueTakesNoWebVersionLink:
         p = _make_parsed(text_content=f"View in browser ({self.TOKENED})\n\nThis week's letter.")
 
         self_hosted = newsletter_article(p, source_summarize)
-        hosted = newsletter_article(p, source_summarize, web_version=False)
+        hosted = newsletter_article(p, source_summarize, recipient_links=False)
 
         assert self_hosted is not None and self_hosted.url == self.TOKENED
         assert hosted is not None and hosted.url.startswith("newsletter:")
@@ -710,7 +710,7 @@ class TestAHostedIssueTakesNoWebVersionLink:
         )
 
         assert newsletter_article(p, source_summarize).url == "https://mailchi.mp/news/issue-9"
-        assert newsletter_article(p, source_summarize, web_version=False).url.startswith(
+        assert newsletter_article(p, source_summarize, recipient_links=False).url.startswith(
             "newsletter:"
         )
 
@@ -724,12 +724,69 @@ class TestAHostedIssueTakesNoWebVersionLink:
         )
         bare = _make_parsed(from_email="list@news.example", text_content=self.TOKENED)
 
-        assert newsletter_article(post, source, web_version=False).url == (
+        assert newsletter_article(post, source, recipient_links=False).url == (
             "https://news.example/p/issue-12"
         )
-        hosted = newsletter_article(bare, source, web_version=False)
+        hosted = newsletter_article(bare, source, recipient_links=False)
         assert hosted.url.startswith("newsletter:")
         assert hosted.ref_urls == ["https://news.example"]
+
+
+class TestAHostedIssueTakesNoLinkThatMayNameItsRecipient:
+    """The reviewer's probe: a sender-host view link with `?token=` is the structural choice."""
+
+    PROBE = "https://news.example/p/issue-12?token=SECRET"
+
+    @staticmethod
+    def _letter() -> SourceConfig:
+        return SourceConfig(
+            name="Letter", lane=Lane.READ, homepage="https://news.example", tags=["tech"]
+        )
+
+    def test_a_token_on_the_senders_own_post_link_is_no_link_for_a_hosted_issue(self):
+        p = _make_parsed(
+            from_email="list@news.example",
+            text_content=f"View in browser: {self.PROBE}\n\nThis week's letter.",
+        )
+
+        self_hosted = newsletter_article(p, self._letter())
+        hosted = newsletter_article(p, self._letter(), recipient_links=False)
+
+        # The self-hosted choice is unchanged: the structural step picks that one post link.
+        assert self_hosted.url == self.PROBE
+        assert hosted.url.startswith("newsletter:")
+        assert hosted.ref_urls == ["https://news.example"]
+        assert "SECRET" not in hosted.url + " ".join(hosted.ref_urls)
+
+    def test_a_fragment_is_dropped_as_a_query_is(self):
+        p = _make_parsed(
+            from_email="list@news.example",
+            html_content='<a href="https://news.example/p/issue-12#sub=abc">Read</a>',
+        )
+
+        assert newsletter_article(p, self._letter(), recipient_links=False).url.startswith(
+            "newsletter:"
+        )
+
+    def test_a_tracking_query_the_strip_removes_still_leaves_the_post_link(self):
+        p = _make_parsed(
+            from_email="list@news.example",
+            text_content="Read it: https://news.example/p/issue-12?utm_source=mail&fbclid=x\n",
+        )
+
+        assert newsletter_article(p, self._letter(), recipient_links=False).url == (
+            "https://news.example/p/issue-12"
+        )
+
+    def test_the_bare_post_beside_its_token_variant_is_still_the_one_page(self):
+        p = _make_parsed(
+            from_email="list@news.example",
+            text_content=f"https://news.example/p/issue-12\nView in browser: {self.PROBE}\n",
+        )
+
+        assert newsletter_article(p, self._letter(), recipient_links=False).url == (
+            "https://news.example/p/issue-12"
+        )
 
 
 class TestAnIssuesLinkIsHttpOnly:
