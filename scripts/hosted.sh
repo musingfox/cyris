@@ -90,16 +90,23 @@ ask_access() {
   ask ACCESS_SECRET "CF-Access-Client-Secret of that service token" secret
 }
 
-# call TENANT METHOD PATH OUTFILE: one operator route, signed in with the service token. The
-# headers go in as curl config on stdin; printf is a builtin, so the secret is in no process's
-# argv. Never ends the script: a route that did not answer 200, or never answered (HTTP 000, no
-# file written), is reported for TENANT and returns non-zero, so the caller goes on to the next.
+# call TENANT METHOD PATH OUTFILE [BODY]: one operator route, signed in with the service token.
+# The headers, and BODY when given (JSON), go in as curl config on stdin; printf is a builtin, so
+# the secret is in no process's argv, and an address in a body is in no URL. Never ends the
+# script: a route that did not answer 200, or never answered (HTTP 000, no file written), is
+# reported for TENANT and returns non-zero, so the caller goes on to the next.
 call() {
-  local tenant=$1 method=$2 path=$3 out=$4 status
+  local tenant=$1 method=$2 path=$3 out=$4 body=${5:-} status
   status=$(
-    printf 'header = "CF-Access-Client-Id: %s"\nheader = "CF-Access-Client-Secret: %s"\n' \
-      "$ACCESS_ID" "$ACCESS_SECRET" |
-      curl -sS --config - --max-time 300 -X "$method" -o "$out" -w '%{http_code}' "$HOSTED_URL$path"
+    {
+      printf 'header = "CF-Access-Client-Id: %s"\nheader = "CF-Access-Client-Secret: %s"\n' \
+        "$ACCESS_ID" "$ACCESS_SECRET"
+      if [[ -n "$body" ]]; then
+        # Quoted as curl's config takes a value: a backslash and a double quote are escaped.
+        body=${body//\\/\\\\}
+        printf 'header = "Content-Type: application/json"\ndata = "%s"\n' "${body//\"/\\\"}"
+      fi
+    } | curl -sS --config - --max-time 300 -X "$method" -o "$out" -w '%{http_code}' "$HOSTED_URL$path"
   ) || status=000
   echo "$method $path -> HTTP $status" >&2
   if [[ -s "$out" ]]; then
@@ -112,22 +119,29 @@ call() {
   fi
 }
 
-# fetch_page TENANT OUTFILE: the tenant's latest page, GET /t/TENANT/, signed in as call() is.
-# The page is kept for hosted_check.py only when it answered 200; it is not printed. Returns
-# non-zero, never ending the script, when it did not answer 200.
+# fetch_page TENANT OUTFILE: the tenant's latest page, the one /t/TENANT/ serves its readers, read
+# through the operator's GET /hosted/tenants/TENANT/page and signed in as call() is: /t/ takes a
+# tenant session, which the operator never holds (ADR-0033). The page is kept for hosted_check.py
+# only when it answered 200; it is not printed. Returns non-zero, never ending the script, when it
+# did not answer 200.
 fetch_page() {
   local tenant=$1 out=$2 status
   status=$(
     printf 'header = "CF-Access-Client-Id: %s"\nheader = "CF-Access-Client-Secret: %s"\n' \
       "$ACCESS_ID" "$ACCESS_SECRET" |
-      curl -sS --config - --max-time 60 -o "$out" -w '%{http_code}' "$HOSTED_URL/t/$tenant/"
+      curl -sS --config - --max-time 60 -o "$out" -w '%{http_code}' "$HOSTED_URL/hosted/tenants/$tenant/page"
   ) || status=000
-  echo "GET /t/$tenant/ -> HTTP $status" >&2
+  echo "GET /hosted/tenants/$tenant/page -> HTTP $status" >&2
   if [[ "$status" != 200 ]]; then
     rm -f "$out"
     echo "FAILED $tenant: its latest page answered HTTP $status" >&2
     return 1
   fi
+}
+
+# email_body EMAIL: the JSON body the invite and revoke routes take.
+email_body() {
+  python3 -c 'import json, sys; print(json.dumps({"email": sys.argv[1]}))' "$1"
 }
 
 # finish FAILED_TENANT...: say which tenants failed, if any, and exit 1 when one did.
@@ -162,9 +176,12 @@ case "${1:-}" in
     ask TEAM_DOMAIN "CYRIS_ACCESS_TEAM_DOMAIN, the Access team domain without a scheme (yourteam.cloudflareaccess.com)"
     ask AUD "CYRIS_ACCESS_AUD, the Application Audience (AUD) tag of the cyris-hosted Access application"
     ask ANTHROPIC "ANTHROPIC_API_KEY for the tenants' runs" secret
+    ask MAIL_FROM "CYRIS_HOSTED_MAIL_FROM, the sign-in mail's sender, on a domain onboarded to Email Sending (cyris@yourdomain.com)"
     put_secret CYRIS_ACCESS_TEAM_DOMAIN "$TEAM_DOMAIN"
     put_secret CYRIS_ACCESS_AUD "$AUD"
     put_secret ANTHROPIC_API_KEY "$ANTHROPIC"
+    # Not a secret either; set the same way, so wrangler.hosted.toml names no deployment's domain.
+    put_secret CYRIS_HOSTED_MAIL_FROM "$MAIL_FROM"
     # The host deploy kept, which every tenant's links point at (ADR-0029). Not a secret, but
     # `secret put` is how wrangler sets one value without editing wrangler.hosted.toml.
     put_secret CYRIS_STORE_HOSTED_DOMAIN "${HOSTED_URL#https://}"
@@ -234,6 +251,23 @@ case "${1:-}" in
     finish ${failed[@]+"${failed[@]}"}
     exit "$verdict"
     ;;
+  invite | revoke)
+    # invite TENANT EMAIL: put EMAIL on TENANT's invite list and mail it its first sign-in link.
+    # revoke TENANT EMAIL: take EMAIL off the list, which ends its sessions at once (ADR-0033).
+    action=$1 tenant=${2:-} email=${3:-}
+    [[ -n "$tenant" && -n "$email" ]] || { echo "usage: $0 $action TENANT EMAIL" >&2; exit 2; }
+    ask_access
+    out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-$action.XXXXXX")
+    call "$tenant" POST "/hosted/tenants/$tenant/$action" "$out/$tenant.json" "$(email_body "$email")" ||
+      finish "$tenant"
+    ;;
+  members)
+    tenant=${2:-}
+    [[ -n "$tenant" ]] || { echo "usage: $0 members TENANT" >&2; exit 2; }
+    ask_access
+    out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-members.XXXXXX")
+    call "$tenant" GET "/hosted/tenants/$tenant/members" "$out/$tenant.json" || finish "$tenant"
+    ;;
   tail)
     ask_account
     run_wrangler tail
@@ -244,7 +278,7 @@ case "${1:-}" in
     run_wrangler delete
     ;;
   *)
-    echo "usage: $0 deploy|secrets|containers|register|seed|run [morning|evening]|poll|check|tail|delete" >&2
+    echo "usage: $0 deploy|secrets|containers|register|seed|run [morning|evening]|poll|check|invite TENANT EMAIL|revoke TENANT EMAIL|members TENANT|tail|delete" >&2
     exit 2
     ;;
 esac

@@ -3,11 +3,12 @@
 Usage: python3 scripts/hosted_check.py REPORT.json [REPORT.json ...]
 
 Each file is one tenant's answer to the hosted Worker's `GET /hosted/tenants/<tenant>/report`
-(docs/hosted-tenants.md). Beside it, the same name with `.html` is the page the Worker served
-that tenant at `/t/<tenant>/`; `scripts/hosted.sh check` writes it only when the page answered
-200. A tenant passes when its database holds at least one finished, non-dry `ok` run and at
-least one issue, every article it stored came from one of its own sources, and its page is its
-own newest issue. The seed gives no two tenants a source in common, so an article another
+(docs/hosted-tenants.md). Beside it, the same name with `.html` is the page the Worker serves
+that tenant's readers at `/t/<tenant>/`, as the operator's `GET /hosted/tenants/<tenant>/page`
+answers it; `scripts/hosted.sh check` writes it only when the page answered 200. A tenant
+passes when its database holds at least one finished, non-dry `ok` run and at least one issue,
+every article it stored came from one of its own sources, and its page is its own newest
+issue. The seed gives no two tenants a source in common, so an article another
 tenant's run fetched would show up here as a source this tenant was never given.
 
 The page is the tenant's when its receipt (`<meta name="cyris-issue">`) names the issue the
