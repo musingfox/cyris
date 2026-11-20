@@ -18,6 +18,17 @@ passes (ADR 0024). Only the app Worker deploys through a workflow; the `rss`, `p
 `newsletter` Workers deploy outside any workflow, with no gate, so a merged change to them is not
 live until someone deploys it.
 
+### Cloudflare CLI
+
+- `dev`, `deploy` and `containers push` stay on Wrangler: the Deploy to Cloudflare button reads
+  only a Wrangler configuration file, so `wrangler.toml` remains the project config. Never run
+  `cf dev`, `cf build` or `cf deploy` here; without a `cloudflare.config.ts` they write a new
+  config that ignores `wrangler.toml` and rewrite the `deploy` script in `package.json`.
+- Use `cf` to read deployed state and account resources (deployments, logs, D1, Access, AI
+  Gateway). Run it from a directory without a `.env`, such as `workers/`: in the root, `cf`
+  takes `CLOUDFLARE_API_TOKEN` from `.env` ahead of any login, and that is production's
+  narrow-scoped deploy token.
+
 ## Architecture
 
 **Read `docs/architecture.md` before any non-trivial change.** It is the authoritative description of this system, and it is written to be acted on, not just read:
