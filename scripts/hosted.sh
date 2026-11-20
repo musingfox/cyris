@@ -213,6 +213,25 @@ case "${1:-}" in
     done
     finish ${failed[@]+"${failed[@]}"}
     ;;
+  address)
+    # Each tenant's newsletter address (ADR-0034): read it, or rotate it (a new address, every
+    # old one revoked at once), or revoke it. The answers name the addresses, so their files
+    # are deleted once printed.
+    case "${2:-show}" in
+      show) method=GET route=address ;;
+      rotate) method=POST route=rotate-address ;;
+      revoke) method=POST route=revoke-address ;;
+      *) echo "address takes show, rotate or revoke" >&2; exit 2 ;;
+    esac
+    ask_access
+    out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-address.XXXXXX")
+    failed=()
+    for tenant in $TENANTS; do
+      call "$tenant" "$method" "/hosted/tenants/$tenant/$route" "$out/$tenant.json" || failed+=("$tenant")
+    done
+    rm -rf "$out"
+    finish ${failed[@]+"${failed[@]}"}
+    ;;
   check)
     ask_access
     out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-report.XXXXXX")
@@ -244,7 +263,7 @@ case "${1:-}" in
     run_wrangler delete
     ;;
   *)
-    echo "usage: $0 deploy|secrets|containers|register|seed|run [morning|evening]|poll|check|tail|delete" >&2
+    echo "usage: $0 deploy|secrets|containers|register|seed|run [morning|evening]|poll|address [show|rotate|revoke]|check|tail|delete" >&2
     exit 2
     ;;
 esac

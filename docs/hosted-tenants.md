@@ -14,6 +14,8 @@ config is [ADR-0030](decisions/0030-the-operator-registry-is-one-sqlite-durable-
 Why each tenant's RSS is polled hourly by this Worker into a buffer in the tenant's own object,
 and what that costs against Cloudflare's limits, is
 [ADR-0031](decisions/0031-a-hosted-tenants-rss-is-polled-by-the-hosted-worker.md).
+Why each tenant's newsletters arrive at a random address of its own, into its own object, is
+[ADR-0034](decisions/0034-a-hosted-tenants-newsletters-arrive-at-a-random-address.md).
 
 `cyris-hosted` is a separate Worker from `cyris-app`. Nothing here deploys or changes
 `wrangler.toml`, which a push to main deploys to production (ADR-0024).
@@ -48,12 +50,15 @@ You need:
 ```bash
 bun install --frozen-lockfile
 (cd workers/rss && bun install --frozen-lockfile)
+(cd workers/newsletter && bun install --frozen-lockfile)
 bun x wrangler login
 ```
 
 The second install is for the hosted Worker's RSS poll. It uses `workers/rss`'s feed parser, and
 that parser's `fast-xml-parser` is installed only under `workers/rss`. Without it the deploy
-stops with "Could not resolve fast-xml-parser".
+stops with "Could not resolve fast-xml-parser". The third is for its newsletter handler, which
+parses mail with `workers/newsletter`'s `postal-mime`; without it the deploy stops with "Could
+not resolve postal-mime".
 
 Log in as a user who can see the trial account: that login is the credential every wrangler call of the script
 acts as, since none of them reads `.env`.
@@ -78,7 +83,7 @@ Until step 3 sets the Access secrets, every request to the Worker is answered wi
 The Worker checks the Access JWT itself (ADR-0015), so Access must sign a request in before the
 Worker sees it.
 
-The dashboard labels in this step, and the ones in steps 6, 7 and 9, were written from memory of
+The dashboard labels in this step, and the ones in steps 6, 7, 9 and 10, were written from memory of
 the dashboard and have not been checked against it. Each is marked *(label unverified)*. What
 each step has to achieve is what counts; find it under whatever name the dashboard now uses.
 
@@ -254,7 +259,96 @@ The same paths under `/t/bravo/` are bravo's. Until tenant sessions land, Access
 operator, so these are your pages to check, not a tenant's sign-in. The vote buttons and the
 Settings link stay hidden, because the hosted Worker has no `/api/vote` or `/settings` yet.
 
-## 9. Tear down (when you are done)
+## 9. Newsletters: the catch-all rule and each tenant's address
+
+Each tenant gets a random address, 26 characters of base32 that say nothing about the tenant.
+One catch-all rule sends every address of an inbound domain to `cyris-hosted`, and its
+`email()` handler stores each message only in the tenant whose address it came to. A message to
+an address no tenant holds is rejected with "This address does not accept mail", and so is one
+to a revoked address, one over 5 MiB, and one to a tenant with 200 messages waiting. Each
+tenant's run reads its own queue and deletes what it processed.
+
+### 9.1 Route an inbound domain to the Worker (dashboard)
+
+Email Routing needs a zone on the trial account: it cannot run on `*.workers.dev`. A catch-all
+takes every address of its domain, so use a domain, or a subdomain, that receives nothing else.
+
+The facts below come from Cloudflare's Email Routing pages as they read on 2026-11-14 (*Email
+Routing addresses*, sections *Catch-all rule* and *Configure rules with Wrangler*). They have not
+been checked against the trial account. Each label is *(label unverified)*.
+
+1. Email > Email Routing *(label unverified)* on the zone: turn Email Routing on, and add the MX
+   and TXT records it proposes.
+2. Routing rules > Catch-all address *(label unverified)*: set the action to Send to a Worker
+   *(label unverified)*, choose `cyris-hosted`, and turn the rule on. Deploy the Worker first
+   (step 1), since the rule names a deployed Worker.
+3. Leave `wrangler.hosted.toml` alone. Wrangler can write a catch-all only on an apex domain
+   (`addresses = ["*@<domain>"]`), and the rule belongs to the zone, not to the Worker.
+
+Whether a subdomain such as `in.<domain>` can take a catch-all, from the dashboard or the API,
+is unverified. If the dashboard offers it, use it. If it does not, use a domain set aside for
+inbound mail. Record which one worked, with the date, in ADR-0034's *More Information*, in a docs
+commit.
+
+### 9.2 Give each tenant an address
+
+```bash
+scripts/hosted.sh address rotate
+```
+
+This runs `POST /hosted/tenants/<tenant>/rotate-address` for `alpha`, then `bravo`. Each answer
+is `{"tenant", "address", "created_at", "revoked"}`. The tenant's address is
+`<address>@<the inbound domain>`. A rotation revokes every address the tenant held before, at
+once. `scripts/hosted.sh address` shows each tenant's current address, and `scripts/hosted.sh
+address revoke` revokes it and issues none. Only the registry holds the map from address to
+tenant, and no run container can read it. The answers are printed and their files deleted, so
+keep the addresses where you keep the service token.
+
+### 9.3 Check that one issue reaches both tenants, and an unknown address reaches none
+
+1. Send one message, from a mailbox you own, to alpha's address. Send the same message to
+   bravo's address separately, as a publisher sends one copy to each subscriber.
+2. Send a message to an address of the same domain that you made up, with 26 characters from
+   `a`–`z` and `2`–`7`. Your mailbox should get a bounce saying "This address does not accept
+   mail".
+3. Run `scripts/hosted.sh check` before either tenant's next run. Whatever it judges, it keeps
+   each tenant's report in the temporary directory it names, and each report's
+   `newsletters` lists that tenant's queued messages by sender, subject and when they arrived.
+   It never shows the body. Alpha's and bravo's each list the message once, and neither lists
+   the one sent to the made-up address.
+
+A tenant's run, at 08:00 and 20:00 UTC or on `scripts/hosted.sh run`, deletes the messages it
+processed. To keep a tenant's queue for longer, pause it (step 5). A paused tenant still takes
+mail.
+
+### 9.4 Measure a Gmail filter forward's DMARC result
+
+A reader who already gets a newsletter in Gmail can forward it with a filter instead of
+subscribing again. Whether that forward passes DMARC decides whether the handler can later
+require a pass, so measure it once:
+
+1. Pause alpha, so that no run acks what arrives:
+   `POST /hosted/tenants/alpha/register?status=paused` with the service token's two headers.
+2. In Gmail, Settings > Forwarding and POP/IMAP > Add a forwarding address *(label unverified)*:
+   enter alpha's address. Gmail sends a confirmation to it.
+3. Run `scripts/hosted.sh check`. Alpha's report lists the confirmation from
+   `forwarding-noreply@google.com`, and its subject carries the confirmation code. Enter that
+   code in Gmail.
+4. Create a filter for one newsletter you receive, with the action Forward it to *(label
+   unverified)* alpha's address.
+5. Run `scripts/hosted.sh tail`, and wait for the next issue of that newsletter, or have its
+   sender send one. The handler logs one line, `inbound stored`, with `tenant` and `auth`: the
+   `spf`, `dkim` and `dmarc` verdicts from Cloudflare's own `Authentication-Results` header.
+   The handler reads only the topmost such header, and only when its authserv-id is
+   `mx.cloudflare.net`. `auth: null` means Cloudflare's header was not on top.
+6. Record the `dmarc` verdict, the newsletter's sending domain and the date in ADR-0034's *More
+   Information*, in a docs commit. Then resume alpha with `?status=active`.
+
+The handler logs the verdicts and does not act on them yet. Nothing a tenant can see shows its
+address, and Gmail's confirmation reaches a tenant only through you. Both wait for the tenant
+settings card.
+
+## 10. Tear down (when you are done)
 
 ```bash
 scripts/hosted.sh delete
