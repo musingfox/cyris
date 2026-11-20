@@ -280,6 +280,8 @@ reads `.env`, but only for a name not already set. If `.env` holds production's 
 you skip the `read` lines, that token is sent instead, and the trial's Access refuses it. The
 refusals:
 
+- an empty or malformed tenant id, such as `--tenant ""`, is refused at the option, so the
+  command never falls back to your own store;
 - without `CYRIS_ACCESS_CLIENT_ID` and `CYRIS_ACCESS_CLIENT_SECRET`, the command stops and names
   them, and nothing is sent;
 - a token Access or the Worker refuses stops the command at the first query, with the HTTP

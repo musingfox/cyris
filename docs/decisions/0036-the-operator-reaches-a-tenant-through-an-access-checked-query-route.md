@@ -69,7 +69,9 @@ How it is built:
   The backend is forced because the operator's own file names the operator's own store, not the
   tenant's. `bootstrap.build_d1_client` then returns `OperatorD1Client`. With the hosted domain
   and the tenant id set, `build_deps` wires the hosted path as it does in a run container.
-* The name is refused where it would be ambiguous or forged. A config file may not set
+* The name is refused where it would be ambiguous or forged. `--tenant` takes only a tenant id
+  (`config.TENANT_ID`). An empty value is refused at the option, not ignored, because ignoring
+  it would run the command on the operator's own store. A config file may not set
   `[store] operator`. `CYRIS_OPERATOR_TENANT` beside `CYRIS_STORE_TENANT_ID` stops the load,
   because a run container is its own tenant's. A run container never has the name:
   `hostedContainerEnv` is an allow-list.
@@ -118,8 +120,9 @@ How it is built:
   is. It checks the choice of store: the operator's tenant over a file's backend, a run
   container's tenant kept on its gateway, and both names together refused. Through the CLI it
   checks that `cyris --tenant alpha sources list` reads only alpha's rows and that
-  `articles accept` writes only alpha's. `cyris --tenant alpha doctor` reports on alpha, and
-  without the service token it exits 1 having sent nothing.
+  `articles accept` writes only alpha's. `cyris --tenant alpha doctor` reports on alpha.
+  Without the service token it exits 1 having sent nothing. An empty or invalid `--tenant` is
+  refused at the option.
 
 ## Pros and Cons of the Options
 

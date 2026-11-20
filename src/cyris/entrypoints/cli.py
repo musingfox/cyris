@@ -36,20 +36,31 @@ DIGEST_LOCK_WAIT_SECONDS = 30 * 60
 DIGEST_LOCK_POLL_SECONDS = 5
 
 
+def _check_tenant(value: str | None) -> str | None:
+    """An operator's `--tenant` names one tenant id, or the option is refused before any request."""
+    from cyris.config import TENANT_ID
+
+    # An empty value is refused, not ignored: ignoring it would run on the operator's own store.
+    if value is not None and not TENANT_ID.fullmatch(value):
+        raise typer.BadParameter(f"a tenant id matches {TENANT_ID.pattern}, not {value!r}")
+    return value
+
+
 @app.callback()
 def main(
     tenant: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--tenant",
             help="As the hosted operator, run the command on this tenant's database, through "
             "the hosted Worker on CYRIS_STORE_HOSTED_DOMAIN with the Access service token "
             "CYRIS_ACCESS_CLIENT_ID and CYRIS_ACCESS_CLIENT_SECRET",
+            callback=_check_tenant,
         ),
-    ] = "",
+    ] = None,
 ) -> None:
     """Cyris — AI-powered information digest agent."""
-    if tenant:
+    if tenant is not None:
         from cyris.config import OPERATOR_TENANT_ENV_VAR
 
         # Every command loads its config through the environment, so one name reaches them

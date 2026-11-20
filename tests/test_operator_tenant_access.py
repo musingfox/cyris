@@ -9,6 +9,7 @@ named at once and never retried. A run container, which names its tenant with
 """
 
 import json
+import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -407,6 +408,29 @@ def test_cyris_tenant_without_the_service_token_is_refused_and_sends_nothing(
 
     assert result.exit_code == 1
     assert "CYRIS_ACCESS_CLIENT_ID, CYRIS_ACCESS_CLIENT_SECRET" in result.output
+    assert worker.requests == []
+
+
+@pytest.mark.parametrize("tenant", ["", "Alpha", "../bravo", "a" * 41])
+def test_an_empty_or_invalid_tenant_is_refused_at_the_option(
+    tmp_path: Path, operator_env: None, monkeypatch: pytest.MonkeyPatch, tenant: str
+) -> None:
+    worker = FakeHostedWorker("alpha")
+    _seeded(worker)
+    _through(worker, monkeypatch)
+    config_path, sources_path = _files(tmp_path)
+
+    result = CliRunner().invoke(
+        app,
+        ["--tenant", tenant, "sources", "list"]
+        + ["--config", str(config_path), "--sources", str(sources_path)],
+    )
+
+    assert result.exit_code == 2, result.output
+    assert "a tenant id matches" in result.output
+    # Not the operator's own store either: nothing ran past the option.
+    assert "sources in" not in result.output
+    assert os.environ[OPERATOR_TENANT_ENV_VAR] == ""
     assert worker.requests == []
 
 
