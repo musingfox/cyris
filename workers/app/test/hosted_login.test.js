@@ -499,6 +499,38 @@ describe("the operator's routes and a tenant session", () => {
     expect(rows("members").map((row) => row.email)).toEqual(["ana@example.com", "bea@example.com"]);
   });
 
+  // The routes the other hosted cards added beside the sign-in: the operator's query route into a
+  // tenant's database above all, which a session of that very tenant must not open.
+  it("refuse a tenant session the query route into its own tenant, and every route the other cards added", async () => {
+    const { session } = await signIn("ana@example.com");
+    bound.TENANT_DB.gets.length = 0;
+    const query = { sql: "SELECT key, value FROM settings", params: [] };
+
+    const own = await call("/hosted/tenants/alpha/query", { method: "POST", session, body: query });
+    expect(own.status).toBe(403);
+    expect((await own.json()).error).toBe("forbidden");
+
+    for (const [method, path, body] of [
+      ["POST", "/hosted/tenants/bravo/query", query],
+      ["POST", "/hosted/tenants/alpha/schedule?times=07:00,19:00&timezone=UTC"],
+      ["GET", "/hosted/tenants/alpha/address"],
+      ["POST", "/hosted/tenants/alpha/rotate-address"],
+      ["POST", "/hosted/tenants/alpha/revoke-address"],
+      ["POST", "/hosted/tenants/alpha/newsletter-source?name=Letter&from=letter@news.example"],
+    ]) {
+      const response = await call(path, { method, session, body });
+      expect(response.status, path).toBe(403);
+      expect((await response.json()).error, path).toBe("forbidden");
+    }
+    expect(bound.TENANT_DB.gets).toEqual([]);
+    expect(rows("inbound_addresses")).toEqual([]);
+    expect(await tenantRegistry(env).tenant("alpha")).toMatchObject({ digest_times: null, timezone: null });
+
+    // The same query with the operator's Access sign-in is answered, so the 403 was the credential's.
+    const operator = await call("/hosted/tenants/alpha/query", { method: "POST", operator: true, body: query });
+    expect(operator.status).toBe(200);
+  });
+
   it("keep /hosted/ behind the Access JWT alone once Access is off /t/", async () => {
     // With Access only on /hosted/*, a /t/ request reaches the Worker with no JWT: it is served to
     // its session. A /hosted/ request with no JWT is refused, cookie or not; with one, it is answered.

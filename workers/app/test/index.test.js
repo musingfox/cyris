@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { env } from "./cloudflare_workers_stub.js";
 import { CyrisContainer } from "../src/index.js";
 
@@ -46,4 +46,35 @@ describe("the container's environment", () => {
     await new CyrisContainer(ctx, env).startRun({ CYRIS_ROLE: "run" });
     expect(ctx.container.starts[0].env.CYRIS_BEHIND_APP_WORKER).toBeUndefined();
   });
+});
+
+// The hosted cards gave Lifecycle hooks (onStop, onAbnormalStop, logFields) that only the hosted
+// Worker passes. The default Worker passes none, so a stop logs the one line it logged before.
+describe("the default Worker's container stop", () => {
+  for (const [what, monitor, line] of [
+    ["exits 0", () => Promise.resolve(), { exitCode: 0 }],
+    [
+      "exits non-zero",
+      () => Promise.reject(Object.assign(new Error("exited"), { exitCode: 3 })),
+      { exitCode: 3, reason: "Error: exited" },
+    ],
+  ]) {
+    it(`logs only "container stopped" when its run ${what}, with no hook to call`, async () => {
+      const log = vi.spyOn(console, "log").mockImplementation(() => {});
+      const ctx = fakeContext("run");
+      const waited = [];
+      ctx.waitUntil = (promise) => waited.push(promise);
+      ctx.container.monitor = monitor;
+      const object = new CyrisContainer(ctx, env);
+      object.lifecycle.listening = true;
+
+      await object.startRun({ CYRIS_ROLE: "run" });
+      await Promise.all(waited);
+
+      expect(object.lifecycle).toMatchObject({ onStop: null, onAbnormalStop: null, logFields: {} });
+      expect(log.mock.calls).toEqual([["container stopped", line]]);
+      expect(object.lifecycle.listening).toBe(false);
+      log.mockRestore();
+    });
+  }
 });

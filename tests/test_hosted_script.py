@@ -38,7 +38,8 @@ elif args[2:3] == ["deploy"]:
 
 # Records its argv and the config it reads on stdin, and answers each route: a report, the
 # tenant's latest page, which the report names by its hash, or the JSON body it was sent back.
-# NO_PAGE names a tenant whose page answers 404.
+# NO_PAGE names a tenant whose page answers 404. FULL_REPORT adds what the combined hosted Worker's
+# report also holds: the registry's runs and the tenant's queued newsletters.
 CURL = """#!/usr/bin/env python3
 import hashlib, json, os, sys
 args = sys.argv[1:]
@@ -87,6 +88,12 @@ report = {
     ],
     "latest_page": {"path": "/2026-11-18-morning.html", "sha256": hashlib.sha256(page).hexdigest()},
 }
+if os.environ.get("FULL_REPORT"):
+    report["runs"] = [{"id": 1, "tenant_id": tenant, "period": "morning", "date": "2026-11-18",
+                       "origin": "tick", "state": "done", "attempts": 1, "outcome": "exit 0"}]
+    report["newsletters"] = [{"id": "n1", "sender": "letter@news.example", "subject": "Issue 1",
+                              "date": "2026-11-18", "received_at": "2026-11-18T07:00:00Z",
+                              "held_at": None}]
 with open(out, "w") as body:
     json.dump(report, body)
 sys.stdout.write("200")
@@ -538,3 +545,61 @@ def test_members_lists_one_tenant_and_every_subcommand_names_its_arguments(repo:
     ]
     assert [m.returncode for m in missing] == [2, 2, 2]
     assert "usage: " in missing[0].stderr and "invite TENANT EMAIL" in missing[0].stderr
+
+
+def test_every_cards_subcommand_is_in_one_script_and_check_judges_the_full_report(
+    repo: Path,
+) -> None:
+    """The schedule, newsletter and sign-in cards' subcommands sit beside the rest, and `check`
+    reads each page through the operator's page route and judges the report the combined Worker
+    answers, its runs and newsletters included."""
+    usage = _run(repo, ["no-such-command"], [])[0]
+    # Each subcommand's own refusal of missing arguments, so none of them fell to the usage line.
+    refused = {
+        tuple(args): (_run(repo, args, []), says)
+        for args, says in (
+            (["schedule", "alpha"], "schedule TENANT HH:00,HH:00 TIMEZONE"),
+            (["newsletter-source", "alpha", "Letter"], "newsletter-source takes TENANT NAME FROM"),
+            (["address", "no-such-verb"], "address takes show, rotate or revoke"),
+            (["invite", "alpha"], "invite TENANT EMAIL"),
+            (["revoke", "alpha"], "revoke TENANT EMAIL"),
+            (["members"], "members TENANT"),
+        )
+    }
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+    checked, calls = _run(repo, ["check"], ["client-id.access", "client-SECRET"], FULL_REPORT="1")
+
+    assert usage.returncode == 2
+    listed = "|" + usage.stderr.split("hosted.sh ", 1)[1].strip() + "|"
+    for command in (
+        "deploy",
+        "secrets",
+        "containers",
+        "register",
+        "schedule TENANT TIMES TIMEZONE [CAP]",
+        "seed",
+        "run [morning|evening]",
+        "poll",
+        "address [show|rotate|revoke]",
+        "newsletter-source TENANT NAME FROM [HOMEPAGE]",
+        "check",
+        "invite TENANT EMAIL",
+        "revoke TENANT EMAIL",
+        "members TENANT",
+        "tail",
+        "delete",
+    ):
+        assert f"|{command}|" in listed, command
+    for args, ((done, sent), says) in refused.items():
+        assert done.returncode == 2, args
+        assert says in done.stderr and "deploy|secrets" not in done.stderr, args
+        assert sent == [], args
+    assert checked.returncode == 0, checked.stderr
+    assert [c["args"][-1] for c in calls if c["cmd"] == "curl"] == [
+        f"{URL}/hosted/tenants/alpha/report",
+        f"{URL}/hosted/tenants/alpha/page",
+        f"{URL}/hosted/tenants/bravo/report",
+        f"{URL}/hosted/tenants/bravo/page",
+    ]
+    assert "PASS alpha" in checked.stdout
+    assert "PASS bravo" in checked.stdout

@@ -14,10 +14,10 @@ import {
   SIGN_IN_TENANT_CAP,
   SIGN_IN_TTL_MS,
 } from "../src/hosted_session.js";
-import { REGISTRY_NAME, REGISTRY_SCHEMA, tenantRegistry } from "../src/tenant_registry.js";
+import { REGISTRY_NAME, REGISTRY_SCHEMA, TenantRegistry, tenantRegistry } from "../src/tenant_registry.js";
 import { TENANT_STATUSES } from "../src/tenant_status.js";
 import { DEFAULT_DAILY_RUN_CAP } from "../src/run_queue.js";
-import { SCHEMA_SQL, drainAlarms, namespace, registryNamespace, registryObject } from "./sql_storage.js";
+import { SCHEMA_SQL, alarmStorage, drainAlarms, namespace, registryNamespace, registryObject, sqlStorage } from "./sql_storage.js";
 
 const AT = new Date("2026-11-18T06:00:00Z");
 const STAMP = "2026-11-18T06:00:00+00:00";
@@ -240,6 +240,66 @@ describe("the registry's sign-in", () => {
 
     expect(registry.redeemSignIn("h-ana", "s-ana", { now: AT })).toBeNull();
     expect(rows(registry, "sessions")).toEqual([]);
+  });
+});
+
+// The registry's schema as main (62eefb3d) created it, before the hosted beta's cards: a deployed
+// registry may hold exactly these tables and rows when the combined Worker first starts it.
+const MAIN_REGISTRY_SCHEMA = `
+CREATE TABLE IF NOT EXISTS tenants (id TEXT PRIMARY KEY, status TEXT NOT NULL, digest_times TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS invites (code TEXT PRIMARY KEY, email TEXT NOT NULL, tenant_id TEXT, created_at TEXT NOT NULL, expires_at TEXT NOT NULL, used_at TEXT);
+CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, email TEXT NOT NULL, created_at TEXT NOT NULL, expires_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_sessions_tenant ON sessions(tenant_id);
+CREATE TABLE IF NOT EXISTS inbound_addresses (address TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, created_at TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS idx_inbound_addresses_tenant ON inbound_addresses(tenant_id);
+CREATE TABLE IF NOT EXISTS spend_rollup (tenant_id TEXT NOT NULL, month TEXT NOT NULL, cost_usd REAL NOT NULL DEFAULT 0, runs INTEGER NOT NULL DEFAULT 0, updated_at TEXT NOT NULL, PRIMARY KEY (tenant_id, month));
+`;
+
+describe("the registry's schema on a registry an earlier version created", () => {
+  // The object's own `_cf_*` tables and SQLite's are not the registry's.
+  const tables = (sql) =>
+    sql
+      .exec("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+      .toArray()
+      .map((row) => row.name)
+      .filter((name) => !name.startsWith("_cf_") && !name.startsWith("sqlite_"));
+  const columns = (sql, table) => sql.exec(`PRAGMA table_info(${table})`).toArray().map((row) => row.name);
+  const indexes = (sql) => sql.exec("SELECT name FROM sqlite_master WHERE type = 'index' AND sql IS NOT NULL ORDER BY name").toArray().map((row) => row.name);
+
+  it("gains every card's tables and columns, keeps its rows, and adds nothing on a second start", () => {
+    const sql = sqlStorage();
+    sql.exec(MAIN_REGISTRY_SCHEMA);
+    sql.exec("INSERT INTO tenants VALUES ('alpha', 'active', NULL, ?, ?)", STAMP, STAMP);
+    sql.exec("INSERT INTO tenants VALUES ('bravo', 'paused', NULL, ?, ?)", STAMP, STAMP);
+
+    const registry = new TenantRegistry({ storage: alarmStorage(sql) }, {});
+    const made = { tables: tables(sql), tenants: columns(sql, "tenants"), indexes: indexes(sql) };
+
+    const created = [...REGISTRY_SCHEMA.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1]).sort();
+    expect(made.tables).toEqual(created);
+    expect(made.tenants).toEqual(["id", "status", "digest_times", "created_at", "updated_at", "timezone", "daily_run_cap"]);
+    expect(registry.tenants().map(({ id, status, daily_run_cap }) => [id, status, daily_run_cap])).toEqual([
+      ["alpha", "active", DEFAULT_DAILY_RUN_CAP],
+      ["bravo", "paused", DEFAULT_DAILY_RUN_CAP],
+    ]);
+
+    // Each card's writes work on it: the schedule, an invite and its link, a newsletter address.
+    expect(registry.setSchedule("alpha", { times: ["07:00", "19:00"], timeZone: "Asia/Taipei" }).refused).toBeUndefined();
+    expect(registry.invite("alpha", "ana@example.com", { now: AT }).member).toMatchObject({ tenant_id: "alpha" });
+    expect(registry.issueSignIn("ana@example.com", "h-ana", { now: AT })).toMatchObject({ tenant: "alpha" });
+    expect(registry.rotateInboundAddress("alpha", { now: AT, address: "a".repeat(26) })).toMatchObject({ revoked: 0 });
+    const held = () => ["tenants", "members", "invites", "sign_in_asks", "inbound_addresses"].map(
+      (table) => sql.exec(`SELECT count(*) AS n FROM ${table}`).one().n,
+    );
+    const before = held();
+
+    expect(() => new TenantRegistry({ storage: alarmStorage(sql) }, {})).not.toThrow();
+    expect({ tables: tables(sql), tenants: columns(sql, "tenants"), indexes: indexes(sql) }).toEqual(made);
+    expect(held()).toEqual(before);
+    expect(new TenantRegistry({ storage: alarmStorage(sql) }, {}).tenant("alpha")).toMatchObject({
+      digest_times: '["07:00","19:00"]',
+      timezone: "Asia/Taipei",
+    });
   });
 });
 
