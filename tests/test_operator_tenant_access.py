@@ -38,7 +38,7 @@ from cyris.config import (
     resolve_config,
 )
 from cyris.domain.models import Article, ArticleState, Lane
-from cyris.entrypoints.cli import app
+from cyris.entrypoints.cli import OPERATOR_REFUSED_COMMANDS, app
 
 pytestmark = pytest.mark.integration
 
@@ -408,6 +408,43 @@ def test_cyris_tenant_without_the_service_token_is_refused_and_sends_nothing(
 
     assert result.exit_code == 1
     assert "CYRIS_ACCESS_CLIENT_ID, CYRIS_ACCESS_CLIENT_SECRET" in result.output
+    assert worker.requests == []
+
+
+# What each refused command needs on its command line to get past parsing to its body.
+REFUSED_ARGS = {"regenerate": ["2026-11-20", "morning", "--mode", "rerender"]}
+
+
+@pytest.mark.parametrize("command", OPERATOR_REFUSED_COMMANDS)
+def test_cyris_tenant_refuses_what_the_hosted_worker_runs_and_sends_nothing(
+    tmp_path: Path, operator_env: None, monkeypatch: pytest.MonkeyPatch, command: str
+) -> None:
+    worker = FakeHostedWorker("alpha")
+    _seeded(worker)
+    _through(worker, monkeypatch)
+
+    result = CliRunner().invoke(
+        app, ["--tenant", "alpha", *command.split(), *REFUSED_ARGS.get(command, [])]
+    )
+
+    assert result.exit_code == 2, result.output
+    assert f"cyris {command} is refused with --tenant alpha" in result.output
+    assert "race the hosted tick" in result.output
+    assert worker.requests == []
+
+
+def test_the_refused_commands_are_refused_by_the_environment_alone_too(
+    tmp_path: Path, operator_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A script, or a shell that exported it, names the tenant without --tenant.
+    monkeypatch.setenv(OPERATOR_TENANT_ENV_VAR, "alpha")
+    worker = FakeHostedWorker("alpha")
+    _through(worker, monkeypatch)
+
+    result = CliRunner().invoke(app, ["run", "--period", "morning"])
+
+    assert result.exit_code == 2
+    assert "cyris run is refused with --tenant alpha" in result.output
     assert worker.requests == []
 
 

@@ -75,6 +75,19 @@ How it is built:
   `[store] operator`. `CYRIS_OPERATOR_TENANT` beside `CYRIS_STORE_TENANT_ID` stops the load,
   because a run container is its own tenant's. A run container never has the name:
   `hostedContainerEnv` is an allow-list.
+* Seven commands are refused with a tenant named (`OPERATOR_REFUSED_COMMANDS` in
+  `entrypoints/cli.py`): `run`, `regenerate`, `llm-compare`, `articles score`, `ingest`,
+  `promote-sync` and `triage-ui`. Each one starts a digest run, a step of the hourly tick, a
+  scheduler or a server, or writes model output with this machine's keys. For a tenant the
+  hosted Worker owns all of these: its tick and its run route start the tenant's runs, and its
+  routes serve the tenant's pages. Run from the operator's machine, a run would race the hosted
+  tick on the tenant's tables, because this machine's run lock is a local file. It would also
+  spend the operator's own model keys outside the tenant's budget. Each command exits 2 before
+  it reads its config, so nothing is sent, and the message says why and names the run route.
+  `CYRIS_OPERATOR_TENANT` set without `--tenant` is refused the same way. The read-only
+  previews (`vote-sim`, `topic-sim`, `embed-compare`) and the commands that read or change
+  rows (`sources`, `settings`, `articles` but `score`, `labels`, `config show`, `doctor`) are
+  allowed.
 * `cyris --tenant <id> doctor` reports on that tenant alone (`_tenant_checks`): its sources,
   settings, model, store, feed health and last run, read through the route. It skips the checks
   of the operator's own machine, its files, Workers, publishing, channels and keys, because the
@@ -82,8 +95,12 @@ How it is built:
 
 ### Consequences
 
-* Good, because every `cyris` command, and every store under it, reaches a tenant with no change
-  to `service_layer/`, `domain/` or any command's signature.
+* Good, because every `cyris` command that reads or changes rows, and every store under it,
+  reaches a tenant with no change to `service_layer/`, `domain/` or any command's signature.
+* Bad, because the refused list is kept by hand. A new command that starts a run, a scheduler
+  or a server must be added to `OPERATOR_REFUSED_COMMANDS` and call `_refuse_as_operator`.
+  The test runs every listed command with `--tenant` and checks its refusal. It cannot find a
+  command missing from the list.
 * Good, because the tenant's answers are the gateway's, from one function, so a tenant read by
   the operator and by its own run cannot drift apart.
 * Good, because a missing credential is refused before any request. A wrong one is refused by
@@ -121,8 +138,10 @@ How it is built:
   container's tenant kept on its gateway, and both names together refused. Through the CLI it
   checks that `cyris --tenant alpha sources list` reads only alpha's rows and that
   `articles accept` writes only alpha's. `cyris --tenant alpha doctor` reports on alpha.
-  Without the service token it exits 1 having sent nothing. An empty or invalid `--tenant` is
-  refused at the option.
+  Without the service token it exits 1 having sent nothing. Each of the seven refused commands
+  exits 2 with its reason and sends nothing, and so does `run` when only
+  `CYRIS_OPERATOR_TENANT` names the tenant. An empty or invalid `--tenant` is refused at the
+  option.
 
 ## Pros and Cons of the Options
 

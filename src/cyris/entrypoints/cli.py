@@ -36,6 +36,23 @@ DIGEST_LOCK_WAIT_SECONDS = 30 * 60
 DIGEST_LOCK_POLL_SECONDS = 5
 
 
+# The commands the operator may not aim at a hosted tenant (ADR-0036). Each starts a digest run,
+# a step of the hourly tick, a scheduler or a server, or writes model output with this machine's
+# keys. The hosted Worker owns all of these for a tenant: its tick and run route start the
+# tenant's runs under the tenant's own lock and keys, and its routes serve the tenant's pages.
+# From here, a run would race the tick on the tenant's tables, since this machine's run lock is a
+# local file, and would spend the operator's keys outside the tenant's budget.
+OPERATOR_REFUSED_COMMANDS = (
+    "run",
+    "regenerate",
+    "llm-compare",
+    "articles score",
+    "ingest",
+    "promote-sync",
+    "triage-ui",
+)
+
+
 def _check_tenant(value: str | None) -> str | None:
     """An operator's `--tenant` names one tenant id, or the option is refused before any request."""
     from cyris.config import TENANT_ID
@@ -46,6 +63,22 @@ def _check_tenant(value: str | None) -> str | None:
     return value
 
 
+def _refuse_as_operator(command: str) -> None:
+    """Stop `command` before it reads anything when the operator named a tenant."""
+    from cyris.config import OPERATOR_TENANT_ENV_VAR
+
+    tenant = os.environ.get(OPERATOR_TENANT_ENV_VAR, "")
+    if not tenant:
+        return
+    _usage_error(
+        f"cyris {command} is refused with --tenant {tenant}: the hosted Worker starts and "
+        "schedules a tenant's runs and serves its pages. Run here, it would race the hosted "
+        "tick on the tenant's tables and spend this machine's model keys outside the "
+        f"tenant's budget. Start a run with POST /hosted/tenants/{tenant}/run "
+        "(docs/hosted-tenants.md)."
+    )
+
+
 @app.callback()
 def main(
     tenant: Annotated[
@@ -54,7 +87,8 @@ def main(
             "--tenant",
             help="As the hosted operator, run the command on this tenant's database, through "
             "the hosted Worker on CYRIS_STORE_HOSTED_DOMAIN with the Access service token "
-            "CYRIS_ACCESS_CLIENT_ID and CYRIS_ACCESS_CLIENT_SECRET",
+            "CYRIS_ACCESS_CLIENT_ID and CYRIS_ACCESS_CLIENT_SECRET. Refused for "
+            + ", ".join(OPERATOR_REFUSED_COMMANDS),
             callback=_check_tenant,
         ),
     ] = None,
@@ -277,6 +311,7 @@ def run(
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
 ) -> None:
     """Run the full pipeline: fetch, score, route, and digest."""
+    _refuse_as_operator("run")
     if output is not None and not dry_run:
         _usage_error("--output is only available with --dry-run")
     if date is not None:
@@ -471,6 +506,7 @@ def regenerate(
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
 ) -> None:
     """Regenerate a stored digest: re-render its page, or rerun it over its recorded inputs."""
+    _refuse_as_operator("regenerate")
     from cyris.service_layer.schedule import PERIOD_ORDER
 
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
@@ -555,6 +591,7 @@ def promote_sync(
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
 ) -> None:
     """Sync promote-button clicks from the cloud Worker into the article store (no fetch/LLM)."""
+    _refuse_as_operator("promote-sync")
     _setup_logging(verbose)
 
     from cyris.bootstrap import build_promotion_sync, load_effective_config
@@ -593,6 +630,7 @@ def ingest_command(
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
 ) -> None:
     """Poll the feeds and store new articles for the next digest (no LLM, no output)."""
+    _refuse_as_operator("ingest")
     _setup_logging(verbose)
 
     from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource, TenantRssSource
@@ -954,6 +992,7 @@ def llm_compare(
     artifact you read. The configured provider is left alone — switching is a
     `cyris.toml` edit you make after reading it.
     """
+    _refuse_as_operator("llm-compare")
     _setup_logging(verbose)
 
     from datetime import UTC, datetime, timedelta
@@ -1173,6 +1212,7 @@ def triage_ui(
     /labels, the blind-label page; /interest, the interest map; and, when [html_output] is
     enabled, the archive pages in its output_dir. On a local store it also runs the hourly
     tick, unless --no-schedule says something else does."""
+    _refuse_as_operator("triage-ui")
     _setup_logging(verbose)
 
     from cyris.adapters.store.areas import D1AreaStore
@@ -1539,6 +1579,7 @@ def articles_score(
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Debug logging")] = False,
 ) -> None:
     """Score non-news articles via AI for triage ranking."""
+    _refuse_as_operator("articles score")
     _setup_logging(verbose)
 
     from cyris.adapters.store.areas import D1AreaStore
