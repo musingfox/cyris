@@ -163,6 +163,17 @@ describe("signing in to a hosted tenant", () => {
     expect(rows("invites").map((row) => row.email)).toEqual(["ana@example.com"]);
   });
 
+  it("opens the tenant the registry lists the address for, whatever tenant the request names", async () => {
+    await call("/login", { method: "POST", form: { email: "ana@example.com", tenant: "bravo" } });
+    const token = linkToken(bound.MAIL.sent.at(-1));
+
+    const confirmed = await call("/login/confirm", { method: "POST", form: { token, tenant: "bravo" } });
+
+    expect(confirmed.headers.get("Location")).toBe("/t/alpha/");
+    expect(rows("sessions").map((row) => [row.email, row.tenant_id])).toEqual([["ana@example.com", "alpha"]]);
+    expect((await call("/t/bravo/", { session: cookieOf(confirmed) })).status).toBe(404);
+  });
+
   it("opens the link into the reader's own latest digest, through a URL with no token", async () => {
     const { token, confirmed, session } = await signIn("ana@example.com");
 
