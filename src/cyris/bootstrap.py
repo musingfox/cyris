@@ -247,6 +247,22 @@ def build_ask_clef() -> AskClef | None:
 
 def build_d1_client(cfg: Config) -> Any:
     """The D1 connection: a hosted tenant's Durable Object, Cloudflare's D1, or the local file."""
+    if cfg.app.store.operator:
+        # The operator, outside any run, named this tenant (`cyris --tenant`): the hosted
+        # Worker's Access-checked route on the hosted domain answers for its database (ADR-0036).
+        from cyris.adapters.store.tenant_gateway import OperatorD1Client
+        from cyris.config import OPERATOR_TOKEN_ENV_VARS
+
+        if missing := cfg.missing_store_keys():
+            raise ValueError(
+                f"Missing required environment variables: {', '.join(missing)}, the Access "
+                f"service token that reaches tenant {cfg.app.store.tenant_id} as the operator"
+            )
+        client_id, client_secret = (os.environ[name] for name in OPERATOR_TOKEN_ENV_VARS)
+        return OperatorD1Client(
+            cfg.app.store.tenant_id, cfg.app.store.hosted_domain, client_id, client_secret
+        )
+
     if cfg.app.store.is_hosted:
         # The hosted Worker started this container with the tenant's id and intercepts the
         # gateway's host for it; the container holds no D1 credentials (ADR-0028).

@@ -117,6 +117,16 @@ HOSTED_B_GRADE_ENV_VARS: dict[str, str] = {
     "store.hosted_domain": "CYRIS_STORE_HOSTED_DOMAIN",
 }
 
+# The operator's way into one hosted tenant from outside its run container: `cyris --tenant`
+# sets it. The store is then that tenant's Durable Object, reached through the hosted Worker's
+# Access-checked query route on `CYRIS_STORE_HOSTED_DOMAIN` instead of the run's gateway
+# (ADR-0036). No run container has it: `hostedContainerEnv` is an allow-list without it.
+OPERATOR_TENANT_ENV_VAR = "CYRIS_OPERATOR_TENANT"
+
+# The operator's credential on that route: the Access service token (grade C, script-only)
+# that `cyris doctor --deployment` also sends, as `CF-Access-Client-Id` and `-Secret`.
+OPERATOR_TOKEN_ENV_VARS: tuple[str, str] = ("CYRIS_ACCESS_CLIENT_ID", "CYRIS_ACCESS_CLIENT_SECRET")
+
 # A hosted tenant's id: what the hosted Worker names a tenant's Durable Objects by and puts
 # in the gateway's path. The same pattern as `TENANT` in workers/app/src/tenant_db.js.
 TENANT_ID = re.compile(r"[a-z0-9-]{1,40}")
@@ -287,6 +297,10 @@ class StoreConfig(BaseModel):
     # at (`https://<it>/t/<tenant>/<issue>`). From CYRIS_STORE_HOSTED_DOMAIN, which the hosted
     # Worker forwards from its own variable of that name (ADR-0029).
     hosted_domain: str = ""
+    # Set only by `OPERATOR_TENANT_ENV_VAR`, beside the tenant id it names: this process is the
+    # operator's, outside the tenant's run, so the tables are reached through the hosted
+    # Worker's operator route with the Access service token, not the run's gateway (ADR-0036).
+    operator: bool = False
 
     @model_validator(mode="before")
     @classmethod
@@ -300,7 +314,21 @@ class StoreConfig(BaseModel):
                 f"{HOSTED_B_GRADE_ENV_VARS['store.tenant_id']} on each tenant's run container, "
                 "and nothing else names a tenant"
             )
-        return _fill_from_env(
+        if isinstance(data, dict) and "operator" in data:
+            raise ValueError(
+                f"[store] operator cannot be set in a config file: {OPERATOR_TENANT_ENV_VAR} "
+                "(cyris --tenant) names the tenant the operator reaches"
+            )
+        operator_tenant = os.environ.get(OPERATOR_TENANT_ENV_VAR, "")
+        run_tenant_env = HOSTED_B_GRADE_ENV_VARS["store.tenant_id"]
+        if operator_tenant and os.environ.get(run_tenant_env):
+            # A run container is its own tenant's; which one would this process be?
+            raise ValueError(
+                f"{OPERATOR_TENANT_ENV_VAR} and {run_tenant_env} are both set: the hosted Worker "
+                "sets the second on a tenant's run container, and the operator names a tenant "
+                "with the first, never both"
+            )
+        filled = _fill_from_env(
             data,
             {
                 "backend": B_GRADE_ENV_VARS["store.backend"],
@@ -310,6 +338,11 @@ class StoreConfig(BaseModel):
                 "hosted_domain": HOSTED_B_GRADE_ENV_VARS["store.hosted_domain"],
             },
         )
+        if operator_tenant and isinstance(filled, dict):
+            # The backend too: a tenant's tables are its Durable Object and nothing else, and the
+            # operator's own file's backend names the operator's own store, not the tenant's.
+            filled.update(tenant_id=operator_tenant, operator=True, backend="d1")
+        return filled
 
     @field_validator("sqlite_path", mode="before")
     @classmethod
@@ -654,6 +687,9 @@ class SourcesConfig(BaseModel):
 
 def _missing_store_keys(app_config: "AppConfig") -> list[str]:
     """Env vars a Cloudflare D1 store needs and does not have; empty otherwise."""
+    # The operator reaching a tenant needs the Access service token its route is signed in with.
+    if app_config.store.operator:
+        return [name for name in OPERATOR_TOKEN_ENV_VARS if not os.environ.get(name, "").strip()]
     # A hosted tenant's store needs none: the Worker's gateway holds the binding.
     if not app_config.store.is_cloudflare or app_config.store.is_hosted:
         return []

@@ -254,6 +254,50 @@ The same paths under `/t/bravo/` are bravo's. Until tenant sessions land, Access
 operator, so these are your pages to check, not a tenant's sign-in. The vote buttons and the
 Settings link stay hidden, because the hosted Worker has no `/api/vote` or `/settings` yet.
 
+### Reading or changing one tenant from the CLI (optional)
+
+A `cyris` command that reads or changes rows can run on one tenant's database. Name the tenant
+with `--tenant`, before the command. Each query the command makes goes to
+`POST /hosted/tenants/<tenant>/query` on the
+hosted Worker. It signs in with the same service token the script uses. Why it works this way is
+[ADR-0036](decisions/0036-the-operator-reaches-a-tenant-through-an-access-checked-query-route.md).
+This needs the Python environment, `uv sync`, once.
+
+```bash
+export CYRIS_STORE_HOSTED_DOMAIN="$(sed -n 's|^HOSTED_URL=https://||p' .env.hosted)"
+read -r -p "CF-Access-Client-Id: " CYRIS_ACCESS_CLIENT_ID && export CYRIS_ACCESS_CLIENT_ID
+read -rs -p "CF-Access-Client-Secret: " CYRIS_ACCESS_CLIENT_SECRET && echo && export CYRIS_ACCESS_CLIENT_SECRET
+uv run cyris --tenant alpha doctor
+uv run cyris --tenant alpha sources list
+```
+
+`doctor` reports on alpha alone: its sources, settings, model, articles, feed health and last
+run. It leaves your own machine's files, Workers and keys out, because the hosted Worker wires a
+tenant's run. A command that writes, such as `uv run cyris --tenant alpha articles accept <url>`,
+writes into alpha's database and no other.
+
+Seven commands are refused with `--tenant`: `run`, `regenerate`, `llm-compare`,
+`articles score`, `ingest`, `promote-sync` and `triage-ui`. The hosted Worker starts and
+schedules a tenant's runs and serves its pages. One of these commands, run here, would race the
+hourly tick on the tenant's tables, because this machine's run lock is a local file. It would
+also spend your own model keys outside the tenant's budget. Each one exits 2 with that reason
+before it sends anything. To run a tenant's digest, use step 7's `scripts/hosted.sh run`, which
+calls `POST /hosted/tenants/<tenant>/run`.
+
+Export the two values in the shell, as above. A command run from the root of this checkout also
+reads `.env`, but only for a name not already set. If `.env` holds production's service token and
+you skip the `read` lines, that token is sent instead, and the trial's Access refuses it. The
+refusals:
+
+- an empty or malformed tenant id, such as `--tenant ""`, is refused at the option, so the
+  command never falls back to your own store;
+- without `CYRIS_ACCESS_CLIENT_ID` and `CYRIS_ACCESS_CLIENT_SECRET`, the command stops and names
+  them, and nothing is sent;
+- a token Access or the Worker refuses stops the command at the first query, with the HTTP
+  status and its reason. It is never retried;
+- a tenant the registry does not hold is answered 404, as on every other tenant route. A paused
+  tenant is still answered.
+
 ## 9. Tear down (when you are done)
 
 ```bash

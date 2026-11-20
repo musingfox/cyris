@@ -27,7 +27,14 @@ from typing import Literal, get_args
 import httpx
 
 from cyris.adapters.embedding import bounded_detail, provider_message, scrub_secrets
-from cyris.config import B_GRADE_ENV_VARS, GRADE_D_KEYS, Config, can_create, exists
+from cyris.config import (
+    B_GRADE_ENV_VARS,
+    GRADE_D_KEYS,
+    HOSTED_SEED_HINT,
+    Config,
+    can_create,
+    exists,
+)
 from cyris.domain.models import Lane
 from cyris.service_layer.ports import EmbeddingRejectedError
 
@@ -55,7 +62,10 @@ def _writable(path: Path) -> bool:
 
 
 def _check_sources(cfg: Config) -> Check:
-    if cfg.app.store.is_cloudflare:
+    if cfg.app.store.is_hosted:
+        # No /settings serves a tenant yet, and `sources push` writes D1.
+        home, fix = cfg.app.store.sql_home, HOSTED_SEED_HINT
+    elif cfg.app.store.is_cloudflare:
         home, fix = "D1", "Add one on /settings, or run `cyris sources push`."
     else:
         # The push commands write to Cloudflare D1, never to a local install's file.
@@ -103,11 +113,18 @@ def _check_settings(cfg: Config) -> Check:
             "settings",
             "fail",
             f"missing in {home}: {missing}",
-            "Set them on /settings, or run `cyris settings push`."
-            if cfg.app.store.is_cloudflare
-            else "Walk the wizard at /onboarding, or set them on /settings.",
+            _settings_fix(cfg),
         )
     return Check("settings", "ok", _settings_ok(cfg, home))
+
+
+def _settings_fix(cfg: Config) -> str:
+    if cfg.app.store.is_hosted:
+        # No /settings serves a tenant yet, and `settings push` writes D1.
+        return HOSTED_SEED_HINT
+    if cfg.app.store.is_cloudflare:
+        return "Set them on /settings, or run `cyris settings push`."
+    return "Walk the wizard at /onboarding, or set them on /settings."
 
 
 def _settings_ok(cfg: Config, home: str) -> str:
@@ -577,7 +594,10 @@ def _check_store(cfg: Config) -> Check:
             f"article store ({backend})",
             "warn",
             f"0 articles — nothing in this database{where}",
-            f"Expected on a first deploy. Otherwise check [store] {key} "
+            # A tenant's database is named by its id alone, so there is no key to check.
+            "Expected before the tenant's first run."
+            if store.is_hosted
+            else f"Expected on a first deploy. Otherwise check [store] {key} "
             "before the next run writes here.",
         )
     return Check(f"article store ({backend})", "ok", f"{total} articles{where} — {summary}")
@@ -975,6 +995,66 @@ def _check_last_run(cfg: Config, online_sha: str) -> Check:
     return Check(name, "ok", detail)
 
 
+def _tenant_checks(cfg: Config) -> list[Check]:
+    """The report on one hosted tenant, asked by the operator from outside its run (ADR-0036).
+
+    It checks what the tenant's own database decides: its sources, settings, model, store, feed
+    health and last run, each read through the hosted Worker's operator route. The other
+    checks are of this machine's own wiring, its files, Workers, publishing, channels and keys,
+    and say nothing of a tenant, whose run the hosted Worker wires (`hostedContainerEnv`).
+    """
+    store = cfg.app.store
+    return [
+        Check("tenant", "ok", f"{store.tenant_id}, read as the operator on {store.hosted_domain}"),
+        _check_sources(cfg),
+        _check_settings(cfg),
+        _check_tenant_llm(cfg),
+        _check_vote_similarity(cfg),
+        _check_store(cfg),
+        _check_feed_health(cfg),
+        _check_tenant_last_run(cfg),
+        Check(
+            "this machine",
+            "skip",
+            "not asked — the hosted Worker wires a tenant's run, not this machine's files, "
+            "Workers, keys or channels",
+        ),
+    ]
+
+
+def _check_tenant_llm(cfg: Config) -> Check:
+    """The tenant's model, from its settings; its key is the hosted Worker's, not this machine's."""
+    missing = {"llm_provider.provider", "llm_provider.model"} & set(cfg.missing_settings)
+    llm = cfg.app.llm_provider
+    if missing or llm is None:
+        return Check("llm provider", "skip", "not set — see settings")
+    if llm.provider == "none":
+        return Check("llm provider", "ok", "none — digests list plain excerpts, by choice")
+    return Check(
+        "llm provider",
+        "ok",
+        f"{llm.provider} · {llm.model or 'default model'}, keyed by the hosted Worker",
+    )
+
+
+def _check_tenant_last_run(cfg: Config) -> Check:
+    """The tenant's last real run, as its own `digest_runs` holds it."""
+    from cyris import bootstrap
+    from cyris.adapters.store.runs import D1RunLog
+
+    name = "last run"
+    try:
+        last = D1RunLog(bootstrap.build_d1_client(cfg), "").last()
+    except Exception as e:  # noqa: BLE001 - an unreadable history is unknown, not broken
+        return Check(name, "warn", f"could not read digest_runs — {e}")
+    if last is None:
+        return Check(name, "skip", f"no run recorded in {cfg.app.store.sql_home} yet")
+    detail = f"{last['status']} at {last['finished_at']}"
+    if last["status"] == "ok":
+        return Check(name, "ok", detail)
+    return Check(name, "warn", detail, "The run's reason is in the tenant's Workers Logs.")
+
+
 def _check_output_sink(cfg: Config) -> Check:
     """Does the digest reach anywhere a person can read it?
 
@@ -1032,6 +1112,8 @@ async def run_checks(
     cfg: Config, config_path: Path | None = None, deployment_url: str = ""
 ) -> list[Check]:
     """Every check, in the order a reader would want to see them."""
+    if cfg.app.store.operator:
+        return _tenant_checks(cfg)
     checks = [
         *_check_build(cfg, config_path),
         _check_config_file(cfg, config_path),
