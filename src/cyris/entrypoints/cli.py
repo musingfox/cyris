@@ -37,8 +37,24 @@ DIGEST_LOCK_POLL_SECONDS = 5
 
 
 @app.callback()
-def main() -> None:
+def main(
+    tenant: Annotated[
+        str,
+        typer.Option(
+            "--tenant",
+            help="As the hosted operator, run the command on this tenant's database, through "
+            "the hosted Worker on CYRIS_STORE_HOSTED_DOMAIN with the Access service token "
+            "CYRIS_ACCESS_CLIENT_ID and CYRIS_ACCESS_CLIENT_SECRET",
+        ),
+    ] = "",
+) -> None:
     """Cyris — AI-powered information digest agent."""
+    if tenant:
+        from cyris.config import OPERATOR_TENANT_ENV_VAR
+
+        # Every command loads its config through the environment, so one name reaches them
+        # all; StoreConfig checks the id and refuses it inside a tenant's run (ADR-0036).
+        os.environ[OPERATOR_TENANT_ENV_VAR] = tenant
 
 
 def _echo_d1_failure(error: Exception) -> None:
@@ -48,8 +64,17 @@ def _echo_d1_failure(error: Exception) -> None:
     has none of them, and the error names the file to look at instead.
     """
     from cyris.adapters.store.local_d1 import LocalD1Error
-    from cyris.adapters.store.tenant_gateway import TenantDbError
+    from cyris.adapters.store.tenant_gateway import OperatorQueryError, TenantDbError
 
+    if isinstance(error, OperatorQueryError):
+        typer.echo(f"✗ tenant database — {error}")
+        typer.echo(
+            "  The operator reaches a tenant through the hosted Worker on "
+            "CYRIS_STORE_HOSTED_DOMAIN, signed in with the Access service token "
+            "CYRIS_ACCESS_CLIENT_ID and CYRIS_ACCESS_CLIENT_SECRET, and only a tenant "
+            "the registry holds (docs/hosted-tenants.md)."
+        )
+        return
     if isinstance(error, TenantDbError):
         typer.echo(f"✗ tenant database — {error}")
         typer.echo(
