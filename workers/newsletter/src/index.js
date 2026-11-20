@@ -1,40 +1,14 @@
 // Cloudflare Email Worker: receives forwarded newsletters, stores parsed fields
 // in KV; cyris pulls them via GET /newsletters and clears them via POST /ack.
 // Mirrors workers/promote (Bearer auth, list/ack over KV), plus an email() handler.
-import PostalMime from "postal-mime";
+// The record each message is stored as is record.js's, which the hosted Worker shares.
+import { newsletterRecord } from "./record.js";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
 };
-
-// Email headers whose values we keep (all others are stored as key-only).
-const VALUE_HEADERS = new Set([
-  "archived-at",
-  "list-id",
-  "list-post",
-  "list-archive",
-  "list-help",
-  "x-mc-user",
-  "x-campaignid",
-  "x-campaign",
-  "feedback-id",
-  "content-type",
-  "x-mailer",
-]);
-
-function safeHeaders(headers) {
-  return (Array.isArray(headers) ? headers : [])
-    .filter((header) => typeof header?.key === "string")
-    .map((header) => {
-      const record = { key: header.key };
-      if (VALUE_HEADERS.has(header.key.toLowerCase()) && typeof header.value === "string") {
-        record.value = header.value;
-      }
-      return record;
-    });
-}
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -43,30 +17,11 @@ function json(data, status = 200) {
   });
 }
 
-async function sha256(text) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
-}
-
 export default {
   // Inbound email from Cloudflare Email Routing.
   async email(message, env) {
-    const parsed = await PostalMime.parse(message.raw);
-    // Prefer the original sender's From header (survives Gmail auto-forward);
-    // fall back to the envelope sender.
-    const from = parsed.from?.address || message.from || "";
-    const record = {
-      from,
-      subject: parsed.subject || "",
-      html: parsed.html || "",
-      text: parsed.text || "",
-      date: (parsed.date ? new Date(parsed.date) : new Date()).toISOString(),
-      headers: safeHeaders(parsed.headers),
-      raw_size: typeof message.rawSize === "number" ? message.rawSize : null,
-    };
-    // Dedup by sender+subject+date so a re-delivered copy overwrites, not duplicates.
-    const key = `nl:${await sha256(`${from}|${record.subject}|${record.date}`)}`;
-    await env.NEWSLETTERS.put(key, JSON.stringify({ id: key, ...record }));
+    const { id, record } = await newsletterRecord(message);
+    await env.NEWSLETTERS.put(id, JSON.stringify({ id, ...record }));
   },
 
   // HTTP: cyris pulls (GET /newsletters) and clears (POST /ack).
