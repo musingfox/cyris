@@ -52,7 +52,9 @@ How it is built:
 
 * The hosted Worker answers `POST /hosted/tenants/<tenant>/query` with a body of
   `{sql, params}` (`workers/app/src/hosted_router.js`). It runs the same Access JWT check as
-  every hosted route, then refuses a tenant the registry does not hold with 404, before any
+  every hosted route. It refuses a request a browser sent from another site with 403, as the
+  invite list's routes do (ADR-0033), since the Access cookie would otherwise let any page post
+  it SQL. Then it refuses a tenant the registry does not hold with 404. Both happen before any
   object is reached. A paused tenant is still answered, as its seed and report routes are. The
   answer comes from `answerQuery` (`workers/app/src/tenant_db.js`), which the run's gateway now
   answers through too. So the operator reads `{rows, changes}`, and D1's error shape, exactly as

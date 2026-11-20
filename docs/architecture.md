@@ -1495,11 +1495,14 @@ its schedule and run cap in the registry, seed it, queue one run with `?period=`
 checked against the tenant's time zone, poll its RSS feeds once, report what its database holds,
 with its runs from the registry, answer one `{sql, params}` on it, read its latest page, invite,
 revoke or list the addresses on its invite list, read, rotate or revoke its newsletter address,
-and add a newsletter source). Invite and revoke also refuse a request a browser sent from another
-site, an `Origin` that is not the Worker's or a `Sec-Fetch-Site` of `cross-site` or `same-site`,
-because the Access cookie is `SameSite=None` and the invite list decides who enters a tenant;
-curl sends neither header, so `scripts/hosted.sh` passes. The other POST routes do not check it
-yet. Each tenant's site at `/t/<tenant>/` takes a tenant session and no Access JWT: it is read
+and add a newsletter source). Every POST route the hosted cards added (query, schedule, rotate
+and revoke the address, newsletter-source, invite and revoke) also refuses a request a browser
+sent from another site, an `Origin` that is not the Worker's or a `Sec-Fetch-Site` of
+`cross-site` or `same-site`, before any tenant is looked up: the Access cookie is `SameSite=None`,
+so a page anywhere could otherwise post them a `text/plain` body with the operator's sign-in, and
+`query` runs any SQL. curl and `cyris --tenant` send neither header, so `scripts/hosted.sh`
+passes. The first hosted Worker's POST routes, register, seed, run and poll, do not check it yet
+(M1 of the deferred hardening card, ADR-0033). Each tenant's site at `/t/<tenant>/` takes a tenant session and no Access JWT: it is read
 from the tenant's own `hosted_pages` (§4) and sized with the tenant's own type size, as the
 default Worker sizes its pages. A request with no live session is sent to `/login` before any
 tenant is looked up, and a session gets one fixed 404 for every path of any tenant but its own,

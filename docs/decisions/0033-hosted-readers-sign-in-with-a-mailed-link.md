@@ -99,7 +99,8 @@ How it works:
   also refuse a request a browser sent from another site, by the sign-in's own check (below): the
   Access cookie is `SameSite=None` by default, so without it a page on any site could post a
   `text/plain` body with the operator's sign-in and put its own address on a tenant's list. curl
-  sends no `Origin` and no `Sec-Fetch-Site`, so `scripts/hosted.sh` passes. `GET
+  sends no `Origin` and no `Sec-Fetch-Site`, so `scripts/hosted.sh` passes. The other POST routes
+  the hosted cards added refuse the same request too (More Information). `GET
   .../members` lists a tenant's addresses. An address belongs to one tenant: `members.email` is
   the key. The registry alone answers which tenant a sign-in opens, so no request names one.
 * **The link.** `POST /login` takes an address. If the registry's list holds it, the Worker
@@ -255,6 +256,10 @@ self-hosted deployment, production, trials and forks, ADR-0015 is unchanged: `wr
     Access JWT even when it carries one;
   * an invite or a revoke posted from another site with the operator's Access JWT is refused,
     and nothing is written or mailed;
+  * a `text/plain` POST from another site, with the operator's Access JWT, to `query`,
+    `schedule`, `rotate-address`, `revoke-address` or `newsletter-source` is refused with 403.
+    No SQL runs, since the tenant's database is never reached, and no registry row changes.
+    The same routes still answer curl's requests and this site's;
   * an Access JWT opens no `/t/` page;
   * the cookie's attributes are set, the token is in no URL and no log line, and the registry
     keeps no token;
@@ -317,6 +322,16 @@ self-hosted deployment, production, trials and forks, ADR-0015 is unchanged: `wr
 * Unverified here: whether a browser runs every script of a sandboxed digest page as it does an
   unsandboxed one, which needs a browser; the Access dashboard's labels for a path-scoped
   destination on `workers.dev`; and whether Workers Logs records request headers.
-* Left to other cards: the operator's own identity check (H1's operator allow-list), CSRF
-  protection on the operator's other POST routes, `register`, `seed`, `run` and `poll` (M1; the
-  invite list's two routes have it here), and the tenant's language on the sign-in pages.
+* The same check covers every state-changing operator POST route the hosted cards added beside
+  the invite list. These are `query`, which runs any SQL on a tenant's database (ADR-0036),
+  `schedule`, `rotate-address`, `revoke-address` and `newsletter-source`
+  (`SAME_SITE_ONLY` in `workers/app/src/hosted_router.js`). The integration review found that
+  `query` took the attack this ADR names for invite: a cross-site `text/plain` POST, sent while
+  the operator's browser held the Access cookie. The check runs before any tenant is looked up
+  or any body read.
+* Still open: CSRF protection on the operator's POST routes the first hosted Worker already had,
+  `register`, `seed`, `run` and `poll`. That is item M1 of the hardening card, which the product
+  owner has deferred. Until it lands, a page on another site can post to them with the operator's
+  Access cookie.
+* Left to other cards: the operator's own identity check (H1's operator allow-list), M1 above,
+  and the tenant's language on the sign-in pages.

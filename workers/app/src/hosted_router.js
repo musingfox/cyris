@@ -67,8 +67,20 @@ const METHOD = {
   "revoke-address": "POST",
   "newsletter-source": "POST",
 };
-// The routes that change who may sign in, and to which tenant.
-const CHANGES_MEMBERS = new Set(["invite", "revoke"]);
+// The POST routes the hosted cards added after the first hosted Worker, each of which changes a
+// tenant: its database, by any SQL (query); its schedule; its newsletter address and sources; who
+// may sign in to it (invite, revoke). They take no other site's request (`crossSite`). The
+// routes the first hosted Worker had (register, seed, run, poll) do not check it yet: they are
+// item M1 of the deferred hardening card (ADR-0033).
+const SAME_SITE_ONLY = new Set([
+  "query",
+  "schedule",
+  "rotate-address",
+  "revoke-address",
+  "newsletter-source",
+  "invite",
+  "revoke",
+]);
 
 // What a run the registry would not queue is answered with: an issue already queued or running,
 // or a tenant no longer active, is a conflict; a tenant at its daily cap is told to wait.
@@ -147,11 +159,11 @@ export async function handleHostedRequest(request, env, deps) {
   const [, tenant, action] = match;
   if (request.method !== METHOD[action]) return json({ error: `${action} takes ${METHOD[action]}` }, 405);
   // The Access cookie is SameSite=None, so a page on any site can post to the operator's routes
-  // with the operator's sign-in. Who may enter a tenant is the operator's alone to change, so the
-  // invite list's routes take no other site's request; curl, hosted.sh's, sends none of the
-  // headers that would mark one. The other POST routes are the hardening card's (M1).
-  if (CHANGES_MEMBERS.has(action) && crossSite(request)) {
-    return json({ error: "the invite list is changed from this site or with curl, not from another site" }, 403);
+  // with the operator's sign-in, a text/plain body included. So these routes take no other site's
+  // request, before any tenant is looked up or any body read; curl, hosted.sh's, sends none of the
+  // headers that would mark one.
+  if (SAME_SITE_ONLY.has(action) && crossSite(request)) {
+    return json({ error: `${action} is posted from this site or with curl, not from another site` }, 403);
   }
 
   // The registry is the tenant list: a tenant is registered here first, and every other

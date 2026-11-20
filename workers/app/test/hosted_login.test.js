@@ -604,6 +604,51 @@ describe("the operator's routes and a tenant session", () => {
     expect(curl.status).toBe(200);
   });
 
+  it("refuse every POST route the hosted cards added, posted from another site with the operator's sign-in, changing nothing", async () => {
+    // The review's finding: the query route runs any SQL for whoever passes Access, and a page on
+    // another site can post it a text/plain body while the operator's browser holds the Access cookie.
+    const alpha = bound.TENANT_DB.getByName("alpha");
+    const ran = vi.spyOn(alpha, "query");
+    bound.TENANT_DB.gets.length = 0;
+    const registryRows = () => JSON.stringify(["tenants", "inbound_addresses", "members"].map((table) => rows(table)));
+    const before = registryRows();
+    const sql = { sql: "DELETE FROM digests", params: [] };
+
+    for (const headers of [
+      { Origin: "https://evil.example", "Sec-Fetch-Site": "cross-site" },
+      { Origin: "https://evil.example" },
+      { Origin: "null" },
+      { "Sec-Fetch-Site": "same-site" },
+    ]) {
+      for (const path of [
+        "/hosted/tenants/alpha/query",
+        "/hosted/tenants/alpha/schedule?times=07:00,19:00&timezone=UTC",
+        "/hosted/tenants/alpha/rotate-address",
+        "/hosted/tenants/alpha/revoke-address",
+        "/hosted/tenants/alpha/newsletter-source?name=Letter&from=letter@news.example",
+      ]) {
+        const response = await call(path, { method: "POST", operator: true, text: JSON.stringify(sql), headers });
+        expect(response.status, `${path} ${JSON.stringify(headers)}`).toBe(403);
+      }
+    }
+
+    // No SQL ran: the tenant's database was not even reached, and its rows are all there.
+    expect(ran).not.toHaveBeenCalled();
+    expect(bound.TENANT_DB.gets).toEqual([]);
+    expect(registryRows()).toBe(before);
+    ran.mockRestore();
+    expect((await alpha.query("SELECT count(*) AS n FROM digests", [])).rows[0].n).toBe(2);
+    expect((await alpha.query("SELECT count(*) AS n FROM sources WHERE type = 'newsletter'", [])).rows[0].n).toBe(0);
+
+    // As curl sends them, with no Origin and no Sec-Fetch-Site, and from this site, they are answered.
+    const read = { sql: "SELECT count(*) AS n FROM digests", params: [] };
+    expect((await call("/hosted/tenants/alpha/query", { method: "POST", operator: true, body: read })).status).toBe(200);
+    const here = { Origin: ORIGIN, "Sec-Fetch-Site": "same-origin" };
+    const schedule = "/hosted/tenants/alpha/schedule?times=07:00,19:00&timezone=UTC";
+    expect((await call(schedule, { method: "POST", operator: true, headers: here })).status).toBe(200);
+    expect((await call("/hosted/tenants/alpha/rotate-address", { method: "POST", operator: true })).status).toBe(200);
+  });
+
   it("give the operator a tenant's latest page under /hosted/, sandboxed as /t/ serves it", async () => {
     const response = await call("/hosted/tenants/alpha/page", { operator: true });
 
