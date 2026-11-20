@@ -687,3 +687,57 @@ class TestSourceHomepageFallback:
         art = newsletter_article(_make_parsed(text_content="沒有任何本期連結"), source)
         assert art is not None
         assert art.ref_urls == []
+
+
+class TestAHostedIssueTakesNoWebVersionLink:
+    """A web-version link is the recipient's own copy; a hosted tenant's issue never takes one."""
+
+    TOKENED = "https://esp.example/view/eyJzdWJzY3JpYmVyIjoicmVhZGVyIn0"
+
+    def test_the_labelled_web_version_link_is_taken_only_when_allowed(self, source_summarize):
+        p = _make_parsed(text_content=f"View in browser ({self.TOKENED})\n\nThis week's letter.")
+
+        self_hosted = newsletter_article(p, source_summarize)
+        hosted = newsletter_article(p, source_summarize, web_version=False)
+
+        assert self_hosted is not None and self_hosted.url == self.TOKENED
+        assert hosted is not None and hosted.url.startswith("newsletter:")
+        assert self.TOKENED not in hosted.ref_urls
+
+    def test_the_esp_archive_link_is_not_taken_either(self, source_summarize):
+        p = _make_parsed(
+            html_content='<a href="https://mailchi.mp/news/issue-9?e=reader">View this email</a>',
+        )
+
+        assert newsletter_article(p, source_summarize).url == "https://mailchi.mp/news/issue-9"
+        assert newsletter_article(p, source_summarize, web_version=False).url.startswith(
+            "newsletter:"
+        )
+
+    def test_it_keeps_the_senders_canonical_post_and_else_the_homepage(self):
+        source = SourceConfig(
+            name="Letter", lane=Lane.READ, homepage="https://news.example", tags=["tech"]
+        )
+        post = _make_parsed(
+            from_email="list@news.example",
+            text_content="Read it: https://news.example/p/issue-12\n",
+        )
+        bare = _make_parsed(from_email="list@news.example", text_content=self.TOKENED)
+
+        assert newsletter_article(post, source, web_version=False).url == (
+            "https://news.example/p/issue-12"
+        )
+        hosted = newsletter_article(bare, source, web_version=False)
+        assert hosted.url.startswith("newsletter:")
+        assert hosted.ref_urls == ["https://news.example"]
+
+
+class TestAnIssuesLinkIsHttpOnly:
+    def test_an_esp_host_under_another_scheme_is_no_link(self, source_summarize):
+        p = _make_parsed(html_content='<a href="javascript://mailchi.mp/%0aalert(1)">View</a>')
+
+        art = newsletter_article(p, source_summarize)
+
+        assert art is not None
+        assert art.url.startswith("newsletter:")
+        assert art.ref_urls == []

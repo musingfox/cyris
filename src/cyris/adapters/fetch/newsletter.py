@@ -184,28 +184,39 @@ def _find_view_url_in_text(text: str) -> str | None:
     return None
 
 
-def newsletter_article(parsed: ParsedNewsletter, source: SourceConfig) -> Article | None:
+# The only schemes an issue's link may have: a mail is untrusted input, and its link is drawn as
+# an href on the digest and raw pages.
+_LINK_SCHEMES = {"http", "https"}
+
+
+def newsletter_article(
+    parsed: ParsedNewsletter, source: SourceConfig, *, web_version: bool = True
+) -> Article | None:
     """Return the email body as the Article for this newsletter issue.
 
     0 or 1 article. Content from text_content or unescaped html.
     Prefer the one sender-owned post URL; else the labelled web-version link in the
     text body; else the hostname-matched ESP archive; else synthetic newsletter:ID url.
-    Empty body -> None + WARNING (singular per D5).
+    `web_version=False` skips both web-version fallbacks, whose link is the recipient's
+    own copy and may carry a token naming them: a hosted tenant's source passes it.
+    A link that is not http(s) is no link. Empty body -> None + WARNING (singular per D5).
     """
     article_id = _generate_article_id(source.name, parsed.subject)
     sender_host = ""
     if source.homepage:
         with suppress(ValueError):
             sender_host = urlparse(source.homepage).hostname or ""
-    view_url = (
-        select_primary_content_url(
-            harvest_url_candidates(parsed.html_content, parsed.text_content),
-            sender_host,
-            sender_domain(parsed.from_email),
-        )
-        or _find_view_url_in_text(parsed.text_content)
-        or _find_newsletter_view_url(parsed.html_content)
+    view_url = select_primary_content_url(
+        harvest_url_candidates(parsed.html_content, parsed.text_content),
+        sender_host,
+        sender_domain(parsed.from_email),
     )
+    if view_url is None and web_version:
+        view_url = _find_view_url_in_text(parsed.text_content) or _find_newsletter_view_url(
+            parsed.html_content
+        )
+    if view_url is not None and urlparse(view_url).scheme.lower() not in _LINK_SCHEMES:
+        view_url = None
     raw = parsed.text_content.strip() or " ".join(
         html.unescape(re.sub(r"<[^>]+>", " ", parsed.html_content)).split()
     )
@@ -223,7 +234,7 @@ def newsletter_article(parsed: ParsedNewsletter, source: SourceConfig) -> Articl
         # a confident per-issue canonical URL. Arbitrary email-body links belong to
         # the newsletter content, not to the one Article this email represents.
         homepage = strip_tracking_params(source.homepage.strip())
-        if urlparse(homepage).scheme in {"http", "https"}:
+        if urlparse(homepage).scheme in _LINK_SCHEMES:
             ref_urls = [homepage]
 
     return Article(

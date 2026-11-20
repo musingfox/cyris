@@ -57,17 +57,19 @@ def citation_links(unit: DigestItem) -> list[tuple[str, str | None]]:
     """A news unit's links, one per article, labelled as the page labels them.
 
     Reference links take their hostname; otherwise each store URL takes the source
-    beside it. A synthetic store URL (newsletter:<id>) is no link.
+    beside it. Only an http(s) URL is a link, from either: a synthetic store URL
+    (newsletter:<id>) is none, and neither is any other scheme a feed or a mail names.
     """
     if unit.ref_urls:
-        return [(_hostname(url), url) for url in unit.ref_urls]
+        return [(_hostname(url), _href(url)) for url in unit.ref_urls]
     return [
-        (
-            unit.sources[i] if i < len(unit.sources) else url,
-            url if url.startswith(("http://", "https://")) else None,
-        )
+        (unit.sources[i] if i < len(unit.sources) else url, _href(url))
         for i, url in enumerate(unit.urls)
     ]
+
+
+def _href(url: str) -> str | None:
+    return url if url.startswith(("http://", "https://")) else None
 
 
 def paragraph_links(paragraph: NewsParagraph) -> list[tuple[str, str | None]]:
