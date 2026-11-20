@@ -21,11 +21,12 @@ export const SIGN_IN_GAP_MS = 60 * 1000;
 // and is held by none, so the operator can always invite, or re-invite a reader a stranger has
 // held. A session lasts 14 days, so a reader needs one link a fortnight: three an hour covers a
 // second device and a mistyped confirm, and a stranger asking in a reader's name holds that
-// reader for an hour at most. Ten an hour per tenant is far above a beta tenant's readers, and
-// holds only that tenant: its 240 a day at most are under half the deployment's ceiling, so no
-// tenant's flood reaches another's. The ceiling, 500 a day, is a cost backstop only, a hundred
-// times the beta's few links a day: held for a month it is 15,000 mails, about five dollars past
-// Workers Paid's included 3,000.
+// reader until an hour after the asking stops. Ten an hour per tenant is far above a beta
+// tenant's readers, and a flood of one tenant holds no other: its 240 a day at most are under
+// half the deployment's ceiling. A flood of three tenants, about 12 known addresses, reaches the
+// ceiling in about 17 hours and holds every tenant (ADR-0033). The ceiling, 500 a day, is a cost
+// backstop only, a hundred times the beta's few links a day: held for a month it is 15,000
+// mails, about five dollars past Workers Paid's included 3,000.
 export const SIGN_IN_ADDRESS_CAP = 3;
 export const SIGN_IN_TENANT_CAP = 10;
 export const SIGN_IN_DAILY_CEILING = 500;

@@ -184,16 +184,24 @@ self-hosted deployment, production, trials and forks, ADR-0015 is unchanged: `wr
   a day.
 * Bad, because the caps count asks by address and by tenant, not by who asks, so a stranger's
   asks hold back the reader they name. Anyone who knows one reader's address holds that reader
-  for an hour with three asks, and anyone who knows four addresses of one tenant holds that
-  tenant's readers for an hour; the hold renews while the asking goes on. No other tenant is
-  held, and the operator's re-invite mails the reader a link at once. The Worker logs which cap
-  was reached, so the operator can tell a flood from a lost mail. Only a limit per client would
-  tell the stranger from the reader; see below.
+  with three asks an hour, and anyone who knows four addresses of one tenant holds that tenant's
+  readers with ten; each hold lasts until an hour after the asking stops. A flood of one tenant
+  holds no other, since its ten an hour make at most 240 a day, under the 500-a-day ceiling. A
+  flood of three tenants holds every tenant: about 12 known addresses, four for each, are issued
+  30 links an hour and reach the ceiling in about 17 hours, and from then on no reader of any
+  tenant is mailed a link while the flood goes on, and until its asks are a day old. The
+  operator's re-invite mails a reader a link at once all the same. The Worker logs which cap was
+  reached, so the operator can tell a flood from a lost mail. Only a limit per client would tell
+  the stranger from the reader; see below.
 * Bad, because there is no limit per client on `POST /login`. Cloudflare's Workers Rate Limiting
-  binding, keyed by a hash of `CF-Connecting-IP`, was considered and not adopted: its
-  documentation could not be read when the caps were redesigned (2026-11-20), and its API was not
-  guessed. An address off the list writes nothing however often it asks, so the cost of a flood
-  of strangers is the registry's requests, not its rows or the mail.
+  binding was considered and not adopted, because it cannot stop this hold. It counts per
+  Cloudflare location, not across the network, only over a period of 10 or 60 seconds, and its
+  documentation discourages keying it by IP address
+  ([Rate Limiting](https://developers.cloudflare.com/workers/runtime-apis/bindings/rate-limit/)).
+  A hold needs three asks an hour, far under the lowest limit a 60-second period can set, and a
+  stranger asking from several locations is counted apart in each. An address off the list writes
+  nothing however often it asks, so the cost of a flood of strangers is the registry's requests,
+  not its rows or the mail.
 * Good, because the tenant a reader may read is decided by the Worker against the registry on
   every request, and is no longer whatever the Access policy admits.
 * Good, because no token is stored, logged or sent in a `Referer`, and a session ends at its next

@@ -566,9 +566,12 @@ end at their next request, and any unspent link stops working. A reader signs ou
 `HOSTED_URL/login`. A reader's asks are capped: one address gets at most one link a minute and
 three an hour, one tenant's readers together ten an hour, and everyone 500 a day. When a reader
 says no link came, look in the Worker's logs for `sign-in mail held`: it names which cap was
-reached. Someone else asking in a reader's name can hold that reader for up to an hour, so
-re-invite them: `scripts/hosted.sh invite alpha reader@example.net` mails a link at once, whatever
-the caps, and needs no revoke.
+reached. Someone else asking in a reader's name can hold that reader until an hour after the
+asking stops, so re-invite them: `scripts/hosted.sh invite alpha reader@example.net` mails a link
+at once, whatever the caps, and needs no revoke. A flood of one tenant holds no other tenant, but
+a flood of three does: asking in the names of about 12 readers, four of each tenant, reaches the
+500-a-day ceiling in about 17 hours, and then every tenant's readers are held, the log line names
+`daily`, and only a re-invite mails a link (ADR-0033).
 
 The vote buttons and the Settings link stay hidden on a tenant's pages, because the hosted Worker
 has no `/api/vote` or `/settings` yet, and each page is served sandboxed, so its scripts run with
