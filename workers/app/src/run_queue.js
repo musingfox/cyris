@@ -9,7 +9,10 @@
 //   has at most one live run of an issue, so a second trigger of it is refused.
 // - The tenant that started a run least recently goes first, then the run queued first.
 // - A tenant starts at most its own `daily_run_cap` runs in 24 hours, a registry column.
-// - A run whose container got no instance goes back in the queue; any other end is recorded.
+// - A run whose container got no instance goes back in the queue, and so does one whose lease ran
+//   out with no stop report, within MAX_START_ATTEMPTS; any other end is recorded.
+// - While a run is held, the registry's alarm is set for its lease's end, so a stop report that
+//   never comes cannot hold the issue live for good.
 //
 // The schedule a tenant is ticked on is the registry's too (`digest_times` and `timezone`),
 // checked here before it is written. No workerd-only imports: vitest runs this under Node.
@@ -40,7 +43,8 @@ export const DISPATCH_EVERY_MS = 60_000;
 
 // A run with no stop report this long after its start is taken as lost, and its slot is freed:
 // its container's inactivity timeout (15 minutes, hosted_container.js) has stopped it by then.
-// The measured runs took 196 to 378 seconds.
+// The measured runs took 196 to 378 seconds. The registry's alarm is set for each held run's
+// lease end (`nextPassAt`), and queueing a run expires any lease already over.
 export const RUN_LEASE_MS = 20 * 60_000;
 
 const DAY_MS = 24 * 60 * 60_000;
@@ -48,8 +52,10 @@ const DAY_MS = 24 * 60 * 60_000;
 export const QUEUED = "queued";
 export const STARTING = "starting";
 export const RUNNING = "running";
-// A run's end: its container exited 0 (`done`), it failed to start or exited otherwise
-// (`failed`), or no stop was reported within RUN_LEASE_MS (`lost`).
+// A run's end: its container exited 0, or its issue's ok run is in the tenant's digest_runs when
+// its lease ran out (`done`); it failed to start, exited otherwise, or used its last start
+// (`failed`); or no stop was reported within RUN_LEASE_MS, and a new row of the same issue was
+// queued in its place (`lost`).
 export const DONE = "done";
 export const FAILED = "failed";
 export const LOST = "lost";
@@ -99,22 +105,41 @@ export function registrySchedule(row) {
   }
 }
 
+// An IANA zone's name: an area and its locations, or one word such as UTC, each part starting
+// with a letter. Never an offset such as +08:00, which the runtime takes and the container's
+// zoneinfo (`_known_timezone` in config.py) does not.
+const IANA_ZONE = /^[A-Za-z][A-Za-z0-9_+-]*(?:\/[A-Za-z][A-Za-z0-9_+-]*)*$/;
+const CAPITALISED = /^[A-Z][^/]*(?:\/[A-Z][^/]*)*$/;
+
+// The zone the registry stores for `timeZone`, the name the container will read, or null to
+// refuse it. The runtime must know it; then it is the name as given, in the runtime's casing when
+// only the case differs, since zoneinfo reads names case-sensitively. The runtime's own name is
+// not taken otherwise: it renames links (US/Eastern, Asia/Kolkata) to zones of its choosing. A
+// link given in another case is refused, as there is then no name both sides are known to read.
+// test/time_zone_cases.json holds this and the container's check to one set of answers.
+function storedZone(timeZone) {
+  if (typeof timeZone !== "string" || !IANA_ZONE.test(timeZone)) return null;
+  let resolved;
+  try {
+    resolved = new Intl.DateTimeFormat("en-US", { timeZone }).resolvedOptions().timeZone;
+  } catch {
+    return null;
+  }
+  if (resolved.toLowerCase() === timeZone.toLowerCase()) return resolved;
+  return CAPITALISED.test(timeZone) ? timeZone : null;
+}
+
 // The schedule the operator names, as the registry stores it, or `{refused}`: two distinct whole
-// hours as `validate_schedule` takes them, a time zone the runtime knows, under its canonical
-// name so the container's zoneinfo reads it too, and a whole cap in 1..MAX_DAILY_RUN_CAP.
-export function checkSchedule({ times, timeZone, dailyRunCap = DEFAULT_DAILY_RUN_CAP }) {
+// hours as `validate_schedule` takes them, an IANA zone both the runtime and the container read
+// (`storedZone`), and a whole cap in 1..MAX_DAILY_RUN_CAP. No cap named is `dailyRunCap: null`,
+// which `setSchedule` reads as the tenant's own cap, kept.
+export function checkSchedule({ times, timeZone, dailyRunCap }) {
   const hours = digestHours(times);
   if (!hours) return { refused: `digest times are two distinct whole hours, as 08:00,20:00: ${times}` };
-  // An absent zone would format in the runtime's own, so it is refused before it is tried.
-  if (typeof timeZone !== "string" || !timeZone) return { refused: `not a time zone: ${timeZone}` };
-  let zone;
-  try {
-    zone = new Intl.DateTimeFormat("en-US", { timeZone }).resolvedOptions().timeZone;
-  } catch {
-    return { refused: `not a time zone: ${timeZone}` };
-  }
-  const cap = Number(dailyRunCap);
-  if (!Number.isInteger(cap) || cap < 1 || cap > MAX_DAILY_RUN_CAP) {
+  const zone = storedZone(timeZone);
+  if (!zone) return { refused: `not an IANA time zone name, as Asia/Taipei: ${timeZone}` };
+  const cap = dailyRunCap === undefined || dailyRunCap === null ? null : Number(dailyRunCap);
+  if (cap !== null && (!Number.isInteger(cap) || cap < 1 || cap > MAX_DAILY_RUN_CAP)) {
     return { refused: `a daily run cap is a whole number from 1 to ${MAX_DAILY_RUN_CAP}: ${dailyRunCap}` };
   }
   const digestTimes = hours.map((hour) => `${String(hour).padStart(2, "0")}:00`);
@@ -179,17 +204,70 @@ function end(sql, run, state, outcome, nowMs) {
   return { ...run, state, ended_at: stamp(nowMs), outcome };
 }
 
-// One pass of the queue: frees the slots of lost runs, then starts the queued runs that fit, one
-// per tenant, through `start(run)`, which answers `TenantContainer.startRun`'s `{started}` or
-// throws. A row is claimed (`starting`) before its start is awaited, so a stop report or another
-// pass that lands meanwhile sees it held; each answer is applied only to a row still `starting`.
-// Answers `{ started, waiting }`: the runs this pass started, and how many still wait. `now`
-// is read again once the starts have answered, which can be minutes later.
-export async function dispatchRuns(sql, start, now = Date.now) {
-  const nowMs = now();
-  for (const run of rows(sql.exec(`SELECT ${RUN_COLUMNS} FROM runs WHERE ${HELD} AND started_at < ?`, stamp(nowMs - RUN_LEASE_MS)))) {
-    end(sql, run, LOST, `no stop reported within ${RUN_LEASE_MS / 60_000} minutes`, nowMs);
+// Ends each held run whose lease is over, and answers how many it queued again. `finished(run)`
+// answers whether the tenant's digest_runs holds an ok run of that period since the run started:
+// then the run made its issue and only its report was lost, and it is `done`. Otherwise it is
+// `lost` and a new row of the same issue is queued in its place, with its attempts, unless it has
+// had MAX_START_ATTEMPTS, when it is `failed`. The lost row keeps its start, so it counts against
+// the cap and the tenant waits behind those that have not run. A row that changed while
+// `finished` was awaited is left to whoever changed it.
+export async function expireLeases(sql, nowMs, finished = async () => false) {
+  const minutes = RUN_LEASE_MS / 60_000;
+  const stale = rows(sql.exec(`SELECT ${RUN_COLUMNS} FROM runs WHERE ${HELD} AND started_at < ?`, stamp(nowMs - RUN_LEASE_MS)));
+  let requeued = 0;
+  for (const run of stale) {
+    let made = false;
+    try {
+      made = await finished(run);
+    } catch {
+      made = false;
+    }
+    const still = one(sql.exec(`SELECT ${RUN_COLUMNS} FROM runs WHERE id = ? AND ${HELD} AND started_at = ?`, run.id, run.started_at));
+    if (!still) continue;
+    if (made) {
+      end(sql, still, DONE, `its ${run.period} run is in digest_runs; no stop was reported`, nowMs);
+    } else if (still.attempts >= MAX_START_ATTEMPTS) {
+      end(sql, still, FAILED, `no stop reported within ${minutes} minutes, after ${still.attempts} starts`, nowMs);
+    } else {
+      end(sql, still, LOST, `no stop reported within ${minutes} minutes; queued again`, nowMs);
+      sql.exec(
+        "INSERT INTO runs (tenant_id, period, date, origin, state, attempts, queued_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        still.tenant_id,
+        still.period,
+        still.date,
+        still.origin,
+        QUEUED,
+        still.attempts,
+        stamp(nowMs),
+      );
+      requeued += 1;
+    }
   }
+  return requeued;
+}
+
+// When the registry's alarm must next run, or null when nothing waits or is held: a minute on
+// while a run waits, and a second past the earliest held run's lease end, so a run whose stop is
+// never reported is expired on time even when nothing else happens.
+export function nextPassAt(sql, nowMs) {
+  const { queued } = one(sql.exec("SELECT count(*) AS queued FROM runs WHERE state = ?", QUEUED));
+  const { oldest } = one(sql.exec(`SELECT min(started_at) AS oldest FROM runs WHERE ${HELD}`));
+  const times = [];
+  if (queued > 0) times.push(nowMs + DISPATCH_EVERY_MS);
+  if (oldest) times.push(Date.parse(oldest) + RUN_LEASE_MS + 1_000);
+  return times.length ? Math.max(nowMs, Math.min(...times)) : null;
+}
+
+// One pass of the queue: expires the leases that are over (`expireLeases`, with `finished`), then
+// starts the queued runs that fit, one per tenant, through `start(run)`, which answers
+// `TenantContainer.startRun`'s `{started}` or throws. A row is claimed (`starting`) before its
+// start is awaited, so a stop report or another pass that lands meanwhile sees it held; each
+// answer is applied only to a row still `starting`. Answers `{ started, waiting }`: the runs this
+// pass started, and how many still wait. `now` is read again once the starts have answered,
+// which can be minutes later.
+export async function dispatchRuns(sql, start, { now = Date.now, finished } = {}) {
+  await expireLeases(sql, now(), finished);
+  const nowMs = now();
   const { held } = one(sql.exec(`SELECT count(*) AS held FROM runs WHERE ${HELD}`));
   // A tenant with a held run waits; the rest go least recently started first, a tenant never
   // started before all of them, then by when they were queued.

@@ -9,16 +9,17 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   DEFAULT_DAILY_RUN_CAP,
-  DISPATCH_EVERY_MS,
   RUNS_SCHEMA,
   checkSchedule,
   dispatchRuns,
   endRun,
+  expireLeases,
+  nextPassAt,
   queueRun,
   recentRuns,
   tenantRun,
 } from "./run_queue.js";
-import { LOCATION_HINT, TENANT } from "./tenant_db.js";
+import { LOCATION_HINT, TENANT, tenantRows } from "./tenant_db.js";
 import { ACTIVE, TENANT_STATUSES } from "./tenant_status.js";
 
 // The registry's name in its namespace. There is one registry, so the name is fixed; it is
@@ -87,7 +88,12 @@ const TENANT_INSERT = "INSERT INTO tenants (id, status, created_at, updated_at) 
 const TENANT_UPSERT =
   `${TENANT_INSERT} ON CONFLICT(id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at`;
 const TENANT_ADD = `${TENANT_INSERT} ON CONFLICT(id) DO NOTHING`;
-const TENANT_SCHEDULE = "UPDATE tenants SET digest_times = ?, timezone = ?, daily_run_cap = ?, updated_at = ? WHERE id = ?";
+// A cap of null keeps the tenant's own: re-scheduling its hours never resets its spend limit.
+const TENANT_SCHEDULE =
+  "UPDATE tenants SET digest_times = ?, timezone = ?, daily_run_cap = COALESCE(?, daily_run_cap), updated_at = ? WHERE id = ?";
+// Whether a run's issue was made since it started, for a run whose lease ran out (expireLeases).
+const MADE_SINCE =
+  "SELECT 1 AS made FROM digest_runs WHERE period = ? AND status = 'ok' AND dry_run = 0 AND finished_at >= ? LIMIT 1";
 
 // The time a row is written at, as the container's stores write it (seconds, UTC offset).
 const stamp = (now) => `${now.toISOString().slice(0, 19)}+00:00`;
@@ -140,7 +146,8 @@ export class TenantRegistry extends DurableObject {
   }
 
   // Sets a registered tenant's schedule, `{ times, timeZone, dailyRunCap }`, checked by
-  // `checkSchedule`, and answers `{tenant}`, its row, or `{refused}`, writing nothing.
+  // `checkSchedule`, and answers `{tenant}`, its row, or `{refused}`, writing nothing. With no
+  // `dailyRunCap` the tenant keeps the cap it has.
   setSchedule(id, schedule, { now = new Date() } = {}) {
     if (!this.tenant(id)) return { refused: `${id} is not a registered tenant` };
     const checked = checkSchedule(schedule);
@@ -151,10 +158,12 @@ export class TenantRegistry extends DurableObject {
   }
 
   // Queues one run of `id`'s issue `{ period, date, origin }` (run_queue.js `queueRun`) and has
-  // the alarm start it as soon as a slot is free.
+  // the alarm start it as soon as a slot is free. Leases already over are expired first, so an
+  // issue whose stop report never came is queued again rather than refused as live.
   async queueRun(id, issue, { now = new Date() } = {}) {
+    const requeued = await expireLeases(this.ctx.storage.sql, now.getTime(), this.#finished);
     const answer = queueRun(this.ctx.storage.sql, this.tenant(id), issue, now.getTime());
-    if (answer.queued) await this.ctx.storage.setAlarm(now.getTime());
+    await this.#arm(now.getTime(), Boolean(answer.queued || requeued));
     return answer;
   }
 
@@ -162,7 +171,7 @@ export class TenantRegistry extends DurableObject {
   // goes back in the queue, and the alarm hands the freed slot on.
   async runEnded(id, outcome, { now = new Date() } = {}) {
     const run = endRun(this.ctx.storage.sql, id, outcome, now.getTime());
-    await this.ctx.storage.setAlarm(now.getTime());
+    await this.#arm(now.getTime(), true);
     return run;
   }
 
@@ -171,10 +180,28 @@ export class TenantRegistry extends DurableObject {
     return recentRuns(this.ctx.storage.sql, id);
   }
 
-  // One pass of the run queue; while a run still waits, another pass is set for later.
+  // One pass of the run queue, then the next: a minute on while a run waits, and at the earliest
+  // held run's lease end (run_queue.js `nextPassAt`).
   async alarm() {
     const start = (run) => tenantRun(this.env, run.tenant_id).startRun({ period: run.period, date: run.date });
-    const { waiting } = await dispatchRuns(this.ctx.storage.sql, start);
-    if (waiting > 0) await this.ctx.storage.setAlarm(Date.now() + DISPATCH_EVERY_MS);
+    await dispatchRuns(this.ctx.storage.sql, start, { finished: this.#finished });
+    await this.#arm(Date.now(), false);
   }
+
+  // Sets the alarm for now when `immediate`, else for `nextPassAt`, unless one is already set
+  // sooner; nothing when no run waits or is held.
+  async #arm(nowMs, immediate) {
+    const at = immediate ? nowMs : nextPassAt(this.ctx.storage.sql, nowMs);
+    if (at === null) return;
+    const set = await this.ctx.storage.getAlarm();
+    if (set === null || set > at) await this.ctx.storage.setAlarm(at);
+  }
+
+  // Whether the tenant's own digest_runs holds an ok run of `run`'s period since it started; false
+  // when it cannot be read, so the run is queued again rather than taken as made.
+  #finished = async (run) => {
+    if (!this.env.TENANT_DB) return false;
+    const rows = await tenantRows(this.env, run.tenant_id)(MADE_SINCE, [run.period, run.started_at], "digest_runs");
+    return Boolean(rows?.length);
+  };
 }

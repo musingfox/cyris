@@ -307,6 +307,9 @@ describe("the hosted Worker's operator routes, over the registry", () => {
       "?times=08:30,20:00&timezone=UTC",
       "?times=08:00,20:00",
       "?times=08:00,20:00&timezone=Mars/Olympus",
+      // An offset the runtime takes and the container's zoneinfo does not.
+      "?times=08:00,20:00&timezone=%2B08:00",
+      "?times=08:00,20:00&timezone=-05:00",
       "?times=08:00,20:00&timezone=UTC&daily_run_cap=0",
       "?times=08:00,20:00&timezone=UTC&daily_run_cap=2.5",
     ]) {

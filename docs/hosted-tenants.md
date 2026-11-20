@@ -158,13 +158,20 @@ and its run route answers 409. Its seed and report routes still answer.
 the hourly tick wakes that tenant at, the zone they are hours of, and, when you name one, its
 daily run cap. The registry holds all three, and the tick reads them nowhere else: the schedule
 the seed wrote into the tenant's own database is not what wakes it. `TIMES` is two whole hours,
-such as `07:00,19:00`. `TIMEZONE` is an IANA zone such as `Asia/Taipei`. The cap is the most runs
-the tenant may start in any 24 hours, from 1 to 24, and it is 6 when you name none. The answer is
-the tenant's registry row, and `"settings": true` once the route has copied the hours and the
-zone into the tenant's own settings. A tenant not yet seeded answers `false`, and its seed writes
-the copy instead. A schedule the registry does not take answers 400 with the reason. Until a
+such as `07:00,19:00`. `TIMEZONE` is an IANA zone name such as `Asia/Taipei`, never an offset
+such as `+08:00`, which the container cannot read and the route refuses. The cap is the most runs
+the tenant may start in any 24 hours, from 1 to 24. A new tenant's cap is 6, and scheduling a
+tenant again without naming one keeps the cap it has. The answer is the tenant's registry row,
+and `"settings": true` once the route has copied the hours and the zone into the tenant's own
+settings. `false` means the copy could not be written, and the Worker logs why
+(`schedule copy not written`). For a tenant not yet seeded that is expected: its seed writes the
+copy instead. A schedule the registry does not take answers 400 with the reason. Until a
 tenant has a schedule, the tick polls its feeds and queues no run, and its run route answers
 409. Give each tenant different hours to see each one woken at its own.
+
+On a deployment whose tenants were registered before the registry held schedules, run `schedule`
+for each tenant after you deploy. Until you do, the tick polls its feeds and queues none of its
+runs.
 
 ## 6. Poll each tenant's feeds, and measure a tick
 
@@ -260,8 +267,9 @@ temporary directory the script names. Keep them with the result.
 
 A tenant that has no `ok` run yet may still be running, or waiting in the queue: its report's
 `runs` says which. Check again a few minutes later. A run that ended in `error` has its reason in
-that tenant's Workers Logs. A run the registry recorded as `failed` or `lost` has its reason in
-`runs`.
+that tenant's Workers Logs. A run the registry recorded as `failed` has its reason in `runs`. A
+`lost` row is a run whose container never reported its stop within 20 minutes; the row above it
+is the same issue, queued again.
 
 The hourly tick also queues each active tenant's run at the hours step 5 scheduled. A check
 after one of those hours counts two runs, and each is still that tenant's own. To see each tenant

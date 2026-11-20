@@ -11,11 +11,13 @@ import { RUN_INACTIVITY_TIMEOUT_MS } from "../src/hosted_container.js";
 import {
   DEFAULT_DAILY_RUN_CAP,
   DISPATCH_EVERY_MS,
+  checkSchedule,
   MAX_START_ATTEMPTS,
   RUN_LEASE_MS,
   RUN_SLOTS,
 } from "../src/run_queue.js";
 import { CATCH_UP_HOURS } from "../src/schedule.js";
+import ZONES from "./time_zone_cases.json" with { type: "json" };
 import { REGISTRY_NAME, REGISTRY_SCHEMA, TenantRegistry, tenantRegistry } from "../src/tenant_registry.js";
 import { SCHEMA_SQL, alarmStorage, drainAlarms, namespace, registryNamespace, sqlStorage } from "./sql_storage.js";
 
@@ -205,9 +207,9 @@ describe("the hosted run queue", () => {
       outcome: `no container instance, after ${MAX_START_ATTEMPTS} starts`,
     });
     expect(logs.filter(([line]) => line === "run failed").map(([, detail]) => detail.tenant)).toEqual(["bravo"]);
-    // Nothing is left queued, so the alarm stops; alpha was never held up.
-    expect(registryOf(bound).ctx.storage.alarm).toBeNull();
+    // Nothing is left queued; alpha was never held up, and the alarm waits for its lease's end.
     expect(held(bound, "alpha")).toMatchObject({ period: "morning" });
+    expect(registryOf(bound).ctx.storage.alarm).toBe(Date.parse("2026-11-18T08:00:00Z") + RUN_LEASE_MS + 1_000);
   });
 
   it("refuses a second trigger of one tenant's issue while it is live, and queues another issue behind it", async () => {
@@ -346,24 +348,96 @@ describe("the hosted run queue", () => {
     expect(DEFAULT_DAILY_RUN_CAP).toBe(2 * CATCH_UP_HOURS);
   });
 
-  it("frees the slot of a run no stop was reported for, once its lease has run out", async () => {
+  it("frees the slots of runs no stop was reported for at their lease's end, and queues them behind the rest", async () => {
     at("2026-11-18T07:00:00Z");
     for (const id of ["alpha", "bravo", "charlie"]) await tenant(bound, id, ["08:00", "20:00"], "UTC");
     at("2026-11-18T08:00:00Z");
     await tick(bound);
     expect(bound.starts.map((start) => start.tenant)).toEqual(["alpha", "bravo"]);
 
-    // Neither container is heard from; charlie waits until the lease frees both slots.
-    vi.setSystemTime(Date.now() + RUN_LEASE_MS - MINUTE);
-    await registryOf(bound).alarm();
+    // Neither container is heard from. The alarm comes due a minute on, while charlie waits, and
+    // the leases are not over yet; it comes due at their end, and charlie, never run, goes first.
+    for (let minute = 1; minute < RUN_LEASE_MS / MINUTE; minute++) {
+      vi.setSystemTime(Date.parse("2026-11-18T08:00:00Z") + minute * MINUTE);
+      await drainAlarms(registryOf(bound));
+    }
     expect(bound.starts).toHaveLength(2);
-    vi.setSystemTime(Date.now() + 2 * MINUTE);
-    await registryOf(bound).alarm();
+    vi.setSystemTime(Date.parse("2026-11-18T08:00:00Z") + RUN_LEASE_MS + 1_000);
+    await drainAlarms(registryOf(bound));
 
-    expect(bound.starts.map((start) => start.tenant)).toEqual(["alpha", "bravo", "charlie"]);
-    expect(runsOf(bound, "alpha")[0]).toMatchObject({ state: "lost", outcome: "no stop reported within 20 minutes" });
+    expect(bound.starts.map((start) => start.tenant)).toEqual(["alpha", "bravo", "charlie", "alpha"]);
+    expect(runsOf(bound, "alpha").map((run) => [run.state, run.attempts, run.outcome])).toEqual([
+      ["running", 2, null],
+      ["lost", 1, "no stop reported within 20 minutes; queued again"],
+    ]);
+    expect(runsOf(bound, "bravo").map((run) => run.state)).toEqual(["queued", "lost"]);
     // The lease outlasts the container's own inactivity timeout, so a lost run's container is gone.
     expect(RUN_LEASE_MS).toBeGreaterThan(RUN_INACTIVITY_TIMEOUT_MS);
+  });
+
+  it("makes an issue whose run was never reported, though nothing else is queued (review repro R1)", async () => {
+    at("2026-11-18T07:00:00Z");
+    await tenant(bound, "alpha", ["08:00", "20:00"], "UTC");
+    for (const hour of ["08", "09"]) {
+      at(`2026-11-18T${hour}:00:00Z`);
+      await tick(bound);
+    }
+
+    expect(bound.starts.map((start) => [start.tenant, start.period, start.date])).toEqual([
+      ["alpha", "morning", "2026-11-18"],
+      ["alpha", "morning", "2026-11-18"],
+    ]);
+  });
+
+  it("expires a lease on its alarm alone, with no tick and no other run", async () => {
+    at("2026-11-18T07:00:00Z");
+    await tenant(bound, "alpha", ["08:00", "20:00"], "UTC");
+    at("2026-11-18T08:00:00Z");
+    await tick(bound);
+    const registry = registryOf(bound);
+    expect(registry.ctx.storage.alarm).toBe(Date.now() + RUN_LEASE_MS + 1_000);
+
+    vi.setSystemTime(Date.now() + RUN_LEASE_MS + 1_000);
+    await drainAlarms(registry);
+
+    expect(bound.starts.map((start) => start.at)).toEqual(["2026-11-18T08:00:00+00:00", "2026-11-18T08:20:01+00:00"]);
+    expect(registry.ctx.storage.alarm).toBe(Date.now() + RUN_LEASE_MS + 1_000);
+  });
+
+  it("ends a run whose lease ran out as done when its issue's ok run is in digest_runs, starting nothing", async () => {
+    at("2026-11-18T07:00:00Z");
+    await tenant(bound, "alpha", ["08:00", "20:00"], "UTC");
+    at("2026-11-18T08:00:00Z");
+    await tick(bound);
+    // The run finished and wrote its row, but its stop report was lost.
+    bound.TENANT_DB.getByName("alpha").query(
+      "INSERT INTO digest_runs (finished_at, status, period, dry_run, fetched) VALUES ('2026-11-18T08:06:00+00:00', 'ok', 'morning', 0, 1)",
+    );
+    at("2026-11-18T08:20:01Z");
+    await drainAlarms(registryOf(bound));
+
+    expect(bound.starts).toHaveLength(1);
+    expect(runsOf(bound, "alpha")[0]).toMatchObject({ state: "done", outcome: "its morning run is in digest_runs; no stop was reported" });
+    expect(registryOf(bound).ctx.storage.alarm).toBeNull();
+  });
+
+  it("fails a run whose leases keep running out once it has had its last start", async () => {
+    at("2026-11-18T07:00:00Z");
+    await tenant(bound, "alpha", ["08:00", "20:00"], "UTC", { dailyRunCap: 24 });
+    at("2026-11-18T08:00:00Z");
+    await tick(bound);
+    for (let lease = 1; lease <= MAX_START_ATTEMPTS; lease++) {
+      vi.setSystemTime(Date.parse("2026-11-18T08:00:00Z") + lease * (RUN_LEASE_MS + 1_000));
+      await drainAlarms(registryOf(bound));
+    }
+
+    expect(bound.starts).toHaveLength(MAX_START_ATTEMPTS);
+    expect(runsOf(bound, "alpha")[0]).toMatchObject({
+      state: "failed",
+      attempts: MAX_START_ATTEMPTS,
+      outcome: `no stop reported within 20 minutes, after ${MAX_START_ATTEMPTS} starts`,
+    });
+    expect(registryOf(bound).ctx.storage.alarm).toBeNull();
   });
 
   it("records a start the container refuses for any other reason as failed, at once", async () => {
@@ -396,6 +470,30 @@ describe("the hosted run queue", () => {
       ["morning", "2026-11-18"],
       ["morning", "2026-11-18"],
     ]);
+  });
+});
+
+describe("the registry's schedule check", () => {
+  for (const { zone, stored } of ZONES.cases) {
+    it(`${stored ? "stores" : "refuses"} the time zone ${JSON.stringify(zone)}${stored && stored !== zone ? ` as ${stored}` : ""}`, () => {
+      const checked = checkSchedule({ times: ["08:00", "20:00"], timeZone: zone });
+
+      if (stored) expect(checked.schedule.timeZone).toBe(stored);
+      else expect(checked.refused).toBe(`not an IANA time zone name, as Asia/Taipei: ${zone}`);
+    });
+  }
+
+  it("keeps a tenant's cap when it is scheduled again with none named", () => {
+    const registry = new TenantRegistry({ storage: alarmStorage() }, {});
+    registry.register("alpha");
+    registry.setSchedule("alpha", { times: ["08:00", "20:00"], timeZone: "UTC", dailyRunCap: 2 });
+
+    const { tenant } = registry.setSchedule("alpha", { times: ["09:00", "21:00"], timeZone: "UTC" });
+
+    expect(tenant).toMatchObject({ digest_times: '["09:00","21:00"]', daily_run_cap: 2 });
+    expect(registry.setSchedule("alpha", { times: ["09:00", "21:00"], timeZone: "UTC", dailyRunCap: "4" }).tenant.daily_run_cap).toBe(4);
+    registry.register("bravo");
+    expect(registry.setSchedule("bravo", { times: ["09:00", "21:00"], timeZone: "UTC" }).tenant.daily_run_cap).toBe(DEFAULT_DAILY_RUN_CAP);
   });
 });
 

@@ -145,6 +145,27 @@ def test_the_run_queue_starts_as_many_runs_at_once_as_the_container_has_instance
     assert int(slots) == container["max_instances"]
 
 
+def test_the_registry_stores_only_time_zones_the_container_reads() -> None:
+    """The Worker's schedule check and the container's agree on every shared case (ADR-0032).
+
+    `workers/app/test/run_queue.test.js` holds `checkSchedule` to the same file: a zone it stores
+    is copied into the tenant's `general.timezone`, so one the container refuses would fail every
+    run.
+    """
+    cases = json.loads((ROOT / "workers/app/test/time_zone_cases.json").read_text("utf-8"))["cases"]
+
+    for case in cases:
+        if case["stored"] is not None:
+            assert validate_setting("general.timezone", case["stored"]) == case["stored"]
+        elif case["zone"].lower() == case["zone"] and "/" in case["zone"]:
+            # A lower-case name the container may read on a case-blind file system; the Worker
+            # refuses it because a case-sensitive one would not.
+            continue
+        else:
+            with pytest.raises(ValueError):
+                validate_setting("general.timezone", case["zone"])
+
+
 def test_the_gateway_host_and_the_tenant_pattern_are_one_on_both_sides() -> None:
     js = _js("tenant_db.js")
     [host] = re.findall(r'^export const DB_HOST = "([^"]+)";', js, re.M)

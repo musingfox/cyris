@@ -61,7 +61,13 @@ How it is built (`workers/app/src/run_queue.js`, `tenant_registry.js`):
 * **The schedule is the registry's.** `tenants.digest_times`, two whole hours as
   `validate_schedule` takes them, and a new `tenants.timezone` are set only by the operator's
   `POST /hosted/tenants/<tenant>/schedule?times=&timezone=[&daily_run_cap=]`. The registry
-  checks them and stores the zone under its canonical name. The tick reads the schedule from the
+  checks them. The zone must be an IANA name, an area and its locations or one word such as UTC,
+  that the runtime knows. It is stored as given, or in the runtime's casing when only the case
+  differs, because the container's zoneinfo reads names case-sensitively. An offset such as
+  `+08:00` is refused with 400: `Intl` takes it, the container's `_known_timezone` does not, and
+  every run would fail. So is a link name given in another case. The runtime's own name for a
+  zone is not stored, because it renames links (`Asia/Kolkata` becomes `Asia/Calcutta`).
+  `workers/app/test/time_zone_cases.json` holds both sides to one set of answers. The tick reads the schedule from the
   registry row and never from the tenant's `settings`. A tenant with no schedule in the registry
   is polled and never queued. The route also copies the two values into the tenant's own
   `settings`, and so does the seed when the registry has a schedule. The run reads its window and
@@ -77,27 +83,40 @@ How it is built (`workers/app/src/run_queue.js`, `tenant_registry.js`):
   of a live issue is refused, and the run route answers it with 409. A different issue of the
   same tenant is queued behind it.
 * **The registry's alarm starts the runs.** Queueing a run, and every stop report, set the alarm
-  for now. Each alarm pass does three things. It frees the slot of any run with no stop report
-  within `RUN_LEASE_MS`, 20 minutes. That is longer than the container's 15-minute inactivity
-  timeout, so the container has stopped by then. It then starts queued runs until `RUN_SLOTS`
-  are held. `RUN_SLOTS` equals `max_instances`, and `tests/test_hosted_config.py` holds them
-  equal. A tenant holds at most one slot. Last, it sets the alarm for a minute later while a run
-  still waits. The tenant that started a run least recently goes first, a tenant that never ran
-  before any of them. Ties go to the run queued first.
+  for now. Each alarm pass first expires every lease that is over. A held run's lease is
+  `RUN_LEASE_MS`, 20 minutes from its start. That is longer than the container's 15-minute
+  inactivity timeout, so the container has stopped by then. The pass then starts queued runs
+  until `RUN_SLOTS` are held. `RUN_SLOTS` equals `max_instances`, and
+  `tests/test_hosted_config.py` holds them equal. A tenant holds at most one slot. The tenant
+  that started a run least recently goes first, a tenant that never ran before any of them, and
+  ties go to the run queued first. Last, the pass sets the next alarm: a minute on while a run
+  waits, and a second past the earliest held run's lease end while one is held. So a run whose
+  stop is never reported is expired on time even when nothing else happens.
+* **An expired lease queues the run again.** This covers a deploy that replaces a run object
+  mid-run, and a stop report whose call failed and was only logged. If the tenant's
+  `digest_runs` holds an ok run of that period since the run started, the run made its issue
+  and only its report was lost, so it ends as `done` and nothing starts. Otherwise the row ends
+  as `lost`, and a new row of the same issue is queued with its attempts, within
+  `MAX_START_ATTEMPTS`. The run that has had its last start ends as `failed`. The lost row
+  keeps its start time, so it counts against the cap, and the tenant waits behind tenants that
+  have not run. Queueing a run also expires any lease already over first, so a catch-up of that
+  issue is queued instead of refused as live.
 * **A stop is reported.** `Lifecycle` (`container.js`) takes an optional `onStop`, which the
   default Worker does not pass. The tenant's run object passes one, which tells the registry
   how its container stopped. Exit 0 ends the run as `done`. A stop with "no container instance"
   queues the run again, like a start that threw it after its 90-second retry. Any other exit, or
   any other start error, ends the run as `failed`, and the next tick's catch-up applies as
-  before. A run gets `MAX_START_ATTEMPTS`, four starts, before it is `failed`. Every state is in
-  the tenant's report (`runs`) and in the logs (`run queued`, `run started`, `run failed`,
-  `run lost`).
+  before. A run gets `MAX_START_ATTEMPTS`, four starts, before it is `failed`. Starts that met no
+  instance and starts whose lease ran out both count. Every state is in the tenant's report
+  (`runs`) and in the logs (`run queued`, `run started`, `run done`, `run failed`, `run lost`,
+  `run queued again`).
 * **Each tenant has a cap in the registry.** A new column, `tenants.daily_run_cap`, is the most
   runs a tenant may start in any 24 hours. Its live runs count against it too. A run past the cap
   is refused, and the run route answers 429. The default is 6, `2 × CATCH_UP_HOURS`. That is two
   digest hours, each tried by its tick and its catch-ups, so a day of failures still fits. Only
   something else, such as the operator or a tenant rewriting its own `digest_runs` to ask for
   catch-ups, can reach it. The operator's schedule route sets another cap, from 1 to 24.
+  Scheduling a tenant again without naming a cap keeps the one it has.
 * **The registry's new columns are added in place.** ADR-0030 left the registry without a version
   table. Both new columns are additive and have a default, so the registry checks its own
   `tenants` columns on start and adds any that are missing. A version table waits for the first
@@ -124,7 +143,10 @@ How it is built (`workers/app/src/run_queue.js`, `tenant_registry.js`):
   one of its own. That is how the runtime is documented to behave, but it has not been run on the
   trial account yet.
 * Bad, because a run lost with no stop report, when its object was replaced mid-run, holds its
-  slot for up to 20 minutes before the lease frees it.
+  slot until its lease ends, 20 minutes after its start, before it is queued again.
+* Bad, because a stop report is matched to the tenant's newest held run, not to the run its
+  container started. A report delayed past its run's lease could end the run queued in its
+  place. At a 20-minute lease this is unlikely.
 * Bad, because a tenant needs one more operator step, the schedule route, before the tick runs
   it. A registry created before this change keeps its tenants unscheduled until the operator sets
   each one.
@@ -145,7 +167,16 @@ How it is built (`workers/app/src/run_queue.js`, `tenant_registry.js`):
     morning issue. A run that waited past midnight in Taipei keeps the date it was queued with.
   * A free slot goes to the tenant that started a run least recently.
   * The daily cap refuses a run past it and is untouched by the tenant's own database.
-  * The lease frees a slot that has no stop report, and is longer than the inactivity timeout.
+  * A run with no stop report is expired by its own alarm at its lease end, with no tick and no
+    other run, and is queued again behind tenants that have not run. The lease is longer than
+    the inactivity timeout.
+  * One tenant whose 08:00 run is never reported gets its morning issue started again: the
+    reviewer's repro R1. A run whose issue is already in `digest_runs` ends as `done` and starts
+    nothing. A run whose leases keep running out is `failed` after four starts.
+  * A zone such as `+08:00` is refused, and every case in `time_zone_cases.json` is stored or
+    refused as listed. `tests/test_hosted_config.py` checks the same cases against the
+    container's own check.
+  * Scheduling a tenant again with no cap named keeps its cap.
   * The registry gains its new columns in place.
 * `workers/app/test/hosted.test.js` checks that a tenant's run object reports its container's
   stops to the registry: a "no container instance" stop requeues the run, and exit 0 ends it. It
