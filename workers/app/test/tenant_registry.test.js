@@ -3,6 +3,17 @@ import { env } from "cloudflare:workers";
 import { generateKeyPair, exportJWK, SignJWT } from "jose";
 import worker from "../src/hosted.js";
 import { LOCATION_HINT, TENANT } from "../src/tenant_db.js";
+import RESERVED_IDS from "../src/hosted_reserved_ids.json" with { type: "json" };
+import {
+  SESSION_TTL_MS,
+  SIGN_IN_ADDRESS_CAP,
+  SIGN_IN_DAILY_CEILING,
+  SIGN_IN_DAY_MS,
+  SIGN_IN_GAP_MS,
+  SIGN_IN_HOUR_MS,
+  SIGN_IN_TENANT_CAP,
+  SIGN_IN_TTL_MS,
+} from "../src/hosted_session.js";
 import { REGISTRY_NAME, REGISTRY_SCHEMA, tenantRegistry } from "../src/tenant_registry.js";
 import { TENANT_STATUSES } from "../src/tenant_status.js";
 import { DEFAULT_DAILY_RUN_CAP } from "../src/run_queue.js";
@@ -10,13 +21,234 @@ import { SCHEMA_SQL, drainAlarms, namespace, registryNamespace, registryObject }
 
 const AT = new Date("2026-11-18T06:00:00Z");
 const STAMP = "2026-11-18T06:00:00+00:00";
+const later = (ms) => new Date(AT.getTime() + ms);
+
+// The registry's sign-in rows, as the operator's invite and a reader's sign-in leave them.
+describe("the registry's sign-in", () => {
+  // alpha and bravo are registered; ana is on alpha's list, bea on bravo's.
+  function signInRegistry() {
+    const registry = registryObject();
+    registry.register("alpha", { now: AT });
+    registry.register("bravo", { now: AT });
+    registry.invite("alpha", "ana@example.com", { now: AT });
+    registry.invite("bravo", "bea@example.com", { now: AT });
+    return registry;
+  }
+  const rows = (registry, table) => registry.ctx.storage.sql.exec(`SELECT * FROM ${table}`).toArray();
+
+  it("puts an address on one tenant's list only, as the operator names it, trimmed and lower-cased", () => {
+    const registry = signInRegistry();
+
+    expect(registry.invite("alpha", "  Ana@Example.COM ", { now: later(1000) })).toEqual({
+      member: { email: "ana@example.com", tenant_id: "alpha", created_at: STAMP },
+    });
+    expect(registry.invite("bravo", "ana@example.com")).toEqual({
+      refused: "ana@example.com is already invited to alpha",
+      status: 409,
+    });
+    expect(registry.invite("charlie", "cy@example.com")).toMatchObject({ status: 404 });
+    expect(registry.invite("alpha", "not an address")).toMatchObject({ status: 400 });
+    expect(registry.members("alpha", { now: AT })).toEqual([{ email: "ana@example.com", created_at: STAMP, sessions: 0 }]);
+  });
+
+  it("issues a link only to an address on a registered tenant's list, for that tenant, keyed by its hash", () => {
+    const registry = signInRegistry();
+
+    expect(registry.issueSignIn("stranger@example.com", "h-stranger", { now: AT })).toEqual({ refused: "not invited" });
+    expect(registry.issueSignIn("ANA@example.com", "h-ana", { now: AT })).toEqual({
+      tenant: "alpha",
+      expires_at: "2026-11-18T06:15:00+00:00",
+    });
+    expect(rows(registry, "invites")).toEqual([
+      {
+        code: "h-ana",
+        email: "ana@example.com",
+        tenant_id: "alpha",
+        created_at: STAMP,
+        expires_at: "2026-11-18T06:15:00+00:00",
+        used_at: null,
+      },
+    ]);
+  });
+
+  it("mails an address at most one link a minute", () => {
+    const registry = signInRegistry();
+    registry.issueSignIn("ana@example.com", "h-1", { now: AT });
+
+    expect(registry.issueSignIn("ana@example.com", "h-2", { now: later(SIGN_IN_GAP_MS - 1000) }).refused).toMatch(/less than a minute/);
+    expect(registry.issueSignIn("ana@example.com", "h-3", { now: later(SIGN_IN_GAP_MS + 1000) }).tenant).toBe("alpha");
+    expect(rows(registry, "invites").map((row) => row.code)).toEqual(["h-1", "h-3"]);
+  });
+
+  // A reader's ask at /login, and the operator's invitation, as the two callers make them.
+  const ask = (registry, email, code, ms = 0) => registry.issueSignIn(email, code, { now: later(ms) });
+  const invitation = (registry, email, code, ms = 0) => registry.issueSignIn(email, code, { now: later(ms), invitation: true });
+  const step = SIGN_IN_GAP_MS + 1000;
+
+  it("lets one address ask for at most SIGN_IN_ADDRESS_CAP links in any hour, and again within the hour", () => {
+    const registry = signInRegistry();
+    for (let i = 0; i < SIGN_IN_ADDRESS_CAP; i++) expect(ask(registry, "ana@example.com", `h-${i}`, i * step).tenant).toBe("alpha");
+
+    const past = ask(registry, "ana@example.com", "h-past", SIGN_IN_ADDRESS_CAP * step);
+    expect(past).toMatchObject({ capped: "address" });
+    expect(past.tenant).toBeUndefined();
+    expect(rows(registry, "invites").map((row) => row.code)).not.toContain("h-past");
+    // Another address is not held by ana's cap, and an hour after her first ask she gets a link again.
+    expect(ask(registry, "bea@example.com", "h-bea", SIGN_IN_ADDRESS_CAP * step).tenant).toBe("bravo");
+    expect(ask(registry, "ana@example.com", "h-next", SIGN_IN_HOUR_MS + 1000).tenant).toBe("alpha");
+  });
+
+  it("lets one tenant's addresses ask for at most SIGN_IN_TENANT_CAP links in any hour, holding no other tenant", () => {
+    const registry = signInRegistry();
+    const cohort = Array.from({ length: SIGN_IN_TENANT_CAP }, (_, i) => `reader${i}@example.com`);
+    for (const email of cohort) registry.invite("alpha", email, { now: AT });
+    for (const email of cohort) expect(ask(registry, email, `h-${email}`).tenant).toBe("alpha");
+
+    expect(ask(registry, "ana@example.com", "h-ana", SIGN_IN_HOUR_MS - 1000)).toMatchObject({ capped: "tenant" });
+    expect(ask(registry, "bea@example.com", "h-bea", SIGN_IN_HOUR_MS - 1000).tenant).toBe("bravo");
+    expect(ask(registry, "ana@example.com", "h-ana", SIGN_IN_HOUR_MS + 1000).tenant).toBe("alpha");
+  });
+
+  it("holds every ask past SIGN_IN_DAILY_CEILING in a day, which one tenant's flood cannot reach", () => {
+    const registry = signInRegistry();
+    // A day of alpha's readers asking as fast as anyone may: four addresses, each every gap.
+    const flood = ["ana", "al", "amy", "abe"].map((name) => `${name}@example.com`);
+    for (const email of flood.slice(1)) registry.invite("alpha", email, { now: AT });
+    let issued = 0;
+    for (let ms = 0; ms < SIGN_IN_DAY_MS; ms += step) {
+      for (const email of flood) if (ask(registry, email, `h-${email}-${ms}`, ms).tenant) issued++;
+    }
+    expect(issued).toBeLessThanOrEqual((SIGN_IN_DAY_MS / SIGN_IN_HOUR_MS + 1) * SIGN_IN_TENANT_CAP);
+    expect(issued).toBeLessThan(SIGN_IN_DAILY_CEILING);
+    expect(ask(registry, "bea@example.com", "h-bea", SIGN_IN_DAY_MS).tenant).toBe("bravo");
+
+    // Asks enough to reach the ceiling, from many tenants, hold every reader, bravo's too.
+    const fresh = signInRegistry();
+    for (let i = 0; i < SIGN_IN_DAILY_CEILING; i++) {
+      fresh.ctx.storage.sql.exec("INSERT INTO sign_in_asks (email, tenant_id, asked_at) VALUES (?, ?, ?)", `r${i}@example.com`, `t${i}`, STAMP);
+    }
+    expect(ask(fresh, "bea@example.com", "h-bea", 1000)).toMatchObject({ capped: "daily" });
+    expect(ask(fresh, "bea@example.com", "h-bea", SIGN_IN_DAY_MS + 1000).tenant).toBe("bravo");
+  });
+
+  it("issues the operator's invitation whatever the gap and the caps, counting it against none", () => {
+    const registry = signInRegistry();
+    for (let i = 0; i <= SIGN_IN_ADDRESS_CAP; i++) ask(registry, "ana@example.com", `h-${i}`, i * step);
+    expect(ask(registry, "ana@example.com", "h-held", SIGN_IN_ADDRESS_CAP * step + 1000)).toMatchObject({ capped: "address" });
+
+    // Held by its cap and inside the gap, ana is still invited again at once.
+    expect(invitation(registry, "ana@example.com", "h-invite", SIGN_IN_ADDRESS_CAP * step + 2000).tenant).toBe("alpha");
+    // A cohort invited at once takes nothing from the tenant's readers' hour.
+    const cohort = Array.from({ length: SIGN_IN_TENANT_CAP * 3 }, (_, i) => `reader${i}@example.com`);
+    for (const email of cohort) registry.invite("bravo", email, { now: AT });
+    for (const email of cohort) expect(invitation(registry, email, `h-${email}`).tenant).toBe("bravo");
+    expect(rows(registry, "sign_in_asks").filter((row) => row.tenant_id === "bravo")).toEqual([]);
+    expect(ask(registry, "bea@example.com", "h-bea").tenant).toBe("bravo");
+    // An invitation still goes only to an address on the list.
+    expect(invitation(registry, "stranger@example.com", "h-x")).toEqual({ refused: "not invited" });
+  });
+
+  it("writes nothing for an address off the list, however often it asks, and counts none against the caps", () => {
+    const registry = signInRegistry();
+    const tables = ["members", "invites", "sessions", "tenants", "sign_in_asks"];
+    const before = JSON.stringify(tables.map((table) => rows(registry, table)));
+
+    for (let i = 0; i < SIGN_IN_TENANT_CAP * 30; i++) {
+      expect(ask(registry, `stranger${i}@example.com`, `h-${i}`)).toEqual({ refused: "not invited" });
+    }
+
+    expect(JSON.stringify(tables.map((table) => rows(registry, table)))).toBe(before);
+    expect(ask(registry, "ana@example.com", "h-ana").tenant).toBe("alpha");
+  });
+
+  it("deletes a link's row once it expires, and an ask's a day after it, and revokes both with the address", () => {
+    const registry = signInRegistry();
+    ask(registry, "ana@example.com", "h-ana");
+    ask(registry, "bea@example.com", "h-bea");
+
+    ask(registry, "stranger@example.com", "h-x", SIGN_IN_TTL_MS + 1000);
+    expect(rows(registry, "invites")).toEqual([]);
+    expect(rows(registry, "sign_in_asks").map((row) => row.email)).toEqual(["ana@example.com", "bea@example.com"]);
+    registry.revoke("bravo", "bea@example.com");
+    expect(rows(registry, "sign_in_asks").map((row) => row.email)).toEqual(["ana@example.com"]);
+    ask(registry, "stranger@example.com", "h-x", SIGN_IN_DAY_MS);
+    expect(rows(registry, "sign_in_asks")).toEqual([]);
+  });
+
+  it("opens a session for the link's own address and tenant, once", () => {
+    const registry = signInRegistry();
+    registry.issueSignIn("bea@example.com", "h-bea", { now: AT });
+
+    expect(registry.redeemSignIn("h-bea", "s-1", { now: later(60_000) })).toEqual({
+      tenant: "bravo",
+      expires_at: new Date(AT.getTime() + 60_000 + SESSION_TTL_MS).toISOString().slice(0, 19) + "+00:00",
+    });
+    expect(registry.session("s-1", { now: later(120_000) })).toMatchObject({ tenant_id: "bravo", email: "bea@example.com" });
+    // The same link again opens nothing, and leaves the first session as it was.
+    expect(registry.redeemSignIn("h-bea", "s-2", { now: later(120_000) })).toBeNull();
+    expect(registry.session("s-2", { now: later(120_000) })).toBeNull();
+    expect(rows(registry, "sessions").map((row) => row.token_hash)).toEqual(["s-1"]);
+  });
+
+  it("opens no session for a link past its time, or one it never issued", () => {
+    const registry = signInRegistry();
+    registry.issueSignIn("ana@example.com", "h-ana", { now: AT });
+
+    expect(registry.redeemSignIn("h-ana", "s-late", { now: later(SIGN_IN_TTL_MS + 1000) })).toBeNull();
+    expect(registry.redeemSignIn("h-never", "s-never", { now: AT })).toBeNull();
+    expect(rows(registry, "sessions")).toEqual([]);
+  });
+
+  it("refuses a session past its time", () => {
+    const registry = signInRegistry();
+    registry.issueSignIn("ana@example.com", "h-ana", { now: AT });
+    registry.redeemSignIn("h-ana", "s-ana", { now: AT });
+
+    expect(registry.session("s-ana", { now: later(SESSION_TTL_MS - 1000) })).not.toBeNull();
+    expect(registry.session("s-ana", { now: later(SESSION_TTL_MS + 1000) })).toBeNull();
+  });
+
+  it("ends a session at once when it signs out, or when its address is taken off the list", () => {
+    const registry = signInRegistry();
+    for (const [email, code, session] of [
+      ["ana@example.com", "h-ana", "s-ana"],
+      ["bea@example.com", "h-bea", "s-bea"],
+    ]) {
+      registry.issueSignIn(email, code, { now: AT });
+      registry.redeemSignIn(code, session, { now: AT });
+    }
+    registry.issueSignIn("ana@example.com", "h-ana-2", { now: later(SIGN_IN_GAP_MS + 1000) });
+
+    registry.endSession("s-bea");
+    expect(registry.session("s-bea", { now: AT })).toBeNull();
+
+    expect(registry.revoke("bravo", "ana@example.com")).toMatchObject({ status: 404 });
+    expect(registry.revoke("alpha", "ana@example.com")).toEqual({
+      revoked: { email: "ana@example.com", tenant_id: "alpha", sessions: 1 },
+    });
+    expect(registry.session("s-ana", { now: AT })).toBeNull();
+    // Its unspent link went with it, and it is no longer on any list.
+    expect(registry.redeemSignIn("h-ana-2", "s-ana-2", { now: later(SIGN_IN_GAP_MS + 2000) })).toBeNull();
+    expect(registry.issueSignIn("ana@example.com", "h-ana-3", { now: later(SIGN_IN_TTL_MS) })).toEqual({ refused: "not invited" });
+    expect(rows(registry, "members").map((row) => row.email)).toEqual(["bea@example.com"]);
+  });
+
+  it("opens no session for a link whose address left the list after it was mailed", () => {
+    const registry = signInRegistry();
+    registry.issueSignIn("ana@example.com", "h-ana", { now: AT });
+    registry.ctx.storage.sql.exec("DELETE FROM members WHERE email = ?", "ana@example.com");
+
+    expect(registry.redeemSignIn("h-ana", "s-ana", { now: AT })).toBeNull();
+    expect(rows(registry, "sessions")).toEqual([]);
+  });
+});
 
 describe("the operator's registry", () => {
   it("creates its own tables, none of them a tenant's", () => {
     const created = [...REGISTRY_SCHEMA.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1]);
     const tenants = [...SCHEMA_SQL.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1]);
 
-    expect(created.sort()).toEqual(["inbound_addresses", "invites", "runs", "sessions", "spend_rollup", "tenants"]);
+    expect(created.sort()).toEqual(["inbound_addresses", "invites", "members", "runs", "sessions", "sign_in_asks", "spend_rollup", "tenants"]);
     expect(created.filter((name) => tenants.includes(name))).toEqual([]);
   });
 
@@ -85,6 +317,15 @@ describe("the operator's registry", () => {
       `a tenant's status is one of ${TENANT_STATUSES.join(", ")}, not gone`,
     );
     expect(registry.tenants()).toEqual([]);
+  });
+
+  it("refuses a reserved id, and one that starts or ends with a hyphen, so no later path or host label is taken", () => {
+    const registry = registryObject();
+
+    for (const id of RESERVED_IDS.reserved) expect(registry.register(id).refused).toBe(`${id} is reserved, so no tenant can take it`);
+    for (const id of ["-", "-alpha", "alpha-"]) expect(registry.register(id).refused).toMatch(/starts and ends with a letter or a digit/);
+    expect(registry.register("alpha-2").tenant.id).toBe("alpha-2");
+    expect(registry.tenants().map((row) => row.id)).toEqual(["alpha-2"]);
   });
 
   it("is one object under a fixed name no tenant id can take, hinted where the tenants are", () => {

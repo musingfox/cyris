@@ -36,9 +36,9 @@ elif args[2:3] == ["deploy"]:
     print("Deployed cyris-hosted triggers\\n  URL")
 """.replace("ACCOUNT", ACCOUNT).replace("URL", URL)
 
-# Records its argv and the config it reads on stdin, and answers each route: a report, or the
-# tenant's latest page, which the report names by its hash. NO_PAGE names a tenant whose page
-# answers 404.
+# Records its argv and the config it reads on stdin, and answers each route: a report, the
+# tenant's latest page, which the report names by its hash, or the JSON body it was sent back.
+# NO_PAGE names a tenant whose page answers 404.
 CURL = """#!/usr/bin/env python3
 import hashlib, json, os, sys
 args = sys.argv[1:]
@@ -46,10 +46,7 @@ config = sys.stdin.read()
 with open(os.environ["CALLS"], "a") as log:
     log.write(json.dumps({"cmd": "curl", "args": args, "stdin": config}) + "\\n")
 url = args[-1]
-if "/hosted/tenants/" in url:
-    tenant = url.split("/hosted/tenants/")[1].split("/")[0]
-else:
-    tenant = url.split("/t/")[1].split("/")[0]
+tenant = url.split("/hosted/tenants/")[1].split("/")[0]
 if tenant == os.environ.get("UNREACHABLE"):
     # What curl does when it never gets an answer: no file, 000, and exit 7.
     sys.stderr.write("curl: (7) Failed to connect to cyris-hosted\\n")
@@ -58,7 +55,12 @@ if tenant == os.environ.get("UNREACHABLE"):
 page = ('<html><head><meta name="cyris-issue" content="2026-11-18-morning"></head>'
         f'<body>{tenant}</body></html>').encode()
 out = args[args.index("-o") + 1]
-if "/t/" in url:
+if url.endswith(("/invite", "/revoke", "/members")):
+    with open(out, "w") as body:
+        body.write('{"answered": true}')
+    sys.stdout.write("200")
+    sys.exit(0)
+if url.endswith("/page"):
     if tenant == os.environ.get("NO_PAGE"):
         with open(out, "w") as body:
             body.write('{"error": "no issue yet"}')
@@ -167,7 +169,15 @@ def test_deploy_ships_the_hosted_config_without_dotenv_and_keeps_its_url(repo: P
         (["deploy"], [ACCOUNT, "no"], True),
         (
             ["secrets"],
-            [ACCOUNT, "yes", "team.cloudflareaccess.com", "AUD-1", "sk-ant-SECRET", OPERATOR_HOOK],
+            [
+                ACCOUNT,
+                "yes",
+                "team.cloudflareaccess.com",
+                "AUD-1",
+                "sk-ant-SECRET",
+                OPERATOR_HOOK,
+                "cyris@mail.example",
+            ],
             True,
         ),
         (["containers"], [ACCOUNT], False),
@@ -208,7 +218,15 @@ def test_the_account_typed_is_the_one_wrangler_acts_on_whatever_the_environment_
 
 def test_each_secret_reaches_wrangler_on_stdin_and_never_in_argv(repo: Path) -> None:
     (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
-    typed = [ACCOUNT, "yes", "team.cloudflareaccess.com", "AUD-1", "sk-ant-SECRET", OPERATOR_HOOK]
+    typed = [
+        ACCOUNT,
+        "yes",
+        "team.cloudflareaccess.com",
+        "AUD-1",
+        "sk-ant-SECRET",
+        OPERATOR_HOOK,
+        "cyris@mail.example",
+    ]
 
     done, calls = _run(repo, ["secrets"], typed)
 
@@ -220,6 +238,8 @@ def test_each_secret_reaches_wrangler_on_stdin_and_never_in_argv(repo: Path) -> 
         ("ANTHROPIC_API_KEY", "sk-ant-SECRET"),
         # Where every tenant's failed run is reported (ADR-0035).
         ("CYRIS_HOSTED_OPERATOR_WEBHOOK", OPERATOR_HOOK),
+        # The sign-in mail's sender (ADR-0033).
+        ("CYRIS_HOSTED_MAIL_FROM", "cyris@mail.example"),
         # The host deploy kept: every tenant's links point at it.
         ("CYRIS_STORE_HOSTED_DOMAIN", "cyris-hosted.trial.workers.dev"),
     ]
@@ -262,11 +282,12 @@ def test_check_reads_every_tenant_and_its_page_with_the_token_on_stdin_and_judge
     curls = [c for c in calls if c["cmd"] == "curl"]
     assert [c["args"][-1] for c in curls] == [
         f"{URL}/hosted/tenants/alpha/report",
-        f"{URL}/t/alpha/",
+        f"{URL}/hosted/tenants/alpha/page",
         f"{URL}/hosted/tenants/bravo/report",
-        f"{URL}/t/bravo/",
+        f"{URL}/hosted/tenants/bravo/page",
     ]
-    assert "GET /t/alpha/ -> HTTP 200" in done.stderr
+    # /t/ takes a tenant session, which the operator never holds: the page is read under /hosted/.
+    assert "GET /hosted/tenants/alpha/page -> HTTP 200" in done.stderr
     # The page is judged, not printed.
     assert "<meta" not in done.stdout
     for c in curls:
@@ -449,7 +470,7 @@ def test_a_tenant_that_never_answers_fails_alone_and_the_next_is_still_asked(
 
     assert done.returncode == 1
     # check also fetches the page of each tenant whose report came back.
-    page = [f"{URL}/t/bravo/"] if args == ["check"] else []
+    page = [f"{URL}/hosted/tenants/bravo/page"] if args == ["check"] else []
     assert [c["args"][-1] for c in calls if c["cmd"] == "curl"] == [
         f"{URL}/hosted/tenants/alpha/{route}",
         f"{URL}/hosted/tenants/bravo/{route}",
@@ -481,3 +502,39 @@ def test_check_still_judges_the_reports_that_came_back(repo: Path) -> None:
     assert done.returncode == 1
     assert "PASS alpha" in done.stdout
     assert "failed for: bravo" in done.stderr
+
+
+@pytest.mark.parametrize("action", ["invite", "revoke"])
+def test_invite_and_revoke_send_the_address_in_a_json_body_on_stdin(
+    repo: Path, action: str
+) -> None:
+    """The address goes in the body, so it is in no URL the Worker's logs keep, and no argv."""
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, calls = _run(
+        repo, [action, "alpha", 'ana"q@example.com'], ["client-id.access", "client-SECRET"]
+    )
+
+    assert done.returncode == 0, done.stderr
+    [curl] = [c for c in calls if c["cmd"] == "curl"]
+    assert curl["args"][-1] == f"{URL}/hosted/tenants/alpha/{action}"
+    assert curl["args"][curl["args"].index("-X") + 1] == "POST"
+    assert 'header = "Content-Type: application/json"' in curl["stdin"]
+    # curl's config unescapes this back to {"email": "ana\"q@example.com"}.
+    assert 'data = "{\\"email\\": \\"ana\\\\\\"q@example.com\\"}"' in curl["stdin"]
+    assert "ana" not in " ".join(curl["args"])
+    assert "CF-Access-Client-Secret: client-SECRET" in curl["stdin"]
+
+
+def test_members_lists_one_tenant_and_every_subcommand_names_its_arguments(repo: Path) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, calls = _run(repo, ["members", "bravo"], ["client-id.access", "client-SECRET"])
+    missing = [_run(repo, args, [])[0] for args in (["invite", "alpha"], ["revoke"], ["members"])]
+
+    assert done.returncode == 0, done.stderr
+    assert [c["args"][-1] for c in calls if c["cmd"] == "curl"] == [
+        f"{URL}/hosted/tenants/bravo/members"
+    ]
+    assert [m.returncode for m in missing] == [2, 2, 2]
+    assert "usage: " in missing[0].stderr and "invite TENANT EMAIL" in missing[0].stderr

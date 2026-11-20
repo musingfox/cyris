@@ -6,6 +6,12 @@ decision-makers: ""
 
 # Cloudflare Access is the only sign-in, and the Worker checks its JWT
 
+> Superseded in part by [ADR-0033](0033-hosted-readers-sign-in-with-a-mailed-link.md)
+> (2026-11-20), for the hosted Worker `cyris-hosted` only. Its readers sign in with a mailed
+> single-use link and a session the Worker keeps, not with Access. Access, with the Worker's JWT
+> check, still guards the hosted operator's routes, and every self-hosted deployment keeps this
+> decision whole.
+
 ## Context and Problem Statement
 
 [ADR-0009](0009-a-token-cookie-always-and-access-only-if-you-own-a-domain.md) made the

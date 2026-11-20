@@ -1,10 +1,11 @@
 """The UI catalogs agree with themselves and with the code that words from them (ADR-0027).
 
-Each check reads the catalog files and the source under `src/cyris/`. A key is used where
-`t("key")` appears in a Python module, a template or a page script; a key built from a value,
-`t(f"prefix.{value}")` in a Python module, `t("prefix." ~ value)` in a template or
-``t(`prefix.${value}`)`` in a page script, is used for every value of its declared range in
-`FAMILIES`. Any other first argument to `t(` is a key no check can see, so it fails.
+Each check reads the catalog files and the source under `src/cyris/`, and the hosted Worker's
+under `workers/app/src/`, whose sign-in pages and mail word from the same catalogs (ADR-0033). A
+key is used where `t("key")` appears in a Python module, a template or a page script; a key
+built from a value, `t(f"prefix.{value}")` in a Python module, `t("prefix." ~ value)` in a
+template or ``t(`prefix.${value}`)`` in a page script, is used for every value of its declared
+range in `FAMILIES`. Any other first argument to `t(` is a key no check can see, so it fails.
 """
 
 import ast
@@ -48,6 +49,8 @@ pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
 SRC = Path(cyris.__file__).parent
 LOCALES = SRC / "locales"
+ROOT = Path(__file__).resolve().parents[1]
+WORKER_SRC = ROOT / "workers/app/src"
 ENGLISH = "en"
 # The functions both formatters ship as Stable and on by default.
 FUNCTIONS = {"string", "number", "integer"}
@@ -134,13 +137,18 @@ def _inputs(text: str) -> set[str]:
 
 
 def _sources() -> list[Path]:
-    """Every file under `src/cyris/` a `t` call can sit in, vendored code aside."""
+    """Each file under `src/cyris/` a `t` call can sit in, vendored code aside, and the Worker's."""
     return sorted(
         path
         for pattern in ("*.py", "*.j2", "*.js")
         for path in SRC.rglob(pattern)
         if "vendor" not in path.parts
-    )
+    ) + sorted(WORKER_SRC.glob("*.js"))
+
+
+def _shown(path: Path) -> str:
+    """`path` as a test names it: under `src/cyris/`, or from the repo root for the Worker's."""
+    return str(path.relative_to(SRC if path.is_relative_to(SRC) else ROOT))
 
 
 def _family(prefix: str) -> set[str]:
@@ -220,7 +228,7 @@ def _calls(path: Path) -> list[tuple[int, set[str] | None]]:
 def _keys_in(path: Path) -> set[str]:
     """The keys `path` calls `t` with, each one a literal or a family `FAMILIES` declares."""
     calls = _calls(path)
-    opaque = [f"{path.relative_to(SRC)}:{line}" for line, keys in calls if keys is None]
+    opaque = [f"{_shown(path)}:{line}" for line, keys in calls if keys is None]
     assert not opaque, f"t( takes a quoted literal or a declared f-string family: {opaque}"
     return set().union(*(keys for _, keys in calls))
 
@@ -278,10 +286,7 @@ def test_every_message_parses_and_calls_only_the_shared_functions(tag, key, text
 
 
 def test_every_key_the_code_uses_is_in_english() -> None:
-    missing = {
-        key: sorted(str(path.relative_to(SRC)) for path in paths)
-        for key, paths in _used_keys().items()
-    }
+    missing = {key: sorted(_shown(path) for path in paths) for key, paths in _used_keys().items()}
     for key in _english():
         missing.pop(key, None)
 
@@ -330,7 +335,7 @@ def test_no_page_carries_messages_inline(template, tag) -> None:
     assert NAMES_CATALOG.findall(RENDERERS[template](tag)) == ["meta"]
 
 
-@pytest.mark.parametrize("path", _sources(), ids=lambda path: str(path.relative_to(SRC)))
+@pytest.mark.parametrize("path", _sources(), ids=_shown)
 def test_every_t_call_takes_a_literal_key_or_a_declared_family(path) -> None:
     assert [line for line, keys in _calls(path) if keys is None] == []
 
@@ -449,7 +454,7 @@ def _untranslated_in(catalog: dict, keys_by_file: dict[str, set[str]]) -> dict[s
 @pytest.mark.parametrize("tag", sorted(set(_catalogs()) - {ENGLISH}))
 def test_a_catalog_words_all_of_a_file_or_none_of_it(tag) -> None:
     """A family value left untranslated shows English inside a translated sentence."""
-    keys_by_file = {str(path.relative_to(SRC)): _keys_in(path) for path in _sources()}
+    keys_by_file = {_shown(path): _keys_in(path) for path in _sources()}
 
     assert _untranslated_in(_catalogs()[tag], keys_by_file) == {}
 

@@ -21,6 +21,10 @@ reader is never shown its error, is
 [ADR-0035](decisions/0035-a-hosted-runs-alerts-go-to-the-operator-through-the-hosted-worker.md).
 Why each tenant's newsletters arrive at a random address of its own, into its own object, is
 [ADR-0034](decisions/0034-a-hosted-tenants-newsletters-arrive-at-a-random-address.md).
+Step 10 invites a reader, who signs in with a link mailed to them and reads only their own
+tenant's digest. Why readers sign in that way and not with Access, and why Access stays in front
+of the operator's routes only, is
+[ADR-0033](decisions/0033-hosted-readers-sign-in-with-a-mailed-link.md).
 
 `cyris-hosted` is a separate Worker from `cyris-app`. Nothing here deploys or changes
 `wrangler.toml`, which a push to main deploys to production (ADR-0024).
@@ -43,6 +47,8 @@ Every command runs, as pasted, from the root of a checkout of this repository. `
   what is not posted.
 - `CF-Access-Client-Id` and `CF-Access-Client-Secret`: a service token the step-2 application
   allows. The seed, run and check steps sign in with it.
+- `CYRIS_HOSTED_MAIL_FROM`: the address the readers' sign-in mail is sent from. It must be on the
+  domain you onboard to Email Sending in step 0.
 
 The secrets are read without echo each time, and they are never written down. They reach
 wrangler and curl on stdin, never on a command line. The one value the script keeps is the
@@ -56,7 +62,17 @@ You need:
 
 - Docker running, because wrangler builds the container image locally;
 - `bun`, `python3` (3.11 or later) and `curl`;
-- Workers Paid on the trial account, because the Worker runs containers.
+- Workers Paid on the trial account, because the Worker runs containers. Email Sending to an
+  address the account has not verified needs it too;
+- for step 10, a domain on Cloudflare DNS in the trial account, onboarded to Email Sending
+  (Email > Email Sending > Onboard Domain, *label unverified*). Onboarding adds SPF, DKIM, DMARC
+  and bounce MX records to the domain. Until a domain is onboarded, the sign-in mail reaches only
+  the account's verified destination addresses, and a new account starts with a daily quota that
+  Cloudflare does not publish. Workers Paid includes 3,000 mails a month
+  ([limits](https://developers.cloudflare.com/email-service/platform/limits/),
+  [pricing](https://developers.cloudflare.com/email-service/platform/pricing/));
+- for step 10, an inbox outside the account that is not one of its verified destination
+  addresses, to check that a link reaches a stranger.
 
 ```bash
 bun install --frozen-lockfile
@@ -82,32 +98,56 @@ scripts/hosted.sh deploy
 
 This runs `wrangler deploy --config wrangler.hosted.toml --env-file /dev/null`, after you
 confirm the account. It deploys the Worker, its three Durable Object classes
-(`TenantContainer`, `TenantDb` and `TenantRegistry`) and the container application
-`cyris-hosted-tenantcontainer`. It never reads `.env`. A first deploy's registry is empty, so
+(`TenantContainer`, `TenantDb` and `TenantRegistry`), its `MAIL` Email Sending binding and the
+container application `cyris-hosted-tenantcontainer`. It never reads `.env`. A first deploy's registry is empty, so
 until step 5 the Worker has no tenant: the hourly tick starts nothing, and every tenant route
 answers 404.
 
-Until step 3 sets the Access secrets, every request to the Worker is answered with 403.
+Until step 3 sets the Access secrets, every operator request to the Worker is answered with 403.
 
-## 2. Put Access in front of it (dashboard)
+## 2. Put Access in front of the operator's routes (dashboard)
 
-The Worker checks the Access JWT itself (ADR-0015), so Access must sign a request in before the
-Worker sees it.
+The Worker checks the Access JWT itself on every operator route, `/hosted/...` (ADR-0015), so
+Access must sign those requests in before the Worker sees them. A tenant's pages, `/t/...`, and
+the sign-in, `/login` and `/logout`, take a reader's session instead and no Access JWT
+(ADR-0033), so Access must not stand in front of them: a reader would meet Access's own login.
 
-The dashboard labels in this step, and the ones in steps 6, 7, 9 and 10, were written from memory of
-the dashboard and have not been checked against it. Each is marked *(label unverified)*. What
-each step has to achieve is what counts; find it under whatever name the dashboard now uses.
+The dashboard labels in this step, and the ones in steps 0, 6, 7, 9, 10 and 11, were written
+from memory of the dashboard and have not been checked against it. Each is marked *(label
+unverified)*. What each step has to achieve is what counts; find it under whatever name the
+dashboard now uses.
 
-1. Workers & Pages > `cyris-hosted` > Settings > Domains & Routes *(label unverified)*: turn on
-   Cloudflare Access for the `workers.dev` route. This creates an Access application for that
-   hostname. Open it from there and note its Application Audience (AUD) Tag *(label
-   unverified)*.
+1. In Zero Trust > Access > Applications *(label unverified)*, add a self-hosted application
+   whose destination is the Worker's `workers.dev` hostname with the path `hosted`, so it covers
+   `/hosted/...` and nothing else. Do not use the Worker's own "Protect this Worker behind
+   Access" switch: Cloudflare's
+   [Workers and Access](https://developers.cloudflare.com/workers/configuration/cloudflare-access/)
+   page says it protects every domain of the Worker, `/t/` and `/login` included. A trial that
+   already has that switch on turns it off, or narrows its application to the same path. Access's
+   [application paths](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/)
+   page says a subpath with no rule of its own inherits its parent's, and that `hosted/*` would
+   not cover `/hosted` itself; nothing the operator calls is `/hosted` alone. Note the
+   application's Application Audience (AUD) Tag *(label unverified)*. A path Access leaves
+   uncovered is still refused by the Worker: any `/hosted/` request without a valid JWT answers
+   403, and so does every path that is neither `/hosted/`, `/t/` nor the sign-in.
 2. In Zero Trust > Access > Service credentials *(label unverified)*, create a service token, or
    reuse the trial's. Note its Client ID and Client Secret. The secret is shown once.
 3. In the step-1 application, add a policy whose action is Service Auth *(label unverified)* and
    that includes that token.
 4. Note the team domain, `<team>.cloudflareaccess.com` (Zero Trust > Settings, *label
    unverified*).
+
+After step 3, check that Access covers exactly the operator's routes, with `HOSTED_URL` from
+`.env.hosted`. Neither request signs in:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' "$HOSTED_URL/hosted/tenants/alpha/report"
+curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' "$HOSTED_URL/t/alpha/"
+```
+
+The first must be Access's redirect to `<team>.cloudflareaccess.com`, or a 403 from Access. The
+second must be the Worker's own `302` to `HOSTED_URL/login`. If the second goes to the team
+domain too, Access still covers `/t/`, and readers will meet its login instead of the sign-in.
 
 ## 3. Set the Worker's secrets
 
@@ -116,9 +156,10 @@ scripts/hosted.sh secrets
 ```
 
 This asks for `CYRIS_ACCESS_TEAM_DOMAIN`, `CYRIS_ACCESS_AUD`, `ANTHROPIC_API_KEY` and
-`CYRIS_HOSTED_OPERATOR_WEBHOOK`, and sets each one as a secret of `cyris-hosted` on stdin. The
-webhook is read without echo, because its URL is its credential, and it must start with
-`https://`. It also sets `CYRIS_STORE_HOSTED_DOMAIN` to the
+`CYRIS_HOSTED_OPERATOR_WEBHOOK` and `CYRIS_HOSTED_MAIL_FROM`, and sets each one as a secret of
+`cyris-hosted` on stdin. The webhook is read without echo, because its URL is its credential, and
+it must start with `https://`. The sender is not secret; it is set the same way so that
+`wrangler.hosted.toml` names no deployment's domain. It also sets `CYRIS_STORE_HOSTED_DOMAIN` to the
 host of the `HOSTED_URL` that step 1 kept, so it refuses to start without one. Every link a
 tenant's run gives points at that host. No other secret is needed. A hosted container is handed
 only the model keys, the account id and the hosted domain. It gets no D1 token, no Pages project,
@@ -280,7 +321,9 @@ scripts/hosted.sh check
 ```
 
 This reads `GET /hosted/tenants/<tenant>/report` for each tenant, then fetches that tenant's
-latest page, `GET /t/<tenant>/`, with the same service token. Each report has the tenant's
+latest page with the same service token, through `GET /hosted/tenants/<tenant>/page`. That route
+answers the page `/t/<tenant>/` serves the tenant's readers. `/t/` itself takes a reader's session,
+which the service token is not. Each report has the tenant's
 tables with their row counts, its sources, the sources of its stored articles, its
 `digest_runs`, its `digests`, the path and SHA-256 of the page its site root serves, and its
 `runs`: the registry's last 20 runs of the tenant, each with its period, date, origin, state,
@@ -313,20 +356,9 @@ woken at its own hours, run `check` after both tenants' hours have passed. In ea
 `digest_runs` row's `finished_at` falls a few minutes after one of that tenant's hours, and its
 `runs` row for the hour has `origin` `tick` and state `done`.
 
-### Reading a tenant's pages in a browser (optional)
-
-The check signs in with the service token. To read the pages yourself, add a policy to the
-step-2 Access application whose action is Allow *(label unverified)* and that includes your own
-email. Then open each of these, with `HOSTED_URL` from `.env.hosted`:
-
-- `HOSTED_URL/t/alpha/`: alpha's latest issue;
-- `HOSTED_URL/t/alpha/<date>-<period>`: one issue, from the archive at
-  `HOSTED_URL/t/alpha/index.html`;
-- `HOSTED_URL/t/alpha/<date>-<period>-raw`: that issue's raw page.
-
-The same paths under `/t/bravo/` are bravo's. Until tenant sessions land, Access admits only the
-operator, so these are your pages to check, not a tenant's sign-in. The vote buttons and the
-Settings link stay hidden, because the hosted Worker has no `/api/vote` or `/settings` yet.
+Do not add a reader, or yourself, to the step-2 Access application to read a tenant's pages.
+Access no longer opens `/t/`, and any identity that application admits can call every operator
+route. To read a tenant's pages in a browser, sign in as its reader (step 10).
 
 ### Reading or changing one tenant from the CLI (optional)
 
@@ -487,7 +519,57 @@ The handler logs the verdicts and does not act on them yet. Nothing a tenant can
 address, and Gmail's confirmation reaches a tenant only through you. Both wait for the tenant
 settings card.
 
-## 10. Tear down (when you are done)
+## 10. Invite a reader and check the sign-in
+
+Only the operator puts an address on a tenant's invite list, and an address belongs to one
+tenant. Invite an address you can read, from step 0's external inbox:
+
+```bash
+scripts/hosted.sh invite alpha reader@example.net
+```
+
+This runs `POST /hosted/tenants/alpha/invite` with the address in a JSON body, so it is in no
+URL. The answer is the address's row and `mail`: `{"sent": true, ...}` when the invitation went.
+It answers 502 and names what is missing when the Worker has no `MAIL` binding, no
+`CYRIS_HOSTED_MAIL_FROM` or no `CYRIS_STORE_HOSTED_DOMAIN`, or with the Email Service's error
+code when the send was refused. `E_RECIPIENT_NOT_ALLOWED` there means that no sending domain is
+onboarded yet. Either way the address stays on the list.
+
+Then check each of these, and keep the result:
+
+1. The invitation reaches the external inbox, which is not a verified address of the account.
+   Look in its spam folder too. Its link is `HOSTED_URL/login/confirm#<token>`; the token after
+   `#` never reaches the Worker.
+2. Opening the link shows a Sign in button. Pressing it lands on `HOSTED_URL/t/alpha/`, a URL with
+   no token, and shows alpha's latest issue: the page's `cyris-issue` receipt names the issue
+   `scripts/hosted.sh check` passed for alpha.
+3. Opening the mail's link a second time and pressing Sign in says the link has expired or has
+   already been used. A link expires after 15 minutes in any case.
+4. In the same browser, `HOSTED_URL/t/bravo/` answers `{"error":"not found"}`, and so does
+   `HOSTED_URL/t/nobody/`.
+5. `HOSTED_URL/login` with an address that is on no list answers as it does for a listed one,
+   and no mail arrives.
+6. In Workers Logs, open the invocation record of one `/t/alpha/` request *(label unverified)*.
+   Note whether it shows the request's `Cookie` header. Cloudflare's documentation does not
+   say, and ADR-0033 needs the answer: if the header is shown in full, the session token is in
+   the logs.
+
+`scripts/hosted.sh members alpha` lists alpha's addresses, each with its live session count.
+`scripts/hosted.sh revoke alpha reader@example.net` takes an address off the list. Its sessions
+end at their next request, and any unspent link stops working. A reader signs out at
+`HOSTED_URL/logout`. A reader whose session has expired, after 14 days, asks for a new link at
+`HOSTED_URL/login`. A reader's asks are capped: one address gets at most one link a minute and
+three an hour, one tenant's readers together ten an hour, and everyone 500 a day. When a reader
+says no link came, look in the Worker's logs for `sign-in mail held`: it names which cap was
+reached. Someone else asking in a reader's name can hold that reader for up to an hour, so
+re-invite them: `scripts/hosted.sh invite alpha reader@example.net` mails a link at once, whatever
+the caps, and needs no revoke.
+
+The vote buttons and the Settings link stay hidden on a tenant's pages, because the hosted Worker
+has no `/api/vote` or `/settings` yet, and each page is served sandboxed, so its scripts run with
+no origin of their own (ADR-0033).
+
+## 11. Tear down (when you are done)
 
 ```bash
 scripts/hosted.sh delete
@@ -496,4 +578,5 @@ scripts/hosted.sh delete
 This asks for the account and a `yes`, then deletes `cyris-hosted` and its Durable Objects,
 tenant databases and the registry included. Afterwards, check the dashboard's Containers page (*label
 unverified*) for a leftover `cyris-hosted-tenantcontainer` application, and delete the Access
-application from step 2.
+application from step 2. The sending domain stays onboarded to Email Sending until you remove it
+there.

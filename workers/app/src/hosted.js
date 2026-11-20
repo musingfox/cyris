@@ -3,19 +3,22 @@
 // default Worker in index.js, which shares no binding, class or route with it.
 // docs/decisions/0028-one-sqlite-durable-object-per-hosted-tenant.md.
 //
-// It serves the operator's routes and each tenant's pages behind Access (hosted_router.js,
-// hosted_site.js) and runs the hourly tick for every tenant: each tenant's RSS poll into its own
-// buffer (tenant_buffer.js), then its run, queued in the registry, when one is due by the
-// registry's schedule (run_queue.js). Its email() handler takes each tenant's newsletters at the
-// tenant's random address into the tenant's own object (hosted_inbound.js). A run's alerts reach
-// the operator through OperatorAlertGateway (hosted_alerts.js). The tenant list is the operator's
-// registry (tenant_registry.js).
+// It serves the operator's routes behind Access, each tenant's pages to that tenant's signed-in
+// readers, and the sign-in that mails them a link (hosted_router.js, hosted_site.js,
+// hosted_login.js, ADR-0033), and runs the hourly tick for every tenant: each tenant's RSS poll
+// into its own buffer (tenant_buffer.js), then its run, queued in the registry, when one is due
+// by the registry's schedule (run_queue.js). Its email() handler takes each tenant's newsletters
+// at the tenant's random address into the tenant's own object (hosted_inbound.js). A run's alerts
+// reach the operator through OperatorAlertGateway (hosted_alerts.js). The tenant list is the
+// operator's registry (tenant_registry.js).
 import { env } from "cloudflare:workers";
 import HOSTED_SCHEMA_SQL from "../../../src/cyris/adapters/store/hosted_schema.sql";
 import SCHEMA_SQL from "../../../src/cyris/adapters/store/schema.sql";
 import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json";
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json";
 import { accessKeys } from "./access_keys.js";
+import { HOSTED_DOMAIN } from "./hosted_container.js";
+import { createSignIn } from "./hosted_login.js";
 import SEED from "./hosted_seed.json";
 import { receiveInbound } from "./hosted_inbound.js";
 import { handleHostedRequest } from "./hosted_router.js";
@@ -88,7 +91,16 @@ function tickMeasure(tick, tenants) {
 const sitePage = createSitePage(env);
 
 export default {
-  async fetch(request) {
+  async fetch(request, _env, ctx) {
+    const registry = () => tenantRegistry(env);
+    // The sign-in mail goes through the Email Service binding, from the operator's sender, with
+    // links on the hosted domain: never the request's own Host.
+    const signIn = createSignIn({
+      issue: (email, codeHash, options) => registry().issueSignIn(email, codeHash, options),
+      mail: env.MAIL,
+      from: env.CYRIS_HOSTED_MAIL_FROM,
+      domain: env[HOSTED_DOMAIN],
+    });
     return handleHostedRequest(request, env, {
       accessKeys: accessKeys(env.CYRIS_ACCESS_TEAM_DOMAIN),
       register: (tenant, status) => tenantRegistry(env).register(tenant, { status }),
@@ -124,6 +136,17 @@ export default {
       revokeAddress: (tenant) => tenantRegistry(env).revokeInboundAddress(tenant),
       addNewsletterSource: (tenant, params) => addNewsletterSource({ db: tenantDb(env, tenant), params }),
       page: sitePage,
+      invite: (tenant, email) => registry().invite(tenant, email),
+      revoke: (tenant, email) => registry().revoke(tenant, email),
+      members: (tenant) => registry().members(tenant),
+      signIn,
+      session: (sessionHash) => registry().session(sessionHash),
+      login: {
+        signIn,
+        waitUntil: (promise) => ctx.waitUntil(promise),
+        redeem: (codeHash, sessionHash) => registry().redeemSignIn(codeHash, sessionHash),
+        endSession: (sessionHash) => registry().endSession(sessionHash),
+      },
     });
   },
 

@@ -7,6 +7,19 @@
 // TenantDbGateway (tenant_db.js), which answers one tenant's queries and never names this object.
 
 import { DurableObject } from "cloudflare:workers";
+import RESERVED_IDS from "./hosted_reserved_ids.json";
+import {
+  SESSION_TTL_MS,
+  SIGN_IN_ADDRESS_CAP,
+  SIGN_IN_DAILY_CEILING,
+  SIGN_IN_DAY_MS,
+  SIGN_IN_GAP_MS,
+  SIGN_IN_HOUR_MS,
+  SIGN_IN_TENANT_CAP,
+  SIGN_IN_TTL_MS,
+  isEmail,
+  normalEmail,
+} from "./hosted_session.js";
 import { randomAddress } from "./inbound_address.js";
 import {
   DEFAULT_DAILY_RUN_CAP,
@@ -27,15 +40,19 @@ import { ACTIVE, TENANT_STATUSES } from "./tenant_status.js";
 // outside TENANT, so no tenant id can ever name it.
 export const REGISTRY_NAME = "cyris:registry";
 
-// The registry's own tables: not schema.sql, which is a tenant's. `tenants`, the run queue's
-// `runs` (run_queue.js) and `inbound_addresses` have readers and writers; the others are created
-// empty for the cards that fill them (login, invites, budgets), so those cards add code and no
-// new home for state. A tenant's schedule is the registry's, never its own database's, which its
-// run container can rewrite (ADR-0032): `digest_times`, its two digest hours as a JSON list, and
-// `timezone`, the zone they are hours of; neither is set until the operator's schedule route sets
-// both. `daily_run_cap` is the most runs it may start in 24 hours.
-// `inbound_addresses.address` is a newsletter address's random local part (inbound_address.js);
-// a revoked address is deleted, so a row is an address that takes mail.
+// The registry's own tables: not schema.sql, which is a tenant's. `tenants` is the tenant list,
+// and a tenant's schedule is the registry's, never its own database's, which its run container
+// can rewrite (ADR-0032): `digest_times`, its two digest hours as a JSON list, and `timezone`,
+// the zone they are hours of; neither is set until the operator's schedule route sets both.
+// `daily_run_cap` is the most runs it may start in 24 hours. The run queue's `runs`
+// (run_queue.js) holds every hosted run. `inbound_addresses.address` is a newsletter address's
+// random local part (inbound_address.js); a revoked address is deleted, so a row is an address
+// that takes mail. The sign-in (ADR-0033) has four: `members`, the operator's invite list, one
+// tenant per address; `invites`, each single-use sign-in link, the operator's invitation and
+// every later one alike, keyed by its token's SHA-256 in `code` and never by the token;
+// `sessions`, keyed the same way; and `sign_in_asks`, each link a reader asked for at /login,
+// kept a day so the caps on asking can count it. `spend_rollup` is created empty for the budget
+// card, so that card adds code and no new home for state.
 export const REGISTRY_SCHEMA = `
 CREATE TABLE IF NOT EXISTS tenants (
   id TEXT PRIMARY KEY,
@@ -62,6 +79,20 @@ CREATE TABLE IF NOT EXISTS sessions (
   expires_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_tenant ON sessions(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_email ON sessions(email);
+CREATE INDEX IF NOT EXISTS idx_invites_email ON invites(email);
+CREATE TABLE IF NOT EXISTS members (
+  email TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_members_tenant ON members(tenant_id);
+CREATE TABLE IF NOT EXISTS sign_in_asks (
+  email TEXT NOT NULL,
+  tenant_id TEXT NOT NULL,
+  asked_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sign_in_asks_asked ON sign_in_asks(asked_at);
 CREATE TABLE IF NOT EXISTS inbound_addresses (
   address TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
@@ -102,8 +133,30 @@ const MADE_SINCE =
 const INBOUND_TENANT =
   "SELECT a.tenant_id FROM inbound_addresses a JOIN tenants t ON t.id = a.tenant_id WHERE a.address = ?";
 
-// The time a row is written at, as the container's stores write it (seconds, UTC offset).
+// The time a row is written at, as the container's stores write it (seconds, UTC offset). Every
+// stamp has this one shape, so comparing two as text compares the times.
 const stamp = (now) => `${now.toISOString().slice(0, 19)}+00:00`;
+const after = (now, ms) => stamp(new Date(now.getTime() + ms));
+
+// Why `id` may not be registered, or null. TENANT is the shape of a name the tenant's objects
+// can take; a new tenant must also start and end with a letter or a digit, as a host label
+// does, and take no reserved word (hosted_reserved_ids.json).
+function refuseTenantId(id) {
+  if (typeof id !== "string" || !TENANT.test(id)) return `a tenant id matches ${TENANT}: ${id}`;
+  if (id.startsWith("-") || id.endsWith("-")) return `a tenant id starts and ends with a letter or a digit: ${id}`;
+  if (RESERVED_IDS.reserved.includes(id)) return `${id} is reserved, so no tenant can take it`;
+  return null;
+}
+
+// A member of a registered tenant: the address and the tenant the operator invited it to.
+const MEMBER_SQL =
+  "SELECT m.email, m.tenant_id, m.created_at FROM members m JOIN tenants t ON t.id = m.tenant_id WHERE m.email = ?";
+// A live session, only while its address is still a member of its tenant and the tenant is
+// registered: removing either ends the session at its next request, before any row is deleted.
+const SESSION_SQL =
+  "SELECT s.tenant_id, s.email, s.expires_at FROM sessions s " +
+  "JOIN members m ON m.email = s.email AND m.tenant_id = s.tenant_id " +
+  "JOIN tenants t ON t.id = s.tenant_id WHERE s.token_hash = ? AND s.expires_at > ?";
 
 // The registry, from any Worker-side code that holds the binding. Created with the tenant
 // objects' hint: only an object's first get() honours one, and that may be the operator's.
@@ -137,12 +190,13 @@ export class TenantRegistry extends DurableObject {
 
   // Registers `id` and answers `{tenant}`, its row. With `status`, the tenant gets it whether or
   // not it was registered. Without one, an absent tenant is registered as active and a present
-  // one keeps its status, so registering again never resumes a paused tenant. An id outside
-  // TENANT, which names the tenant's Durable Objects and is one path segment, or a status
-  // outside TENANT_STATUSES writes nothing and answers `{refused}`, the reason: an answer and
-  // not a throw, so the caller can tell the operator's mistake from a registry that failed.
+  // one keeps its status, so registering again never resumes a paused tenant. An id
+  // `refuseTenantId` refuses, or a status outside TENANT_STATUSES, writes nothing and answers
+  // `{refused}`, the reason: an answer and not a throw, so the caller can tell the operator's
+  // mistake from a registry that failed.
   register(id, { status, now = new Date() } = {}) {
-    if (typeof id !== "string" || !TENANT.test(id)) return { refused: `a tenant id matches ${TENANT}: ${id}` };
+    const refused = refuseTenantId(id);
+    if (refused) return { refused };
     if (status !== undefined && !TENANT_STATUSES.includes(status)) {
       return { refused: `a tenant's status is one of ${TENANT_STATUSES.join(", ")}, not ${status}` };
     }
@@ -250,5 +304,147 @@ export class TenantRegistry extends DurableObject {
     const held = sql.exec("SELECT count(*) AS n FROM inbound_addresses WHERE tenant_id = ?", id).one().n;
     sql.exec("DELETE FROM inbound_addresses WHERE tenant_id = ?", id);
     return held;
+  }
+
+  // The sign-in (ADR-0033). Only the operator's routes call `invite`, `revoke` and `members`; the
+  // registry alone says which tenant an address may enter, and no request names one for it. Each
+  // method is synchronous, so no other request runs between its read and its write. A refusal is
+  // `{refused, status}`, the HTTP status the operator's route answers with.
+
+  // Puts `email` on `tenant`'s invite list and answers `{member}`, its row. An address belongs to
+  // one tenant: inviting it to a second is refused, and inviting it again to its own keeps the row.
+  invite(tenant, rawEmail, { now = new Date() } = {}) {
+    const email = normalEmail(rawEmail);
+    if (!this.tenant(tenant)) return { refused: `${tenant} is not a registered tenant`, status: 404 };
+    if (!isEmail(email)) return { refused: "the invite needs an email address", status: 400 };
+    const sql = this.ctx.storage.sql;
+    const [held] = sql.exec("SELECT tenant_id FROM members WHERE email = ?", email).toArray();
+    if (held && held.tenant_id !== tenant) {
+      return { refused: `${email} is already invited to ${held.tenant_id}`, status: 409 };
+    }
+    if (!held) sql.exec("INSERT INTO members (email, tenant_id, created_at) VALUES (?, ?, ?)", email, tenant, stamp(now));
+    return { member: { ...sql.exec(MEMBER_SQL, email).one() } };
+  }
+
+  // Takes `email` off `tenant`'s list, and with it every session and sign-in link it holds, so the
+  // next request of any of its sessions is refused. Answers `{revoked: {email, tenant_id,
+  // sessions}}`, the sessions ended.
+  revoke(tenant, rawEmail) {
+    const email = normalEmail(rawEmail);
+    const sql = this.ctx.storage.sql;
+    const [held] = sql.exec("SELECT tenant_id FROM members WHERE email = ?", email).toArray();
+    if (!held || held.tenant_id !== tenant) return { refused: `${email} is not invited to ${tenant}`, status: 404 };
+    const sessions = sql.exec("SELECT count(*) AS n FROM sessions WHERE email = ?", email).one().n;
+    sql.exec("DELETE FROM sessions WHERE email = ?", email);
+    sql.exec("DELETE FROM invites WHERE email = ?", email);
+    sql.exec("DELETE FROM sign_in_asks WHERE email = ?", email);
+    sql.exec("DELETE FROM members WHERE email = ?", email);
+    return { revoked: { email, tenant_id: tenant, sessions } };
+  }
+
+  // `tenant`'s invite list in address order, each with its live session count.
+  members(tenant, { now = new Date() } = {}) {
+    const rows = this.ctx.storage.sql.exec(
+      "SELECT m.email, m.created_at, " +
+        "(SELECT count(*) FROM sessions s WHERE s.email = m.email AND s.expires_at > ?) AS sessions " +
+        "FROM members m WHERE m.tenant_id = ? ORDER BY m.email",
+      stamp(now),
+      tenant,
+    );
+    return rows.toArray().map((row) => ({ ...row }));
+  }
+
+  // Records a sign-in link for `email`, keyed by `codeHash`, the SHA-256 of a token only the mail
+  // will carry, and answers `{tenant, expires_at}`: the tenant the link opens, from the invite
+  // list. An address on no registered tenant's list gets `{refused}` and writes no row, so a
+  // stranger asking adds nothing here. With `invitation`, the operator's invite route, a listed
+  // address always gets its link. A reader's own ask also gets `{refused}`, and no row, when the
+  // address was sent a link less than SIGN_IN_GAP_MS ago, which that link still serves, or when a
+  // cap on asking is reached, `capped` naming which: SIGN_IN_ADDRESS_CAP asks for the address in
+  // an hour, SIGN_IN_TENANT_CAP for its tenant's addresses in an hour, or SIGN_IN_DAILY_CEILING
+  // for everyone in a day. Only an ask that is issued a link writes a `sign_in_asks` row, kept a
+  // day, so that table holds at most SIGN_IN_DAILY_CEILING rows.
+  issueSignIn(rawEmail, codeHash, { now = new Date(), invitation = false } = {}) {
+    const email = normalEmail(rawEmail);
+    const sql = this.ctx.storage.sql;
+    const since = (ms) => stamp(new Date(now.getTime() - ms));
+    sql.exec("DELETE FROM invites WHERE expires_at <= ?", stamp(now));
+    sql.exec("DELETE FROM sign_in_asks WHERE asked_at <= ?", since(SIGN_IN_DAY_MS));
+    const [member] = sql.exec(MEMBER_SQL, email).toArray();
+    if (!member) return { refused: "not invited" };
+    if (!invitation) {
+      const refused = this.#refuseAsk(email, member.tenant_id, since);
+      if (refused) return refused;
+      sql.exec("INSERT INTO sign_in_asks (email, tenant_id, asked_at) VALUES (?, ?, ?)", email, member.tenant_id, stamp(now));
+    }
+    const expires = after(now, SIGN_IN_TTL_MS);
+    sql.exec(
+      "INSERT INTO invites (code, email, tenant_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+      codeHash,
+      email,
+      member.tenant_id,
+      stamp(now),
+      expires,
+    );
+    return { tenant: member.tenant_id, expires_at: expires };
+  }
+
+  // Why a reader's ask for `email`, a member of `tenant`, gets no link now, or null.
+  #refuseAsk(email, tenant, since) {
+    const sql = this.ctx.storage.sql;
+    const count = (where, ...values) => sql.exec(`SELECT count(*) AS n FROM ${where}`, ...values).one().n;
+    if (count("invites WHERE email = ? AND used_at IS NULL AND created_at > ?", email, since(SIGN_IN_GAP_MS)) > 0) {
+      return { refused: "a link was sent less than a minute ago" };
+    }
+    const hour = since(SIGN_IN_HOUR_MS);
+    if (count("sign_in_asks WHERE email = ? AND asked_at > ?", email, hour) >= SIGN_IN_ADDRESS_CAP) {
+      return { refused: `${SIGN_IN_ADDRESS_CAP} links were sent to this address in an hour`, capped: "address" };
+    }
+    if (count("sign_in_asks WHERE tenant_id = ? AND asked_at > ?", tenant, hour) >= SIGN_IN_TENANT_CAP) {
+      return { refused: `${SIGN_IN_TENANT_CAP} links were sent to ${tenant}'s readers in an hour`, capped: "tenant" };
+    }
+    if (count("sign_in_asks WHERE asked_at > ?", since(SIGN_IN_DAY_MS)) >= SIGN_IN_DAILY_CEILING) {
+      return { refused: `${SIGN_IN_DAILY_CEILING} links were sent in a day`, capped: "daily" };
+    }
+    return null;
+  }
+
+  // Spends the sign-in link `codeHash` and opens a session keyed by `sessionHash` for the address
+  // and tenant the link was issued to, never for any the caller names. Answers `{tenant,
+  // expires_at}`, or null for a link that is unknown, used, expired, or whose address has since
+  // left the tenant's list: the caller cannot tell which, and neither can the reader.
+  redeemSignIn(codeHash, sessionHash, { now = new Date() } = {}) {
+    const sql = this.ctx.storage.sql;
+    const [link] = sql
+      .exec("SELECT email, tenant_id FROM invites WHERE code = ? AND used_at IS NULL AND expires_at > ?", codeHash, stamp(now))
+      .toArray();
+    if (!link) return null;
+    sql.exec("UPDATE invites SET used_at = ? WHERE code = ?", stamp(now), codeHash);
+    const [member] = sql.exec(MEMBER_SQL, link.email).toArray();
+    if (!member || member.tenant_id !== link.tenant_id) return null;
+    sql.exec("DELETE FROM sessions WHERE expires_at <= ?", stamp(now));
+    const expires = after(now, SESSION_TTL_MS);
+    sql.exec(
+      "INSERT INTO sessions (token_hash, tenant_id, email, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
+      sessionHash,
+      link.tenant_id,
+      link.email,
+      stamp(now),
+      expires,
+    );
+    return { tenant: link.tenant_id, expires_at: expires };
+  }
+
+  // The live session keyed by `sessionHash`, `{tenant_id, email, expires_at}`, or null. Read on
+  // every request, never cached, so an ended or revoked session is refused at its next one.
+  session(sessionHash, { now = new Date() } = {}) {
+    const [row] = this.ctx.storage.sql.exec(SESSION_SQL, sessionHash, stamp(now)).toArray();
+    return row ? { ...row } : null;
+  }
+
+  // Ends one session: the reader's sign-out.
+  endSession(sessionHash) {
+    this.ctx.storage.sql.exec("DELETE FROM sessions WHERE token_hash = ?", sessionHash);
+    return { ended: true };
   }
 }
