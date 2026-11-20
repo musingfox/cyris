@@ -10,7 +10,7 @@ import logging
 import re
 from contextlib import suppress
 from email.utils import parseaddr
-from urllib.parse import urlparse, urlsplit
+from urllib.parse import urlparse, urlsplit, urlunsplit
 
 from cyris.adapters.fetch.email_parser import (
     NEWSLETTER_TRACKING_PARAMS,
@@ -184,28 +184,61 @@ def _find_view_url_in_text(text: str) -> str | None:
     return None
 
 
-def newsletter_article(parsed: ParsedNewsletter, source: SourceConfig) -> Article | None:
+# The only schemes an issue's link may have: a mail is untrusted input, and its link is drawn as
+# an href on the digest and raw pages.
+_LINK_SCHEMES = {"http", "https"}
+
+
+def _may_name_its_recipient(url: str) -> bool:
+    """Whether a link keeps a query after the tracking strip.
+
+    A query cannot be told apart from a per-recipient token (`?token=`) by its shape, and the
+    strip lists name only the parameters known to be one, so it may sign in as the reader the
+    mail was sent to. A fragment never reaches the server; `_without_fragment` drops it instead.
+    """
+    return bool(urlsplit(url).query)
+
+
+def _without_fragment(url: str) -> str:
+    """The link without its fragment, which names a place on the page and nothing the server sees,
+    but would still show on the page a token written there (`#sub=`)."""
+    return urlunsplit(urlsplit(url)._replace(fragment=""))
+
+
+def newsletter_article(
+    parsed: ParsedNewsletter, source: SourceConfig, *, recipient_links: bool = True
+) -> Article | None:
     """Return the email body as the Article for this newsletter issue.
 
     0 or 1 article. Content from text_content or unescaped html.
     Prefer the one sender-owned post URL; else the labelled web-version link in the
     text body; else the hostname-matched ESP archive; else synthetic newsletter:ID url.
-    Empty body -> None + WARNING (singular per D5).
+    `recipient_links=False` takes no link that may name the mail's recipient, for a
+    hosted tenant's source: neither web-version fallback, whose link is the recipient's
+    own copy, and no link the structural step chose that keeps a query after the
+    tracking strip; a fragment is dropped and the link kept. The choice itself is
+    unchanged, so an issue whose one post link carries a token gets no link rather than
+    another page's.
+    A link that is not http(s) is no link. Empty body -> None + WARNING (singular per D5).
     """
     article_id = _generate_article_id(source.name, parsed.subject)
     sender_host = ""
     if source.homepage:
         with suppress(ValueError):
             sender_host = urlparse(source.homepage).hostname or ""
-    view_url = (
-        select_primary_content_url(
-            harvest_url_candidates(parsed.html_content, parsed.text_content),
-            sender_host,
-            sender_domain(parsed.from_email),
-        )
-        or _find_view_url_in_text(parsed.text_content)
-        or _find_newsletter_view_url(parsed.html_content)
+    view_url = select_primary_content_url(
+        harvest_url_candidates(parsed.html_content, parsed.text_content),
+        sender_host,
+        sender_domain(parsed.from_email),
     )
+    if view_url is None and recipient_links:
+        view_url = _find_view_url_in_text(parsed.text_content) or _find_newsletter_view_url(
+            parsed.html_content
+        )
+    if view_url is not None and urlparse(view_url).scheme.lower() not in _LINK_SCHEMES:
+        view_url = None
+    if view_url is not None and not recipient_links:
+        view_url = None if _may_name_its_recipient(view_url) else _without_fragment(view_url)
     raw = parsed.text_content.strip() or " ".join(
         html.unescape(re.sub(r"<[^>]+>", " ", parsed.html_content)).split()
     )
@@ -223,7 +256,7 @@ def newsletter_article(parsed: ParsedNewsletter, source: SourceConfig) -> Articl
         # a confident per-issue canonical URL. Arbitrary email-body links belong to
         # the newsletter content, not to the one Article this email represents.
         homepage = strip_tracking_params(source.homepage.strip())
-        if urlparse(homepage).scheme in {"http", "https"}:
+        if urlparse(homepage).scheme in _LINK_SCHEMES:
             ref_urls = [homepage]
 
     return Article(

@@ -12,14 +12,44 @@
 //   POST /hosted/tenants/<tenant>/poll                      one poll of the tenant's RSS buffer
 //   GET  /hosted/tenants/<tenant>/report                    what the tenant's database holds
 //   POST /hosted/tenants/<tenant>/query                     one {sql, params} on its database
+//   GET  /hosted/tenants/<tenant>/address                   the tenant's newsletter address
+//   POST /hosted/tenants/<tenant>/rotate-address            a new address; every old one revoked
+//   POST /hosted/tenants/<tenant>/revoke-address            every address revoked, none issued
+//   POST /hosted/tenants/<tenant>/newsletter-source?name=N&from=A[&homepage=H][&lane=L]
+//                                                           a newsletter source for its mail
 //   GET  /t/<tenant>/...                                    the tenant's pages (hosted_pages.js)
 
 import { SITE_ROUTE } from "./hosted_pages.js";
 import { RUN_PERIODS, accessRefusal, dayIn, refuseRunDate } from "./router.js";
 import { ACTIVE } from "./tenant_status.js";
 
-const ROUTE = /^\/hosted\/tenants\/([^/]+)\/(register|schedule|seed|run|poll|report|query)$/;
-const METHOD = { register: "POST", schedule: "POST", seed: "POST", run: "POST", poll: "POST", report: "GET", query: "POST" };
+const ACTIONS = [
+  "register",
+  "schedule",
+  "seed",
+  "run",
+  "poll",
+  "report",
+  "query",
+  "address",
+  "rotate-address",
+  "revoke-address",
+  "newsletter-source",
+];
+const ROUTE = new RegExp(`^/hosted/tenants/([^/]+)/(${ACTIONS.join("|")})$`);
+const METHOD = {
+  register: "POST",
+  schedule: "POST",
+  seed: "POST",
+  run: "POST",
+  poll: "POST",
+  report: "GET",
+  query: "POST",
+  address: "GET",
+  "rotate-address": "POST",
+  "revoke-address": "POST",
+  "newsletter-source": "POST",
+};
 
 // What a run the registry would not queue is answered with: an issue already queued or running,
 // or a tenant no longer active, is a conflict; a tenant at its daily cap is told to wait.
@@ -34,8 +64,10 @@ const json = (body, status = 200) =>
 // `{refused}`, `seed(tenant)`, `report(tenant)`, `queueRun(tenant, { period, date, origin })`,
 // which answers `{queued}` or `{refused, code}`, `poll(tenant)`, which answers what the poll did
 // or `{error}`, `query(tenant, request)`, which answers the request's `{sql, params}` from that
-// tenant's object as its run's gateway does, and `page(request, tenant, rest)`, which answers
-// under /t/<tenant> from that tenant's object.
+// tenant's object as its run's gateway does, `inboundAddress(tenant)`, `rotateAddress(tenant)`
+// and `revokeAddress(tenant)`, the registry's answers, `addNewsletterSource(tenant, params)`,
+// which answers `{source}` or `{refused, status}`, and `page(request, tenant, rest)`, which
+// answers under /t/<tenant> from that tenant's object.
 export async function handleHostedRequest(request, env, deps) {
   const refusal = await accessRefusal(request, env, deps);
   if (refusal) return json({ error: "forbidden", detail: refusal }, 403);
@@ -50,7 +82,7 @@ export async function handleHostedRequest(request, env, deps) {
   }
   const match = ROUTE.exec(url.pathname);
   if (!match) {
-    return json({ error: "not found", routes: "/hosted/tenants/<tenant>/{register,schedule,seed,run,poll,report,query}, /t/<tenant>/" }, 404);
+    return json({ error: "not found", routes: `/hosted/tenants/<tenant>/{${ACTIONS.join(",")}}, /t/<tenant>/` }, 404);
   }
   const [, tenant, action] = match;
   if (request.method !== METHOD[action]) return json({ error: `${action} takes ${METHOD[action]}` }, 405);
@@ -80,6 +112,18 @@ export async function handleHostedRequest(request, env, deps) {
       dailyRunCap: url.searchParams.get("daily_run_cap") ?? undefined,
     });
     return answer.refused ? json({ error: answer.refused }, 400) : json(answer);
+  }
+  // A tenant's newsletter address, paused or not, since a paused tenant still takes mail. Only
+  // the operator reads it here, behind Access; no run container can reach the registry.
+  if (action === "address") {
+    const held = await deps.inboundAddress(tenant);
+    return held ? json({ tenant, ...held }) : json({ error: `${tenant} has no newsletter address` }, 404);
+  }
+  if (action === "rotate-address") return json({ tenant, ...(await deps.rotateAddress(tenant)) });
+  if (action === "revoke-address") return json({ tenant, ...(await deps.revokeAddress(tenant)) });
+  if (action === "newsletter-source") {
+    const answer = await deps.addNewsletterSource(tenant, Object.fromEntries(url.searchParams));
+    return answer.refused ? json({ error: answer.refused }, answer.status) : json({ tenant, ...answer });
   }
 
   if (registered.status !== ACTIVE) return json({ error: `${tenant} is ${registered.status}, not ${ACTIVE}` }, 409);

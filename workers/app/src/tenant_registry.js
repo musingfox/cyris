@@ -7,6 +7,7 @@
 // TenantDbGateway (tenant_db.js), which answers one tenant's queries and never names this object.
 
 import { DurableObject } from "cloudflare:workers";
+import { randomAddress } from "./inbound_address.js";
 import {
   DEFAULT_DAILY_RUN_CAP,
   RUNS_SCHEMA,
@@ -26,13 +27,15 @@ import { ACTIVE, TENANT_STATUSES } from "./tenant_status.js";
 // outside TENANT, so no tenant id can ever name it.
 export const REGISTRY_NAME = "cyris:registry";
 
-// The registry's own tables: not schema.sql, which is a tenant's. `tenants` and the run queue's
-// `runs` (run_queue.js) have readers and writers; the others are created empty for the cards that
-// fill them (login, invites, newsletters, budgets), so those cards add code and no new home for
-// state. A tenant's schedule is the registry's, never its own database's, which its run container
-// can rewrite (ADR-0032): `digest_times`, its two digest hours as a JSON list, and `timezone`, the
-// zone they are hours of; neither is set until the operator's schedule route sets both.
-// `daily_run_cap` is the most runs it may start in 24 hours.
+// The registry's own tables: not schema.sql, which is a tenant's. `tenants`, the run queue's
+// `runs` (run_queue.js) and `inbound_addresses` have readers and writers; the others are created
+// empty for the cards that fill them (login, invites, budgets), so those cards add code and no
+// new home for state. A tenant's schedule is the registry's, never its own database's, which its
+// run container can rewrite (ADR-0032): `digest_times`, its two digest hours as a JSON list, and
+// `timezone`, the zone they are hours of; neither is set until the operator's schedule route sets
+// both. `daily_run_cap` is the most runs it may start in 24 hours.
+// `inbound_addresses.address` is a newsletter address's random local part (inbound_address.js);
+// a revoked address is deleted, so a row is an address that takes mail.
 export const REGISTRY_SCHEMA = `
 CREATE TABLE IF NOT EXISTS tenants (
   id TEXT PRIMARY KEY,
@@ -94,6 +97,10 @@ const TENANT_SCHEDULE =
 // Whether a run's issue was made since it started, for a run whose lease ran out (expireLeases).
 const MADE_SINCE =
   "SELECT 1 AS made FROM digest_runs WHERE period = ? AND status = 'ok' AND dry_run = 0 AND finished_at >= ? LIMIT 1";
+
+// An address's tenant, only while the registry holds that tenant.
+const INBOUND_TENANT =
+  "SELECT a.tenant_id FROM inbound_addresses a JOIN tenants t ON t.id = a.tenant_id WHERE a.address = ?";
 
 // The time a row is written at, as the container's stores write it (seconds, UTC offset).
 const stamp = (now) => `${now.toISOString().slice(0, 19)}+00:00`;
@@ -204,4 +211,44 @@ export class TenantRegistry extends DurableObject {
     const rows = await tenantRows(this.env, run.tenant_id)(MADE_SINCE, [run.period, run.started_at], "digest_runs");
     return Boolean(rows?.length);
   };
+
+  // The tenant `address` delivers to, or null when no registered tenant holds it: the hosted
+  // email() handler's one lookup (hosted_inbound.js).
+  inboundTenant(address) {
+    const [row] = this.ctx.storage.sql.exec(INBOUND_TENANT, address).toArray();
+    return row ? row.tenant_id : null;
+  }
+
+  // The tenant's current address and when it was issued, or null when it has none.
+  inboundAddress(id) {
+    const [row] = this.ctx.storage.sql
+      .exec("SELECT address, created_at FROM inbound_addresses WHERE tenant_id = ?", id)
+      .toArray();
+    return row ? { ...row } : null;
+  }
+
+  // Gives a registered tenant a fresh address and revokes every one it held, so an address that
+  // leaked stops taking mail at once: the statements run in one synchronous turn of the object,
+  // which commits them together. Answers `{address, created_at, revoked}`, or `{refused}` for a
+  // tenant the registry does not hold. `address` is for a test; the Worker never passes one.
+  rotateInboundAddress(id, { now = new Date(), address = randomAddress() } = {}) {
+    if (!this.tenant(id)) return { refused: `${id} is not a registered tenant` };
+    const sql = this.ctx.storage.sql;
+    const revoked = this.#revoke(id);
+    const at = stamp(now);
+    sql.exec("INSERT INTO inbound_addresses (address, tenant_id, created_at) VALUES (?, ?, ?)", address, id, at);
+    return { address, created_at: at, revoked };
+  }
+
+  // Revokes every address the tenant holds, at once; answers `{revoked}`, how many.
+  revokeInboundAddress(id) {
+    return { revoked: this.#revoke(id) };
+  }
+
+  #revoke(id) {
+    const sql = this.ctx.storage.sql;
+    const held = sql.exec("SELECT count(*) AS n FROM inbound_addresses WHERE tenant_id = ?", id).one().n;
+    sql.exec("DELETE FROM inbound_addresses WHERE tenant_id = ?", id);
+    return held;
+  }
 }

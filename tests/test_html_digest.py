@@ -10,7 +10,7 @@ import pytest
 from css_rules import parse_style_block, receipt_fixtures, text_langs
 
 from cyris.adapters.output import html_digest
-from cyris.adapters.output.html_digest import PROJECT_URL, HtmlDigestWriter
+from cyris.adapters.output.html_digest import PROJECT_URL, HtmlDigestWriter, citation_links
 from cyris.domain.models import (
     NO_LLM_MODEL,
     ArticleState,
@@ -2936,3 +2936,19 @@ def test_the_page_names_no_area(tmp_path):
     html = HtmlDigestWriter(tmp_path).render(_areas_issue(["Tech", "Health"]))
 
     assert _markers(html) == ["Stories", "Topics", "Glance"]
+
+
+def test_a_reference_link_that_is_not_http_is_drawn_as_no_link() -> None:
+    """A mail or a feed is untrusted input: only an http(s) URL becomes an href."""
+    item = DigestItem(
+        title="t",
+        summary="s",
+        sources=["Letter"],
+        urls=["newsletter:1"],
+        ref_urls=["javascript:alert(1)", "https://news.example"],
+    )
+
+    assert citation_links(item) == [
+        ("javascript:alert(1)", None),
+        ("news.example", "https://news.example"),
+    ]

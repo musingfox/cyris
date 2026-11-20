@@ -32,6 +32,7 @@ from typer.testing import CliRunner
 
 from cyris import bootstrap
 from cyris.adapters import hosted
+from cyris.adapters.fetch.newsletter_worker_source import TenantNewsletterSource
 from cyris.adapters.fetch.onboarding_cards import OnboardingArticles
 from cyris.adapters.fetch.rss_source import RssSource
 from cyris.adapters.fetch.rss_worker_source import TenantRssSource
@@ -299,8 +300,9 @@ def test_a_hosted_run_is_wired_to_its_own_site_and_to_no_queue_page_or_channel(h
 
     deps = bootstrap.build_deps(cfg)
 
-    # The rss Worker's URL and token are set, and still the edge is the tenant's own buffer.
-    assert [type(s) for s in deps.fetch_sources] == [TenantRssSource]
+    # The rss and newsletter Workers' URLs and token are set, and still the edges are the
+    # tenant's own buffer and its own newsletter queue.
+    assert [type(s) for s in deps.fetch_sources] == [TenantNewsletterSource, TenantRssSource]
     assert deps.sync_promotions is None
     assert bootstrap.build_promotion_sync(cfg) is None
     # Every environment switch for Pages is on, and still the publisher is the tenant's site.
@@ -426,6 +428,29 @@ async def test_an_operator_alert_that_cannot_be_sent_leaves_the_runs_own_error(
     assert (operator.call_count, discord.call_count, mail.call_count) == (1, 1, 1)
 
 
+async def test_a_hosted_runs_newsletters_are_its_own_queue_and_a_preview_leaves_them(
+    hosted_cfg,
+) -> None:
+    cfg, gateway = hosted_cfg
+    # No source matches it and it arrived long past the hold, so a run acks it.
+    gateway.db.query(
+        "INSERT INTO newsletters (id, sender, subject, html, text, date, headers, received_at) "
+        "VALUES ('nl:1', 'x@a.test', 'S', '', 'body', '2026-01-01T06:00:00.000Z', '[]', "
+        "'2026-01-01T06:00:00.000Z')"
+    )
+    gateway.requests.clear()
+
+    [preview, _] = bootstrap.build_deps(cfg, dry_run=True).fetch_sources
+    [source, _] = bootstrap.build_deps(cfg).fetch_sources
+    await preview.fetch_articles(datetime.now(UTC), datetime.now(UTC), cfg.sources)
+    left = gateway.db.query("SELECT count(*) AS n FROM newsletters").rows[0]["n"]
+    await source.fetch_articles(datetime.now(UTC), datetime.now(UTC), cfg.sources)
+
+    assert left == 1
+    assert gateway.db.query("SELECT count(*) AS n FROM newsletters").rows[0]["n"] == 0
+    assert {r.url.path for r in gateway.requests} == {"/t/alpha/query"}
+
+
 async def test_a_hosted_runs_rss_is_its_own_buffer_read_through_its_gateway(hosted_cfg) -> None:
     cfg, gateway = hosted_cfg
     apply_schema(gateway.db)
@@ -440,7 +465,7 @@ async def test_a_hosted_runs_rss_is_its_own_buffer_read_through_its_gateway(host
             [url, fetched_at],
         )
     gateway.requests.clear()
-    [source] = bootstrap.build_deps(cfg).fetch_sources
+    [_, source] = bootstrap.build_deps(cfg).fetch_sources
 
     articles = await source.fetch_articles(
         datetime(2026, 11, 18, tzinfo=UTC), datetime(2026, 11, 18, 8, tzinfo=UTC), cfg.sources

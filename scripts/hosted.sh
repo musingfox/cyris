@@ -235,6 +235,40 @@ case "${1:-}" in
     done
     finish ${failed[@]+"${failed[@]}"}
     ;;
+  address)
+    # Each tenant's newsletter address (ADR-0034): read it, or rotate it (a new address, every
+    # old one revoked at once), or revoke it. The answers name the addresses, so their files
+    # are deleted once printed.
+    case "${2:-show}" in
+      show) method=GET route=address ;;
+      rotate) method=POST route=rotate-address ;;
+      revoke) method=POST route=revoke-address ;;
+      *) echo "address takes show, rotate or revoke" >&2; exit 2 ;;
+    esac
+    ask_access
+    out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-address.XXXXXX")
+    failed=()
+    for tenant in $TENANTS; do
+      call "$tenant" "$method" "/hosted/tenants/$tenant/$route" "$out/$tenant.json" || failed+=("$tenant")
+    done
+    rm -rf "$out"
+    finish ${failed[@]+"${failed[@]}"}
+    ;;
+  newsletter-source)
+    # A newsletter source for one tenant, so its runs ingest the issues its address receives from
+    # that sender; a run takes an issue only for a source whose email_match names its sender.
+    tenant=${2:-} name=${3:-} from=${4:-} homepage=${5:-}
+    if [[ -z "$tenant" || -z "$name" || -z "$from" ]]; then
+      echo "newsletter-source takes TENANT NAME FROM [HOMEPAGE]" >&2
+      exit 2
+    fi
+    query=$(python3 -c 'import sys, urllib.parse; n, f, h = sys.argv[1:]; print(urllib.parse.urlencode({"name": n, "from": f, **({"homepage": h} if h else {})}))' "$name" "$from" "$homepage")
+    ask_access
+    out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-source.XXXXXX")
+    failed=()
+    call "$tenant" POST "/hosted/tenants/$tenant/newsletter-source?$query" "$out/$tenant.json" || failed+=("$tenant")
+    finish ${failed[@]+"${failed[@]}"}
+    ;;
   check)
     ask_access
     out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-report.XXXXXX")
@@ -266,7 +300,7 @@ case "${1:-}" in
     run_wrangler delete
     ;;
   *)
-    echo "usage: $0 deploy|secrets|containers|register|schedule TENANT TIMES TIMEZONE [CAP]|seed|run [morning|evening]|poll|check|tail|delete" >&2
+    echo "usage: $0 deploy|secrets|containers|register|schedule TENANT TIMES TIMEZONE [CAP]|seed|run [morning|evening]|poll|address [show|rotate|revoke]|newsletter-source TENANT NAME FROM [HOMEPAGE]|check|tail|delete" >&2
     exit 2
     ;;
 esac

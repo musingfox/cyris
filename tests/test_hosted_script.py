@@ -341,6 +341,76 @@ def test_poll_polls_each_seeded_tenant_with_the_token_on_stdin(repo: Path) -> No
         assert "client-SECRET" not in " ".join(c["args"])
 
 
+@pytest.mark.parametrize(
+    ("args", "method", "route"),
+    [
+        (["address"], "GET", "address"),
+        (["address", "rotate"], "POST", "rotate-address"),
+        (["address", "revoke"], "POST", "revoke-address"),
+    ],
+)
+def test_address_reads_rotates_or_revokes_each_tenants_newsletter_address(
+    repo: Path, args: list[str], method: str, route: str
+) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, calls = _run(repo, args, ["client-id.access", "client-SECRET"])
+
+    assert done.returncode == 0, done.stderr
+    curls = [c for c in calls if c["cmd"] == "curl"]
+    assert [c["args"][-1] for c in curls] == [
+        f"{URL}/hosted/tenants/alpha/{route}",
+        f"{URL}/hosted/tenants/bravo/{route}",
+    ]
+    for c in curls:
+        assert c["args"][c["args"].index("-X") + 1] == method
+        assert "CF-Access-Client-Secret: client-SECRET" in c["stdin"]
+        assert "client-SECRET" not in " ".join(c["args"])
+
+
+def test_address_refuses_a_verb_it_does_not_know_before_asking_for_anything(repo: Path) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, calls = _run(repo, ["address", "delete"], [])
+
+    assert done.returncode == 2
+    assert [c for c in calls if c["cmd"] == "curl"] == []
+
+
+def test_newsletter_source_adds_one_tenants_source_with_its_query_encoded(repo: Path) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, calls = _run(
+        repo,
+        [
+            "newsletter-source",
+            "bravo",
+            "The Letter & Co",
+            "letter@news.example",
+            "https://news.example",
+        ],
+        ["client-id.access", "client-SECRET"],
+    )
+
+    assert done.returncode == 0, done.stderr
+    [curl] = [c for c in calls if c["cmd"] == "curl"]
+    assert curl["args"][-1] == (
+        f"{URL}/hosted/tenants/bravo/newsletter-source?name=The+Letter+%26+Co"
+        "&from=letter%40news.example&homepage=https%3A%2F%2Fnews.example"
+    )
+    assert curl["args"][curl["args"].index("-X") + 1] == "POST"
+    assert "client-SECRET" not in " ".join(curl["args"])
+
+
+def test_newsletter_source_needs_a_tenant_a_name_and_a_sender_before_asking(repo: Path) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, calls = _run(repo, ["newsletter-source", "alpha", "The Letter"], [])
+
+    assert done.returncode == 2
+    assert [c for c in calls if c["cmd"] == "curl"] == []
+
+
 def test_register_registers_each_seeded_tenant_with_the_token_on_stdin(repo: Path) -> None:
     """The seed route seeds only a registered tenant, so the runbook registers both first."""
     (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")

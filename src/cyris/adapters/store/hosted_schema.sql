@@ -27,3 +27,26 @@ CREATE TABLE IF NOT EXISTS hosted_pages (
 CREATE TABLE IF NOT EXISTS articles (url TEXT PRIMARY KEY, guid TEXT, title TEXT NOT NULL DEFAULT '', content TEXT NOT NULL DEFAULT '', author TEXT, published_at TEXT NOT NULL, source_name TEXT NOT NULL, fetched_at TEXT NOT NULL, image_url TEXT);
 CREATE INDEX IF NOT EXISTS idx_articles_published_at ON articles(published_at);
 CREATE INDEX IF NOT EXISTS idx_articles_fetched_at ON articles(fetched_at);
+
+-- The tenant's newsletter queue: each message the hosted Worker's email() handler took at the
+-- tenant's own address (workers/app/src/hosted_inbound.js), as the newsletter Worker's KV holds
+-- one (workers/newsletter/src/record.js), keyed by the same `nl:<sha256(from|subject|date)>` so a
+-- re-delivered copy replaces its row. A hosted run pulls it with `TenantNewsletterSource` through
+-- its own gateway and deletes what it processed, its ack. The address it came to is not kept: the
+-- map from addresses to tenants is the operator's registry alone. `headers` is the JSON list
+-- `record.js` keeps, values only for the list headers it names. `received_at` orders the pull.
+-- `held_at` is when a run found no source for the message and left it queued
+-- (`TenantNewsletterSource`); the email() handler evicts the oldest such message when the queue is
+-- full, so held mail never crowds out new mail. NULL until a run holds it.
+CREATE TABLE IF NOT EXISTS newsletters (
+    id TEXT PRIMARY KEY,
+    sender TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    html TEXT NOT NULL,
+    text TEXT NOT NULL,
+    date TEXT NOT NULL,
+    headers TEXT NOT NULL,
+    raw_size INTEGER,
+    received_at TEXT NOT NULL,
+    held_at TEXT
+);

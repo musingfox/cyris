@@ -1,0 +1,30 @@
+{
+  "_comment": "What POST /hosted/tenants/<tenant>/newsletter-source writes for each query (workers/app/src/hosted_seed.js, newsletterSource), and what it refuses. workers/app/test/hosted_inbound.test.js holds the Worker to these rows; tests/test_tenant_newsletter_source.py reads each written row back as the hosted run's SourceConfig and has two tenants' runs ingest one issue through it.",
+  "written": [
+    {
+      "query": { "name": "The Letter", "from": " Letter@News.example ", "homepage": "https://news.example" },
+      "row": {
+        "name": "The Letter",
+        "url": null,
+        "type": "newsletter",
+        "config": { "lane": "read", "tags": [], "email_match": "from:letter@news.example", "homepage": "https://news.example" }
+      }
+    },
+    {
+      "query": { "name": "Weekly", "from": "weekly@mail.example", "lane": "follow" },
+      "row": {
+        "name": "Weekly",
+        "url": null,
+        "type": "newsletter",
+        "config": { "lane": "follow", "tags": [], "email_match": "from:weekly@mail.example" }
+      }
+    }
+  ],
+  "refused": [
+    { "query": { "from": "letter@news.example" }, "error": "name is 1 to 80 characters with no control character" },
+    { "query": { "name": "The Letter" }, "error": "from is the address the newsletter is sent from" },
+    { "query": { "name": "The Letter", "from": "not an address" }, "error": "from is the address the newsletter is sent from" },
+    { "query": { "name": "The Letter", "from": "letter@news.example", "lane": "tier" }, "error": "lane is one of skim, read, follow" },
+    { "query": { "name": "The Letter", "from": "letter@news.example", "homepage": "javascript:alert(1)" }, "error": "homepage is an http(s) URL" }
+  ]
+}

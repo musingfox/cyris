@@ -3,6 +3,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 bun install --frozen-lockfile
 (cd workers/rss && bun install --frozen-lockfile)
+# The hosted Worker's email() handler parses with postal-mime, the newsletter Worker's dependency.
+(cd workers/newsletter && bun install --frozen-lockfile)
 uv run ruff check src/ tests/ scripts/
 uv run ruff format --check src/ tests/ scripts/
 uv run pytest

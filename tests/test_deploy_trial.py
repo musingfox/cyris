@@ -5,6 +5,7 @@ git, bun and wrangler are one fake runner that records each command; the trial's
 """
 
 import os
+import re
 import subprocess
 import tomllib
 from pathlib import Path
@@ -84,6 +85,23 @@ def _main(deploy, runner, *args, online=COMMIT):
         ["--slug", SLUG, *args], run=runner, say=said.append, fetch=fetch, sleep=slept.append
     )
     return code, said, slept, asked
+
+
+def _words(said: list[str], tree: Path) -> list[str]:
+    """What the script said, without what only the machine running it put there.
+
+    A command it echoes starts `$ env -i HOME=... PATH=...`, and those values, like the paths of
+    this checkout and of the test's tree, hold whatever the directories are named: a checkout
+    under `.../hosted-newsletter/` would otherwise read as the script naming the newsletter Worker.
+    """
+    machine = [str(Path(__file__).resolve().parents[1]), str(tree)]
+    words = []
+    for line in said:
+        kept = " ".join(word for word in line.split(" ") if not re.match(r"^[A-Z_]+=", word))
+        for path in machine:
+            kept = kept.replace(path, "")
+        words.append(kept)
+    return words
 
 
 def _image(tree: Path) -> str:
@@ -481,7 +499,7 @@ def test_a_trial_without_a_newsletter_kv_gets_no_newsletter_worker(deploy, tree:
     assert code == 0
     assert _deployed(runner) == [APP_CONFIG]
     assert not (tree / NEWSLETTER_CONFIG).exists()
-    assert not any("newsletter" in line for line in said)
+    assert not any("newsletter" in line for line in _words(said, tree))
     assert "NEWSLETTER_WORKER_COMMIT" not in _state(tree)
 
 

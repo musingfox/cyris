@@ -517,6 +517,7 @@ describe("the seed and the report", () => {
       stored_articles: [],
       digest_runs: [],
       digests: [],
+      newsletters: [],
       latest_page: null,
     });
   });
