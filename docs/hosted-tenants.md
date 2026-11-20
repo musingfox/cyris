@@ -101,20 +101,37 @@ memory of the dashboard and have not been checked against it. Each is marked *(l
 unverified)*. What each step has to achieve is what counts; find it under whatever name the
 dashboard now uses.
 
-1. Workers & Pages > `cyris-hosted` > Settings > Domains & Routes *(label unverified)*: turn on
-   Cloudflare Access for the `workers.dev` route. This creates an Access application for that
-   hostname. Open it from there and note its Application Audience (AUD) Tag *(label
-   unverified)*. In the application's destinations, set the path to `hosted/*`, so the
-   destination is `cyris-hosted.<sub>.workers.dev/hosted/*` and not the whole hostname
-   *(label unverified)*. A path Access leaves uncovered is still refused by the Worker: any
-   `/hosted/` request without a valid JWT answers 403, and every path that is neither `/hosted/`,
-   `/t/` nor the sign-in answers 403 too.
+1. In Zero Trust > Access > Applications *(label unverified)*, add a self-hosted application
+   whose destination is the Worker's `workers.dev` hostname with the path `hosted`, so it covers
+   `/hosted/...` and nothing else. Do not use the Worker's own "Protect this Worker behind
+   Access" switch: Cloudflare's
+   [Workers and Access](https://developers.cloudflare.com/workers/configuration/cloudflare-access/)
+   page says it protects every domain of the Worker, `/t/` and `/login` included. A trial that
+   already has that switch on turns it off, or narrows its application to the same path. Access's
+   [application paths](https://developers.cloudflare.com/cloudflare-one/access-controls/policies/app-paths/)
+   page says a subpath with no rule of its own inherits its parent's, and that `hosted/*` would
+   not cover `/hosted` itself; nothing the operator calls is `/hosted` alone. Note the
+   application's Application Audience (AUD) Tag *(label unverified)*. A path Access leaves
+   uncovered is still refused by the Worker: any `/hosted/` request without a valid JWT answers
+   403, and so does every path that is neither `/hosted/`, `/t/` nor the sign-in.
 2. In Zero Trust > Access > Service credentials *(label unverified)*, create a service token, or
    reuse the trial's. Note its Client ID and Client Secret. The secret is shown once.
 3. In the step-1 application, add a policy whose action is Service Auth *(label unverified)* and
    that includes that token.
 4. Note the team domain, `<team>.cloudflareaccess.com` (Zero Trust > Settings, *label
    unverified*).
+
+After step 3, check that Access covers exactly the operator's routes, with `HOSTED_URL` from
+`.env.hosted`. Neither request signs in:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' "$HOSTED_URL/hosted/tenants/alpha/report"
+curl -sS -o /dev/null -w '%{http_code} %{redirect_url}\n' "$HOSTED_URL/t/alpha/"
+```
+
+The first must be Access's redirect to `<team>.cloudflareaccess.com`, or a 403 from Access. The
+second must be the Worker's own `302` to `HOSTED_URL/login`. If the second goes to the team
+domain too, Access still covers `/t/`, and readers will meet its login instead of the sign-in.
 
 ## 3. Set the Worker's secrets
 
