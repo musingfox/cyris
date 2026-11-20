@@ -91,13 +91,34 @@ async def send_operator_alert(
         logger.warning("Operator alert failed: %s", redact_webhook_tokens(str(e)))
 
 
+def _tag(chunk, tag, at_line_start: bool):
+    """`chunk`, str or bytes, with `tag` before each line it starts; and whether it ended one."""
+    newline = b"\n" if isinstance(chunk, bytes) else "\n"
+    out = []
+    for i, line in enumerate(chunk.split(newline)):
+        if i:
+            out.append(newline)
+            at_line_start = True
+        if line:
+            if at_line_start:
+                out.append(tag)
+            out.append(line)
+            at_line_start = False
+    return chunk[:0].join(out), at_line_start
+
+
 class TaggedLines(io.TextIOBase):
-    """A text stream that starts each line written through it with `tag`."""
+    """A text stream that starts each line written through it with `tag`.
+
+    Its `buffer`, when the stream has one, tags the bytes written there the same way, so a
+    command that writes bytes (`typer.echo(b"...")`, `sys.stdout.buffer`) still works.
+    """
 
     def __init__(self, stream: TextIO, tag: str) -> None:
         self._stream = stream
         self._tag = tag
-        self._at_line_start = True
+        # Shared with `buffer`: a line begun as text and ended as bytes is tagged once.
+        self.at_line_start = True
 
     @property
     def encoding(self) -> str:  # type: ignore[override]
@@ -106,6 +127,11 @@ class TaggedLines(io.TextIOBase):
     @property
     def errors(self) -> str | None:  # type: ignore[override]
         return self._stream.errors
+
+    @property
+    def buffer(self) -> _TaggedBytes:
+        # AttributeError without one, as a stream with no binary side answers.
+        return _TaggedBytes(self, self._stream.buffer)
 
     def writable(self) -> bool:
         return True
@@ -117,32 +143,47 @@ class TaggedLines(io.TextIOBase):
         return self._stream.fileno()
 
     def write(self, text: str) -> int:
-        lines = text.split("\n")
-        out = []
-        for i, line in enumerate(lines):
-            if i:
-                out.append("\n")
-                self._at_line_start = True
-            if line:
-                if self._at_line_start:
-                    out.append(self._tag)
-                out.append(line)
-                self._at_line_start = False
-        self._stream.write("".join(out))
+        out, self.at_line_start = _tag(text, self._tag, self.at_line_start)
+        self._stream.write(out)
         return len(text)
 
     def flush(self) -> None:
         self._stream.flush()
 
 
-def tag_output(tenant_id: str) -> None:
-    """Start every line this process writes to stdout and stderr with the tenant's id.
+class _TaggedBytes(io.RawIOBase):
+    """The binary side of a `TaggedLines`, tagging each line in the text side's encoding."""
+
+    def __init__(self, text: TaggedLines, raw: Any) -> None:
+        self._text = text
+        self._raw = raw
+
+    def writable(self) -> bool:
+        return True
+
+    def write(self, data: Any) -> int:
+        chunk = bytes(data)
+        # Text written before these bytes goes out before them.
+        self._text.flush()
+        tag = self._text._tag.encode(self._text.encoding or "utf-8")
+        out, self._text.at_line_start = _tag(chunk, tag, self._text.at_line_start)
+        self._raw.write(out)
+        return len(chunk)
+
+    def flush(self) -> None:
+        self._raw.flush()
+
+
+def tag_output(tenant_id: str, *, stdout: bool = True) -> None:
+    """Start every line this process writes to stderr, and to stdout unless `stdout` is
+    False, with the tenant's id.
 
     At the stream, not the logging formatter, so a progress line, a typer message and a
-    traceback are tagged as a log record is.
+    traceback are tagged as a log record is. A command whose stdout is machine-readable
+    (`--json`) keeps it untagged, so it still parses; its log lines go to stderr, tagged.
     """
     tag = LINE_TAG.format(tenant=tenant_id)
-    if not isinstance(sys.stdout, TaggedLines):
+    if stdout and not isinstance(sys.stdout, TaggedLines):
         sys.stdout = TaggedLines(sys.stdout, tag)
     if not isinstance(sys.stderr, TaggedLines):
         sys.stderr = TaggedLines(sys.stderr, tag)

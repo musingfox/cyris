@@ -121,6 +121,8 @@ How it is built:
 * **Every line names its tenant.** When `CYRIS_STORE_TENANT_ID` is set, the CLI's callback starts
   every line written to stdout and stderr with `tenant=<id> `. It does this at the stream, before
   any command runs, so log records, progress lines, typer messages and tracebacks are all tagged.
+  Bytes written to the stream's `buffer` are tagged too. A `--json` command's stdout is data a
+  reader parses, so it is left untagged, and its stderr, where its log lines go, is tagged.
   The entrypoint's own lines carry the tenant too. The egress probe adds a `tenant` field and stays
   JSON, and the SIGTERM line is prefixed. The Worker's lifecycle lines for a tenant's container
   (`container stopped`, the start retry) carry `tenant` through `Lifecycle`'s `logFields`.
@@ -159,8 +161,9 @@ How it is built:
   none of it. A run that fetched nothing tells the operator too. A could-not-start tick tells the
   reader without the error and the operator with it. A catch-up or manual run whose settings fail,
   a store that answers 500 while settings load, and a `build_deps` that raises each tell the
-  operator, and a dry run tells nobody. The same file checks that every line a hosted
-  `cyris run` writes starts with `tenant=alpha `.
+  operator, and a dry run tells nobody. The same file checks three things about lines. Every
+  line a hosted `cyris run` writes starts with `tenant=alpha `. The tagged stream's bytes are
+  tagged too. A `--json` command's stdout stays untagged.
 * `tests/test_run_alert.py` holds `reader_alert_message` to withholding the error for every kind
   that carries one, in both catalogs.
 * `workers/app/test/hosted_alerts.test.js` checks the gateway and the message:

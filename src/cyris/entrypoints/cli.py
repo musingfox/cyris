@@ -43,8 +43,9 @@ def main() -> None:
 
     # Before any command writes: every hosted tenant's runs share one Workers Logs stream, so
     # each line names its tenant. A malformed id tags nothing; the config load refuses it.
+    # A `--json` command's stdout is data, not a log line, so only its stderr is tagged.
     if (tenant := tenant_from_environment()) is not None:
-        tag_output(tenant)
+        tag_output(tenant, stdout="--json" not in sys.argv[1:])
 
 
 def _echo_d1_failure(error: Exception) -> None:

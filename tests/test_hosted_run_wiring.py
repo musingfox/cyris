@@ -24,6 +24,7 @@ from urllib.parse import urljoin
 import httpx
 import pytest
 import respx
+import typer
 from fakes import TEST_SETTINGS, FakeLLM, SqliteD1, load_files, seed_d1_settings
 from test_run_digest import FakeSource
 from test_tenant_gateway import FakeGateway
@@ -862,3 +863,45 @@ def test_a_tagged_stream_tags_each_line_once_however_it_is_written() -> None:
     assert out.getvalue() == (
         "tenant=alpha one more\ntenant=alpha two\n\ntenant=alpha three\ntenant=alpha four"
     )
+
+
+def test_a_tagged_streams_bytes_are_tagged_too() -> None:
+    import io
+
+    raw = io.BytesIO()
+    text = io.TextIOWrapper(raw, encoding="utf-8", write_through=True)
+    tagged = TaggedLines(text, "tenant=alpha ")
+
+    tagged.write("text, then ")
+    tagged.buffer.write(b"bytes\nmore bytes\n")
+    typer.echo(b"echoed bytes", file=tagged)
+
+    assert raw.getvalue() == (
+        b"tenant=alpha text, then bytes\ntenant=alpha more bytes\ntenant=alpha echoed bytes\n"
+    )
+
+
+def test_a_json_commands_stdout_stays_untagged_and_its_stderr_does_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--json` stdout is a series a reader parses; the lines that explain it go to stderr."""
+    import io
+
+    from cyris.entrypoints import cli
+
+    out, err = io.StringIO(), io.StringIO()
+    monkeypatch.setenv("CYRIS_STORE_TENANT_ID", "alpha")
+    for argv, stdout_tagged in (
+        (["cyris", "embed-compare", "--json"], False),
+        (["cyris", "run"], True),
+    ):
+        monkeypatch.setattr(sys, "stdout", out)
+        monkeypatch.setattr(sys, "stderr", err)
+        monkeypatch.setattr(sys, "argv", argv)
+
+        cli.main()
+
+        assert isinstance(sys.stdout, TaggedLines) is stdout_tagged
+        assert isinstance(sys.stderr, TaggedLines)
+    print('{"row": 1}', file=out)
+    assert json.loads(out.getvalue()) == {"row": 1}
