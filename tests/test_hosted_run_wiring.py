@@ -358,6 +358,7 @@ async def test_a_hosted_run_that_fails_tells_the_operator_its_tenant_and_the_rea
     # The operator: one alert, on the tenant's own path, with the raw error.
     [told] = operator.calls
     sent = json.loads(told.request.content)
+    assert sent["kind"] == "run_failed"
     assert sent["subject"].startswith("Digest run failed: ")
     assert sent["body"] == f"RuntimeError: {RAW_ERROR}"
     # The reader: the same alert on each of the tenant's channels, and none of the error.
@@ -668,13 +669,131 @@ def test_a_hosted_tick_that_cannot_start_tells_the_operator_and_the_reader_no_er
     assert "max_articles_per_digest" in error
 
 
+def _operator_told(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, object]]:
+    """Every alert the hosted operator is sent, as (tenant, alert)."""
+    told: list[tuple[str, object]] = []
+
+    async def operator(tenant, alert) -> None:
+        told.append((tenant, alert))
+
+    monkeypatch.setattr("cyris.adapters.hosted.send_operator_alert", operator)
+    return told
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        pytest.param(["--period", "morning"], id="catch-up"),
+        pytest.param(["--period", "morning", "--date", "2026-11-18"], id="manual"),
+    ],
+)
+def test_a_hosted_run_started_by_period_that_cannot_load_its_settings_tells_the_operator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, args: list[str]
+) -> None:
+    """A catch-up and a manual run start without --if-due; the operator still hears."""
+    told = _operator_told(monkeypatch)
+    _hosted_env(monkeypatch)
+    gateway = FakeGateway("alpha")
+    _through(gateway, monkeypatch)
+    seed_d1_settings(
+        gateway.db, omit=["digest.max_articles_per_digest"], **{"general.timezone": "UTC"}
+    )
+    config_path, sources_path = _files(tmp_path)
+
+    result = CliRunner().invoke(
+        app, ["run", *args, "--config", str(config_path), "--sources", str(sources_path)]
+    )
+
+    assert result.exit_code == 1
+    [(tenant, alert)] = told
+    assert tenant == "alpha"
+    assert alert.kind == "could_not_start"
+    assert alert.period == "morning"
+    assert "max_articles_per_digest" in alert.error
+
+
+def test_a_hosted_run_whose_database_gateway_fails_tells_the_operator(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No setting can be read, so the alert names the tenant from the environment, in UTC."""
+    told = _operator_told(monkeypatch)
+    _hosted_env(monkeypatch)
+    real = GatewayD1Client
+
+    def client(tenant_id: str) -> GatewayD1Client:
+        made = real(tenant_id)
+        made._http = httpx.Client(
+            transport=httpx.MockTransport(lambda _r: httpx.Response(500, json={"errors": []}))
+        )
+        return made
+
+    monkeypatch.setattr(tenant_gateway, "GatewayD1Client", client)
+    monkeypatch.setattr("cyris.adapters.store.d1.RETRY_BACKOFF_SECONDS", 0)
+    config_path, sources_path = _files(tmp_path)
+
+    result = CliRunner().invoke(
+        app, ["run", "--if-due", "--config", str(config_path), "--sources", str(sources_path)]
+    )
+
+    assert result.exit_code == 1
+    [(tenant, alert)] = told
+    assert tenant == "alpha"
+    assert alert.kind == "could_not_start"
+    assert alert.timezone == "UTC"
+    assert "500" in alert.error
+
+
+def test_a_hosted_run_whose_wiring_fails_tells_the_operator(
+    hosted_cfg, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`build_deps` raising in a manual run: the reader's rule skips it, the operator's not."""
+    from cyris.entrypoints import cli
+
+    cfg, _ = hosted_cfg
+    told = _operator_told(monkeypatch)
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("wiring broke")
+
+    monkeypatch.setattr("cyris.bootstrap.build_deps", broken)
+
+    with pytest.raises(RuntimeError, match="wiring broke"):
+        cli._run_pipeline(cfg, "evening", False, False, None, None, False)
+
+    [(tenant, alert)] = told
+    assert tenant == "alpha"
+    assert alert.period == "evening"
+    assert alert.error == "RuntimeError: wiring broke"
+
+
+def test_a_hosted_dry_run_that_cannot_start_tells_nobody(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    told = _operator_told(monkeypatch)
+    _hosted_env(monkeypatch)
+    gateway = FakeGateway("alpha")
+    _through(gateway, monkeypatch)
+    seed_d1_settings(gateway.db, omit=["digest.max_articles_per_digest"])
+    config_path, sources_path = _files(tmp_path)
+
+    result = CliRunner().invoke(
+        app,
+        ["run", "--dry-run", "--period", "morning", "--config", str(config_path)]
+        + ["--sources", str(sources_path)],
+    )
+
+    assert result.exit_code == 1
+    assert told == []
+
+
 def test_every_line_a_hosted_run_writes_names_its_tenant(tmp_path: Path) -> None:
     """The container's stdout and stderr are the run's only log, shared by every tenant."""
     env = {
         **os.environ,
         "CYRIS_STORE_TENANT_ID": "alpha",
         "CYRIS_STORE_HOSTED_DOMAIN": DOMAIN,
-        # Refused at the load, so the run logs and echoes and stops before any request.
+        # Refused at the load, so the run logs and echoes and stops; a dry run tells no
+        # operator, so it sends no request either.
         "CYRIS_STORE_BACKEND": "sqlite",
     }
     missing = tmp_path / "missing"
@@ -684,6 +803,7 @@ def test_every_line_a_hosted_run_writes_names_its_tenant(tmp_path: Path) -> None
             "-c",
             "from cyris.entrypoints.cli import app; app()",
             "run",
+            "--dry-run",
             "--config",
             str(missing / "cyris.toml"),
             "--sources",

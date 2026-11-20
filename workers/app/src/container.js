@@ -24,7 +24,8 @@ export class Lifecycle {
   // tried again after each backoff in turn, the last repeating, until the next wait would pass
   // `maxWaitMs`. Without them a start is what it always was: one start() and no retry.
   // `logFields`, when given, goes on every line this logs: a hosted tenant's container names
-  // its tenant, since every tenant's lines share one Workers Logs stream.
+  // its tenant, since every tenant's lines share one Workers Logs stream. `onAbnormalStop`, when
+  // given, is awaited with monitor()'s error after a container that exited non-zero or was killed.
   constructor(
     ctx,
     inactivityTimeoutMs,
@@ -34,6 +35,7 @@ export class Lifecycle {
       intercept = null,
       startRetry = null,
       logFields = {},
+      onAbnormalStop = null,
       sleep = pause,
       now = Date.now,
     } = {},
@@ -45,6 +47,7 @@ export class Lifecycle {
     this.intercept = intercept;
     this.startRetry = startRetry;
     this.logFields = logFields;
+    this.onAbnormalStop = onAbnormalStop;
     this.sleep = sleep;
     this.now = now;
   }
@@ -55,8 +58,10 @@ export class Lifecycle {
     this.ctx.waitUntil(
       this.ctx.container.monitor().then(
         () => console.log("container stopped", { ...this.logFields, exitCode: 0 }),
-        (error) =>
-          console.log("container stopped", { ...this.logFields, exitCode: error?.exitCode, reason: String(error) }),
+        (error) => {
+          console.log("container stopped", { ...this.logFields, exitCode: error?.exitCode, reason: String(error) });
+          return this.onAbnormalStop?.(error);
+        },
       ).finally(() => {
         this.listening = false;
       }),

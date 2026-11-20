@@ -1,19 +1,29 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { OPERATOR_WEBHOOK, OPS_HOST, OperatorAlertGateway, operatorMessage } from "../src/hosted_alerts.js";
+import {
+  OPERATOR_WEBHOOK,
+  OPS_HOST,
+  OperatorAlertGateway,
+  alertOperator,
+  operatorMessage,
+  workerAlert,
+} from "../src/hosted_alerts.js";
 
 const WEBHOOK = "https://discord.com/api/webhooks/1/operator-token";
 
 const alert = (tenant, body = { subject: "Digest run failed: 11/20 0800 UTC", body: "RuntimeError: the store is gone" }) =>
   new Request(`http://${OPS_HOST}/t/${tenant}/alert`, { method: "POST", body: JSON.stringify(body) });
 
-// A gateway as the tenant's run object registers it, and every request it sends.
+// A gateway as the tenant's run object registers it, every request it sends, and every report it
+// records in a tenant's run object.
 function gateway(props, env = { [OPERATOR_WEBHOOK]: WEBHOOK }, answer = () => new Response(null, { status: 204 })) {
   const sent = [];
+  const recorded = [];
   vi.stubGlobal("fetch", async (url, init) => {
     sent.push({ url, init, body: JSON.parse(init.body) });
     return answer();
   });
-  return { gateway: new OperatorAlertGateway({ props }, env), sent };
+  const TENANT_RUN = { getByName: (name) => ({ alertReported: async (kind) => recorded.push({ name, kind }) }) };
+  return { gateway: new OperatorAlertGateway({ props }, { TENANT_RUN, ...env }), sent, recorded };
 }
 
 afterEach(() => vi.unstubAllGlobals());
@@ -28,7 +38,7 @@ describe("OperatorAlertGateway", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0].url).toBe(WEBHOOK);
     expect(sent[0].body).toEqual({
-      content: "[alpha] Digest run failed: 11/20 0800 UTC\nRuntimeError: the store is gone",
+      content: "[alpha] Digest run failed: 11/20 0800 UTC\n```\nRuntimeError: the store is gone\n```",
       allowed_mentions: { parse: [] },
     });
   });
@@ -38,7 +48,7 @@ describe("OperatorAlertGateway", () => {
 
     await alpha.fetch(alert("alpha", { subject: "[bravo] Digest run failed", body: "x" }));
 
-    expect(sent[0].body.content.startsWith("[alpha] [bravo]")).toBe(true);
+    expect(sent[0].body.content.startsWith("[alpha] \\[bravo\\]")).toBe(true);
   });
 
   it("refuses another tenant's path with 403 and sends nothing", async () => {
@@ -110,7 +120,102 @@ describe("OperatorAlertGateway", () => {
     log.mockRestore();
   });
 
-  it("keeps a long alert inside Discord's 2,000 characters", () => {
-    expect(operatorMessage("alpha", { subject: "s", body: "x".repeat(5000) })).toHaveLength(2000);
+  it("records a run-ending alert in the tenant's run object, and a warning not", async () => {
+    for (const [kind, expected] of [
+      ["run_failed", [{ name: "alpha", kind: "run_failed" }]],
+      ["could_not_start", [{ name: "alpha", kind: "could_not_start" }]],
+      ["fetched_nothing", [{ name: "alpha", kind: "fetched_nothing" }]],
+      ["vote_similarity_rejected", []],
+      [undefined, []],
+    ]) {
+      const { gateway: alpha, recorded } = gateway({ tenant: "alpha" });
+      await alpha.fetch(alert("alpha", { kind, subject: "s", body: "b" }));
+      expect(recorded).toEqual(expected);
+    }
+  });
+
+  it("still forwards an alert whose report could not be recorded", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { sent } = gateway({ tenant: "alpha" });
+    const alpha = new OperatorAlertGateway({ props: { tenant: "alpha" } }, { [OPERATOR_WEBHOOK]: WEBHOOK });
+
+    const response = await alpha.fetch(alert("alpha", { kind: "run_failed", subject: "s", body: "b" }));
+
+    expect(response.status).toBe(202);
+    expect(sent).toHaveLength(1);
+    expect(log).toHaveBeenCalledWith("operator alert not recorded", expect.objectContaining({ tenant: "alpha" }));
+    log.mockRestore();
+  });
+});
+
+describe("operatorMessage", () => {
+  it("keeps a long alert inside Discord's 2,000 characters, its code block closed", () => {
+    const message = operatorMessage("alpha", { subject: "s", body: "x".repeat(5000) });
+
+    expect(message.length).toBeLessThanOrEqual(2000);
+    expect(message.endsWith("\n```")).toBe(true);
+  });
+
+  it("never splits a character at the cut", () => {
+    const message = operatorMessage("alpha", { subject: "s", body: "😀".repeat(2000) });
+
+    expect(message.endsWith("😀\n```")).toBe(true);
+  });
+
+  it("lets no subject forge a second tenant's line or draw Markdown", () => {
+    const message = operatorMessage("alpha", {
+      subject: "Digest run failed\r\n[bravo] Digest run failed\u2028**bold** [link](https://evil.test) `x`",
+      body: "x",
+    });
+    const [head] = message.split("\n```\n");
+
+    expect(head.split("\n")).toHaveLength(1);
+    expect(head.startsWith("[alpha] Digest run failed ")).toBe(true);
+    expect(head).toContain("\\[bravo\\]");
+    expect(head).toContain("\\*\\*bold\\*\\*");
+    expect(head).toContain("\\[link\\]\\(https://evil.test\\)");
+    // After the Worker's own `[alpha] `, every Markdown character is escaped.
+    expect(head.slice("[alpha] ".length)).not.toMatch(/(^|[^\\])[*`[]/);
+  });
+
+  it("keeps the body inside its code block, whatever backticks or lines it holds", () => {
+    const body = "line\n```\n[bravo] Digest run failed\n**x**";
+    const message = operatorMessage("alpha", { subject: "s", body });
+    const lines = message.split("\n");
+
+    expect(lines[0]).toBe("[alpha] s");
+    expect(lines[1]).toBe("```");
+    expect(lines.at(-1)).toBe("```");
+    // Only the block's own two fences are fences: the body's backticks are broken up.
+    expect(lines.filter((line) => line === "```")).toHaveLength(2);
+    expect(message).toContain("[bravo] Digest run failed");
+  });
+});
+
+describe("alertOperator", () => {
+  it("is what a Worker-side caller sends with, worded by workerAlert", async () => {
+    const posted = [];
+    vi.stubGlobal("fetch", async (_url, init) => {
+      posted.push(JSON.parse(init.body).content);
+      return new Response(null, { status: 204 });
+    });
+
+    const result = await alertOperator({ [OPERATOR_WEBHOOK]: WEBHOOK }, "bravo", workerAlert("stopped", "exitCode=137"));
+
+    expect(result).toEqual({ sent: true, status: 202 });
+    expect(posted).toEqual(["[bravo] Digest run stopped before it reported\n```\nexitCode=137\n```"]);
+  });
+
+  it("never throws, with no webhook or a webhook that fails", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    expect(await alertOperator({}, "bravo", workerAlert("start_failed", "x"))).toEqual({ sent: false, status: 503 });
+    vi.stubGlobal("fetch", async () => {
+      throw new Error("network down");
+    });
+    expect(await alertOperator({ [OPERATOR_WEBHOOK]: WEBHOOK }, "bravo", workerAlert("start_failed", "x"))).toEqual({
+      sent: false,
+      status: 502,
+    });
+    log.mockRestore();
   });
 });

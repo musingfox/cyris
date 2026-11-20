@@ -1,0 +1,4 @@
+{
+  "start_failed": "Digest run could not start",
+  "stopped": "Digest run stopped before it reported"
+}

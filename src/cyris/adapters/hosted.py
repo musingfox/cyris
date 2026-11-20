@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import io
 import logging
+import os
 import sys
 from dataclasses import replace
 from typing import Any, TextIO
@@ -28,6 +29,7 @@ import httpx
 
 from cyris.adapters.notify import redact_webhook_tokens
 from cyris.adapters.run_alert import alert_message
+from cyris.config import HOSTED_B_GRADE_ENV_VARS, TENANT_ID
 from cyris.i18n import ENGLISH
 from cyris.service_layer.alerts import RunAlert
 
@@ -49,6 +51,16 @@ OPERATOR_TIMEOUT_SECONDS = 10.0
 LINE_TAG = "tenant={tenant} "
 
 
+def tenant_from_environment() -> str | None:
+    """The tenant id the hosted Worker set on this container, or None outside hosted mode.
+
+    For what must work before any setting loads, or when none can: the config load refuses
+    a malformed id, and so this answers None for one.
+    """
+    tenant = os.environ.get(HOSTED_B_GRADE_ENV_VARS["store.tenant_id"], "")
+    return tenant if TENANT_ID.fullmatch(tenant) else None
+
+
 async def skip_digest_notification(*_args: Any, **_kwargs: Any) -> dict[str, str]:
     """Stands in for `send_discord` and `send_digest_mail`: sends nothing and says so."""
     logger.info("Hosted tenant: no digest notification is sent")
@@ -64,7 +76,13 @@ async def send_operator_alert(
     `digest.output_language`. The gateway puts the tenant's id in front of them. Never raises.
     """
     subject, body = alert_message(replace(alert, language=ENGLISH))
-    payload = {"subject": redact_webhook_tokens(subject), "body": redact_webhook_tokens(body)}
+    # `kind` lets the gateway tell an alert that ends the run, after which the Worker's own
+    # alert about the container's stop would only repeat it (ENDING_KINDS in hosted_alerts.js).
+    payload = {
+        "kind": alert.kind,
+        "subject": redact_webhook_tokens(subject),
+        "body": redact_webhook_tokens(body),
+    }
     try:
         async with httpx.AsyncClient(timeout=OPERATOR_TIMEOUT_SECONDS) as client:
             resp = await client.post(f"{origin}/t/{tenant_id}/alert", json=payload)

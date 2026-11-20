@@ -39,14 +39,11 @@ DIGEST_LOCK_POLL_SECONDS = 5
 @app.callback()
 def main() -> None:
     """Cyris — AI-powered information digest agent."""
-    from cyris.config import HOSTED_B_GRADE_ENV_VARS, TENANT_ID
+    from cyris.adapters.hosted import tag_output, tenant_from_environment
 
     # Before any command writes: every hosted tenant's runs share one Workers Logs stream, so
     # each line names its tenant. A malformed id tags nothing; the config load refuses it.
-    tenant = os.environ.get(HOSTED_B_GRADE_ENV_VARS["store.tenant_id"], "")
-    if TENANT_ID.fullmatch(tenant):
-        from cyris.adapters.hosted import tag_output
-
+    if (tenant := tenant_from_environment()) is not None:
         tag_output(tenant)
 
 
@@ -153,12 +150,18 @@ def _setup_logging(verbose: bool = False) -> None:
             handler.addFilter(_RedactCredentials())
 
 
-def _alert_could_not_start(cfg, error: Exception) -> None:
-    """Alert the configured channels that a scheduled run stopped before `run_digest`.
+def _alert_could_not_start(
+    cfg, error: Exception, *, scheduled: bool, period: str | None = None
+) -> None:
+    """Say that a run stopped before `run_digest`: to the reader's channels, and to a hosted
+    tenant's operator.
 
-    Only on a digest hour: the cron tick is hourly, and a broken configuration
-    fails every tick. Settings that cannot say whether this hour is one, or
-    where to send, alert nobody. Never raises: the run's own exit code stands.
+    The reader is told only on a scheduled run's digest hour: the cron tick is hourly, and a
+    broken configuration fails every tick. Settings that cannot say whether this hour is one,
+    or where to send, alert no reader. A hosted tenant's operator is told whenever its run
+    stops here, scheduled, catch-up or manual, and even when no setting could be read: the
+    hosted Worker starts a container only when a run is due, so this does not repeat every
+    hour (ADR-0035). Never raises: the run's own exit code stands.
     """
     from cyris import bootstrap
     from cyris.i18n import ENGLISH
@@ -167,36 +170,84 @@ def _alert_could_not_start(cfg, error: Exception) -> None:
     from cyris.service_layer.schedule import due_period
     from cyris.utils.timezone import now_in_timezone
 
+    alert = None
     try:
-        tz = cfg.app.general.timezone
-        now = now_in_timezone(tz)
-        period = due_period(now, cfg.app.general.digest_schedule)
-        if period is None:
+        if scheduled and cfg is not None:
+            tz = cfg.app.general.timezone
+            now = now_in_timezone(tz)
+            due = due_period(now, cfg.app.general.digest_schedule)
+            if due is not None:
+                # A `digest` table missing any of its settings is None, and the alert is in English.
+                digest = cfg.app.digest
+                alert = RunAlert(
+                    kind="could_not_start",
+                    period=due,
+                    started_at=now,
+                    timezone=tz,
+                    language=digest.output_language if digest is not None else ENGLISH,
+                    error=failure_alert_text(error),
+                )
+    except Exception as e:
+        logger.error("Could not send the alert that the run did not start: %s", e)
+    if alert is not None:
+        try:
+            # A hosted tenant's reader is not shown the error (bootstrap.build_alert_senders).
+            asyncio.run(send_alert(cfg.app.notify, *bootstrap.build_alert_senders(cfg), alert))
+        except Exception as e:
+            logger.error("Could not send the alert that the run did not start: %s", e)
+    _tell_operator_could_not_start(cfg, error, alert, period)
+
+
+def _tell_operator_could_not_start(cfg, error: Exception, alert, period: str | None) -> None:
+    """A hosted tenant's operator hears that its run stopped before `run_digest`, with the error.
+
+    The reader's alert when there was one, else one built here: in the run's own time zone
+    when the settings name a valid one, else UTC, since a store that could not be read names
+    none. Never raises.
+    """
+    from datetime import UTC, datetime
+    from functools import partial
+
+    from cyris import bootstrap
+    from cyris.adapters import hosted
+    from cyris.i18n import ENGLISH
+    from cyris.service_layer.alerts import RunAlert
+    from cyris.service_layer.run_digest import failure_alert_text
+
+    try:
+        if cfg is not None:
+            send = bootstrap.build_operator_alert(cfg)
+        elif (tenant := hosted.tenant_from_environment()) is not None:
+            send = partial(hosted.send_operator_alert, tenant)
+        else:
+            send = None
+        if send is None:
             return
-        # A `digest` table missing any of its settings is None, and the alert is in English.
-        digest = cfg.app.digest
-        alert = RunAlert(
-            kind="could_not_start",
-            period=period,
-            started_at=now,
-            timezone=tz,
-            language=digest.output_language if digest is not None else ENGLISH,
-            error=failure_alert_text(error),
-        )
-    except Exception as e:
-        logger.error("Could not send the alert that the run did not start: %s", e)
-        return
-    try:
-        # A hosted tenant's reader is not shown the error (bootstrap.build_alert_senders).
-        asyncio.run(send_alert(cfg.app.notify, *bootstrap.build_alert_senders(cfg), alert))
-    except Exception as e:
-        logger.error("Could not send the alert that the run did not start: %s", e)
-    try:
+        if alert is None:
+            alert = RunAlert(
+                kind="could_not_start",
+                period=period or "",
+                started_at=datetime.now(UTC),
+                timezone=_alert_timezone(cfg),
+                language=ENGLISH,
+                error=failure_alert_text(error),
+            )
         # A hosted tenant's operator is told too, with the error (ADR-0035).
-        if (send_operator_alert := bootstrap.build_operator_alert(cfg)) is not None:
-            asyncio.run(send_operator_alert(alert))
+        asyncio.run(send(alert))
     except Exception as e:
         logger.error("Could not tell the operator that the run did not start: %s", e)
+
+
+def _alert_timezone(cfg) -> str:
+    """`general.timezone` when it can be read and names a zone, else UTC."""
+    from zoneinfo import ZoneInfo
+
+    try:
+        tz = cfg.app.general.timezone
+        ZoneInfo(tz)
+        return tz
+    except Exception:  # noqa: BLE001 - incomplete or unreadable settings name no zone
+        return "UTC"
 
 
 def _usage_error(message: str) -> None:
@@ -284,12 +335,16 @@ def run(
         cfg.require_sources()
     except (FileNotFoundError, ValueError) as e:
         logger.error("Configuration error: %s", e)
-        if if_due and not dry_run and cfg is not None:
-            _alert_could_not_start(cfg, e)
+        if not dry_run:
+            _alert_could_not_start(cfg, e, scheduled=if_due, period=period)
         raise typer.Exit(1) from e
     except D1Error as e:
         # The store itself is unusable before any setting is read: say so on one line.
         _echo_d1_failure(e)
+        # No reader channel can be read from a store that answered nothing; a hosted
+        # tenant's operator is reached through the hosted Worker, not the store.
+        if not dry_run:
+            _tell_operator_could_not_start(cfg, e, None, period)
         raise typer.Exit(1) from e
 
     if cfg.awaiting_onboarding():
@@ -400,8 +455,8 @@ def _run_pipeline(
     try:
         deps = build_deps(cfg, on_progress=typer.echo, dry_run=dry_run, fetch_pages=True)
     except Exception as e:
-        if if_due and not dry_run:
-            _alert_could_not_start(cfg, e)
+        if not dry_run:
+            _alert_could_not_start(cfg, e, scheduled=if_due, period=period)
         raise
     options = RunOptions(period=period, dry_run=dry_run, force=force, date=date)
 

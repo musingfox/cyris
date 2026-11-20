@@ -4,7 +4,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { Lifecycle } from "./container.js";
-import { OPS_HOST } from "./hosted_alerts.js";
+import { OPS_HOST, alertOperator, workerAlert } from "./hosted_alerts.js";
 import { DB_HOST, TENANT } from "./tenant_db.js";
 import { tenantRegistry } from "./tenant_registry.js";
 import { ACTIVE } from "./tenant_status.js";
@@ -37,6 +37,10 @@ const HOSTED_SECRETS = [
 // once (`scripts/hosted.sh secrets`), and every container gets it under the same name.
 export const HOSTED_DOMAIN = "CYRIS_STORE_HOSTED_DOMAIN";
 
+// The run object's storage key for the alert kind a run reported its end with (ADR-0035): set by
+// OperatorAlertGateway, cleared before every start, read when the container stops abnormally.
+export const REPORTED = "reported";
+
 // The environment a tenant's run container starts with. The tenant id comes from the object's
 // own name. Pages publishing is off whatever the image defaults to: a hosted run stores its
 // pages in the tenant's own object (bootstrap wires that whatever this says). Without the hosted
@@ -64,8 +68,10 @@ export class TenantContainer extends DurableObject {
     this.tenant = ctx.id.name;
     this.lifecycle = new Lifecycle(ctx, RUN_INACTIVITY_TIMEOUT_MS, {
       // Both gateways answer only this tenant; registered before every start(). The second
-      // carries the run's alerts to the operator (hosted_alerts.js).
+      // carries the run's alerts to the operator (hosted_alerts.js). A new start has reported
+      // nothing yet, so the last one's record goes first.
       intercept: async () => {
+        await ctx.storage.delete(REPORTED);
         const props = { tenant: this.tenant };
         await ctx.container.interceptOutboundHttp(DB_HOST, ctx.exports.TenantDbGateway({ props }));
         await ctx.container.interceptOutboundHttp(OPS_HOST, ctx.exports.OperatorAlertGateway({ props }));
@@ -73,6 +79,7 @@ export class TenantContainer extends DurableObject {
       startRetry: START_RETRY,
       // Every tenant's container lines share one stream, as its run's own lines do.
       logFields: { tenant: this.tenant },
+      onAbnormalStop: (error) => this.#stoppedUnreported(error),
     });
     if (ctx.container.running) void ctx.blockConcurrencyWhile(() => this.lifecycle.adopt());
   }
@@ -81,16 +88,55 @@ export class TenantContainer extends DurableObject {
   // checked by the caller, names the issue's date. Neither names a period lets --if-due decide.
   // Only an active tenant of the registry is started, whoever asks: the routes and the tick
   // ask the registry first, and this asks again so no other path can start an unregistered one.
+  // A start that throws, the 90 s give-up included, tells the operator before it is rethrown: the
+  // container never ran, so nothing else will. A tenant the registry does not hold as active is a
+  // refusal, not a failed run, and alerts nobody.
   async startRun({ period, date } = {}) {
     if (!TENANT.test(this.tenant ?? "")) throw new Error(`not a tenant's run container: ${this.tenant}`);
-    const registered = await tenantRegistry(this.env).tenant(this.tenant);
+    let registered;
+    try {
+      registered = await tenantRegistry(this.env).tenant(this.tenant);
+    } catch (error) {
+      await this.#couldNotStart(error, period, date);
+      throw error;
+    }
     if (registered?.status !== ACTIVE) {
       const status = registered?.status ?? "unregistered";
       throw new Error(`tenant ${this.tenant} is not an active registered tenant: ${status}`);
     }
-    const envVars = hostedContainerEnv(this.env, this.tenant);
-    if (period) envVars.CYRIS_RUN_PERIOD = period;
-    if (date) envVars.CYRIS_RUN_DATE = date;
-    return { started: await this.lifecycle.start(envVars), tenant: this.tenant };
+    try {
+      const envVars = hostedContainerEnv(this.env, this.tenant);
+      if (period) envVars.CYRIS_RUN_PERIOD = period;
+      if (date) envVars.CYRIS_RUN_DATE = date;
+      return { started: await this.lifecycle.start(envVars), tenant: this.tenant };
+    } catch (error) {
+      await this.#couldNotStart(error, period, date);
+      throw error;
+    }
+  }
+
+  // RPC from OperatorAlertGateway: this start's run sent an alert that ends it (ENDING_KINDS).
+  async alertReported(kind) {
+    await this.ctx.storage.put(REPORTED, kind);
+  }
+
+  #couldNotStart(error, period, date) {
+    const run = [period && `period=${period}`, date && `date=${date}`].filter(Boolean).join(" ");
+    const detail = `${run ? `${run}\n` : ""}${String(error?.message ?? error)}`;
+    return alertOperator(this.env, this.tenant, workerAlert("start_failed", detail));
+  }
+
+  // A container that exited non-zero or was killed (OOM, SIGKILL, the inactivity cap's SIGTERM)
+  // tells the operator, unless its run already sent an alert that ends it: that alert said why,
+  // and this one would only repeat it. Never throws: it runs in the monitor's waitUntil.
+  async #stoppedUnreported(error) {
+    try {
+      const reported = await this.ctx.storage.get(REPORTED);
+      if (reported) return;
+      const detail = `exitCode=${error?.exitCode ?? "unknown"} ${String(error?.message ?? error)}`;
+      await alertOperator(this.env, this.tenant, workerAlert("stopped", detail));
+    } catch (failure) {
+      console.log("operator alert not sent", { tenant: this.tenant, reason: String(failure?.message ?? failure) });
+    }
   }
 }

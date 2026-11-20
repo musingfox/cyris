@@ -32,8 +32,11 @@ Every command runs, as pasted, from the root of a checkout of this repository. `
 - `ANTHROPIC_API_KEY`: the key the tenants' runs call `claude-haiku-5-5` with. The seed fixes
   that model for both tenants.
 - `CYRIS_HOSTED_OPERATOR_WEBHOOK`: a Discord webhook URL of your own (Server Settings >
-  Integrations > Webhooks, *label unverified*). Every tenant's failed run is posted there, with
-  the tenant's id and the raw error.
+  Integrations > Webhooks, *label unverified*). A tenant's failed run is posted there with the
+  tenant's id. The run posts its own failures with the raw error: it raised, it fetched nothing
+  while a feed failed, or it stopped before its digest began. The Worker posts a start that
+  failed, and a container that exited non-zero or was killed before it reported. Step 7 lists
+  what is not posted.
 - `CF-Access-Client-Id` and `CF-Access-Client-Secret`: a service token the step-2 application
   allows. The seed, run and check steps sign in with it.
 
@@ -207,10 +210,23 @@ Each run reads its RSS from the tenant's own buffer, `articles`, which step 6 an
 fill. It does not poll its feeds itself. A run started before any poll finds the buffer empty and
 has nothing to digest, which is why step 6 comes first. Each run writes its issue into the
 tenant's `digests`, and its digest page and raw page into the tenant's own `hosted_pages`. No
-Pages project is touched. A run sends no digest notification. A run that fails, or that fetches
-nothing while a feed failed, posts an alert to your webhook. It reads `[<tenant>] Digest run
-failed: <issue> <zone>`, then the raw error. The tenant's own channels, if its settings name any,
-get the same alert without the error. Allow about five minutes. To watch the Worker side of it:
+Pages project is touched. A run sends no digest notification. These are posted to your webhook,
+each on one line `[<tenant>] <headline>` and then its detail in a code block:
+
+- A run that raises reads `Digest run failed: <issue> <zone>`, with the raw error.
+- A run that fetches nothing while a feed failed reads `Digest run fetched nothing`.
+- A run that stops at its settings, at its wiring, or at a database that answered an error reads
+  `Digest run could not start`. This holds for a scheduled, catch-up or manual run.
+- From the Worker, a start that failed reads `Digest run could not start`, with the period, the
+  date and the error. That covers no free instance for 90 seconds, or no hosted domain.
+- From the Worker, a container that exited non-zero or was killed reads `Digest run stopped
+  before it reported`, with its exit code. That covers an OOM kill, or the 15-minute
+  inactivity cap. It is not sent when the run already posted why it ended.
+
+Not posted: a tenant whose schedule the tick cannot read, which gets no run; an alert your
+webhook refused, a `429` included, which leaves an `operator alert not sent` line; and a dry run.
+The tenant's own channels, if its settings name any, get the run's own alerts without the error.
+Allow about five minutes. To watch the Worker side of it:
 
 ```bash
 scripts/hosted.sh tail
