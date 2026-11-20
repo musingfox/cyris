@@ -64,6 +64,53 @@ export async function seedTenant({
   };
 }
 
+// The lanes a source may take (`Lane` in src/cyris/domain/models.py), and a newsletter's when the
+// operator names none: read, so its issues are scored and summarized like a feed's articles.
+const LANES = ["skim", "read", "follow"];
+const NEWSLETTER_LANE = "read";
+const SENDER = /^[^\s@<>"(),;:]+@[^\s@<>"(),;:]+\.[^\s@<>"(),;:]+$/;
+const NAME = /^[^\u0000-\u001f\u007f]{1,80}$/;
+
+// The `sources` row a newsletter source is, from the operator's query: `name`, `from` (the
+// address its issues come from, which `email_match` names as `from:<address>`, the shape a
+// self-hosted /settings writes), and optionally `homepage` (http(s)) and `lane`. Answers
+// `{row}` or `{refused}`, the reason. tests/test_tenant_newsletter_source.py reads the same cases
+// (workers/app/test/newsletter_source_cases.json) back as the run's `SourceConfig`.
+export function newsletterSource({ name, from, homepage, lane = NEWSLETTER_LANE } = {}) {
+  const trimmed = typeof name === "string" ? name.trim() : "";
+  if (!NAME.test(trimmed)) return { refused: "name is 1 to 80 characters with no control character" };
+  const sender = typeof from === "string" ? from.trim().toLowerCase() : "";
+  if (!SENDER.test(sender)) return { refused: "from is the address the newsletter is sent from" };
+  if (!LANES.includes(lane)) return { refused: `lane is one of ${LANES.join(", ")}` };
+  const config = { lane, tags: [], email_match: `from:${sender}` };
+  if (homepage !== undefined && homepage !== "") {
+    let parsed;
+    try {
+      parsed = new URL(homepage);
+    } catch {
+      parsed = null;
+    }
+    if (!parsed || !["http:", "https:"].includes(parsed.protocol)) return { refused: "homepage is an http(s) URL" };
+    config.homepage = homepage;
+  }
+  return { row: { name: trimmed, url: null, type: "newsletter", config } };
+}
+
+// Adds, or rewrites, one newsletter source in a seeded tenant's database, so the tenant's runs
+// ingest the issues its address receives from that sender: a run takes an issue only for a
+// source whose `email_match` names its sender. Answers `{source}`, or `{refused, status}`: 400 for
+// a query that is not a source, 409 for a tenant not seeded yet or a name an RSS source holds.
+export async function addNewsletterSource({ db, params }) {
+  const made = newsletterSource(params);
+  if (made.refused) return { refused: made.refused, status: 400 };
+  const { name, url, type, config } = made.row;
+  if (!("sources" in (await db.tables()))) return { refused: "seed the tenant first", status: 409 };
+  const [held] = (await db.query("SELECT type FROM sources WHERE name = ?", [name])).rows;
+  if (held && held.type !== type) return { refused: `${name} is already a ${held.type} source`, status: 409 };
+  await db.query(SOURCE_UPSERT, [name, url, type, JSON.stringify(config)]);
+  return { source: made.row };
+}
+
 // What decides whether a tenant's runs, issues and pages are its own (scripts/hosted_check.py):
 // its tables and their row counts, its sources, which sources its stored articles came from, its
 // runs, its issues, and the page /t/<tenant>/ serves, by path and SHA-256. A table the tenant

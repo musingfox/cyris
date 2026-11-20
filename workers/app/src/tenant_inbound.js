@@ -9,21 +9,24 @@ import HOSTED_SCHEMA_SQL from "../../../src/cyris/adapters/store/hosted_schema.s
 
 // The most messages a tenant's queue holds. Its run drains the queue at every digest, twice a
 // day by default, and a reader with 50 newsletters a day is far under it; past it a flood to a
-// leaked address is refused, and the tenant's object stops growing, until a run or a new address.
+// leaked address is dropped, and the tenant's object stops growing, until a run or a new address.
 export const MAX_QUEUED = 200;
 
-// A re-delivered copy has the same id and replaces its row, so the cap counts it once.
-const INSERT = `INSERT OR REPLACE INTO newsletters
+// The first arrival of an id is kept: a re-delivered copy, or a message whose forged From, Subject
+// and Date give it a queued issue's id, changes nothing, so no sender can overwrite an issue
+// already queued.
+const INSERT = `INSERT OR IGNORE INTO newsletters
   (id, sender, subject, html, text, date, headers, raw_size, received_at)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-// Stores one message's record, `id` as record.js keys it, and answers `{stored: true}`, or
-// `{refused}` when the queue is full. The hosted schema is applied first, so a tenant whose
-// object has not had it yet gets the table.
+// Stores one message's record, `id` as record.js keys it, and answers `{stored: true}`,
+// `{duplicate: true}` when that id is already queued, or `{refused}` when the queue is full. The
+// hosted schema is applied first, so a tenant whose object has not had it yet gets the table.
 export function storeNewsletter(storage, id, record, { now = new Date() } = {}) {
   const sql = storage.sql;
   sql.exec(HOSTED_SCHEMA_SQL);
-  const queued = sql.exec("SELECT count(*) AS n FROM newsletters WHERE id <> ?", id).one().n;
+  if (sql.exec("SELECT 1 AS held FROM newsletters WHERE id = ?", id).toArray().length) return { duplicate: true };
+  const queued = sql.exec("SELECT count(*) AS n FROM newsletters").one().n;
   if (queued >= MAX_QUEUED) return { refused: "queue full" };
   sql.exec(
     INSERT,

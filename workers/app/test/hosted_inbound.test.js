@@ -7,10 +7,11 @@ import { env } from "cloudflare:workers";
 import { generateKeyPair, exportJWK, SignJWT } from "jose";
 import worker from "../src/hosted.js";
 import { ADDRESS, ADDRESS_BYTES, randomAddress, recipientAddress } from "../src/inbound_address.js";
-import { MAX_RAW_BYTES, REFUSAL, authResults } from "../src/hosted_inbound.js";
+import { MAX_RAW_BYTES, authResults } from "../src/hosted_inbound.js";
 import { DB_HOST, TenantDbGateway, isTenantTable } from "../src/tenant_db.js";
 import { MAX_QUEUED } from "../src/tenant_inbound.js";
 import { tenantRegistry } from "../src/tenant_registry.js";
+import CASES from "./newsletter_source_cases.json";
 import { namespace, registryNamespace } from "./sql_storage.js";
 
 const DOMAIN = "in.cyris.example";
@@ -18,7 +19,10 @@ const TEAM = "inbound-team.example";
 const AUD = "AUD-INBOUND";
 
 // One issue as a publisher sends it, to `to`, with Cloudflare's Authentication-Results on top.
-const issue = (to, { subject = "Issue 12", date = "Tue, 18 Nov 2026 06:00:00 +0000", auth = "dmarc=pass" } = {}) =>
+const issue = (
+  to,
+  { subject = "Issue 12", date = "Tue, 18 Nov 2026 06:00:00 +0000", auth = "dmarc=pass", body = "This week's letter." } = {},
+) =>
   [
     `Authentication-Results: mx.cloudflare.net; spf=pass smtp.mailfrom=news.example; dkim=pass header.d=news.example; ${auth}`,
     "From: The Letter <letter@news.example>",
@@ -28,22 +32,25 @@ const issue = (to, { subject = "Issue 12", date = "Tue, 18 Nov 2026 06:00:00 +00
     "List-Id: <letter.news.example>",
     "Content-Type: text/plain; charset=utf-8",
     "",
-    "This week's letter. Read it at https://news.example/p/issue-12",
+    `${body} Read it at https://news.example/p/issue-12`,
     "",
   ].join("\r\n");
 
 // ForwardableEmailMessage as Email Routing hands one to email(): the envelope, the raw message,
-// and setReject, which this records.
+// and the three things a handler can do to the SMTP answer, which this records. A handler that
+// calls none of them has accepted the message.
 function message(to, raw = issue(to), { rawSize = raw.length } = {}) {
-  const rejected = [];
+  const answered = [];
   return {
     from: "bounce@news.example",
     to,
     raw,
     rawSize,
     headers: new Headers(),
-    rejected,
-    setReject: (reason) => rejected.push(reason),
+    answered,
+    setReject: (reason) => answered.push(["reject", reason]),
+    forward: async (rcpt) => answered.push(["forward", rcpt]),
+    reply: async (reply) => answered.push(["reply", reply]),
   };
 }
 
@@ -160,7 +167,7 @@ describe("the hosted Worker's email() handler", () => {
     await worker.email(toAlpha);
     await worker.email(toBravo);
 
-    expect([toAlpha.rejected, toBravo.rejected]).toEqual([[], []]);
+    expect([toAlpha.answered, toBravo.answered]).toEqual([[], []]);
     const [a] = rows(bound.TENANT_DB, "alpha");
     const [b] = rows(bound.TENANT_DB, "bravo");
     expect(a).toMatchObject({ sender: "letter@news.example", subject: "Issue 12" });
@@ -189,23 +196,31 @@ describe("the hosted Worker's email() handler", () => {
     expect(bravo).toMatch(ADDRESS);
   });
 
-  it("replaces a re-delivered copy in the tenant's queue rather than adding one", async () => {
+  it("keeps the first arrival of an issue: a re-delivered copy or a forged one changes nothing", async () => {
     const { alpha } = await addressed("alpha");
+    const to = `${alpha}@${DOMAIN}`;
 
-    await worker.email(message(`${alpha}@${DOMAIN}`));
-    await worker.email(message(`${alpha}@${DOMAIN}`));
+    await worker.email(message(to));
+    await worker.email(message(to));
+    // The same From, Subject and Date, which any sender can write, with another body.
+    const forged = message(to, issue(to, { body: "Click here to verify your account." }));
+    await worker.email(forged);
 
-    expect(rows(bound.TENANT_DB, "alpha")).toHaveLength(1);
+    const queued = rows(bound.TENANT_DB, "alpha");
+    expect(queued).toHaveLength(1);
+    expect(queued[0].text).toContain("This week's letter.");
+    expect(queued[0].text).not.toContain("verify your account");
+    expect(forged.answered).toEqual([]);
   });
 
-  it("rejects every address no tenant holds with one reason, and writes no tenant", async () => {
+  it("drops mail to every address no tenant holds without a word to the sender, and writes no tenant", async () => {
     const { alpha } = await addressed("alpha");
     const rotated = await (await operator("POST", "/hosted/tenants/alpha/rotate-address")).json();
     await addressed("bravo");
     await operator("POST", "/hosted/tenants/bravo/revoke-address");
     bound.TENANT_DB.gets.length = 0;
 
-    const refused = [
+    const dropped = [
       `${randomAddress()}@${DOMAIN}`, // never issued
       `${alpha}@${DOMAIN}`, // alpha's address before its rotation
       `${rotated.address}+news@${DOMAIN}`, // a subaddress of alpha's current one
@@ -213,35 +228,38 @@ describe("the hosted Worker's email() handler", () => {
       `postmaster@${DOMAIN}`,
       "not-an-address",
     ];
-    for (const to of refused) {
+    // What a live address's sender sees, which every dropped one must match.
+    const live = message(`${rotated.address}@${DOMAIN}`);
+    const liveAnswer = await worker.email(live);
+    expect(live.answered).toEqual([]);
+    bound.TENANT_DB.gets.length = 0;
+    logs.length = 0;
+    for (const to of dropped) {
       const sent = message(to);
-      await worker.email(sent);
-      expect(sent.rejected, to).toEqual([REFUSAL]);
+      expect(await worker.email(sent), to).toEqual(liveAnswer);
+      expect(sent.answered, to).toEqual([]);
     }
     expect(bound.TENANT_DB.gets).toEqual([]);
-    // No log line names the address it refused.
-    for (const to of refused) expect(logs.join("\n")).not.toContain(to.split("@")[0]);
+    // No log line names the address it dropped.
+    for (const to of dropped) expect(logs.join("\n")).not.toContain(to.split("@")[0]);
   });
 
-  it("refuses a message too large, or past the queue's cap, with the same reason, and stores neither", async () => {
+  it("drops a message too large, or past the queue's cap, as silently, and stores neither", async () => {
     const { alpha } = await addressed("alpha");
     const to = `${alpha}@${DOMAIN}`;
 
     const large = message(to, issue(to), { rawSize: MAX_RAW_BYTES + 1 });
     await worker.email(large);
-    expect(large.rejected).toEqual([REFUSAL]);
+    expect(large.answered).toEqual([]);
     expect(rows(bound.TENANT_DB, "alpha")).toBeNull();
 
     for (let i = 0; i < MAX_QUEUED; i += 1) await worker.email(message(to, issue(to, { subject: `Issue ${i}` })));
     const over = message(to, issue(to, { subject: "One more" }));
     await worker.email(over);
 
-    expect(over.rejected).toEqual([REFUSAL]);
+    expect(over.answered).toEqual([]);
     expect(rows(bound.TENANT_DB, "alpha")).toHaveLength(MAX_QUEUED);
-    // A copy of a stored issue still replaces its own row.
-    const again = message(to, issue(to, { subject: "Issue 0" }));
-    await worker.email(again);
-    expect(again.rejected).toEqual([]);
+    expect(rows(bound.TENANT_DB, "alpha").map((row) => row.subject)).not.toContain("One more");
   });
 
   it("keeps taking a paused tenant's mail, so pausing loses none", async () => {
@@ -251,7 +269,7 @@ describe("the hosted Worker's email() handler", () => {
     const sent = message(`${alpha}@${DOMAIN}`);
     await worker.email(sent);
 
-    expect(sent.rejected).toEqual([]);
+    expect(sent.answered).toEqual([]);
     expect(rows(bound.TENANT_DB, "alpha")).toHaveLength(1);
   });
 
@@ -377,5 +395,103 @@ describe("the operator's address routes", () => {
     expect((await call("GET", "/hosted/tenants/alpha/address")).status).toBe(404);
     // No route reached a tenant's object to do any of it.
     expect(bound.TENANT_DB.gets).toEqual([]);
+  });
+});
+
+describe("the operator's newsletter-source route", () => {
+  let privateKey;
+  let bound;
+
+  beforeEach(async () => {
+    const keys = await generateKeyPair("RS256");
+    privateKey = keys.privateKey;
+    const jwk = { ...(await exportJWK(keys.publicKey)), kid: "k1", alg: "RS256", use: "sig" };
+    vi.stubGlobal("fetch", async () => Response.json({ keys: [jwk] }));
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    bound = { REGISTRY: registryNamespace(), TENANT_DB: namespace(), TENANT_RUN: namespace() };
+    Object.assign(env, bound, { CYRIS_ACCESS_TEAM_DOMAIN: `${crypto.randomUUID()}.${TEAM}`, CYRIS_ACCESS_AUD: AUD });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    for (const key of Object.keys(env)) delete env[key];
+  });
+
+  const call = async (method, path) => {
+    const jwt = await new SignJWT({})
+      .setProtectedHeader({ alg: "RS256", kid: "k1" })
+      .setIssuer(`https://${env.CYRIS_ACCESS_TEAM_DOMAIN}`)
+      .setAudience(AUD)
+      .setIssuedAt()
+      .setExpirationTime(Math.floor(Date.now() / 1000) + 3600)
+      .sign(privateKey);
+    const request = new Request(`https://cyris-hosted.example.workers.dev${path}`, {
+      method,
+      headers: { "Cf-Access-Jwt-Assertion": jwt },
+    });
+    return worker.fetch(request);
+  };
+  const add = (tenant, query) => call("POST", `/hosted/tenants/${tenant}/newsletter-source?${new URLSearchParams(query)}`);
+  const sourceRows = (tenant) =>
+    bound.TENANT_DB.getByName(tenant)
+      .query("SELECT name, url, type, config FROM sources WHERE type = 'newsletter' ORDER BY name")
+      .rows.map((row) => ({ ...row, config: JSON.parse(row.config) }));
+
+  it("refuses a tenant the registry does not hold, and one not seeded yet", async () => {
+    expect((await add("alpha", CASES.written[0].query)).status).toBe(404);
+    await call("POST", "/hosted/tenants/alpha/register");
+
+    const unseeded = await add("alpha", CASES.written[0].query);
+
+    expect(unseeded.status).toBe(409);
+    expect(await unseeded.json()).toEqual({ error: "seed the tenant first" });
+  });
+
+  it("writes each case's row into the tenant's sources, and adding it again rewrites it", async () => {
+    await call("POST", "/hosted/tenants/alpha/register");
+    await call("POST", "/hosted/tenants/alpha/seed");
+
+    for (const { query, row } of CASES.written) {
+      const added = await add("alpha", query);
+      expect(added.status).toBe(200);
+      expect(await added.json()).toEqual({ tenant: "alpha", source: row });
+    }
+    await add("alpha", CASES.written[0].query);
+
+    expect(sourceRows("alpha")).toEqual(CASES.written.map((c) => c.row).sort((a, b) => a.name.localeCompare(b.name)));
+  });
+
+  it("refuses each query that is not a source, and a name an RSS source holds, writing nothing", async () => {
+    await call("POST", "/hosted/tenants/alpha/register");
+    await call("POST", "/hosted/tenants/alpha/seed");
+
+    for (const { query, error } of CASES.refused) {
+      const refused = await add("alpha", query);
+      expect(refused.status, JSON.stringify(query)).toBe(400);
+      expect(await refused.json()).toEqual({ error });
+    }
+    const taken = await add("alpha", { name: "Hacker News", from: "hn@news.example" });
+    expect(taken.status).toBe(409);
+    expect(await taken.json()).toEqual({ error: "Hacker News is already a rss source" });
+    expect(sourceRows("alpha")).toEqual([]);
+  });
+
+  it("gives two tenants the same newsletter source, and one issue reaches both their queues", async () => {
+    const addresses = {};
+    for (const tenant of ["alpha", "bravo"]) {
+      await call("POST", `/hosted/tenants/${tenant}/register`);
+      await call("POST", `/hosted/tenants/${tenant}/seed`);
+      await add(tenant, CASES.written[0].query);
+      addresses[tenant] = (await (await call("POST", `/hosted/tenants/${tenant}/rotate-address`)).json()).address;
+    }
+
+    for (const tenant of ["alpha", "bravo"]) await worker.email(message(`${addresses[tenant]}@${DOMAIN}`));
+
+    for (const tenant of ["alpha", "bravo"]) {
+      expect(sourceRows(tenant)).toEqual([CASES.written[0].row]);
+      // The queued issue's sender is the one the source's email_match names.
+      const [queued] = rows(bound.TENANT_DB, tenant);
+      expect(CASES.written[0].row.config.email_match).toContain(queued.sender);
+    }
   });
 });

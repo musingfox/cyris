@@ -232,6 +232,21 @@ case "${1:-}" in
     rm -rf "$out"
     finish ${failed[@]+"${failed[@]}"}
     ;;
+  newsletter-source)
+    # A newsletter source for one tenant, so its runs ingest the issues its address receives from
+    # that sender; a run takes an issue only for a source whose email_match names its sender.
+    tenant=${2:-} name=${3:-} from=${4:-} homepage=${5:-}
+    if [[ -z "$tenant" || -z "$name" || -z "$from" ]]; then
+      echo "newsletter-source takes TENANT NAME FROM [HOMEPAGE]" >&2
+      exit 2
+    fi
+    query=$(python3 -c 'import sys, urllib.parse; n, f, h = sys.argv[1:]; print(urllib.parse.urlencode({"name": n, "from": f, **({"homepage": h} if h else {})}))' "$name" "$from" "$homepage")
+    ask_access
+    out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-source.XXXXXX")
+    failed=()
+    call "$tenant" POST "/hosted/tenants/$tenant/newsletter-source?$query" "$out/$tenant.json" || failed+=("$tenant")
+    finish ${failed[@]+"${failed[@]}"}
+    ;;
   check)
     ask_access
     out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-report.XXXXXX")
@@ -263,7 +278,7 @@ case "${1:-}" in
     run_wrangler delete
     ;;
   *)
-    echo "usage: $0 deploy|secrets|containers|register|seed|run [morning|evening]|poll|address [show|rotate|revoke]|check|tail|delete" >&2
+    echo "usage: $0 deploy|secrets|containers|register|seed|run [morning|evening]|poll|address [show|rotate|revoke]|newsletter-source TENANT NAME FROM [HOMEPAGE]|check|tail|delete" >&2
     exit 2
     ;;
 esac

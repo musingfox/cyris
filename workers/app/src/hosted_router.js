@@ -12,13 +12,25 @@
 //   GET  /hosted/tenants/<tenant>/address                   the tenant's newsletter address
 //   POST /hosted/tenants/<tenant>/rotate-address            a new address; every old one revoked
 //   POST /hosted/tenants/<tenant>/revoke-address            every address revoked, none issued
+//   POST /hosted/tenants/<tenant>/newsletter-source?name=N&from=A[&homepage=H][&lane=L]
+//                                                           a newsletter source for its mail
 //   GET  /t/<tenant>/...                                    the tenant's pages (hosted_pages.js)
 
 import { SITE_ROUTE } from "./hosted_pages.js";
 import { RUN_PERIODS, accessRefusal, refuseRunDate } from "./router.js";
 import { ACTIVE } from "./tenant_status.js";
 
-const ACTIONS = ["register", "seed", "run", "poll", "report", "address", "rotate-address", "revoke-address"];
+const ACTIONS = [
+  "register",
+  "seed",
+  "run",
+  "poll",
+  "report",
+  "address",
+  "rotate-address",
+  "revoke-address",
+  "newsletter-source",
+];
 const ROUTE = new RegExp(`^/hosted/tenants/([^/]+)/(${ACTIONS.join("|")})$`);
 const METHOD = {
   register: "POST",
@@ -29,6 +41,7 @@ const METHOD = {
   address: "GET",
   "rotate-address": "POST",
   "revoke-address": "POST",
+  "newsletter-source": "POST",
 };
 
 const json = (body, status = 200) =>
@@ -38,7 +51,8 @@ const json = (body, status = 200) =>
 // which answers `{tenant}` or `{refused}`, `tenant(tenant)`, its registry row or null,
 // `seed(tenant)`, `report(tenant)`, `timeZone(tenant)`, `startRun(tenant, period, date)`,
 // `poll(tenant)`, which answers what the poll did or `{error}`, `inboundAddress(tenant)`,
-// `rotateAddress(tenant)` and `revokeAddress(tenant)`, the registry's answers, and
+// `rotateAddress(tenant)` and `revokeAddress(tenant)`, the registry's answers,
+// `addNewsletterSource(tenant, params)`, which answers `{source}` or `{refused, status}`, and
 // `page(request, tenant, rest)`, which answers under /t/<tenant> from that tenant's object.
 export async function handleHostedRequest(request, env, deps) {
   const refusal = await accessRefusal(request, env, deps);
@@ -78,6 +92,10 @@ export async function handleHostedRequest(request, env, deps) {
   }
   if (action === "rotate-address") return json({ tenant, ...(await deps.rotateAddress(tenant)) });
   if (action === "revoke-address") return json({ tenant, ...(await deps.revokeAddress(tenant)) });
+  if (action === "newsletter-source") {
+    const answer = await deps.addNewsletterSource(tenant, Object.fromEntries(url.searchParams));
+    return answer.refused ? json({ error: answer.refused }, answer.status) : json({ tenant, ...answer });
+  }
 
   if (registered.status !== ACTIVE) return json({ error: `${tenant} is ${registered.status}, not ${ACTIVE}` }, 409);
   // The tick's poll, out of the cron, so the operator can see a tenant's buffer fill and what one

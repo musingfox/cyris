@@ -322,6 +322,40 @@ def test_address_refuses_a_verb_it_does_not_know_before_asking_for_anything(repo
     assert [c for c in calls if c["cmd"] == "curl"] == []
 
 
+def test_newsletter_source_adds_one_tenants_source_with_its_query_encoded(repo: Path) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, calls = _run(
+        repo,
+        [
+            "newsletter-source",
+            "bravo",
+            "The Letter & Co",
+            "letter@news.example",
+            "https://news.example",
+        ],
+        ["client-id.access", "client-SECRET"],
+    )
+
+    assert done.returncode == 0, done.stderr
+    [curl] = [c for c in calls if c["cmd"] == "curl"]
+    assert curl["args"][-1] == (
+        f"{URL}/hosted/tenants/bravo/newsletter-source?name=The+Letter+%26+Co"
+        "&from=letter%40news.example&homepage=https%3A%2F%2Fnews.example"
+    )
+    assert curl["args"][curl["args"].index("-X") + 1] == "POST"
+    assert "client-SECRET" not in " ".join(curl["args"])
+
+
+def test_newsletter_source_needs_a_tenant_a_name_and_a_sender_before_asking(repo: Path) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, calls = _run(repo, ["newsletter-source", "alpha", "The Letter"], [])
+
+    assert done.returncode == 2
+    assert [c for c in calls if c["cmd"] == "curl"] == []
+
+
 def test_register_registers_each_seeded_tenant_with_the_token_on_stdin(repo: Path) -> None:
     """The seed route seeds only a registered tenant, so the runbook registers both first."""
     (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")

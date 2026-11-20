@@ -19,7 +19,7 @@ import SEED from "./hosted_seed.json";
 import { receiveInbound } from "./hosted_inbound.js";
 import { handleHostedRequest } from "./hosted_router.js";
 import { createSitePage } from "./hosted_site.js";
-import { seedTenant, tenantReport } from "./hosted_seed.js";
+import { addNewsletterSource, seedTenant, tenantReport } from "./hosted_seed.js";
 import { planTick, readTimeZone } from "./schedule.js";
 import { LOCATION_HINT, tenantDb, tenantRows } from "./tenant_db.js";
 import { tenantRegistry } from "./tenant_registry.js";
@@ -105,6 +105,7 @@ export default {
       inboundAddress: (tenant) => tenantRegistry(env).inboundAddress(tenant),
       rotateAddress: (tenant) => tenantRegistry(env).rotateInboundAddress(tenant),
       revokeAddress: (tenant) => tenantRegistry(env).revokeInboundAddress(tenant),
+      addNewsletterSource: (tenant, params) => addNewsletterSource({ db: tenantDb(env, tenant), params }),
       page: sitePage,
     });
   },
