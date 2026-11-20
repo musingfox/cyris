@@ -1095,7 +1095,7 @@ def doctor(
 
     from cyris.adapters.store.d1 import D1Error
     from cyris.bootstrap import load_effective_config
-    from cyris.config import JsonStoreRemovedError
+    from cyris.config import OPERATOR_TENANT_ENV_VAR, OPERATOR_TOKEN_ENV_VARS, JsonStoreRemovedError
     from cyris.diagnostics.doctor import run_checks
 
     try:
@@ -1106,10 +1106,18 @@ def doctor(
         raise typer.Exit(1) from e
     except (FileNotFoundError, ValueError) as e:
         typer.echo(f"✗ config — {e}")
-        typer.echo(
-            "  cyris.toml.example shows what the file holds; "
-            "settings.example.toml lists the runtime settings."
-        )
+        if os.environ.get(OPERATOR_TENANT_ENV_VAR):
+            # The operator's file is not what reaches a tenant; the environment is.
+            typer.echo(
+                f"  As the operator, set {' and '.join(OPERATOR_TOKEN_ENV_VARS)} to the Access "
+                "service token the hosted Worker admits, and CYRIS_STORE_HOSTED_DOMAIN to its "
+                "host (docs/hosted-tenants.md)."
+            )
+        else:
+            typer.echo(
+                "  cyris.toml.example shows what the file holds; "
+                "settings.example.toml lists the runtime settings."
+            )
         raise typer.Exit(1) from e
     except D1Error as e:
         # The tables are created here on first boot, so reaching this means D1

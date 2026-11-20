@@ -138,10 +138,10 @@ How it is built:
   container's tenant kept on its gateway, and both names together refused. Through the CLI it
   checks that `cyris --tenant alpha sources list` reads only alpha's rows and that
   `articles accept` writes only alpha's. `cyris --tenant alpha doctor` reports on alpha.
-  Without the service token it exits 1 having sent nothing. Each of the seven refused commands
-  exits 2 with its reason and sends nothing, and so does `run` when only
-  `CYRIS_OPERATOR_TENANT` names the tenant. An empty or invalid `--tenant` is refused at the
-  option.
+  Without the service token it exits 1 having sent nothing, and its hint names the two
+  service-token variables. Each of the seven refused commands exits 2 with its reason and sends
+  nothing, and so does `run` when only `CYRIS_OPERATOR_TENANT` names the tenant. An empty or
+  invalid `--tenant` is refused at the option.
 
 ## Pros and Cons of the Options
 

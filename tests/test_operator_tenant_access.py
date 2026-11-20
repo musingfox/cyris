@@ -408,6 +408,12 @@ def test_cyris_tenant_without_the_service_token_is_refused_and_sends_nothing(
 
     assert result.exit_code == 1
     assert "CYRIS_ACCESS_CLIENT_ID, CYRIS_ACCESS_CLIENT_SECRET" in result.output
+    # The fix is the operator's environment, not the operator's file.
+    assert (
+        "  As the operator, set CYRIS_ACCESS_CLIENT_ID and CYRIS_ACCESS_CLIENT_SECRET"
+        in result.output
+    )
+    assert "cyris.toml.example" not in result.output
     assert worker.requests == []
 
 
