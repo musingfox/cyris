@@ -419,6 +419,12 @@ def _run_alert(
 
 async def _send_run_alert(deps: "Deps", alert: RunAlert) -> None:
     await send_alert(deps.cfg.app.notify, deps.send_discord_alert, deps.send_email_alert, alert)
+    if deps.send_operator_alert is not None:
+        # A hosted run's operator, beside the reader: its own guard, as each channel has.
+        try:
+            await deps.send_operator_alert(alert)
+        except Exception as e:
+            logger.error("Failure alert: operator skipped: %s", e)
 
 
 async def _warn_vote_similarity_rejected(

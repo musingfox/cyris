@@ -2,6 +2,7 @@
 
 import logging
 import re
+from collections.abc import Callable
 
 import httpx
 
@@ -440,8 +441,15 @@ def _discord_message(resp: httpx.Response) -> str:
     return redact_webhook_tokens(str(message or resp.text)[:500])
 
 
-async def send_discord_alert(webhook_url: str, alert: RunAlert) -> None:
+async def send_discord_alert(
+    webhook_url: str,
+    alert: RunAlert,
+    *,
+    wording: Callable[[RunAlert], tuple[str, str]] | None = None,
+) -> None:
     """Post a plain failure alert, worded in its language. Does nothing without a webhook.
+
+    `wording` is a hosted tenant's `reader_alert_message`, which withholds the error.
 
     A failed post is logged, not raised: the alert must not mask the run exception
     that triggered it. Wording that fails raises to `send_alert`, whose per-channel
@@ -450,7 +458,7 @@ async def send_discord_alert(webhook_url: str, alert: RunAlert) -> None:
     if not webhook_url:
         return
 
-    subject, text = alert_message(alert)
+    subject, text = (wording or alert_message)(alert)
     subject = redact_webhook_tokens(subject)
     text = redact_webhook_tokens(text)
     content = f"{subject}\n{text}"[:_DISCORD_CONTENT_MAX]

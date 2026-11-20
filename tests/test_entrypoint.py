@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import re
 import shutil
 import signal
 import stat
 import subprocess
+import sys
 import textwrap
 import time
 from pathlib import Path
@@ -268,6 +270,61 @@ on_term
         finally:
             with contextlib.suppress(ProcessLookupError):
                 os.kill(pid, signal.SIGKILL)
+
+
+class TestAHostedPassNamesItsTenant:
+    """Every hosted tenant's container writes to one Workers Logs stream."""
+
+    @staticmethod
+    def _probe(tenant: str | None) -> dict:
+        # The probe's own script, run by a real Python whose request fails at once: a proxy on
+        # a closed local port, so no test reaches Cloudflare.
+        match = re.search(
+            r"python - <<'PY' \|\| true\n(.*?)^PY$", ENTRYPOINT.read_text(), re.M | re.S
+        )
+        assert match is not None
+        env = {k: v for k, v in os.environ.items() if k != "CYRIS_STORE_TENANT_ID"}
+        env.update(https_proxy="http://127.0.0.1:9", HTTPS_PROXY="http://127.0.0.1:9")
+        if tenant:
+            env["CYRIS_STORE_TENANT_ID"] = tenant
+        result = subprocess.run(
+            [sys.executable, "-I", "-c", match.group(1)],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+        return json.loads(result.stdout)
+
+    def test_the_egress_probe_line_carries_the_tenant_and_stays_json(self) -> None:
+        line = self._probe("alpha")
+
+        assert line["event"] == "egress_probe"
+        assert line["tenant"] == "alpha"
+
+    def test_a_self_hosted_probe_line_names_no_tenant(self) -> None:
+        assert "tenant" not in self._probe(None)
+
+    @pytest.mark.parametrize(
+        ("tenant", "line"),
+        [
+            ("alpha", "tenant=alpha entrypoint: SIGTERM, stopping"),
+            ("", "entrypoint: SIGTERM, stopping"),
+        ],
+    )
+    def test_the_sigterm_line_names_the_tenant(self, shell: str, tenant: str, line: str) -> None:
+        match = re.search(r"^( *)on_term\(\) \{\n.*?^\1\}\n", ENTRYPOINT.read_text(), re.M | re.S)
+        assert match is not None
+        harness = f"{textwrap.dedent(match.group(0))}\nchild=\non_term\n"
+        env = {**os.environ, "CYRIS_STORE_TENANT_ID": tenant}
+
+        result = subprocess.run(
+            [shell, "-c", harness], env=env, capture_output=True, text=True, timeout=10
+        )
+
+        assert result.returncode == 143
+        assert result.stderr.splitlines() == [line]
 
 
 class TestDashIsRequiredInCi:

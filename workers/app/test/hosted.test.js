@@ -1,9 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { generateKeyPair, exportJWK, SignJWT, createLocalJWKSet } from "jose";
 import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json" with { type: "json" };
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json" with { type: "json" };
 import SEED from "../src/hosted_seed.json" with { type: "json" };
-import { START_RETRY, TenantContainer, hostedContainerEnv } from "../src/hosted_container.js";
+import { OPERATOR_WEBHOOK, OPS_HOST } from "../src/hosted_alerts.js";
+import { REPORTED, START_RETRY, TenantContainer, hostedContainerEnv } from "../src/hosted_container.js";
 import { handleHostedRequest } from "../src/hosted_router.js";
 import { seedSettings, seedTenant, tenantReport } from "../src/hosted_seed.js";
 import { DB_HOST } from "../src/tenant_db.js";
@@ -48,7 +49,8 @@ async function registry(env = {}) {
 }
 
 // A tenant's run object as the runtime builds it: named by the tenant, its container a fake
-// that logs, in order, each interception registered and each start.
+// that logs, in order, each interception registered and each start. `settled()` waits for what
+// the object handed waitUntil, the monitor's stop handler among it.
 async function runObject(name, bindings = EVERY_BINDING) {
   const env = { ...bindings };
   env.REGISTRY = await registry(env);
@@ -74,14 +76,30 @@ async function runObject(name, bindings = EVERY_BINDING) {
   const ctx = {
     id: { name },
     container,
-    exports: { TenantDbGateway: ({ props }) => ({ props }) },
+    exports: {
+      TenantDbGateway: ({ props }) => ({ props }),
+      OperatorAlertGateway: ({ props }) => ({ props }),
+    },
     waited: [],
     waitUntil(promise) {
       this.waited.push(promise);
     },
     blockConcurrencyWhile: (run) => run(),
+    storage: storage(),
   };
-  return { object: new TenantContainer(ctx, env), container, order, ctx, env };
+  const settled = () => Promise.allSettled(ctx.waited);
+  return { object: new TenantContainer(ctx, env), container, order, ctx, env, settled };
+}
+
+// A Durable Object's key-value storage, in memory.
+function storage() {
+  const map = new Map();
+  return {
+    map,
+    get: async (key) => map.get(key),
+    put: async (key, value) => void map.set(key, value),
+    delete: async (key) => map.delete(key),
+  };
 }
 
 describe("a hosted tenant's run container", () => {
@@ -114,6 +132,13 @@ describe("a hosted tenant's run container", () => {
     });
   });
 
+  it("never hands a container the operator's webhook, which only the alert gateway reads", () => {
+    const env = hostedContainerEnv({ ...EVERY_BINDING, [OPERATOR_WEBHOOK]: "https://discord.com/api/webhooks/1/op" }, "alpha");
+
+    expect(env).not.toHaveProperty(OPERATOR_WEBHOOK);
+    expect(JSON.stringify(env)).not.toContain("webhooks");
+  });
+
   it("is not started without the hosted domain its links would point at", async () => {
     const { object, container } = await runObject("alpha", { ...EVERY_BINDING, CYRIS_STORE_HOSTED_DOMAIN: "" });
 
@@ -121,14 +146,18 @@ describe("a hosted tenant's run container", () => {
     expect(container.starts).toEqual([]);
   });
 
-  it("registers the gateway for its own tenant before the container starts", async () => {
+  it("registers both gateways for its own tenant before the container starts", async () => {
     const { object, container, order } = await runObject("bravo");
 
     expect(await object.startRun({ period: "morning", date: "2026-11-18" })).toEqual({
       started: true,
       tenant: "bravo",
     });
-    expect(order).toEqual([{ intercept: DB_HOST, props: { tenant: "bravo" } }, "start"]);
+    expect(order).toEqual([
+      { intercept: DB_HOST, props: { tenant: "bravo" } },
+      { intercept: OPS_HOST, props: { tenant: "bravo" } },
+      "start",
+    ]);
     const [{ env, enableInternet }] = container.starts;
     expect(enableInternet).toBe(true);
     expect(env).toMatchObject({
@@ -197,9 +226,160 @@ describe("a hosted tenant's run container", () => {
     vi.restoreAllMocks();
   });
 
+  it("names its tenant on every line it logs about its container", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { object, container, settled } = await runObject("alpha");
+    const exited = Object.assign(new Error("exit code 1"), { exitCode: 1 });
+    let stopped;
+    container.monitor = () => (stopped = Promise.reject(exited));
+
+    await object.startRun({ period: "morning" });
+    await stopped.catch(() => {});
+    await settled();
+
+    expect(log).toHaveBeenCalledWith("container stopped", expect.objectContaining({ tenant: "alpha", exitCode: 1 }));
+    for (const [, fields] of log.mock.calls) expect(fields).toMatchObject({ tenant: "alpha" });
+    log.mockRestore();
+  });
+
   it("retries a start no instance can be given for up to 90 seconds", () => {
     expect(START_RETRY.maxWaitMs).toBe(90_000);
     expect(START_RETRY.backoffMs).toEqual([1_000, 2_000, 4_000, 8_000, 10_000]);
+  });
+});
+
+const HOOK = "https://discord.com/api/webhooks/1/operator";
+
+// The operator's webhook, and every alert it was posted, as the operator reads it.
+function webhook() {
+  const posted = [];
+  vi.stubGlobal("fetch", async (url, init) => {
+    if (url === HOOK) posted.push(JSON.parse(init.body).content);
+    return new Response(null, { status: 204 });
+  });
+  return posted;
+}
+
+describe("a hosted tenant's run object tells the operator what its container cannot", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const exit = (exitCode, message = `exit code ${exitCode}`) => Object.assign(new Error(message), { exitCode });
+
+  it("alerts when the start gives up after 90 s of no instance, and rethrows", async () => {
+    vi.useFakeTimers();
+    try {
+      const posted = webhook();
+      const { object, container } = await runObject("alpha", { ...EVERY_BINDING, [OPERATOR_WEBHOOK]: HOOK });
+      container.start = () => {
+        throw new Error("There is no container instance that can be provided to this Durable Object");
+      };
+      container.destroy = async () => {};
+
+      const run = object.startRun({ period: "morning", date: "2026-11-20" });
+      const failed = expect(run).rejects.toThrow("no container instance");
+      await vi.runAllTimersAsync();
+      await failed;
+
+      expect(posted).toHaveLength(1);
+      expect(posted[0]).toMatch(/^\[alpha\] Digest run could not start\n```\nperiod=morning date=2026-11-20\n/);
+      expect(posted[0]).toContain("no container instance");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("alerts when the start throws at once, the hosted domain unset among the causes", async () => {
+    const posted = webhook();
+    const { object, container } = await runObject("alpha", {
+      ...EVERY_BINDING,
+      CYRIS_STORE_HOSTED_DOMAIN: "",
+      [OPERATOR_WEBHOOK]: HOOK,
+    });
+
+    await expect(object.startRun({ period: "morning" })).rejects.toThrow("CYRIS_STORE_HOSTED_DOMAIN is not set");
+
+    expect(container.starts).toEqual([]);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toContain("[alpha] Digest run could not start");
+    expect(posted[0]).toContain("CYRIS_STORE_HOSTED_DOMAIN is not set");
+  });
+
+  it("alerts when the registry cannot be read", async () => {
+    const posted = webhook();
+    const { object, ctx } = await runObject("alpha", { ...EVERY_BINDING, [OPERATOR_WEBHOOK]: HOOK });
+    object.env.REGISTRY = { getByName: () => ({ tenant: async () => Promise.reject(new Error("registry reset")) }) };
+
+    await expect(object.startRun({ period: "morning" })).rejects.toThrow("registry reset");
+
+    expect(ctx.container.starts).toEqual([]);
+    expect(posted).toEqual([expect.stringContaining("[alpha] Digest run could not start")]);
+  });
+
+  it("does not alert for a tenant it refuses as not active: that run was never due", async () => {
+    const posted = webhook();
+    const { object } = await runObject("paused", { ...EVERY_BINDING, [OPERATOR_WEBHOOK]: HOOK });
+
+    await expect(object.startRun({ period: "morning" })).rejects.toThrow("not an active registered tenant");
+
+    expect(posted).toEqual([]);
+  });
+
+  for (const [what, stop] of [
+    ["exits non-zero", exit(1)],
+    ["is OOM-killed", exit(137, "Container was killed: out of memory")],
+    ["is stopped by the inactivity cap", exit(143)],
+    ["stops with no exit code", new Error("container crashed")],
+  ]) {
+    it(`alerts when a container that reported nothing ${what}`, async () => {
+      const posted = webhook();
+      const { object, container, settled } = await runObject("alpha", { ...EVERY_BINDING, [OPERATOR_WEBHOOK]: HOOK });
+      container.monitor = () => Promise.reject(stop);
+
+      await object.startRun({ period: "morning" });
+      await settled();
+
+      expect(posted).toHaveLength(1);
+      expect(posted[0]).toContain("[alpha] Digest run stopped before it reported");
+      expect(posted[0]).toContain(`exitCode=${stop.exitCode ?? "unknown"}`);
+    });
+  }
+
+  it("does not alert again when the run already reported why it ended", async () => {
+    const posted = webhook();
+    const { object, container, settled } = await runObject("alpha", { ...EVERY_BINDING, [OPERATOR_WEBHOOK]: HOOK });
+    let exited;
+    container.monitor = () => new Promise((_, reject) => (exited = reject));
+
+    await object.startRun({ period: "morning" });
+    // What OperatorAlertGateway does when the run's own run_failed alert arrives.
+    await object.alertReported("run_failed");
+    exited(exit(1));
+    await settled();
+
+    expect(posted).toEqual([]);
+  });
+
+  it("does not alert when a container exits 0", async () => {
+    const posted = webhook();
+    const { object, container, settled } = await runObject("alpha", { ...EVERY_BINDING, [OPERATOR_WEBHOOK]: HOOK });
+    container.monitor = () => Promise.resolve();
+
+    await object.startRun({ period: "morning" });
+    await settled();
+
+    expect(posted).toEqual([]);
+  });
+
+  it("forgets the last start's report before the next start", async () => {
+    const posted = webhook();
+    const { object, container, settled, ctx } = await runObject("alpha", { ...EVERY_BINDING, [OPERATOR_WEBHOOK]: HOOK });
+    await object.alertReported("run_failed");
+    container.monitor = () => Promise.reject(exit(1));
+
+    await object.startRun({ period: "morning" });
+    await settled();
+
+    expect(ctx.storage.map.has(REPORTED)).toBe(false);
+    expect(posted).toEqual([expect.stringContaining("Digest run stopped before it reported")]);
   });
 });
 

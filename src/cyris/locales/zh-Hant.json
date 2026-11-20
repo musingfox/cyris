@@ -1,5 +1,6 @@
 {
   "alert.could_not_start_headline": {"text": "精選無法啟動", "source": "Digest run could not start"},
+  "alert.error_withheld_body": {"text": "錯誤內容已送給服務的營運方。", "source": "The error has been sent to the service's operator."},
   "alert.fetched_nothing_body": {"text": "抓取失敗的來源：{$sources}", "source": "Failed sources: {$sources}"},
   "alert.fetched_nothing_headline": {"text": "精選沒抓到任何文章", "source": "Digest run fetched nothing"},
   "alert.run_failed_headline": {"text": "精選產生失敗", "source": "Digest run failed"},
@@ -9,6 +10,10 @@
     "source": "Reader votes had no effect: the digest was published unfiltered. The embedding API refused the request: HTTP {$status} {$detail}. This repeats every run until the embedding key or its permissions are fixed."
   },
   "alert.vote_similarity_headline": {"text": "投票相似度未執行", "source": "Vote similarity did not run"},
+  "alert.vote_similarity_withheld_body": {
+    "text": "讀者的投票沒有作用，精選未經過濾就直接發布。錯誤內容已送給服務的營運方。",
+    "source": "Reader votes had no effect: the digest was published unfiltered. The error has been sent to the service's operator."
+  },
   "area_status.active": {"text": "已啟用", "source": "active"},
   "area_status.dismissed": {"text": "已駁回", "source": "dismissed"},
   "area_status.merged": {"text": "已合併", "source": "merged"},

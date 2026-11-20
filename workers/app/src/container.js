@@ -24,6 +24,10 @@ export class Lifecycle {
   // tried again after each backoff in turn, the last repeating, until the next wait would pass
   // `maxWaitMs`. `onStop`, when given, is told `{ exitCode, reason }` each time a container this
   // object watches stops. Without them a start is what it always was: one start() and no retry.
+  // `logFields`, when given, goes on every line this logs: a hosted tenant's container names
+  // its tenant, since every tenant's lines share one Workers Logs stream. `onAbnormalStop`, when
+  // given, is awaited with monitor()'s error after a container that exited non-zero or was killed,
+  // before `onStop` is told of that stop.
   constructor(
     ctx,
     inactivityTimeoutMs,
@@ -33,6 +37,8 @@ export class Lifecycle {
       intercept = null,
       startRetry = null,
       onStop = null,
+      logFields = {},
+      onAbnormalStop = null,
       sleep = pause,
       now = Date.now,
     } = {},
@@ -44,6 +50,8 @@ export class Lifecycle {
     this.intercept = intercept;
     this.startRetry = startRetry;
     this.onStop = onStop;
+    this.logFields = logFields;
+    this.onAbnormalStop = onAbnormalStop;
     this.sleep = sleep;
     this.now = now;
   }
@@ -54,11 +62,19 @@ export class Lifecycle {
     this.ctx.waitUntil(
       this.ctx.container.monitor().then(
         () => {
-          console.log("container stopped", { exitCode: 0 });
+          console.log("container stopped", { ...this.logFields, exitCode: 0 });
           return { exitCode: 0 };
         },
-        (error) => {
-          console.log("container stopped", { exitCode: error?.exitCode, reason: String(error) });
+        // The abnormal stop's handler runs first, and its failure is only logged: the stop is still
+        // reported, since a report can hand the container to a new start, which may clear what the
+        // handler reads (the ending report, hosted_container.js).
+        async (error) => {
+          console.log("container stopped", { ...this.logFields, exitCode: error?.exitCode, reason: String(error) });
+          try {
+            await this.onAbnormalStop?.(error);
+          } catch (failure) {
+            console.log("abnormal stop not handled", { ...this.logFields, reason: String(failure?.message ?? failure) });
+          }
           return { exitCode: error?.exitCode, reason: String(error) };
         },
       ).then(async (stopped) => {
@@ -67,7 +83,7 @@ export class Lifecycle {
         try {
           await this.onStop(stopped);
         } catch (error) {
-          console.log("container stop not reported", { reason: String(error?.message ?? error) });
+          console.log("container stop not reported", { ...this.logFields, reason: String(error?.message ?? error) });
         }
       }),
     );
@@ -96,7 +112,11 @@ export class Lifecycle {
       } catch (error) {
         const delay = this.#retryDelay(error, attempt, began);
         if (delay === null) throw error;
-        console.log("no container instance yet; starting again", { attempt: attempt + 1, delayMs: delay });
+        console.log("no container instance yet; starting again", {
+          ...this.logFields,
+          attempt: attempt + 1,
+          delayMs: delay,
+        });
         // A start that failed can leave `running` true, and start() throws on a running container.
         if (this.ctx.container.running) await this.ctx.container.destroy();
         await this.sleep(delay);

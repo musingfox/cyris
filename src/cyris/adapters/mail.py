@@ -8,6 +8,7 @@ https://developers.cloudflare.com/email-service/api/send-emails/rest-api/
 """
 
 import logging
+from collections.abc import Callable
 
 import httpx
 
@@ -224,8 +225,11 @@ async def send_alert_mail(
     *,
     account_id: str,
     token: str,
+    wording: Callable[[RunAlert], tuple[str, str]] | None = None,
 ) -> None:
     """Mail a plain-text failure alert, worded in its language. Does nothing without a recipient.
+
+    `wording` is a hosted tenant's `reader_alert_message`, which withholds the error.
 
     A failed send is logged, not raised, as `send_discord_alert` does: a lost
     message must not mask the run exception that triggered it. Wording that fails
@@ -233,7 +237,7 @@ async def send_alert_mail(
     """
     if not recipient:
         return
-    subject, text = alert_message(alert)
+    subject, text = (wording or alert_message)(alert)
     subject = redact_webhook_tokens(subject)
     text = redact_webhook_tokens(text)
     try:

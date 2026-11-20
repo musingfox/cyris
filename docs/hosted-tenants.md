@@ -16,6 +16,9 @@ and what that costs against Cloudflare's limits, is
 [ADR-0031](decisions/0031-a-hosted-tenants-rss-is-polled-by-the-hosted-worker.md).
 Why each tenant's schedule and run cap live in the registry, and why every run waits in a queue
 there, is [ADR-0032](decisions/0032-hosted-runs-wait-in-a-queue-the-registry-holds.md).
+Why a failed run is reported to you, the operator, on a Discord webhook of your own, and why the
+reader is never shown its error, is
+[ADR-0035](decisions/0035-a-hosted-runs-alerts-go-to-the-operator-through-the-hosted-worker.md).
 
 `cyris-hosted` is a separate Worker from `cyris-app`. Nothing here deploys or changes
 `wrangler.toml`, which a push to main deploys to production (ADR-0024).
@@ -30,6 +33,12 @@ Every command runs, as pasted, from the root of a checkout of this repository. `
   the Access application from step 2.
 - `ANTHROPIC_API_KEY`: the key the tenants' runs call `claude-haiku-5-5` with. The seed fixes
   that model for both tenants.
+- `CYRIS_HOSTED_OPERATOR_WEBHOOK`: a Discord webhook URL of your own (Server Settings >
+  Integrations > Webhooks, *label unverified*). A tenant's failed run is posted there with the
+  tenant's id. The run posts its own failures with the raw error: it raised, it fetched nothing
+  while a feed failed, or it stopped before its digest began. The Worker posts a start that
+  failed, and a container that exited non-zero or was killed before it reported. Step 7 lists
+  what is not posted.
 - `CF-Access-Client-Id` and `CF-Access-Client-Secret`: a service token the step-2 application
   allows. The seed, run and check steps sign in with it.
 
@@ -101,12 +110,15 @@ each step has to achieve is what counts; find it under whatever name the dashboa
 scripts/hosted.sh secrets
 ```
 
-This asks for `CYRIS_ACCESS_TEAM_DOMAIN`, `CYRIS_ACCESS_AUD` and `ANTHROPIC_API_KEY`, and sets
-each one as a secret of `cyris-hosted` on stdin. It also sets `CYRIS_STORE_HOSTED_DOMAIN` to the
+This asks for `CYRIS_ACCESS_TEAM_DOMAIN`, `CYRIS_ACCESS_AUD`, `ANTHROPIC_API_KEY` and
+`CYRIS_HOSTED_OPERATOR_WEBHOOK`, and sets each one as a secret of `cyris-hosted` on stdin. The
+webhook is read without echo, because its URL is its credential, and it must start with
+`https://`. It also sets `CYRIS_STORE_HOSTED_DOMAIN` to the
 host of the `HOSTED_URL` that step 1 kept, so it refuses to start without one. Every link a
 tenant's run gives points at that host. No other secret is needed. A hosted container is handed
-only the model keys, the account id and the hosted domain. It gets no D1 token, no Pages project
-and no Worker URL (`hostedContainerEnv`). The Worker starts no run before the hosted domain is
+only the model keys, the account id and the hosted domain. It gets no D1 token, no Pages project,
+no Worker URL and not the webhook (`hostedContainerEnv`). A run posts its alerts to the Worker,
+which forwards them to the webhook. The Worker starts no run before the hosted domain is
 set.
 
 ## 4. Wait for the container application
@@ -226,7 +238,23 @@ Each run reads its RSS from the tenant's own buffer, `articles`, which step 6 an
 fill. It does not poll its feeds itself. A run started before any poll finds the buffer empty and
 has nothing to digest, which is why step 6 comes first. Each run writes its issue into the
 tenant's `digests`, and its digest page and raw page into the tenant's own `hosted_pages`. No
-Pages project is touched. Runs notify nobody yet. Allow about five minutes. To watch the Worker side of it:
+Pages project is touched. A run sends no digest notification. These are posted to your webhook,
+each on one line `[<tenant>] <headline>` and then its detail in a code block:
+
+- A run that raises reads `Digest run failed: <issue> <zone>`, with the raw error.
+- A run that fetches nothing while a feed failed reads `Digest run fetched nothing`.
+- A run that stops at its settings, at its wiring, or at a database that answered an error reads
+  `Digest run could not start`. This holds for a scheduled, catch-up or manual run.
+- From the Worker, a start that failed reads `Digest run could not start`, with the period, the
+  date and the error. That covers no free instance for 90 seconds, or no hosted domain.
+- From the Worker, a container that exited non-zero or was killed reads `Digest run stopped
+  before it reported`, with its exit code. That covers an OOM kill, or the 15-minute
+  inactivity cap. It is not sent when the run already posted why it ended.
+
+Not posted: a tenant whose schedule the tick cannot read, which gets no run; an alert your
+webhook refused, a `429` included, which leaves an `operator alert not sent` line; and a dry run.
+The tenant's own channels, if its settings name any, get the run's own alerts without the error.
+Allow about five minutes. To watch the Worker side of it:
 
 ```bash
 scripts/hosted.sh tail
@@ -235,7 +263,10 @@ scripts/hosted.sh tail
 Stop it with Ctrl-C. The containers' own output is in Workers Logs (Workers & Pages >
 `cyris-hosted` > Logs, *label unverified*). The queue logs `run queued`, `run started`,
 `run done`, `run failed`, `run lost` and `run queued again` lines, each with the tenant, the
-period and the date.
+period and the date. Every line a tenant's container writes starts with
+`tenant=<tenant> `, and the egress probe's JSON line has a `tenant` field. Search for
+`tenant=alpha` to read one tenant's run. Each alert the Worker forwards leaves an `operator alert
+sent` line, or `operator alert not sent` with its reason, naming the tenant.
 
 ## 8. Check that each tenant holds only its own rows
 
@@ -267,9 +298,9 @@ temporary directory the script names. Keep them with the result.
 
 A tenant that has no `ok` run yet may still be running, or waiting in the queue: its report's
 `runs` says which. Check again a few minutes later. A run that ended in `error` has its reason in
-that tenant's Workers Logs. A run the registry recorded as `failed` has its reason in `runs`. A
-`lost` row is a run whose container never reported its stop within 20 minutes; the row above it
-is the same issue, queued again.
+your webhook's alert and in that tenant's Workers Logs. A run the registry recorded as `failed`
+has its reason in `runs`. A `lost` row is a run whose container never reported its stop within
+20 minutes; the row above it is the same issue, queued again.
 
 The hourly tick also queues each active tenant's run at the hours step 5 scheduled. A check
 after one of those hours counts two runs, and each is still that tenant's own. To see each tenant

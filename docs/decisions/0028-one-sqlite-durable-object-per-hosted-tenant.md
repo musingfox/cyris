@@ -192,3 +192,7 @@ account on 2026-11-18:
   schedule read to the registry and puts every hosted run in a queue there. A start still refused
   with "no container instance" after the 90-second retry goes back in that queue, instead of
   failing the run.
+* [ADR-0035](0035-a-hosted-runs-alerts-go-to-the-operator-through-the-hosted-worker.md) ends the
+  "sends no Discord message and no mail" consequence above for a run's alerts: the operator gets
+  each one with its tenant and raw error through the hosted Worker, and the reader gets it with
+  the error withheld. The digest notification is still not sent.

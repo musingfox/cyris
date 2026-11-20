@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 import pytest
 
+from cyris.adapters.hosted import OPERATOR_ORIGIN
 from cyris.adapters.output.hosted_pages import SITE_PATH
 from cyris.adapters.store.source_store import source_from_row
 from cyris.adapters.store.tenant_gateway import GATEWAY_ORIGIN
@@ -127,7 +128,10 @@ def test_the_hosted_worker_exports_exactly_the_classes_it_binds() -> None:
     exported = set(re.findall(r"^export \{ ([\w, ]+) \} from", _js("hosted.js"), re.M))
     names = {name.strip() for group in exported for name in group.split(",")}
 
-    assert names == _classes(_toml("wrangler.hosted.toml")) | {"TenantDbGateway"}
+    assert names == _classes(_toml("wrangler.hosted.toml")) | {
+        "TenantDbGateway",
+        "OperatorAlertGateway",
+    }
 
 
 def test_every_tenant_database_is_hinted_to_the_containers_only_region() -> None:
@@ -173,6 +177,22 @@ def test_the_gateway_host_and_the_tenant_pattern_are_one_on_both_sides() -> None
 
     assert urlsplit(GATEWAY_ORIGIN).hostname == host
     assert pattern == TENANT_ID.pattern
+
+
+def test_the_operator_alert_host_is_one_on_both_sides_and_not_the_databases() -> None:
+    [host] = re.findall(r'^export const OPS_HOST = "([^"]+)";', _js("hosted_alerts.js"), re.M)
+
+    assert urlsplit(OPERATOR_ORIGIN).hostname == host
+    assert host != urlsplit(GATEWAY_ORIGIN).hostname
+
+
+def test_the_operators_webhook_is_no_name_a_container_is_handed() -> None:
+    [name] = re.findall(
+        r'^export const OPERATOR_WEBHOOK = "([^"]+)";', _js("hosted_alerts.js"), re.M
+    )
+    [block] = re.findall(r"const HOSTED_SECRETS = \[(.*?)\];", _js("hosted_container.js"), re.S)
+
+    assert name not in block
 
 
 def test_the_tenants_site_path_is_one_shape_on_both_sides() -> None:

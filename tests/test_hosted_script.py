@@ -20,6 +20,8 @@ pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[1]
 ACCOUNT = "0123456789abcdef0123456789abcdef"
 URL = "https://cyris-hosted.trial.workers.dev"
+# The operator's Discord webhook: its URL is its credential.
+OPERATOR_HOOK = "https://discord.com/api/webhooks/1/operator-SECRET"
 
 # Records its argv and stdin, one JSON line per call, and answers as wrangler would.
 BUN = """#!/usr/bin/env python3
@@ -165,7 +167,7 @@ def test_deploy_ships_the_hosted_config_without_dotenv_and_keeps_its_url(repo: P
         (["deploy"], [ACCOUNT, "no"], True),
         (
             ["secrets"],
-            [ACCOUNT, "yes", "team.cloudflareaccess.com", "AUD-1", "sk-ant-SECRET"],
+            [ACCOUNT, "yes", "team.cloudflareaccess.com", "AUD-1", "sk-ant-SECRET", OPERATOR_HOOK],
             True,
         ),
         (["containers"], [ACCOUNT], False),
@@ -206,7 +208,7 @@ def test_the_account_typed_is_the_one_wrangler_acts_on_whatever_the_environment_
 
 def test_each_secret_reaches_wrangler_on_stdin_and_never_in_argv(repo: Path) -> None:
     (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
-    typed = [ACCOUNT, "yes", "team.cloudflareaccess.com", "AUD-1", "sk-ant-SECRET"]
+    typed = [ACCOUNT, "yes", "team.cloudflareaccess.com", "AUD-1", "sk-ant-SECRET", OPERATOR_HOOK]
 
     done, calls = _run(repo, ["secrets"], typed)
 
@@ -216,6 +218,8 @@ def test_each_secret_reaches_wrangler_on_stdin_and_never_in_argv(repo: Path) -> 
         ("CYRIS_ACCESS_TEAM_DOMAIN", "team.cloudflareaccess.com"),
         ("CYRIS_ACCESS_AUD", "AUD-1"),
         ("ANTHROPIC_API_KEY", "sk-ant-SECRET"),
+        # Where every tenant's failed run is reported (ADR-0035).
+        ("CYRIS_HOSTED_OPERATOR_WEBHOOK", OPERATOR_HOOK),
         # The host deploy kept: every tenant's links point at it.
         ("CYRIS_STORE_HOSTED_DOMAIN", "cyris-hosted.trial.workers.dev"),
     ]
@@ -223,8 +227,20 @@ def test_each_secret_reaches_wrangler_on_stdin_and_never_in_argv(repo: Path) -> 
         c["args"][5:] == ["--config", "wrangler.hosted.toml", "--env-file", "/dev/null"]
         for c in puts
     )
-    assert not any("sk-ant-SECRET" in " ".join(c["args"]) for c in calls)
-    assert "sk-ant-SECRET" not in done.stdout + done.stderr
+    for secret in ("sk-ant-SECRET", OPERATOR_HOOK):
+        assert not any(secret in " ".join(c["args"]) for c in calls)
+        assert secret not in done.stdout + done.stderr
+
+
+def test_secrets_refuses_an_operator_webhook_that_is_not_https(repo: Path) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+    typed = [ACCOUNT, "yes", "team.cloudflareaccess.com", "AUD-1", "sk-ant-SECRET", "hook"]
+
+    done, calls = _run(repo, ["secrets"], typed)
+
+    assert done.returncode == 1
+    assert "CYRIS_HOSTED_OPERATOR_WEBHOOK must be an https:// URL" in done.stderr
+    assert [c for c in calls if c["args"][2:4] == ["secret", "put"]] == []
 
 
 def test_secrets_needs_the_url_deploy_kept_before_asking_for_anything(repo: Path) -> None:

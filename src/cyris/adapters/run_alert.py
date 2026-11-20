@@ -25,23 +25,27 @@ def _headline(t: Translator, alert: RunAlert) -> str:
             assert_never(alert.kind)
 
 
-def _body(t: Translator, alert: RunAlert) -> str:
+def _body(t: Translator, alert: RunAlert, raw_errors: bool) -> str:
     match alert.kind:
         case "run_failed" | "could_not_start":
-            return alert.error
+            return alert.error if raw_errors else t("alert.error_withheld_body")
         case "fetched_nothing":
             return t("alert.fetched_nothing_body", sources=", ".join(alert.sources))
-        case "vote_similarity_rejected":
+        case "vote_similarity_rejected" if raw_errors:
             return t("alert.vote_similarity_body", status=alert.status, detail=alert.detail)
+        case "vote_similarity_rejected":
+            return t("alert.vote_similarity_withheld_body")
         case _:
             assert_never(alert.kind)
 
 
-def alert_message(alert: RunAlert) -> tuple[str, str]:
+def alert_message(alert: RunAlert, *, raw_errors: bool = True) -> tuple[str, str]:
     """`(subject, body)`.
 
     The subject is the headline, then the run's issue named as every surface names it, by the
-    hour the run started in `general.timezone`, then the zone.
+    hour the run started in `general.timezone`, then the zone. Without `raw_errors` the body
+    names no error text: no raised error, and no embedding API status or message. A hosted
+    tenant's reader gets that body, and the operator the raw one (ADR-0035).
     """
     t = translator(alert.language)
     when = alert.started_at.astimezone(ZoneInfo(alert.timezone))
@@ -51,4 +55,9 @@ def alert_message(alert: RunAlert) -> tuple[str, str]:
         issue=issue_name(t, when.date().isoformat(), when),
         timezone=alert.timezone,
     )
-    return subject, _body(t, alert)
+    return subject, _body(t, alert, raw_errors)
+
+
+def reader_alert_message(alert: RunAlert) -> tuple[str, str]:
+    """`alert_message` with the error withheld, for a hosted tenant's reader (ADR-0035)."""
+    return alert_message(alert, raw_errors=False)
