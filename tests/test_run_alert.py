@@ -6,7 +6,7 @@ from typing import get_args
 
 import pytest
 
-from cyris.adapters.run_alert import alert_message
+from cyris.adapters.run_alert import alert_message, reader_alert_message
 from cyris.service_layer.alerts import AlertKind, RunAlert
 
 pytestmark = pytest.mark.unit
@@ -102,3 +102,42 @@ def test_a_regional_tag_reaches_its_catalog_and_an_unknown_one_is_english() -> N
 
     assert alert_message(replace(alert, language="zh-TW"))[0] == "精選產生失敗" + SUFFIX["zh-Hant"]
     assert alert_message(replace(alert, language="ja"))[0] == "Digest run failed" + SUFFIX["en"]
+
+
+# What a hosted tenant's reader could be shown by a raw alert: a provider's message, an
+# account id, a key fragment. None of it may reach the reader (ADR-0035).
+RAW = "RuntimeError: Anthropic 401 for key sk-ant-abc123 on account 0f1e2d"
+WITHHELD = {
+    "en": "The error has been sent to the service's operator.",
+    "zh-Hant": "錯誤內容已送給服務的營運方。",
+}
+
+
+@pytest.mark.parametrize("kind", ["run_failed", "could_not_start"])
+@pytest.mark.parametrize("language", ["en", "zh-Hant"])
+def test_a_hosted_readers_error_alert_withholds_the_error(kind, language) -> None:
+    alert = _alert(kind, language, error=RAW)
+
+    subject, body = reader_alert_message(alert)
+
+    assert body == WITHHELD[language]
+    assert subject == alert_message(alert)[0]
+    for fragment in ("RuntimeError", "401", "sk-ant", "0f1e2d"):
+        assert fragment not in subject + body
+
+
+@pytest.mark.parametrize("language", ["en", "zh-Hant"])
+def test_a_hosted_readers_embedding_warning_withholds_the_status_and_the_detail(language) -> None:
+    alert = _alert("vote_similarity_rejected", language, status="1403", detail="key sk-ant-abc123")
+
+    _, body = reader_alert_message(alert)
+
+    assert "1403" not in body
+    assert "sk-ant" not in body
+    assert body.endswith(WITHHELD[language])
+
+
+def test_a_hosted_readers_failed_fetch_still_names_their_own_sources() -> None:
+    alert = _alert("fetched_nothing", sources=("Feed A", "Feed B"))
+
+    assert reader_alert_message(alert) == alert_message(alert)

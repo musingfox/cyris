@@ -5,8 +5,9 @@
 //
 // It serves the operator's routes and each tenant's pages behind Access (hosted_router.js,
 // hosted_site.js) and runs the hourly tick for every tenant: each tenant's RSS poll into its own
-// buffer (tenant_buffer.js), then its run when one is due. Until later cards land, a run
-// notifies nobody. The tenant list is the operator's registry (tenant_registry.js).
+// buffer (tenant_buffer.js), then its run when one is due. A run's alerts reach the operator
+// through OperatorAlertGateway (hosted_alerts.js). The tenant list is the operator's registry
+// (tenant_registry.js).
 import { env } from "cloudflare:workers";
 import HOSTED_SCHEMA_SQL from "../../../src/cyris/adapters/store/hosted_schema.sql";
 import SCHEMA_SQL from "../../../src/cyris/adapters/store/schema.sql";
@@ -22,6 +23,7 @@ import { LOCATION_HINT, tenantDb, tenantRows } from "./tenant_db.js";
 import { tenantRegistry } from "./tenant_registry.js";
 import { ACTIVE } from "./tenant_status.js";
 
+export { OperatorAlertGateway } from "./hosted_alerts.js";
 export { TenantContainer } from "./hosted_container.js";
 export { TenantDb, TenantDbGateway } from "./tenant_db.js";
 export { TenantRegistry } from "./tenant_registry.js";

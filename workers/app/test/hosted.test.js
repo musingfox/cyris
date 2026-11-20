@@ -3,6 +3,7 @@ import { generateKeyPair, exportJWK, SignJWT, createLocalJWKSet } from "jose";
 import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json" with { type: "json" };
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json" with { type: "json" };
 import SEED from "../src/hosted_seed.json" with { type: "json" };
+import { OPERATOR_WEBHOOK, OPS_HOST } from "../src/hosted_alerts.js";
 import { START_RETRY, TenantContainer, hostedContainerEnv } from "../src/hosted_container.js";
 import { handleHostedRequest } from "../src/hosted_router.js";
 import { seedSettings, seedTenant, tenantReport } from "../src/hosted_seed.js";
@@ -72,7 +73,10 @@ async function runObject(name, bindings = EVERY_BINDING) {
   const ctx = {
     id: { name },
     container,
-    exports: { TenantDbGateway: ({ props }) => ({ props }) },
+    exports: {
+      TenantDbGateway: ({ props }) => ({ props }),
+      OperatorAlertGateway: ({ props }) => ({ props }),
+    },
     waitUntil() {},
     blockConcurrencyWhile: (run) => run(),
   };
@@ -109,6 +113,13 @@ describe("a hosted tenant's run container", () => {
     });
   });
 
+  it("never hands a container the operator's webhook, which only the alert gateway reads", () => {
+    const env = hostedContainerEnv({ ...EVERY_BINDING, [OPERATOR_WEBHOOK]: "https://discord.com/api/webhooks/1/op" }, "alpha");
+
+    expect(env).not.toHaveProperty(OPERATOR_WEBHOOK);
+    expect(JSON.stringify(env)).not.toContain("webhooks");
+  });
+
   it("is not started without the hosted domain its links would point at", async () => {
     const { object, container } = await runObject("alpha", { ...EVERY_BINDING, CYRIS_STORE_HOSTED_DOMAIN: "" });
 
@@ -116,14 +127,18 @@ describe("a hosted tenant's run container", () => {
     expect(container.starts).toEqual([]);
   });
 
-  it("registers the gateway for its own tenant before the container starts", async () => {
+  it("registers both gateways for its own tenant before the container starts", async () => {
     const { object, container, order } = await runObject("bravo");
 
     expect(await object.startRun({ period: "morning", date: "2026-11-18" })).toEqual({
       started: true,
       tenant: "bravo",
     });
-    expect(order).toEqual([{ intercept: DB_HOST, props: { tenant: "bravo" } }, "start"]);
+    expect(order).toEqual([
+      { intercept: DB_HOST, props: { tenant: "bravo" } },
+      { intercept: OPS_HOST, props: { tenant: "bravo" } },
+      "start",
+    ]);
     const [{ env, enableInternet }] = container.starts;
     expect(enableInternet).toBe(true);
     expect(env).toMatchObject({

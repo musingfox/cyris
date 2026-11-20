@@ -21,6 +21,7 @@ from cyris.adapters.promotions import SyncResult, sync_promotions
 from cyris.adapters.workers_ai_client import WorkersAIClient
 from cyris.config import Config, LLMProviderConfig
 from cyris.domain.models import Article
+from cyris.service_layer.alerts import RunAlert
 from cyris.service_layer.ports import (
     ArticleRepository,
     AskClef,
@@ -194,7 +195,7 @@ def build_send_email(language: str = "") -> Callable[..., Any] | None:
     return partial(send_digest_mail, account_id=account_id, token=token, language=language)
 
 
-def build_send_email_alert() -> Callable[..., Any] | None:
+def build_send_email_alert(**wording: Any) -> Callable[..., Any] | None:
     """The failure-alert mail bound to the same account, or None without it."""
     from cyris.adapters.mail import send_alert_mail
 
@@ -202,22 +203,35 @@ def build_send_email_alert() -> Callable[..., Any] | None:
     if credentials is None:
         return None
     account_id, token = credentials
-    return partial(send_alert_mail, account_id=account_id, token=token)
+    return partial(send_alert_mail, account_id=account_id, token=token, **wording)
 
 
 def build_alert_senders(cfg: Config) -> tuple[Callable[..., Any], Callable[..., Any] | None]:
-    """The failure alert's Discord and mail senders; a hosted tenant's send nothing.
+    """The failure alert's Discord and mail senders, to the reader's own channels.
 
-    `build_deps` and the CLI's could-not-start alert both take them from here, so no alert
-    path of a hosted run reaches a channel (`adapters/hosted.py`).
+    A hosted tenant's reader is sent each alert with its error withheld; the raw error is the
+    operator's (`build_operator_alert`, ADR-0035). `build_deps` and the CLI's could-not-start
+    alert both take them from here, so no alert path of a hosted run shows its reader the error.
     """
-    if cfg.app.store.is_hosted:
-        from cyris.adapters.hosted import skip_alert
-
-        return skip_alert, skip_alert
     from cyris.adapters import notify
 
+    if cfg.app.store.is_hosted:
+        from cyris.adapters.run_alert import reader_alert_message
+
+        return (
+            partial(notify.send_discord_alert, wording=reader_alert_message),
+            build_send_email_alert(wording=reader_alert_message),
+        )
     return notify.send_discord_alert, build_send_email_alert()
+
+
+def build_operator_alert(cfg: Config) -> Callable[[RunAlert], Awaitable[None]] | None:
+    """The hosted operator's channel, bound to this run's tenant; None outside hosted mode."""
+    if not cfg.app.store.is_hosted:
+        return None
+    from cyris.adapters.hosted import send_operator_alert
+
+    return partial(send_operator_alert, cfg.app.store.tenant_id)
 
 
 def clef_credentials() -> tuple[str, str] | None:
@@ -405,6 +419,9 @@ class Deps:
     # reached by name, and a missing mail sender is None rather than an entry.
     send_email_alert: Callable[..., Any] | None = None
     send_discord_alert: Callable[..., Any] = send_discord_alert
+    # Takes the `RunAlert` every alert path also hands the reader's channels, and tells the
+    # hosted operator, whatever the tenant's own `notify` says. None outside hosted mode.
+    send_operator_alert: Callable[[RunAlert], Awaitable[None]] | None = None
     # None without a Workers AI (or embedding) token and an account id.
     ask_clef: AskClef | None = None
     # Takes the run's articles and `summarize_snippet_length`, and returns them with
@@ -518,8 +535,9 @@ def build_deps(
     every other one lives.
 
     A hosted tenant's run is wired the same way for the same reason: it gets no
-    newsletter queue and no vote sync, which are another deployment's queues, and,
-    until operator alerts land, senders that send nothing (`adapters/hosted.py`).
+    newsletter queue and no vote sync, which are another deployment's queues, a digest
+    notification that sends nothing, and alerts that tell the operator the error and
+    the reader only that it happened (`adapters/hosted.py`, ADR-0035).
     Its pages go to its own site in its Durable Object (`HostedPages`), never to
     Pages, whatever `html_output` and `promote` say, and its links point at the
     hosted Worker (ADR-0029).
@@ -650,6 +668,7 @@ def build_deps(
         send_email=send_email,
         send_email_alert=send_email_alert,
         send_discord_alert=send_discord_alert_to,
+        send_operator_alert=build_operator_alert(cfg),
         ask_clef=build_ask_clef(),
         lengthen_articles=lengthen_articles,
         process_usage=process_usage.read_process_usage if process_usage.available() else None,

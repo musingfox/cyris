@@ -4,6 +4,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { Lifecycle } from "./container.js";
+import { OPS_HOST } from "./hosted_alerts.js";
 import { DB_HOST, TENANT } from "./tenant_db.js";
 import { tenantRegistry } from "./tenant_registry.js";
 import { ACTIVE } from "./tenant_status.js";
@@ -62,10 +63,12 @@ export class TenantContainer extends DurableObject {
     // so nothing a caller passes can point this container at another tenant's database.
     this.tenant = ctx.id.name;
     this.lifecycle = new Lifecycle(ctx, RUN_INACTIVITY_TIMEOUT_MS, {
-      // The gateway answers only this tenant; registered before every start().
-      intercept: () => {
-        const gateway = ctx.exports.TenantDbGateway({ props: { tenant: this.tenant } });
-        return ctx.container.interceptOutboundHttp(DB_HOST, gateway);
+      // Both gateways answer only this tenant; registered before every start(). The second
+      // carries the run's alerts to the operator (hosted_alerts.js).
+      intercept: async () => {
+        const props = { tenant: this.tenant };
+        await ctx.container.interceptOutboundHttp(DB_HOST, ctx.exports.TenantDbGateway({ props }));
+        await ctx.container.interceptOutboundHttp(OPS_HOST, ctx.exports.OperatorAlertGateway({ props }));
       },
       startRetry: START_RETRY,
     });

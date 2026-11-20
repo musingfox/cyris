@@ -3,16 +3,18 @@
 The hosted Worker starts a tenant's container with `CYRIS_STORE_TENANT_ID` and the hosted
 domain. From those `bootstrap` gives the run the tenant's Durable Object through the gateway and
 nothing that reaches outside it: no shared queue (the newsletter and vote Workers belong to
-another deployment), no Pages project, and until operator alerts land no notification, whatever
-the environment or the tenant's settings name. The issue stays in the tenant's `digests` table
-(ADR-0028), and its pages go into the tenant's own `hosted_pages`, linked on the hosted domain
-(ADR-0029).
+another deployment), no Pages project, and no digest notification, whatever the environment or
+the tenant's settings name. The issue stays in the tenant's `digests` table (ADR-0028), and its
+pages go into the tenant's own `hosted_pages`, linked on the hosted domain (ADR-0029). A failed
+run tells the operator, by tenant, with its error, and the reader without it (ADR-0035); every
+line the run writes names its tenant.
 """
 
 import json
 import re
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from functools import partial
 from pathlib import Path
 from urllib.parse import urljoin
 
@@ -29,14 +31,20 @@ from cyris.adapters import hosted
 from cyris.adapters.fetch.onboarding_cards import OnboardingArticles
 from cyris.adapters.fetch.rss_source import RssSource
 from cyris.adapters.fetch.rss_worker_source import TenantRssSource
-from cyris.adapters.hosted import NOT_SENT, skip_alert, skip_digest_notification
+from cyris.adapters.hosted import (
+    NOT_SENT,
+    OPERATOR_ORIGIN,
+    skip_digest_notification,
+)
 from cyris.adapters.output import publish
 from cyris.adapters.output.hosted_pages import HostedPages
+from cyris.adapters.run_alert import reader_alert_message
 from cyris.adapters.store import tenant_gateway
 from cyris.adapters.store.d1 import D1Client, apply_schema
 from cyris.adapters.store.tenant_gateway import GatewayD1Client, apply_hosted_schema
 from cyris.domain.models import Article, Lane
 from cyris.entrypoints.cli import app
+from cyris.service_layer import run_digest as run_digest_module
 from cyris.service_layer.run_digest import RunOptions, run_digest
 
 pytestmark = pytest.mark.integration
@@ -297,7 +305,119 @@ def test_a_hosted_run_is_wired_to_its_own_site_and_to_no_queue_page_or_channel(h
     assert deps.worker_domains() == [f"{DOMAIN}/t/alpha"]
     assert deps.send_discord is skip_digest_notification
     assert deps.send_email is skip_digest_notification
-    assert (deps.send_discord_alert, deps.send_email_alert) == (skip_alert, skip_alert)
+    # The reader's alert channels are the tenant's own, worded with the error withheld.
+    assert deps.send_discord_alert.keywords == {"wording": reader_alert_message}
+    assert deps.send_email_alert.keywords["wording"] is reader_alert_message
+    # The operator's is bound to this run's tenant.
+    assert deps.send_operator_alert.args == ("alpha",)
+
+
+def test_a_self_hosted_run_tells_no_operator(tmp_path: Path) -> None:
+    cfg = load_files(*_files(tmp_path), {**TEST_SETTINGS, **NOTIFY})
+
+    assert bootstrap.build_operator_alert(cfg) is None
+    assert bootstrap.build_alert_senders(cfg)[0] is not None
+    assert not hasattr(bootstrap.build_alert_senders(cfg)[0], "keywords")
+
+
+# The Email Sending API, which the reader's alert mail goes to.
+MAIL_API = r"https://api\.cloudflare\.com/.*/email/sending/send"
+MAILED = httpx.Response(200, json={"success": True, "result": {"delivered": ["r"]}})
+
+
+# An error whose text a reader must never be shown: a provider's message, a key fragment, an
+# account id.
+RAW_ERROR = "Anthropic answered 401 for key sk-ant-abc123 on account 0f1e2d"
+
+
+async def test_a_hosted_run_that_fails_tells_the_operator_its_tenant_and_the_reader_no_error(
+    hosted_cfg, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg, gateway = hosted_cfg
+
+    async def fails(*_args) -> None:
+        raise RuntimeError(RAW_ERROR)
+
+    monkeypatch.setattr(run_digest_module, "_run_digest", fails)
+    deps = bootstrap.build_deps(cfg)
+
+    with respx.mock:
+        operator = respx.post(f"{OPERATOR_ORIGIN}/t/alpha/alert").mock(
+            return_value=httpx.Response(202)
+        )
+        discord = respx.post(WEBHOOK).mock(return_value=httpx.Response(204))
+        mail = respx.post(url__regex=MAIL_API).mock(return_value=MAILED)
+        with pytest.raises(RuntimeError, match="sk-ant"):
+            await run_digest(deps, RunOptions(period="morning"))
+
+    assert (operator.call_count, discord.call_count, mail.call_count) == (1, 1, 1)
+    # The operator: one alert, on the tenant's own path, with the raw error.
+    [told] = operator.calls
+    sent = json.loads(told.request.content)
+    assert sent["subject"].startswith("Digest run failed: ")
+    assert sent["body"] == f"RuntimeError: {RAW_ERROR}"
+    # The reader: the same alert on each of the tenant's channels, and none of the error.
+    [posted] = discord.calls
+    [mailed] = mail.calls
+    for request in (posted.request, mailed.request):
+        text = request.content.decode()
+        assert "Digest run failed" in text
+        assert "The error has been sent to the service" in text
+        for fragment in ("RuntimeError", "401", "sk-ant", "0f1e2d"):
+            assert fragment not in text
+    [run] = gateway.db.query("SELECT status FROM digest_runs").rows
+    assert run["status"] == "error"
+
+
+async def test_a_hosted_run_that_fetched_nothing_tells_the_operator_too(
+    hosted_cfg, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg, _ = hosted_cfg
+
+    class Dead:
+        async def fetch_articles(self, **_kwargs):
+            raise RuntimeError("feed a.test is down")
+
+        async def health_check(self) -> bool:
+            return False
+
+    deps = replace(bootstrap.build_deps(cfg), fetch_sources=[Dead()])
+
+    with respx.mock:
+        operator = respx.post(f"{OPERATOR_ORIGIN}/t/alpha/alert").mock(
+            return_value=httpx.Response(202)
+        )
+        discord = respx.post(WEBHOOK).mock(return_value=httpx.Response(204))
+        mail = respx.post(url__regex=MAIL_API).mock(return_value=MAILED)
+        await run_digest(deps, RunOptions(period="morning"))
+
+    assert (operator.call_count, discord.call_count, mail.call_count) == (1, 1, 1)
+    [told] = operator.calls
+    assert json.loads(told.request.content)["subject"].startswith("Digest run fetched nothing")
+
+
+async def test_an_operator_alert_that_cannot_be_sent_leaves_the_runs_own_error(
+    hosted_cfg, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg, _ = hosted_cfg
+
+    async def fails(*_args) -> None:
+        raise RuntimeError(RAW_ERROR)
+
+    monkeypatch.setattr(run_digest_module, "_run_digest", fails)
+    deps = bootstrap.build_deps(cfg)
+
+    with respx.mock:
+        operator = respx.post(f"{OPERATOR_ORIGIN}/t/alpha/alert").mock(
+            return_value=httpx.Response(503)
+        )
+        discord = respx.post(WEBHOOK).mock(return_value=httpx.Response(204))
+        mail = respx.post(url__regex=MAIL_API).mock(return_value=MAILED)
+        with pytest.raises(RuntimeError, match="sk-ant"):
+            await run_digest(deps, RunOptions(period="morning"))
+
+    # The refused operator alert is logged; the reader's channels still had their attempt.
+    assert (operator.call_count, discord.call_count, mail.call_count) == (1, 1, 1)
 
 
 async def test_a_hosted_runs_rss_is_its_own_buffer_read_through_its_gateway(hosted_cfg) -> None:
@@ -496,24 +616,24 @@ async def test_every_write_of_a_scored_run_is_one_a_durable_object_can_bind(host
     assert row["score"] == 80
 
 
-def test_a_hosted_tick_that_cannot_start_alerts_no_channel(
+def test_a_hosted_tick_that_cannot_start_tells_the_operator_and_the_reader_no_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The CLI's own alert path, before any `Deps`, takes its senders from `bootstrap` too."""
-    sent: list[str] = []
+    sent: list[tuple[str, str, str]] = []
 
-    async def discord(*_args) -> None:
-        sent.append("discord")
+    async def discord(_url, alert, *, wording) -> None:
+        sent.append(("discord", *wording(alert)))
 
-    async def mail(*_args) -> None:
-        sent.append("mail")
+    async def mail(_to, _sender, alert, *, wording) -> None:
+        sent.append(("mail", *wording(alert)))
 
-    async def stand_in(*_args) -> None:
-        sent.append("stand-in")
+    async def operator(tenant, alert) -> None:
+        sent.append(("operator", tenant, alert.error))
 
     monkeypatch.setattr("cyris.adapters.notify.send_discord_alert", discord)
-    monkeypatch.setattr("cyris.bootstrap.build_send_email_alert", lambda: mail)
-    monkeypatch.setattr("cyris.adapters.hosted.skip_alert", stand_in)
+    monkeypatch.setattr("cyris.bootstrap.build_send_email_alert", lambda **kw: partial(mail, **kw))
+    monkeypatch.setattr("cyris.adapters.hosted.send_operator_alert", operator)
     monkeypatch.setattr(
         "cyris.utils.timezone.now_in_timezone",
         lambda tz: datetime(2026, 11, 18, 8, 5).astimezone(),
@@ -533,5 +653,12 @@ def test_a_hosted_tick_that_cannot_start_alerts_no_channel(
     )
 
     assert result.exit_code == 1
-    # The alert was due and worded for both channels, and only the stand-ins took it.
-    assert sent == ["stand-in", "stand-in"]
+    # The alert was due: the reader's two channels were told it could not start, without the
+    # error, and the operator was told which tenant, with it.
+    [(_, d_subject, d_body), (_, m_subject, m_body), (who, tenant, error)] = sent
+    assert [entry[0] for entry in sent] == ["discord", "mail", "operator"]
+    assert d_subject.startswith("Digest run could not start")
+    assert d_body == m_body == "The error has been sent to the service's operator."
+    assert "max_articles_per_digest" not in d_subject + d_body + m_subject + m_body
+    assert tenant == "alpha"
+    assert "max_articles_per_digest" in error

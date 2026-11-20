@@ -6,7 +6,8 @@
 # that reaches Cloudflare through wrangler, and is never stored or read from the environment,
 # so neither an exported variable nor an old file can pick the account. deploy, secrets and
 # delete also print the account's name and do nothing until you type "yes". The secrets (the
-# Anthropic key, the Access service token's secret) are read without echo each time, never
+# Anthropic key, the operator's webhook, the Access service token's secret) are read without
+# echo each time, never
 # written down, and reach wrangler and curl on stdin, never in argv, where `ps` would show them.
 # HOSTED_URL, which deploy prints, is the one value kept, in .env.hosted (gitignored, mode 600).
 set -euo pipefail
@@ -162,9 +163,14 @@ case "${1:-}" in
     ask TEAM_DOMAIN "CYRIS_ACCESS_TEAM_DOMAIN, the Access team domain without a scheme (yourteam.cloudflareaccess.com)"
     ask AUD "CYRIS_ACCESS_AUD, the Application Audience (AUD) tag of the cyris-hosted Access application"
     ask ANTHROPIC "ANTHROPIC_API_KEY for the tenants' runs" secret
+    # Where every tenant's failed run is reported, with its tenant id (ADR-0035). Its URL is its
+    # credential, so it is read as a secret, and only the Worker's alert gateway holds it.
+    ask OPERATOR_WEBHOOK "CYRIS_HOSTED_OPERATOR_WEBHOOK, the operator's Discord webhook URL" secret
+    [[ "$OPERATOR_WEBHOOK" == https://* ]] || { echo "CYRIS_HOSTED_OPERATOR_WEBHOOK must be an https:// URL" >&2; exit 1; }
     put_secret CYRIS_ACCESS_TEAM_DOMAIN "$TEAM_DOMAIN"
     put_secret CYRIS_ACCESS_AUD "$AUD"
     put_secret ANTHROPIC_API_KEY "$ANTHROPIC"
+    put_secret CYRIS_HOSTED_OPERATOR_WEBHOOK "$OPERATOR_WEBHOOK"
     # The host deploy kept, which every tenant's links point at (ADR-0029). Not a secret, but
     # `secret put` is how wrangler sets one value without editing wrangler.hosted.toml.
     put_secret CYRIS_STORE_HOSTED_DOMAIN "${HOSTED_URL#https://}"

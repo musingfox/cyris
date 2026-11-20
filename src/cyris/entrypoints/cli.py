@@ -174,10 +174,20 @@ def _alert_could_not_start(cfg, error: Exception) -> None:
             language=digest.output_language if digest is not None else ENGLISH,
             error=failure_alert_text(error),
         )
-        # A hosted tenant's senders send nothing (bootstrap.build_alert_senders).
+    except Exception as e:
+        logger.error("Could not send the alert that the run did not start: %s", e)
+        return
+    try:
+        # A hosted tenant's reader is not shown the error (bootstrap.build_alert_senders).
         asyncio.run(send_alert(cfg.app.notify, *bootstrap.build_alert_senders(cfg), alert))
     except Exception as e:
         logger.error("Could not send the alert that the run did not start: %s", e)
+    try:
+        # A hosted tenant's operator is told too, with the error (ADR-0035).
+        if (send_operator_alert := bootstrap.build_operator_alert(cfg)) is not None:
+            asyncio.run(send_operator_alert(alert))
+    except Exception as e:
+        logger.error("Could not tell the operator that the run did not start: %s", e)
 
 
 def _usage_error(message: str) -> None:
