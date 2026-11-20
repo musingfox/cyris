@@ -35,6 +35,9 @@ CREATE INDEX IF NOT EXISTS idx_articles_fetched_at ON articles(fetched_at);
 -- its own gateway and deletes what it processed, its ack. The address it came to is not kept: the
 -- map from addresses to tenants is the operator's registry alone. `headers` is the JSON list
 -- `record.js` keeps, values only for the list headers it names. `received_at` orders the pull.
+-- `held_at` is when a run found no source for the message and left it queued
+-- (`TenantNewsletterSource`); the email() handler evicts the oldest such message when the queue is
+-- full, so held mail never crowds out new mail. NULL until a run holds it.
 CREATE TABLE IF NOT EXISTS newsletters (
     id TEXT PRIMARY KEY,
     sender TEXT NOT NULL,
@@ -44,5 +47,6 @@ CREATE TABLE IF NOT EXISTS newsletters (
     date TEXT NOT NULL,
     headers TEXT NOT NULL,
     raw_size INTEGER,
-    received_at TEXT NOT NULL
+    received_at TEXT NOT NULL,
+    held_at TEXT
 );

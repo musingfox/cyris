@@ -141,7 +141,7 @@ export async function tenantReport({ db, tenant }) {
     ),
     newsletters: await rows(
       "newsletters",
-      "SELECT id, sender, subject, date, received_at FROM newsletters ORDER BY received_at, id",
+      "SELECT id, sender, subject, date, received_at, held_at FROM newsletters ORDER BY received_at, id",
     ),
     latest_page: latest ? { path: latest.path, sha256: await sha256Hex(latest.body) } : null,
   };

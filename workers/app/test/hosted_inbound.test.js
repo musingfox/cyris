@@ -10,6 +10,14 @@ import { ADDRESS, ADDRESS_BYTES, randomAddress, recipientAddress } from "../src/
 import { MAX_RAW_BYTES, authResults } from "../src/hosted_inbound.js";
 import { DB_HOST, TenantDbGateway, isTenantTable } from "../src/tenant_db.js";
 import { MAX_QUEUED } from "../src/tenant_inbound.js";
+
+// What a hosted run writes for the messages it leaves queued because no source matches their
+// sender (`TenantNewsletterSource._hold` in src/cyris/adapters/fetch/newsletter_worker_source.py).
+const holdUnmatched = (TENANT_DB, tenant, sender, at) =>
+  TENANT_DB.getByName(tenant).query("UPDATE newsletters SET held_at = ? WHERE held_at IS NULL AND sender = ?", [
+    at,
+    sender,
+  ]);
 import { tenantRegistry } from "../src/tenant_registry.js";
 import CASES from "./newsletter_source_cases.json";
 import { namespace, registryNamespace } from "./sql_storage.js";
@@ -21,11 +29,17 @@ const AUD = "AUD-INBOUND";
 // One issue as a publisher sends it, to `to`, with Cloudflare's Authentication-Results on top.
 const issue = (
   to,
-  { subject = "Issue 12", date = "Tue, 18 Nov 2026 06:00:00 +0000", auth = "dmarc=pass", body = "This week's letter." } = {},
+  {
+    subject = "Issue 12",
+    date = "Tue, 18 Nov 2026 06:00:00 +0000",
+    auth = "dmarc=pass",
+    body = "This week's letter.",
+    from = "letter@news.example",
+  } = {},
 ) =>
   [
     `Authentication-Results: mx.cloudflare.net; spf=pass smtp.mailfrom=news.example; dkim=pass header.d=news.example; ${auth}`,
-    "From: The Letter <letter@news.example>",
+    `From: The Letter <${from}>`,
     `To: ${to}`,
     `Subject: ${subject}`,
     `Date: ${date}`,
@@ -262,6 +276,34 @@ describe("the hosted Worker's email() handler", () => {
     expect(rows(bound.TENANT_DB, "alpha").map((row) => row.subject)).not.toContain("One more");
   });
 
+  it("lets no flood of held, unmatched mail crowd out a new issue", async () => {
+    const { alpha } = await addressed("alpha");
+    const to = `${alpha}@${DOMAIN}`;
+    // A sender holding the leaked address fills the queue with mail no source will match.
+    for (let i = 0; i < MAX_QUEUED; i += 1) {
+      await worker.email(message(to, issue(to, { subject: `Spam ${i}`, from: "spam@else.example" })));
+    }
+    // Until a run has seen them, the queue is full of mail nobody has sorted: a new issue waits.
+    await worker.email(message(to, issue(to, { subject: "Before the run" })));
+    expect(rows(bound.TENANT_DB, "alpha").map((row) => row.subject)).not.toContain("Before the run");
+
+    // The run matches none of them and leaves them held; from then on each new issue takes the
+    // place of a held message, and more spam only takes the place of older spam.
+    holdUnmatched(bound.TENANT_DB, "alpha", "spam@else.example", "2026-11-18T08:00:00+00:00");
+    await worker.email(message(to, issue(to, { subject: "Issue 13" })));
+    await worker.email(message(to, issue(to, { subject: "Spam again", from: "spam@else.example" })));
+    holdUnmatched(bound.TENANT_DB, "alpha", "spam@else.example", "2026-11-18T20:00:00+00:00");
+    for (let i = 14; i < 20; i += 1) await worker.email(message(to, issue(to, { subject: `Issue ${i}` })));
+
+    const subjects = rows(bound.TENANT_DB, "alpha").map((row) => row.subject);
+    expect(subjects).toHaveLength(MAX_QUEUED);
+    expect(subjects.filter((subject) => subject.startsWith("Issue")).sort()).toEqual(
+      ["Issue 13", "Issue 14", "Issue 15", "Issue 16", "Issue 17", "Issue 18", "Issue 19"],
+    );
+    // The spam held longest went first: the one held at 20:00 outlasts every one held at 08:00.
+    expect(subjects).toContain("Spam again");
+  });
+
   it("keeps taking a paused tenant's mail, so pausing loses none", async () => {
     const { alpha } = await addressed("alpha");
     await operator("POST", "/hosted/tenants/alpha/register?status=paused");
@@ -485,13 +527,19 @@ describe("the operator's newsletter-source route", () => {
       addresses[tenant] = (await (await call("POST", `/hosted/tenants/${tenant}/rotate-address`)).json()).address;
     }
 
-    for (const tenant of ["alpha", "bravo"]) await worker.email(message(`${addresses[tenant]}@${DOMAIN}`));
+    // The publisher writes its From in mixed case, as the route's query named it.
+    for (const tenant of ["alpha", "bravo"]) {
+      const to = `${addresses[tenant]}@${DOMAIN}`;
+      await worker.email(message(to, issue(to, { from: "Letter@News.example" })));
+    }
 
     for (const tenant of ["alpha", "bravo"]) {
       expect(sourceRows(tenant)).toEqual([CASES.written[0].row]);
-      // The queued issue's sender is the one the source's email_match names.
+      // The sender is stored as written and the source in lower case: the run matches them in
+      // any case (tests/test_tenant_newsletter_source.py).
       const [queued] = rows(bound.TENANT_DB, tenant);
-      expect(CASES.written[0].row.config.email_match).toContain(queued.sender);
+      expect(queued.sender).toBe("Letter@News.example");
+      expect(CASES.written[0].row.config.email_match).toBe("from:letter@news.example");
     }
   });
 });

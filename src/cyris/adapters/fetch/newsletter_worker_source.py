@@ -37,6 +37,9 @@ class CloudflareNewsletterSource:
         """Whether a message no source matches stays queued rather than being acked."""
         return False
 
+    def _hold(self, ids: list[str]) -> None:
+        """Mark messages this run left queued; the KV queue has no such mark."""
+
     def __init__(self, worker_url: str, token: str, ack: bool = True) -> None:
         self._worker_url = worker_url.rstrip("/")
         self._token = token
@@ -147,6 +150,7 @@ class CloudflareNewsletterSource:
                 )
 
         self._ack([item_id for item_id in processed_ids if item_id not in held])
+        self._hold(sorted(held))
         logger.info(
             "Pulled %d newsletter(s), produced %d article(s), held %d",
             len(queued),
@@ -190,7 +194,8 @@ class CloudflareNewsletterSource:
 
 
 # A hosted tenant's queue as the Worker's `GET /newsletters` answers it, oldest first, with when
-# each message arrived.
+# each message arrived. `held_at` is written here and read by the Worker's store
+# (workers/app/src/tenant_inbound.js), which evicts the oldest held message when the queue is full.
 TENANT_QUEUE_SQL = (
     'SELECT id, sender AS "from", subject, html, text, date, received_at FROM newsletters '
     "ORDER BY received_at, id"
@@ -217,7 +222,9 @@ class TenantNewsletterSource(CloudflareNewsletterSource):
 
     A message no source matches stays queued for `UNMATCHED_HOLD_DAYS` from its arrival, so an
     issue that came before its tenant added the source reaches the first run after it is added;
-    an older one is acked, so the queue cannot fill with mail nobody will read.
+    an older one is acked. A held message is stamped `held_at`, and the Worker evicts the oldest
+    stamped one when the queue is full, so held mail never crowds out new mail. Senders match
+    in any case.
 
     No link that can name its recipient becomes an article URL here (`recipient_links=False`):
     an ESP's "view in browser" link is the recipient's own copy and often carries a token that
@@ -237,6 +244,55 @@ class TenantNewsletterSource(CloudflareNewsletterSource):
         self._d1 = d1
         self._ack_enabled = ack
         self._now = now
+
+    @staticmethod
+    def _match_source(from_email: str, sources: dict[str, SourceConfig]) -> SourceConfig | None:
+        """The KV source's match, in any case: an address's case carries no meaning.
+
+        The operator's route writes `email_match` in lower case, and the email() handler stores
+        From as the sender wrote it (`Letter@News.example`). The KV source's own match is left
+        as it is: changing it is a self-hosted change of its own.
+        """
+        sender = (from_email or "").strip().lower()
+        if not sender:
+            return None
+        for source in sources.values():
+            if source.email_match and sender in source.email_match.lower():
+                return source
+        return None
+
+    @staticmethod
+    def _match_forwarded(item: dict, sources: dict[str, SourceConfig]) -> SourceConfig | None:
+        """The KV source's manual-forward fallback, in any case, for the same reason."""
+        body = f"{item.get('text', '')} {item.get('html', '')}".lower()
+        for source in sources.values():
+            if not source.email_match:
+                continue
+            addr = source.email_match.split(":", 1)[-1].strip().lower()
+            if addr and addr in body:
+                return source
+        return None
+
+    def _hold(self, ids: list[str]) -> None:
+        """Stamp each message this run left queued, so the Worker may evict it before new mail.
+
+        Only a message a run has seen and found no source for is evictable: without the stamp,
+        mail no source matches would fill the queue's cap for its whole hold, and every later
+        issue would be dropped. A preview writes no stamp, as it deletes nothing.
+        """
+        if not ids or not self._ack_enabled:
+            return
+        stamp = self._now().astimezone(UTC).isoformat()
+        try:
+            for start in range(0, len(ids), TENANT_ACK_CHUNK):
+                chunk = ids[start : start + TENANT_ACK_CHUNK]
+                marks = ", ".join("?" for _ in chunk)
+                self._d1.query(
+                    f"UPDATE newsletters SET held_at = ? WHERE held_at IS NULL AND id IN ({marks})",
+                    [stamp, *chunk],
+                )
+        except Exception:  # noqa: BLE001 - a failed stamp only leaves mail unevictable
+            logger.warning("Tenant newsletter hold stamp failed", exc_info=True)
 
     def _holds_unmatched(self, item: dict) -> bool:
         try:

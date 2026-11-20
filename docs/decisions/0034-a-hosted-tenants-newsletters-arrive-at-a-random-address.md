@@ -122,8 +122,12 @@ How it is built:
   tenant's newsletters are its own. The route refuses a name an RSS source already holds, and a
   tenant not seeded yet. The tenant settings card replaces it.
 * **Pulling.** A hosted run's newsletter source is `TenantNewsletterSource`. It reads the queue
-  through its gateway, matches senders exactly as `CloudflareNewsletterSource` does, and acks by
-  deleting the processed ids in chunks of 50. A dry run reads without deleting.
+  through its gateway and matches senders as `CloudflareNewsletterSource` does, except that it
+  ignores case. The route writes `email_match` in lower case, while `record.js` stores From as the
+  sender wrote it (`Letter@News.example`), and an address's case carries no meaning. The KV
+  source's own match is unchanged: it is case-sensitive, a self-hosted bug of its own, and the
+  hosted fix overrides the match rather than changing it. A run acks by deleting the processed
+  ids in chunks of 50. A dry run reads without deleting.
 * **Unmatched mail waits.** A message no source matches stays queued for
   `UNMATCHED_HOLD_DAYS` (8) from its arrival, and a run acks it only after that. The KV source
   deletes such a message at once, which suits a self-hosted reader who adds a source before
@@ -131,16 +135,30 @@ How it is built:
   may be added after the first issue arrives, so deleting at once would lose that issue
   unread. Eight days is the RSS buffer's retention, so mail and feeds wait as long. The hold also
   keeps Gmail's forwarding confirmation, which matches no source, readable in the operator's
-  report. The queue's 200-message cap bounds what waits.
+  report.
+* **Held mail never crowds out new mail.** A run stamps `held_at` on each message it leaves
+  queued for a source. When the 200-message queue is full, the store evicts the oldest stamped
+  message for the new one, in the same synchronous turn. Without that, anyone holding a leaked
+  address could send 200 distinct messages and have every later issue dropped for 8 days, and
+  rotating the address would not help, since rotation touches only the registry.
+  * **Why eviction.** It is the smallest sound fix. A separate cap for held mail would add a
+    second limit, and a shorter hold would shorten the window a reader has to add a source. The
+    Worker can tell held mail apart only through the run's stamp, because matching a sender is
+    the run's code, not the Worker's.
+  * **What remains.** A queue full of messages that arrived since the last run, which nobody has
+    sorted yet, still drops new mail until the next run stamps them. That lasts at most one
+    schedule interval, and a rotation stops the flood.
 * **Links.** An issue's link must be http(s), or it is no link. That applies to the article URL
   `newsletter_article` picks and to a reference link `citation_links` draws.
   `TenantNewsletterSource` passes `recipient_links=False`, so a hosted issue takes no link that
   may name its recipient. Two kinds of link are affected. The labelled "view in browser" link
   and the ESP-archive link, the two fallbacks, are never taken. The structural step still
   chooses as it does for every deployment, but a hosted issue drops its choice when it keeps a
-  query or a fragment after the tracking strip. A per-recipient token such as `?token=` cannot
-  be told from any other query by its shape, and the strip lists name only parameters known to
-  be one. The issue then keeps its source's homepage, or no link. The choice is filtered after
+  query after the tracking strip. A per-recipient token such as `?token=` cannot be told from
+  any other query by its shape, and the strip lists name only parameters known to be one. The
+  issue then keeps its source's homepage, or no link. A fragment is stripped and the link kept
+  (`#comments`). A fragment never reaches the server, so it cannot carry a token to the sender.
+  Stripping it still keeps one written there (`#sub=`) off the page. The choice is filtered after
   it is made, never before: dropping the token variant from the candidates first could make a
   second page look like the one canonical post, against CLAUDE.md's rule that an ambiguous issue
   gets no link.
@@ -168,9 +186,11 @@ How it is built:
   kept, and the real issue is then taken as its copy. Doing that needs the address and the
   issue's Date to the second. Keying by a random id instead would let every re-delivered copy
   through as a duplicate.
-* Bad, because unmatched mail, spam included, takes queue space for up to 8 days, and the cap
-  then drops new mail to that address until a run acks the old. Rotating a leaked address stops
-  the flood.
+* Bad, because a flood to a leaked address still fills the queue between two runs, and new
+  mail is dropped until the next run stamps the flood held. After that, each new message evicts
+  held spam, so the loss lasts at most one schedule interval, not the 8-day hold.
+* Bad, because a flood can evict real held mail too, an issue whose source has not been added
+  yet. The oldest stamp goes first.
 * Bad, because a hosted issue loses its 原文 link when the only candidate was a web-version
   link, or a post link with any query left, `?p=123` included. The view link of an ESP such as
   Substack signs in as the recipient, and today a hosted page is read by the operator as well as
@@ -200,6 +220,8 @@ How it is built:
     malformed recipient are each dropped: the handler calls no `setReject`, `forward` or
     `reply`, answers as it does for a live address, and reaches no tenant object;
   * oversize messages and a full queue are dropped the same way;
+  * a flood of 200 messages from an unmatched sender holds back new mail only until a run stamps
+    them held; after that, each new issue evicts the oldest held spam;
   * the `newsletter-source` route writes each row of `workers/app/test/newsletter_source_cases.json`,
     refuses each refused case, an RSS source's name and an unseeded tenant, and lets two tenants
     hold the same source;
@@ -213,7 +235,10 @@ How it is built:
 * `tests/test_tenant_newsletter_source.py` checks several things:
   * the run's source pulls and acks only through its own tenant's gateway;
   * it leaves the queue alone on a preview, and chunks its ack;
-  * it holds unmatched mail for 8 days and ingests it once its source is added;
+  * it holds unmatched mail for 8 days, stamps what it holds (a preview does not), and ingests
+    it once its source is added;
+  * a mixed-case sender matches the route's lowercase source, by From or by a manual forward's
+    body, and an empty sender matches none;
   * it never takes a link that may name the recipient;
   * each case's row reads back as a fetchable newsletter source;
   * one issue reaches both tenants' runs' articles through that source.

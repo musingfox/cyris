@@ -253,3 +253,72 @@ async def test_one_issue_two_tenants_subscribed_to_reaches_both_runs_articles() 
     assert [(a.title, a.url, a.source_name) for a in got["bravo"]] == [
         (a.title, a.url, a.source_name) for a in got["alpha"]
     ]
+
+
+async def test_a_sender_written_in_mixed_case_matches_the_routes_lower_case_source() -> None:
+    """record.js stores From as written; the operator's route writes `email_match` lowercased."""
+    gateway, client = _seeded_with_case_source("alpha")
+    _queue(gateway, [_issue("nl:1", sender="Letter@News.example")])
+
+    articles = await _source(client).fetch_articles(
+        AFTER, BEFORE, D1SourceStore(client).list_sources()
+    )
+
+    assert [a.title for a in articles] == ["Issue nl:1"]
+    assert _ids(gateway) == []
+
+
+async def test_a_manual_forward_matches_its_original_sender_in_any_case() -> None:
+    gateway, client = _seeded_with_case_source("alpha")
+    _queue(
+        gateway,
+        [
+            _issue(
+                "nl:1",
+                sender="reader@gmail.example",
+                text="---------- Forwarded message ---------\nFrom: <LETTER@news.example>\nBody",
+            )
+        ],
+    )
+
+    articles = await _source(client).fetch_articles(
+        AFTER, BEFORE, D1SourceStore(client).list_sources()
+    )
+
+    assert [a.source_name for a in articles] == ["The Letter"]
+
+
+async def test_an_empty_sender_matches_no_source() -> None:
+    gateway, client = _seeded_with_case_source("alpha")
+    _queue(gateway, [_issue("nl:1", sender="")])
+
+    articles = await _source(client).fetch_articles(
+        AFTER, BEFORE, D1SourceStore(client).list_sources()
+    )
+
+    assert articles == []
+
+
+def _held(gateway: FakeGateway) -> dict[str, str | None]:
+    rows = gateway.db.query("SELECT id, held_at FROM newsletters ORDER BY id").rows
+    return {r["id"]: r["held_at"] for r in rows}
+
+
+async def test_a_run_stamps_what_it_holds_so_the_worker_may_evict_it_and_a_preview_does_not() -> (
+    None
+):
+    gateway = FakeGateway("alpha")
+    _queue(gateway, [_issue("nl:1", sender="x@else.example"), _issue("nl:2")])
+    client = _client("alpha", gateway)
+
+    await _source(client, ack=False).fetch_articles(AFTER, BEFORE, SOURCES)
+    after_preview = _held(gateway)
+    await _source(client).fetch_articles(AFTER, BEFORE, SOURCES)
+    first = _held(gateway)
+    later = TenantNewsletterSource(client, now=lambda: NOW + timedelta(hours=12))
+    await later.fetch_articles(AFTER, BEFORE, SOURCES)
+
+    assert after_preview == {"nl:1": None, "nl:2": None}
+    # The matched issue is acked; the unmatched one is held from the first run that saw it.
+    assert first == {"nl:1": NOW.isoformat()}
+    assert _held(gateway) == first

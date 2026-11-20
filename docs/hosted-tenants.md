@@ -340,7 +340,10 @@ keep the addresses where you keep the service token.
 
 A tenant's run, at 08:00 and 20:00 UTC or on `scripts/hosted.sh run`, deletes the messages its
 sources matched. It leaves a message no source matches for 8 days from its arrival, then
-deletes it, so a source added within those days still gets its issue. To keep a tenant's queue
+deletes it, so a source added within those days still gets its issue. The report shows such a
+message's `held_at`, when a run first left it queued. A queue of 200 makes room for new mail by
+evicting the oldest held message. A sender's case does not matter: `Letter@News.example` matches
+a source added as `letter@news.example`. To keep a tenant's queue
 for longer, pause it (step 5). A paused tenant still takes mail.
 
 ### 9.4 Measure a Gmail filter forward's DMARC result
