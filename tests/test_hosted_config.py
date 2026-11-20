@@ -104,6 +104,15 @@ def test_the_hosted_file_shares_nothing_with_the_default_one() -> None:
     assert "CYRIS_APP_WORKER_NAME" not in hosted.get("vars", {})
 
 
+def test_only_the_hosted_file_binds_the_sign_in_mail() -> None:
+    """The readers' sign-in mail (ADR-0033) is the hosted Worker's; production sends none."""
+    default, hosted = _toml("wrangler.toml"), _toml("wrangler.hosted.toml")
+
+    assert "send_email" not in default
+    assert hosted["send_email"] == [{"name": "MAIL"}]
+    assert "env.MAIL" in _js("hosted.js")
+
+
 def test_the_hosted_file_runs_the_same_image_on_the_same_runtime() -> None:
     default, hosted = _toml("wrangler.toml"), _toml("wrangler.hosted.toml")
     [container] = hosted["containers"]

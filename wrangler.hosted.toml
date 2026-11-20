@@ -15,9 +15,10 @@ main = "workers/app/src/hosted.js"
 # As wrangler.toml's, so the shared modules run on the same runtime semantics.
 compatibility_date = "2026-06-01"
 
-# workers.dev only, as a clone of wrangler.toml: every route checks the Access JWT
-# itself (ADR-0015), so the hostname's Access application is what lets a request
-# through. No Preview URLs: each would be another public hostname.
+# workers.dev only, as a clone of wrangler.toml. The operator's routes check the Access
+# JWT themselves (ADR-0015), so the Access application over /hosted/* is what lets the
+# operator through; a tenant's pages and the sign-in take a tenant session instead
+# (ADR-0033). No Preview URLs: each would be another public hostname.
 workers_dev = true
 preview_urls = false
 
@@ -60,6 +61,13 @@ name = "TENANT_DB"
 [[durable_objects.bindings]]
 class_name = "TenantRegistry"
 name = "REGISTRY"
+
+# The readers' sign-in mail (ADR-0033): Cloudflare Email Service's Workers binding, so the
+# Worker holds no API token. No restriction attributes: the recipients are the registry's
+# invite list, and the sender is CYRIS_HOSTED_MAIL_FROM, which must be an address on a
+# domain the operator onboarded to Email Sending (docs/hosted-tenants.md).
+[[send_email]]
+name = "MAIL"
 
 [[migrations]]
 tag = "v1"

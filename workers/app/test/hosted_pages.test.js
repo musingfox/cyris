@@ -7,6 +7,7 @@ import { serveTenantPage, sha256Hex } from "../src/hosted_pages.js";
 import { handleHostedRequest } from "../src/hosted_router.js";
 import { createSitePage } from "../src/hosted_site.js";
 import { seedTenant, tenantReport } from "../src/hosted_seed.js";
+import { SESSION_COOKIE, newToken, tokenHash } from "../src/hosted_session.js";
 import { LOCATION_HINT } from "../src/tenant_db.js";
 import { typeScaleStyle } from "../src/type_scale.js";
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace } from "./sql_storage.js";
@@ -28,8 +29,19 @@ const accessJwt = () =>
     .setExpirationTime(Math.floor(Date.now() / 1000) + 3600)
     .sign(privateKey);
 
-async function reader(path, { method = "GET", signedIn = true } = {}) {
-  const headers = signedIn ? { "Cf-Access-Jwt-Assertion": await accessJwt() } : {};
+// Each tenant's reader holds a session of that tenant (hosted_session.js), and the operator an
+// Access JWT, which opens no page under /t/.
+const SESSIONS = { alpha: newToken(), bravo: newToken(), charlie: newToken() };
+const SESSION_TENANTS = new Map(
+  await Promise.all(Object.entries(SESSIONS).map(async ([tenant, token]) => [await tokenHash(token), { tenant_id: tenant }])),
+);
+
+// A request for `path` by the reader of `as`, by default the tenant the path names; `as: null`
+// is a request with no session, and `operator` adds the operator's Access JWT.
+async function reader(path, { method = "GET", as = /^\/t\/([^/]+)/.exec(path)?.[1], operator = false } = {}) {
+  const headers = {};
+  if (as && SESSIONS[as]) headers.Cookie = `${SESSION_COOKIE}=${SESSIONS[as]}`;
+  if (operator) headers["Cf-Access-Jwt-Assertion"] = await accessJwt();
   return new Request(`${ORIGIN}${path}`, { method, headers });
 }
 
@@ -98,8 +110,10 @@ async function hosted({ scales = {} } = {}) {
   const reads = [];
   const deps = {
     accessKeys: ACCESS_KEYS,
-    // The registry: charlie is registered but has no pages; delta is not registered.
+    // The registry: charlie is registered but has no pages; delta is not registered, so no
+    // session is delta's.
     tenant: async (tenant) => (["alpha", "bravo", "charlie"].includes(tenant) ? { id: tenant, status: "active" } : null),
+    session: async (hash) => SESSION_TENANTS.get(hash) ?? null,
     page: (request, tenant, rest) => {
       reads.push(tenant);
       return serveTenantPage(request, {
@@ -115,7 +129,7 @@ async function hosted({ scales = {} } = {}) {
 }
 
 describe("a hosted tenant's pages", () => {
-  it("answer the latest issue, an older issue and a raw page with 200 to a signed-in operator", async () => {
+  it("answer the latest issue, an older issue and a raw page with 200 to the tenant's signed-in reader", async () => {
     const { get } = await hosted();
 
     const latest = await get("/t/alpha/");
@@ -141,12 +155,14 @@ describe("a hosted tenant's pages", () => {
     expect(icon.headers.get("Content-Type")).toBe("image/svg+xml");
   });
 
-  it("refuse every request without an Access sign-in, before reading any tenant", async () => {
+  it("send every request without a session to sign in, before reading any tenant, an operator's included", async () => {
     const { get, reads } = await hosted();
     for (const path of ["/t/alpha/", "/t/alpha/2026-11-17-evening", "/t/bravo/2026-11-18-evening-raw", "/t/nobody/"]) {
-      const response = await get(path, { signedIn: false });
-      expect(response.status).toBe(403);
-      expect(await response.text()).not.toContain("<html");
+      for (const response of [await get(path, { as: null }), await get(path, { as: null, operator: true })]) {
+        expect(response.status).toBe(302);
+        expect(response.headers.get("Location")).toBe("/login");
+        expect(await response.text()).not.toContain("<html");
+      }
     }
     expect(reads).toEqual([]);
   });
@@ -160,8 +176,10 @@ describe("a hosted tenant's pages", () => {
     expect((await get("/t/alpha/2026-11-18-evening")).status).toBe(404);
     expect((await get("/t/bravo/2026-11-17-evening")).status).toBe(404);
     expect((await get("/t/alpha/..%2Fbravo%2F2026-11-18-evening")).status).toBe(404);
-    expect((await get("/t/alpha/../bravo/2026-11-18-evening")).status).toBe(200);
-    // The URL parser resolved that dot segment to bravo's own route before any read.
+    // The URL parser resolves that dot segment to bravo's own route before any read, so it is
+    // bravo's reader's page and alpha's reader is refused it.
+    expect((await get("/t/alpha/../bravo/2026-11-18-evening", { as: "alpha" })).status).toBe(404);
+    expect((await get("/t/alpha/../bravo/2026-11-18-evening", { as: "bravo" })).status).toBe(200);
     expect(reads.at(-1)).toBe("bravo");
   });
 
@@ -201,7 +219,7 @@ describe("a hosted tenant's pages", () => {
   it("answer 404 for a tenant the registry does not hold, one never seeded, and a page the site lacks", async () => {
     const { get } = await hosted();
 
-    expect((await get("/t/delta/")).status).toBe(404);
+    expect((await get("/t/delta/", { as: "alpha" })).status).toBe(404);
     expect((await get("/t/charlie/")).status).toBe(404);
     expect((await get("/t/alpha/2020-01-01-morning")).status).toBe(404);
     expect((await get("/t/alpha/nested/2026-11-17-evening")).status).toBe(404);

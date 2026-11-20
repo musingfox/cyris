@@ -1,5 +1,5 @@
 // A hosted tenant's site: the pages its runs stored in its own Durable Object, served under
-// /t/<tenant>/ to a signed-in reader. The run renders them in its container and writes them into
+// /t/<tenant>/ to a reader signed in to that tenant (hosted_router.js). The run renders them in its container and writes them into
 // the tenant's `hosted_pages` table (src/cyris/adapters/output/hosted_pages.py); this module only
 // reads them back. docs/decisions/0029-a-hosted-tenants-pages-live-in-its-durable-object.md.
 // No workerd-only imports: vitest runs this under Node.
@@ -17,6 +17,47 @@ export const SITE_ROUTE = /^\/t\/([^/]+)(\/.*)?$/;
 
 // One file of the flat site, as the run stored it: no directories, no dot segments.
 const PAGE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+// The types a tenant's site is served as, whatever its `hosted_pages` row says: the two
+// `HostedPages` writes (src/cyris/adapters/output/hosted_pages.py). A row of any other type is a
+// page the run never wrote, so it is answered as missing.
+const SERVED_TYPES = ["text/html", "image/svg+xml"];
+
+// Every response under /t/, and the operator's copy of a tenant's page, carries these
+// (ADR-0033). The sandbox gives the page an opaque origin: its scripts still run, but as no
+// origin at all, so they read no cookie and no other page of this host, a tenant's or the
+// operator's, and every request they make is cross-site. The rest keeps what a script could
+// still do small: no fetch, no form, no base, no frame, and fonts and styles only from where the
+// templates load them. Images are any https: a digest shows the feeds' own.
+export const SITE_POLICY = [
+  "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox",
+  "default-src 'none'",
+  "script-src 'unsafe-inline'",
+  "style-src 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src https://fonts.gstatic.com",
+  "img-src https: data:",
+  "connect-src 'none'",
+  "form-action 'none'",
+  "base-uri 'none'",
+  "frame-ancestors 'none'",
+].join("; ");
+
+// Behind a sign-in: never indexed, and a link out names no page of the site.
+export const PRIVATE_HEADERS = {
+  "X-Robots-Tag": "noindex, nofollow",
+  "Referrer-Policy": "no-referrer",
+  "X-Content-Type-Options": "nosniff",
+};
+
+// `response` with the site's policy and the private headers set.
+export function siteHeaders(response) {
+  const headers = new Headers(response.headers);
+  headers.set("Content-Security-Policy", SITE_POLICY);
+  for (const [name, value] of Object.entries(PRIVATE_HEADERS)) headers.set(name, value);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+const served = (contentType) => SERVED_TYPES.includes(String(contentType).split(";")[0].trim().toLowerCase());
 
 const PAGE_SQL = "SELECT body, content_type FROM hosted_pages WHERE path = ?";
 
@@ -81,7 +122,7 @@ export async function serveTenantPage(request, { tenant, rest, db, deps }) {
       return json({ error: `could not read ${tenant}'s pages; try again` }, 503);
     }
   }
-  if (!row) {
+  if (!row || !served(row.content_type)) {
     return json({ error: paths === null ? `${tenant} has no issue yet` : `${tenant} has no page ${name}` }, 404);
   }
 

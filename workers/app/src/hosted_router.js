@@ -1,7 +1,9 @@
-// The hosted Worker's doors: the operator's routes and each tenant's site. Every request is
-// checked for a Cloudflare Access JWT first, by router.js's own check (ADR-0015), so a request
-// without one learns nothing, not even which tenants exist. Until tenant sessions land, the
-// sites too are served to whoever Access lets in, the operator. No workerd-only imports:
+// The hosted Worker's doors. A tenant's site and the sign-in take a tenant session and never an
+// Access JWT; every other path, the operator's routes above all, takes the Access JWT alone, by
+// router.js's own check (ADR-0015), and never reads a session. So no tenant session opens an
+// operator route, whatever Access covers, and a request with neither credential learns nothing,
+// not even which tenants exist. Why the two:
+// docs/decisions/0033-hosted-readers-sign-in-with-a-mailed-link.md. No workerd-only imports:
 // vitest runs this under Node.
 //
 //   POST /hosted/tenants/<tenant>/register[?status=S]       register a tenant, or set its status
@@ -9,38 +11,96 @@
 //   POST /hosted/tenants/<tenant>/run?period=P[&date=D]     one run of the tenant's digest
 //   POST /hosted/tenants/<tenant>/poll                      one poll of the tenant's RSS buffer
 //   GET  /hosted/tenants/<tenant>/report                    what the tenant's database holds
-//   GET  /t/<tenant>/...                                    the tenant's pages (hosted_pages.js)
+//   GET  /hosted/tenants/<tenant>/page                      the page /t/<tenant>/ serves, for the operator
+//   POST /hosted/tenants/<tenant>/invite   {"email": E}     put E on the invite list and mail it a link
+//   POST /hosted/tenants/<tenant>/revoke   {"email": E}     take E off the list, ending its sessions
+//   GET  /hosted/tenants/<tenant>/members                   the tenant's invite list
+//   GET  /t/<tenant>/...                                    the tenant's pages (hosted_pages.js), to its session
+//   /login, /login/confirm, /logout                         the sign-in (hosted_login.js)
 
-import { SITE_ROUTE } from "./hosted_pages.js";
+import { LOGIN_PATHS, handleLogin } from "./hosted_login.js";
+import { PRIVATE_HEADERS, SITE_ROUTE, siteHeaders } from "./hosted_pages.js";
+import { clearedSessionCookie, sessionToken, tokenHash } from "./hosted_session.js";
 import { RUN_PERIODS, accessRefusal, refuseRunDate } from "./router.js";
 import { ACTIVE } from "./tenant_status.js";
 
-const ROUTE = /^\/hosted\/tenants\/([^/]+)\/(register|seed|run|poll|report)$/;
-const METHOD = { register: "POST", seed: "POST", run: "POST", poll: "POST", report: "GET" };
+const ROUTE = /^\/hosted\/tenants\/([^/]+)\/(register|seed|run|poll|report|page|invite|revoke|members)$/;
+const METHOD = {
+  register: "POST",
+  seed: "POST",
+  run: "POST",
+  poll: "POST",
+  report: "GET",
+  page: "GET",
+  invite: "POST",
+  revoke: "POST",
+  members: "GET",
+};
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
+// The one answer a session gets for a path of any tenant but its own, registered or not.
+const NOT_FOUND = { error: "not found" };
+
+// Where a request with no live session goes: to the sign-in, before any tenant is looked up, so
+// it learns nothing of the path's tenant. A cookie that opened nothing is cleared.
+function signInFirst(request, stale) {
+  const headers = new Headers({ "Cache-Control": "no-store", ...PRIVATE_HEADERS });
+  if (stale) headers.append("Set-Cookie", clearedSessionCookie());
+  if (request.method === "GET" || request.method === "HEAD") {
+    headers.set("Location", "/login");
+    return new Response(null, { status: 302, headers });
+  }
+  headers.set("Content-Type", "application/json");
+  return new Response(JSON.stringify({ error: "sign in first" }), { status: 401, headers });
+}
+
+// A request under /t/<tenant>: served only to a live session whose tenant is the path's. The
+// session is the registry's answer for this request, never a cached one, and its tenant is the
+// one the registry bound it to, never one the request names.
+async function siteRequest(request, tenant, rest, deps) {
+  const token = sessionToken(request);
+  const session = token ? await deps.session(await tokenHash(token)) : null;
+  if (!session) return signInFirst(request, token !== null);
+  if (session.tenant_id !== tenant) return siteHeaders(json(NOT_FOUND, 404));
+  // A paused tenant's pages stay readable; only its runs stop.
+  return siteHeaders(await deps.page(request, tenant, rest));
+}
+
+// The address in an operator route's JSON body, `{"email": ...}`: in the body, so it is in no URL
+// and no log line. Anything else is "", which the registry refuses.
+async function bodyEmail(request) {
+  try {
+    const body = await request.json();
+    return typeof body?.email === "string" ? body.email : "";
+  } catch {
+    return "";
+  }
+}
+
 // `deps`: accessKeys, as router.js takes them; and per tenant, `register(tenant, status)`,
 // which answers `{tenant}` or `{refused}`, `tenant(tenant)`, its registry row or null,
 // `seed(tenant)`, `report(tenant)`, `timeZone(tenant)`, `startRun(tenant, period, date)`,
-// `poll(tenant)`, which answers what the poll did or `{error}`, and `page(request, tenant, rest)`,
-// which answers under /t/<tenant> from that tenant's object.
+// `poll(tenant)`, which answers what the poll did or `{error}`, `page(request, tenant, rest)`,
+// which answers under /t/<tenant> from that tenant's object, `invite(tenant, email)` and
+// `revoke(tenant, email)`, which answer the registry's `{member}`, `{revoked}` or
+// `{refused, status}`, `members(tenant)`, and `signIn(email)` (hosted_login.js's createSignIn).
+// For readers: `session(sessionHash)`, the registry's live session or null, and `login`, what
+// handleLogin takes.
 export async function handleHostedRequest(request, env, deps) {
+  const url = new URL(request.url);
+  const site = SITE_ROUTE.exec(url.pathname);
+  if (site) return siteRequest(request, site[1], site[2] ?? "", deps);
+  if (LOGIN_PATHS.has(url.pathname)) return handleLogin(request, deps.login);
+
+  // Every other path is the operator's: the Access JWT, and only it.
   const refusal = await accessRefusal(request, env, deps);
   if (refusal) return json({ error: "forbidden", detail: refusal }, 403);
 
-  const url = new URL(request.url);
-  const site = SITE_ROUTE.exec(url.pathname);
-  if (site) {
-    const [, tenant, rest = ""] = site;
-    // A paused tenant's pages stay readable; only its runs stop.
-    if (!(await deps.tenant(tenant))) return json({ error: `${tenant} is not a registered tenant` }, 404);
-    return deps.page(request, tenant, rest);
-  }
   const match = ROUTE.exec(url.pathname);
   if (!match) {
-    return json({ error: "not found", routes: "/hosted/tenants/<tenant>/{register,seed,run,poll,report}, /t/<tenant>/" }, 404);
+    return json({ error: "not found", routes: `/hosted/tenants/<tenant>/{${Object.keys(METHOD).join(",")}}` }, 404);
   }
   const [, tenant, action] = match;
   if (request.method !== METHOD[action]) return json({ error: `${action} takes ${METHOD[action]}` }, 405);
@@ -56,6 +116,22 @@ export async function handleHostedRequest(request, env, deps) {
 
   if (action === "seed") return json(await deps.seed(tenant));
   if (action === "report") return json(await deps.report(tenant));
+  // The operator reads a tenant's latest page here, with Access, sandboxed as /t/ serves it; the
+  // operator holds no tenant session, so /t/ itself is never theirs.
+  if (action === "page") return siteHeaders(await deps.page(request, tenant, "/"));
+  if (action === "members") return json(await deps.members(tenant));
+  if (action === "revoke") {
+    const answer = await deps.revoke(tenant, await bodyEmail(request));
+    return answer.refused ? json({ error: answer.refused }, answer.status) : json(answer.revoked);
+  }
+  if (action === "invite") {
+    const answer = await deps.invite(tenant, await bodyEmail(request));
+    if (answer.refused) return json({ error: answer.refused }, answer.status);
+    // The invitation is the member's first sign-in link, the one /login would mail: single-use
+    // and short-lived. Mailed now, so the operator sees whether it went.
+    const mail = await deps.signIn(answer.member.email);
+    return json({ ...answer.member, mail }, mail.error ? 502 : 200);
+  }
 
   if (registered.status !== ACTIVE) return json({ error: `${tenant} is ${registered.status}, not ${ACTIVE}` }, 409);
   // The tick's poll, out of the cron, so the operator can see a tenant's buffer fill and what one
