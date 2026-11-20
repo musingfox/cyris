@@ -132,6 +132,18 @@ def test_the_hosted_file_runs_the_same_image_on_the_same_runtime() -> None:
     assert (hosted["workers_dev"], hosted["preview_urls"]) == (True, False)
 
 
+def test_a_pending_container_monitor_keeps_the_tenant_object_in_memory() -> None:
+    # The run queue learns a run ended from monitor(); on a date before 2026-10-01 only this
+    # flag stops the object being evicted while monitor() waits.
+    hosted = _toml("wrangler.hosted.toml")
+
+    assert hosted["compatibility_date"] < "2026-10-01"
+    assert "durable_object_io_tasks_prevent_eviction" in hosted.get("compatibility_flags", [])
+    assert "durable_object_io_tasks_do_not_prevent_eviction" not in hosted.get(
+        "compatibility_flags", []
+    )
+
+
 def test_the_hosted_file_is_deployed_by_no_workflow() -> None:
     """Only wrangler.toml deploys on a push; the hosted Worker goes to the trial account by hand."""
     workflows = sorted((ROOT / ".github/workflows").glob("*.yml"))

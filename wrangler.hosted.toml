@@ -14,6 +14,12 @@ name = "cyris-hosted"
 main = "workers/app/src/hosted.js"
 # As wrangler.toml's, so the shared modules run on the same runtime semantics.
 compatibility_date = "2026-06-01"
+# Before 2026-10-01 a pending ctx.container.monitor() does not keep the object in memory, so an
+# object with no request for 70-140 s is evicted mid-run and the run queue never hears the stop
+# (the lease ends it 20 minutes later). The flag keeps it for up to 15 minutes per monitor():
+# https://developers.cloudflare.com/sandbox/concepts/lifetime/ . Hosted only: wrangler.toml's
+# Worker only logs the stop, and its date moves with production.
+compatibility_flags = ["durable_object_io_tasks_prevent_eviction"]
 
 # workers.dev only, as a clone of wrangler.toml. The operator's routes check the Access
 # JWT themselves (ADR-0015), so the Access application over /hosted/* is what lets the
