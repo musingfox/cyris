@@ -91,21 +91,29 @@ export class TenantDbGateway extends WorkerEntrypoint {
     // A gateway registered without a tenant is a wiring fault, never a gateway to every tenant.
     const tenant = this.ctx.props?.tenant;
     if (!tenant || parts[1] !== tenant) return refuse(403, `tenant ${parts[1]} is not this run's`);
-    let body;
-    try {
-      body = await request.json();
-    } catch (error) {
-      return refuse(400, `the body is not JSON: ${error}`);
-    }
-    const params = body?.params ?? [];
-    if (typeof body?.sql !== "string" || !Array.isArray(params)) {
-      return refuse(400, "the body must be {sql, params}");
-    }
-    try {
-      return Response.json(await tenantDb(this.env, tenant).query(body.sql, params));
-    } catch (error) {
-      return refuse(failureStatus(error), String(error?.message ?? error));
-    }
+    return answerQuery(tenantDb(this.env, tenant), request);
+  }
+}
+
+// One `{sql, params}` request answered from `db`, a tenant's object: `{rows, changes}`, or D1's
+// error shape with `failureStatus`'s status. The run's gateway and the operator's query route
+// (hosted.js) both answer through here, so the operator's client reads a tenant exactly as the
+// tenant's own run does. Whose tenant `db` is, and who may ask, is the caller's to have checked.
+export async function answerQuery(db, request) {
+  let body;
+  try {
+    body = await request.json();
+  } catch (error) {
+    return refuse(400, `the body is not JSON: ${error}`);
+  }
+  const params = body?.params ?? [];
+  if (typeof body?.sql !== "string" || !Array.isArray(params)) {
+    return refuse(400, "the body must be {sql, params}");
+  }
+  try {
+    return Response.json(await db.query(body.sql, params));
+  } catch (error) {
+    return refuse(failureStatus(error), String(error?.message ?? error));
   }
 }
 

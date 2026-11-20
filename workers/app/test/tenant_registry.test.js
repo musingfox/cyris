@@ -197,27 +197,31 @@ describe("the hosted Worker's operator routes, over the registry", () => {
     for (const key of Object.keys(env)) delete env[key];
   });
 
-  const operator = async (method, path) => {
-    const jwt = await new SignJWT({})
+  const signIn = () =>
+    new SignJWT({})
       .setProtectedHeader({ alg: "RS256", kid: "k1" })
       .setIssuer(`https://${env.CYRIS_ACCESS_TEAM_DOMAIN}`)
       .setAudience(AUD)
       .setIssuedAt()
       .setExpirationTime(Math.floor(Date.now() / 1000) + 3600)
       .sign(privateKey);
+
+  const operator = async (method, path, body) => {
     const request = new Request(`https://cyris-hosted.example.workers.dev${path}`, {
       method,
-      headers: { "Cf-Access-Jwt-Assertion": jwt },
+      headers: { "Cf-Access-Jwt-Assertion": await signIn() },
+      body: body === undefined ? undefined : JSON.stringify(body),
     });
     return worker.fetch(request);
   };
 
-  it("refuse to seed, start, poll or report a tenant before it is registered, touching none of its objects", async () => {
+  it("refuse to seed, start, poll, report or query a tenant before it is registered, touching none of its objects", async () => {
     for (const [method, path] of [
       ["POST", "/hosted/tenants/alpha/seed"],
       ["POST", "/hosted/tenants/alpha/run?period=morning"],
       ["POST", "/hosted/tenants/alpha/poll"],
       ["GET", "/hosted/tenants/alpha/report"],
+      ["POST", "/hosted/tenants/alpha/query"],
     ]) {
       const response = await operator(method, path);
       expect(response.status, path).toBe(404);
@@ -300,6 +304,75 @@ describe("the hosted Worker's operator routes, over the registry", () => {
     expect((await operator("POST", "/hosted/tenants/alpha/register?status=active")).status).toBe(200);
     expect((await operator("POST", "/hosted/tenants/alpha/run?period=morning")).status).toBe(200);
     expect(bound.starts).toEqual([["alpha", { period: "morning", date: undefined }]]);
+  });
+
+  it("query read and write one registered tenant's own database, and no other tenant's", async () => {
+    await operator("POST", "/hosted/tenants/alpha/register");
+    await operator("POST", "/hosted/tenants/bravo/register");
+    await operator("POST", "/hosted/tenants/alpha/seed");
+    await operator("POST", "/hosted/tenants/bravo/seed");
+    const sql = "UPDATE settings SET value = ? WHERE key = ?";
+
+    const written = await operator("POST", "/hosted/tenants/alpha/query", { sql, params: ['"Asia/Taipei"', "general.timezone"] });
+    const read = await operator("POST", "/hosted/tenants/alpha/query", {
+      sql: "SELECT value FROM settings WHERE key = ?",
+      params: ["general.timezone"],
+    });
+
+    expect(written.status).toBe(200);
+    expect(await written.json()).toEqual({ rows: [], changes: 1 });
+    expect(await read.json()).toEqual({ rows: [{ value: '"Asia/Taipei"' }], changes: 0 });
+    const bravo = bound.TENANT_DB.getByName("bravo").query("SELECT value FROM settings WHERE key = ?", ["general.timezone"]);
+    expect(bravo.rows).toEqual([{ value: '"UTC"' }]);
+    expect(bound.starts).toEqual([]);
+  });
+
+  it("query a paused tenant too, since only its runs stop", async () => {
+    await operator("POST", "/hosted/tenants/alpha/register?status=paused");
+
+    const response = await operator("POST", "/hosted/tenants/alpha/query", { sql: "SELECT 1 AS one" });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ rows: [{ one: 1 }], changes: 0 });
+  });
+
+  it("answer a refused query in D1's error shape, which the operator's client reads", async () => {
+    await operator("POST", "/hosted/tenants/alpha/register");
+
+    const missing = await operator("POST", "/hosted/tenants/alpha/query", { sql: "SELECT * FROM nowhere" });
+    const shapeless = await operator("POST", "/hosted/tenants/alpha/query", { sql: 7 });
+    const wrongMethod = await operator("GET", "/hosted/tenants/alpha/query");
+
+    expect(missing.status).toBe(400);
+    expect((await missing.json()).errors[0].message).toContain("no such table: nowhere");
+    expect(shapeless.status).toBe(400);
+    expect(await shapeless.json()).toEqual({ errors: [{ message: "the body must be {sql, params}" }] });
+    expect(wrongMethod.status).toBe(405);
+  });
+
+  it("refuse a query without the operator's Access sign-in before any object is reached", async () => {
+    await tenantRegistry(env).register("alpha");
+    bound.REGISTRY.gets.length = 0;
+    const body = JSON.stringify({ sql: "SELECT * FROM settings" });
+    const url = "https://cyris-hosted.example.workers.dev/hosted/tenants/alpha/query";
+    const forged = await new SignJWT({})
+      .setProtectedHeader({ alg: "RS256", kid: "k1" })
+      .setIssuer("https://someone-else.cloudflareaccess.com")
+      .setAudience(AUD)
+      .setExpirationTime(Math.floor(Date.now() / 1000) + 3600)
+      .sign(privateKey);
+
+    for (const headers of [{}, { "Cf-Access-Jwt-Assertion": "not-a-jwt" }, { "Cf-Access-Jwt-Assertion": forged }]) {
+      const response = await worker.fetch(new Request(url, { method: "POST", headers, body }));
+      expect(response.status).toBe(403);
+      expect((await response.json()).error).toBe("forbidden");
+    }
+    // A Worker with no Access settings fails closed, whatever the request carries.
+    delete env.CYRIS_ACCESS_AUD;
+    const unset = await worker.fetch(new Request(url, { method: "POST", headers: { "Cf-Access-Jwt-Assertion": await signIn() }, body }));
+    expect(unset.status).toBe(403);
+    expect(bound.REGISTRY.gets).toEqual([]);
+    expect(bound.TENANT_DB.gets).toEqual([]);
   });
 
   it("refuse to register an id or a status the registry does not take", async () => {
