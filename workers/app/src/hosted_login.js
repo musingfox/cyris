@@ -64,9 +64,10 @@ export function signInMail({ to, domain, token }) {
 
 // `signIn(email)`: issues a link for `email` through `issue(email, codeHash)` (the registry's
 // `issueSignIn`) and mails it from `from` through `mail`, the Email Service binding. Answers
-// `{sent, tenant, expires_at}`, `{refused}` when the registry issued none, or `{error}` when the
-// Worker cannot mail or the mail was refused. The token exists only here and in the mail; an
-// error names the binding's code, never the token or the address.
+// `{sent, tenant, expires_at}`, `{refused}` when the registry issued none (an address off the
+// list, one asking again within the gap, or one past SIGN_IN_DAILY_CAP or SIGN_IN_HOURLY_CAP), or
+// `{error}` when the Worker cannot mail or the mail was refused. The token exists only here and
+// in the mail; an error names the binding's code, never the token or the address.
 export function createSignIn({ issue, mail, from, domain }) {
   return async (rawEmail) => {
     const unset = [!mail && "MAIL binding", !from && "CYRIS_HOSTED_MAIL_FROM", !domain && "CYRIS_STORE_HOSTED_DOMAIN"];
@@ -74,7 +75,12 @@ export function createSignIn({ issue, mail, from, domain }) {
     const email = normalEmail(rawEmail);
     const token = newToken();
     const issued = await issue(email, await tokenHash(token));
-    if (!issued.tenant) return { refused: issued.refused };
+    if (!issued.tenant) {
+      // A cap reached is the operator's to see, since it also holds a reader's own link back; the
+      // line names the cap, never the address.
+      if (issued.capped) console.warn(`sign-in mail held: the ${issued.capped} cap is reached`);
+      return { refused: issued.refused };
+    }
     try {
       await mail.send({ ...signInMail({ to: email, domain, token }), from });
     } catch (error) {

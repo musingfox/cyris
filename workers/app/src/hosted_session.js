@@ -15,6 +15,16 @@ export const SESSION_COOKIE = "__Host-reader_session";
 // address, so a stranger cannot fill a listed inbox by asking again and again.
 export const SIGN_IN_TTL_MS = 15 * 60 * 1000;
 export const SIGN_IN_GAP_MS = 60 * 1000;
+// The most sign-in mails, the operator's invitation among them, one address is sent in any 24
+// hours, and all addresses together in any hour, so no one asking can spend the operator's mail
+// quota: past either, no link is issued and the answer to /login is the one it always is. A
+// session lasts 14 days, so a reader needs one link a fortnight; five a day covers a few devices
+// and a mistyped confirm. Thirty an hour lets the operator invite a beta cohort at once, and held
+// for a whole day is 720 mails, a few dollars past Workers Paid's included 3,000 a month.
+export const SIGN_IN_DAILY_CAP = 5;
+export const SIGN_IN_HOURLY_CAP = 30;
+export const SIGN_IN_DAY_MS = 24 * 60 * 60 * 1000;
+export const SIGN_IN_HOUR_MS = 60 * 60 * 1000;
 // How long a session lasts from the sign-in that made it; it is not extended by use.
 export const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 

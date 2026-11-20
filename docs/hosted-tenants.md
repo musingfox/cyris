@@ -325,7 +325,10 @@ Then check each of these, and keep the result:
 `scripts/hosted.sh revoke alpha reader@example.net` takes an address off the list. Its sessions
 end at their next request, and any unspent link stops working. A reader signs out at
 `HOSTED_URL/logout`. A reader whose session has expired, after 14 days, asks for a new link at
-`HOSTED_URL/login`; at most one link a minute is mailed to one address.
+`HOSTED_URL/login`; at most one link a minute, and five a day, is mailed to one address, and
+at most thirty an hour to everyone, invitations included. When a reader says no link came, look
+in the Worker's logs for `sign-in mail held`: it names which cap was reached. An invite past the
+hourly cap answers its refusal in `mail`; invite again after the hour.
 
 The vote buttons and the Settings link stay hidden on a tenant's pages, because the hosted Worker
 has no `/api/vote` or `/settings` yet, and each page is served sandboxed, so its scripts run with

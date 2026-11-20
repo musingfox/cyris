@@ -8,7 +8,15 @@ import worker from "../src/hosted.js";
 import { createSignIn, signInMail } from "../src/hosted_login.js";
 import { SITE_POLICY } from "../src/hosted_pages.js";
 import { seedTenant } from "../src/hosted_seed.js";
-import { SESSION_COOKIE, SESSION_TTL_MS, SIGN_IN_GAP_MS, SIGN_IN_TTL_MS, tokenHash } from "../src/hosted_session.js";
+import {
+  SESSION_COOKIE,
+  SESSION_TTL_MS,
+  SIGN_IN_DAILY_CAP,
+  SIGN_IN_GAP_MS,
+  SIGN_IN_HOURLY_CAP,
+  SIGN_IN_TTL_MS,
+  tokenHash,
+} from "../src/hosted_session.js";
 import { tenantRegistry } from "../src/tenant_registry.js";
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace, registryNamespace } from "./sql_storage.js";
 
@@ -297,6 +305,64 @@ describe("signing in to a hosted tenant", () => {
     await call("/login", { method: "POST", form: { email: "ana@example.com" } });
 
     expect(bound.MAIL.sent).toHaveLength(2);
+  });
+});
+
+describe("the caps on sign-in mail", () => {
+  const registry = () => bound.REGISTRY.getByName("cyris:registry");
+  // Every part of an answer a client sees: status, headers and body.
+  const seen = async (response) => [response.status, [...response.headers], await response.text()];
+  const ask = (email) => call("/login", { method: "POST", form: { email } });
+
+  it("answer an address past its daily cap as they answer one off the list, and mail neither", async () => {
+    for (let i = 0; i < SIGN_IN_DAILY_CAP; i++) {
+      vi.setSystemTime(new Date(AT.getTime() + i * (SIGN_IN_GAP_MS + 1000)));
+      await ask("ana@example.com");
+    }
+    expect(bound.MAIL.sent).toHaveLength(SIGN_IN_DAILY_CAP);
+    vi.setSystemTime(new Date(AT.getTime() + SIGN_IN_DAILY_CAP * (SIGN_IN_GAP_MS + 1000)));
+    const warnings = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const capped = await seen(await ask("ana@example.com"));
+    const unlisted = await seen(await ask("stranger@example.com"));
+
+    expect(capped).toEqual(unlisted);
+    expect(capped[0]).toBe(200);
+    expect(bound.MAIL.sent).toHaveLength(SIGN_IN_DAILY_CAP);
+    expect(warnings.mock.calls.flat().join("\n")).toBe("sign-in mail held: the daily cap is reached");
+  });
+
+  it("answer every address past the hourly cap as they answer one off the list, and mail none", async () => {
+    // An hour's worth of links already went out, to a cohort the operator invited to charlie.
+    for (let i = 0; i < SIGN_IN_HOURLY_CAP; i++) {
+      registry().invite("charlie", `reader${i}@example.com`);
+      registry().issueSignIn(`reader${i}@example.com`, `h-${i}`);
+    }
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const before = rows("invites").length;
+
+    const listed = await seen(await ask("ana@example.com"));
+    const unlisted = await seen(await ask("stranger@example.com"));
+
+    expect(listed).toEqual(unlisted);
+    expect(bound.MAIL.sent).toEqual([]);
+    expect(rows("invites")).toHaveLength(before);
+    // The operator's invitation is held by the same cap, and the answer says so.
+    const invited = await call("/hosted/tenants/charlie/invite", { method: "POST", operator: true, body: { email: "cy@example.com" } });
+    expect(invited.status).toBe(200);
+    expect((await invited.json()).mail).toEqual({ refused: `${SIGN_IN_HOURLY_CAP} links were sent in an hour` });
+    expect(bound.MAIL.sent).toEqual([]);
+  });
+
+  it("leave the registry as it was however many addresses off the list ask", async () => {
+    const before = JSON.stringify([rows("members"), rows("invites"), rows("sessions"), rows("tenants")]);
+
+    for (let i = 0; i < SIGN_IN_HOURLY_CAP * 2; i++) await ask(`stranger${i}@example.com`);
+
+    expect(JSON.stringify([rows("members"), rows("invites"), rows("sessions"), rows("tenants")])).toBe(before);
+    expect(bound.MAIL.sent).toEqual([]);
+    await ask("ana@example.com");
+    expect(bound.MAIL.sent).toHaveLength(1);
   });
 });
 

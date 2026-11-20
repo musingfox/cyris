@@ -8,7 +8,17 @@
 
 import { DurableObject } from "cloudflare:workers";
 import RESERVED_IDS from "./hosted_reserved_ids.json";
-import { SESSION_TTL_MS, SIGN_IN_GAP_MS, SIGN_IN_TTL_MS, isEmail, normalEmail } from "./hosted_session.js";
+import {
+  SESSION_TTL_MS,
+  SIGN_IN_DAILY_CAP,
+  SIGN_IN_DAY_MS,
+  SIGN_IN_GAP_MS,
+  SIGN_IN_HOURLY_CAP,
+  SIGN_IN_HOUR_MS,
+  SIGN_IN_TTL_MS,
+  isEmail,
+  normalEmail,
+} from "./hosted_session.js";
 import { LOCATION_HINT, TENANT } from "./tenant_db.js";
 import { ACTIVE, TENANT_STATUSES } from "./tenant_status.js";
 
@@ -197,20 +207,31 @@ export class TenantRegistry extends DurableObject {
 
   // Records a sign-in link for `email`, keyed by `codeHash`, the SHA-256 of a token only the mail
   // will carry, and answers `{tenant, expires_at}`: the tenant the link opens, from the invite
-  // list. An address on no registered tenant's list gets `{refused}` and no row; so does one that
-  // was sent a link less than SIGN_IN_GAP_MS ago, which that link still serves.
+  // list. An address on no registered tenant's list gets `{refused}` and writes no row, so a
+  // stranger asking adds nothing here. A listed address also gets `{refused}`, and no row, when it
+  // was sent a link less than SIGN_IN_GAP_MS ago, which that link still serves, or when a cap is
+  // reached: SIGN_IN_DAILY_CAP links to it in a day, or SIGN_IN_HOURLY_CAP to everyone in an
+  // hour, `capped` naming which. A link's row is kept a day past its issue, spent or expired, to
+  // count against the caps, so the table holds at most a day of the caps' links.
   issueSignIn(rawEmail, codeHash, { now = new Date() } = {}) {
     const email = normalEmail(rawEmail);
     const sql = this.ctx.storage.sql;
-    sql.exec("DELETE FROM invites WHERE expires_at <= ?", stamp(now));
+    const since = (ms) => stamp(new Date(now.getTime() - ms));
+    sql.exec("DELETE FROM invites WHERE created_at <= ?", since(SIGN_IN_DAY_MS));
     const [member] = sql.exec(MEMBER_SQL, email).toArray();
     if (!member) return { refused: "not invited" };
     const recent = sql.exec(
       "SELECT count(*) AS n FROM invites WHERE email = ? AND used_at IS NULL AND created_at > ?",
       email,
-      stamp(new Date(now.getTime() - SIGN_IN_GAP_MS)),
+      since(SIGN_IN_GAP_MS),
     );
     if (recent.one().n > 0) return { refused: "a link was sent less than a minute ago" };
+    const today = sql.exec("SELECT count(*) AS n FROM invites WHERE email = ?", email).one().n;
+    if (today >= SIGN_IN_DAILY_CAP) {
+      return { refused: `${SIGN_IN_DAILY_CAP} links were sent to this address in a day`, capped: "daily" };
+    }
+    const hour = sql.exec("SELECT count(*) AS n FROM invites WHERE created_at > ?", since(SIGN_IN_HOUR_MS)).one().n;
+    if (hour >= SIGN_IN_HOURLY_CAP) return { refused: `${SIGN_IN_HOURLY_CAP} links were sent in an hour`, capped: "hourly" };
     const expires = after(now, SIGN_IN_TTL_MS);
     sql.exec(
       "INSERT INTO invites (code, email, tenant_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",

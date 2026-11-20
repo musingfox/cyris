@@ -105,8 +105,12 @@ How it works:
 * **The link.** `POST /login` takes an address. If the registry's list holds it, the Worker
   records a link and mails it. The registry is asked after the answer is sent (`waitUntil`), so
   the page and its timing are the same for an address on the list and one off it. An address gets
-  at most one link a minute. The operator's invitation is the first link, mailed by the invite
-  route. A link is 32 random bytes. The registry keeps only its SHA-256 (`invites.code`), bound
+  at most one link a minute and five in any 24 hours, and all addresses together at most thirty
+  in any hour (`SIGN_IN_DAILY_CAP`, `SIGN_IN_HOURLY_CAP`), so asking again and again can neither
+  fill an inbox nor spend the operator's mail quota. Past a cap no link is mailed and the answer
+  is still the one an address off the list gets, so the cap tells the asker nothing. An address
+  off the list writes nothing to the registry, so a flood of strangers adds no row. The operator's
+  invitation is the first link, mailed by the invite route, and counts against the same caps. A link is 32 random bytes. The registry keeps only its SHA-256 (`invites.code`), bound
   to the address and the tenant on the list. The link expires after 15 minutes and is spent the
   first time it is used.
 * **The token rides in the fragment.** The link is `https://<hosted domain>/login/confirm#<token>`.
@@ -170,7 +174,9 @@ self-hosted deployment, production, trials and forks, ADR-0015 is unchanged: `wr
 ### Consequences
 
 * Good, because a reader costs nothing per seat. The mail is within Workers Paid's included
-  3,000 a month until the beta is large.
+  3,000 a month until the beta is large, and the caps hold the worst case to 720 mails a day.
+* Bad, because past the hourly cap a reader's own link is held too, until the hour has passed.
+  The Worker logs that a cap was reached, so the operator can tell a flood from a lost mail.
 * Good, because the tenant a reader may read is decided by the Worker against the registry on
   every request, and is no longer whatever the Access policy admits.
 * Good, because no token is stored, logged or sent in a `Referer`, and a session ends at its next
@@ -206,12 +212,14 @@ self-hosted deployment, production, trials and forks, ADR-0015 is unchanged: `wr
 
 * `workers/app/test/tenant_registry.test.js` ("the registry's sign-in") checks five things. An
   address goes on one tenant's list only. A link is issued only to a listed address, for its
-  tenant, keyed by a hash, at most once a minute. A link opens one session once and none when
+  tenant, keyed by a hash, at most once a minute and within the daily and hourly caps, and an
+  address off the list writes nothing. A link opens one session once and none when
   expired or unknown. A session past its time is refused. A sign-out or a revoke ends a session at
   once. It also checks the reserved and hyphen-edged ids.
 * `workers/app/test/hosted_login.test.js` drives the router over the real registry and checks
   nine things:
-  * a listed address is mailed a link and an unlisted one is not, with the same answer;
+  * a listed address is mailed a link and an unlisted one is not, with the same answer, and past
+    either cap a listed address gets that same answer and no mail;
   * the link opens the reader's own latest digest;
   * A's session is refused on every path of B, registered or not, with one answer;
   * an expired session, a reused link and an expired link are each refused;
