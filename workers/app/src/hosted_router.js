@@ -20,7 +20,7 @@
 
 import { LOGIN_PATHS, handleLogin } from "./hosted_login.js";
 import { PRIVATE_HEADERS, SITE_ROUTE, siteHeaders } from "./hosted_pages.js";
-import { clearedSessionCookie, sessionToken, tokenHash } from "./hosted_session.js";
+import { clearedSessionCookie, crossSite, sessionToken, tokenHash } from "./hosted_session.js";
 import { RUN_PERIODS, accessRefusal, refuseRunDate } from "./router.js";
 import { ACTIVE } from "./tenant_status.js";
 
@@ -36,6 +36,8 @@ const METHOD = {
   revoke: "POST",
   members: "GET",
 };
+// The routes that change who may sign in, and to which tenant.
+const CHANGES_MEMBERS = new Set(["invite", "revoke"]);
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -104,6 +106,13 @@ export async function handleHostedRequest(request, env, deps) {
   }
   const [, tenant, action] = match;
   if (request.method !== METHOD[action]) return json({ error: `${action} takes ${METHOD[action]}` }, 405);
+  // The Access cookie is SameSite=None, so a page on any site can post to the operator's routes
+  // with the operator's sign-in. Who may enter a tenant is the operator's alone to change, so the
+  // invite list's routes take no other site's request; curl, hosted.sh's, sends none of the
+  // headers that would mark one. The other POST routes are the hardening card's (M1).
+  if (CHANGES_MEMBERS.has(action) && crossSite(request)) {
+    return json({ error: "the invite list is changed from this site or with curl, not from another site" }, 403);
+  }
 
   // The registry is the tenant list: a tenant is registered here first, and every other
   // route is refused for one it does not hold. Only an active tenant is started.

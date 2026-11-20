@@ -95,7 +95,11 @@ How it works:
   route.
 * **The invite list.** Only the operator adds an address, with
   `POST /hosted/tenants/<tenant>/invite`, and takes one off, with `.../revoke`. Both are
-  Access-checked and take the address in a JSON body, so it stays out of URLs and logs. `GET
+  Access-checked and take the address in a JSON body, so it stays out of URLs and logs. Both
+  also refuse a request a browser sent from another site, by the sign-in's own check (below): the
+  Access cookie is `SameSite=None` by default, so without it a page on any site could post a
+  `text/plain` body with the operator's sign-in and put its own address on a tenant's list. curl
+  sends no `Origin` and no `Sec-Fetch-Site`, so `scripts/hosted.sh` passes. `GET
   .../members` lists a tenant's addresses. An address belongs to one tenant: `members.email` is
   the key. The registry alone answers which tenant a sign-in opens, so no request names one.
 * **The link.** `POST /login` takes an address. If the registry's list holds it, the Worker
@@ -206,13 +210,15 @@ self-hosted deployment, production, trials and forks, ADR-0015 is unchanged: `wr
   expired or unknown. A session past its time is refused. A sign-out or a revoke ends a session at
   once. It also checks the reserved and hyphen-edged ids.
 * `workers/app/test/hosted_login.test.js` drives the router over the real registry and checks
-  eight things:
+  nine things:
   * a listed address is mailed a link and an unlisted one is not, with the same answer;
   * the link opens the reader's own latest digest;
   * A's session is refused on every path of B, registered or not, with one answer;
   * an expired session, a reused link and an expired link are each refused;
   * a tenant session never passes `/hosted/`, and `/hosted/` refuses a request without an
     Access JWT even when it carries one;
+  * an invite or a revoke posted from another site with the operator's Access JWT is refused,
+    and nothing is written or mailed;
   * an Access JWT opens no `/t/` page;
   * the cookie's attributes are set, the token is in no URL and no log line, and the registry
     keeps no token;
@@ -276,4 +282,5 @@ self-hosted deployment, production, trials and forks, ADR-0015 is unchanged: `wr
   unsandboxed one, which needs a browser; the Access dashboard's labels for a path-scoped
   destination on `workers.dev`; and whether Workers Logs records request headers.
 * Left to other cards: the operator's own identity check (H1's operator allow-list), CSRF
-  protection on the operator's POST routes (M1), and the tenant's language on the sign-in pages.
+  protection on the operator's other POST routes, `register`, `seed`, `run` and `poll` (M1; the
+  invite list's two routes have it here), and the tenant's language on the sign-in pages.

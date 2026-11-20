@@ -1431,7 +1431,11 @@ cookie is read there, so no tenant session passes `/hosted/`, and the Access app
 `/hosted/*` only. Behind it are the operator's routes (register a tenant or set its status, seed
 it, start one run with `?period=` and a `date` checked against the tenant's own time zone, poll
 its RSS feeds once, report what its database holds, read its latest page, and invite, revoke or
-list the addresses on its invite list). Each tenant's site at `/t/<tenant>/` takes a tenant
+list the addresses on its invite list). Invite and revoke also refuse a request a browser sent
+from another site, an `Origin` that is not the Worker's or a `Sec-Fetch-Site` of `cross-site` or
+`same-site`, because the Access cookie is `SameSite=None` and the invite list decides who enters
+a tenant; curl sends neither header, so `scripts/hosted.sh` passes. The other POST routes do not
+check it yet. Each tenant's site at `/t/<tenant>/` takes a tenant
 session and no Access JWT: it is read from the tenant's own `hosted_pages` (§4) and sized with
 the tenant's own type size, as the default Worker sizes its pages. A request with no live session
 is sent to `/login` before any tenant is looked up, and a session gets one fixed 404 for every

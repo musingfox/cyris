@@ -114,8 +114,9 @@ const accessJwt = () =>
     .sign(privateKey);
 
 // One request through hosted.js, and whatever it left to waitUntil. A browser's POST carries its
-// Origin, so `browser` sets it; `session` is a cookie, `operator` an Access JWT.
-async function call(path, { method = "GET", session, operator = false, form, body, headers = {} } = {}) {
+// Origin, so `form` sets it; `session` is a cookie, `operator` an Access JWT, and `text` a body
+// sent as text/plain, which a page on any site may post without asking.
+async function call(path, { method = "GET", session, operator = false, form, body, text, headers = {} } = {}) {
   const sent = new Headers(headers);
   if (session) sent.set("Cookie", `${SESSION_COOKIE}=${session}`);
   if (operator) sent.set("Cf-Access-Jwt-Assertion", await accessJwt());
@@ -128,6 +129,10 @@ async function call(path, { method = "GET", session, operator = false, form, bod
   if (body) {
     sent.set("Content-Type", "application/json");
     payload = JSON.stringify(body);
+  }
+  if (text !== undefined) {
+    sent.set("Content-Type", "text/plain");
+    payload = text;
   }
   const response = await worker.fetch(new Request(`${ORIGIN}${path}`, { method, headers: sent, body: payload }), env, ctx);
   await Promise.all(ctx.pending.splice(0));
@@ -419,6 +424,36 @@ describe("the operator's routes and a tenant session", () => {
     expect((await invited.json()).mail.error).toContain("CYRIS_HOSTED_MAIL_FROM");
     expect(rows("members").map((row) => row.email)).toContain("cy@example.com");
     expect(bound.MAIL.sent).toEqual([]);
+  });
+
+  it("refuse an invite or a revoke posted from another site with the operator's sign-in, writing and mailing nothing", async () => {
+    // The review's repro: a page elsewhere posts a text/plain form while the operator's browser
+    // holds the Access cookie (SameSite=None), so the request arrives signed in.
+    const forged = { Origin: "https://evil.example", "Sec-Fetch-Site": "cross-site" };
+    const before = JSON.stringify([rows("members"), rows("invites"), rows("sessions")]);
+
+    for (const headers of [forged, { Origin: "https://evil.example" }, { Origin: "null" }, { "Sec-Fetch-Site": "same-site" }]) {
+      const text = JSON.stringify({ email: "attacker@evil.example" });
+      const invited = await call("/hosted/tenants/alpha/invite", { method: "POST", operator: true, text, headers });
+      expect(invited.status).toBe(403);
+      const revoked = await call("/hosted/tenants/alpha/revoke", {
+        method: "POST",
+        operator: true,
+        text: JSON.stringify({ email: "ana@example.com" }),
+        headers,
+      });
+      expect(revoked.status).toBe(403);
+    }
+
+    expect(JSON.stringify([rows("members"), rows("invites"), rows("sessions")])).toBe(before);
+    expect(bound.MAIL.sent).toEqual([]);
+    // From the Worker's own origin, as a browser on this site sends it, and as curl sends it, with
+    // no Origin and no Sec-Fetch-Site, the operator's invite still goes through.
+    const sameSite = { Origin: ORIGIN, "Sec-Fetch-Site": "same-origin" };
+    const here = await call("/hosted/tenants/charlie/invite", { method: "POST", operator: true, body: { email: "cy@example.com" }, headers: sameSite });
+    expect(here.status).toBe(200);
+    const curl = await call("/hosted/tenants/charlie/revoke", { method: "POST", operator: true, body: { email: "cy@example.com" } });
+    expect(curl.status).toBe(200);
   });
 
   it("give the operator a tenant's latest page under /hosted/, sandboxed as /t/ serves it", async () => {
