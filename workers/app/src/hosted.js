@@ -5,8 +5,10 @@
 //
 // It serves the operator's routes and each tenant's pages behind Access (hosted_router.js,
 // hosted_site.js) and runs the hourly tick for every tenant: each tenant's RSS poll into its own
-// buffer (tenant_buffer.js), then its run when one is due. Until later cards land, a run
-// notifies nobody. The tenant list is the operator's registry (tenant_registry.js).
+// buffer (tenant_buffer.js), then its run when one is due. Its email() handler takes each
+// tenant's newsletters at the tenant's random address into the tenant's own object
+// (hosted_inbound.js). Until later cards land, a run notifies nobody. The tenant list is the
+// operator's registry (tenant_registry.js).
 import { env } from "cloudflare:workers";
 import HOSTED_SCHEMA_SQL from "../../../src/cyris/adapters/store/hosted_schema.sql";
 import SCHEMA_SQL from "../../../src/cyris/adapters/store/schema.sql";
@@ -14,6 +16,7 @@ import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json";
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json";
 import { accessKeys } from "./access_keys.js";
 import SEED from "./hosted_seed.json";
+import { receiveInbound } from "./hosted_inbound.js";
 import { handleHostedRequest } from "./hosted_router.js";
 import { createSitePage } from "./hosted_site.js";
 import { seedTenant, tenantReport } from "./hosted_seed.js";
@@ -99,7 +102,19 @@ export default {
       timeZone: (tenant) => readTimeZone({ env, read: tenantRows(env, tenant) }),
       startRun,
       poll: (tenant) => pollTenant(tenant),
+      inboundAddress: (tenant) => tenantRegistry(env).inboundAddress(tenant),
+      rotateAddress: (tenant) => tenantRegistry(env).rotateInboundAddress(tenant),
+      revokeAddress: (tenant) => tenantRegistry(env).revokeInboundAddress(tenant),
       page: sitePage,
+    });
+  },
+
+  // Every message the catch-all rule routes here: stored in the tenant whose address it came to,
+  // or rejected. A paused tenant still takes mail, so pausing loses none; its queue's cap bounds it.
+  async email(message) {
+    await receiveInbound(message, {
+      tenantFor: (address) => tenantRegistry(env).inboundTenant(address),
+      store: (tenant, id, record) => tenantDb(env, tenant).receiveNewsletter(id, record),
     });
   },
 

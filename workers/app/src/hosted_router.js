@@ -9,14 +9,27 @@
 //   POST /hosted/tenants/<tenant>/run?period=P[&date=D]     one run of the tenant's digest
 //   POST /hosted/tenants/<tenant>/poll                      one poll of the tenant's RSS buffer
 //   GET  /hosted/tenants/<tenant>/report                    what the tenant's database holds
+//   GET  /hosted/tenants/<tenant>/address                   the tenant's newsletter address
+//   POST /hosted/tenants/<tenant>/rotate-address            a new address; every old one revoked
+//   POST /hosted/tenants/<tenant>/revoke-address            every address revoked, none issued
 //   GET  /t/<tenant>/...                                    the tenant's pages (hosted_pages.js)
 
 import { SITE_ROUTE } from "./hosted_pages.js";
 import { RUN_PERIODS, accessRefusal, refuseRunDate } from "./router.js";
 import { ACTIVE } from "./tenant_status.js";
 
-const ROUTE = /^\/hosted\/tenants\/([^/]+)\/(register|seed|run|poll|report)$/;
-const METHOD = { register: "POST", seed: "POST", run: "POST", poll: "POST", report: "GET" };
+const ACTIONS = ["register", "seed", "run", "poll", "report", "address", "rotate-address", "revoke-address"];
+const ROUTE = new RegExp(`^/hosted/tenants/([^/]+)/(${ACTIONS.join("|")})$`);
+const METHOD = {
+  register: "POST",
+  seed: "POST",
+  run: "POST",
+  poll: "POST",
+  report: "GET",
+  address: "GET",
+  "rotate-address": "POST",
+  "revoke-address": "POST",
+};
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
@@ -24,8 +37,9 @@ const json = (body, status = 200) =>
 // `deps`: accessKeys, as router.js takes them; and per tenant, `register(tenant, status)`,
 // which answers `{tenant}` or `{refused}`, `tenant(tenant)`, its registry row or null,
 // `seed(tenant)`, `report(tenant)`, `timeZone(tenant)`, `startRun(tenant, period, date)`,
-// `poll(tenant)`, which answers what the poll did or `{error}`, and `page(request, tenant, rest)`,
-// which answers under /t/<tenant> from that tenant's object.
+// `poll(tenant)`, which answers what the poll did or `{error}`, `inboundAddress(tenant)`,
+// `rotateAddress(tenant)` and `revokeAddress(tenant)`, the registry's answers, and
+// `page(request, tenant, rest)`, which answers under /t/<tenant> from that tenant's object.
 export async function handleHostedRequest(request, env, deps) {
   const refusal = await accessRefusal(request, env, deps);
   if (refusal) return json({ error: "forbidden", detail: refusal }, 403);
@@ -40,7 +54,7 @@ export async function handleHostedRequest(request, env, deps) {
   }
   const match = ROUTE.exec(url.pathname);
   if (!match) {
-    return json({ error: "not found", routes: "/hosted/tenants/<tenant>/{register,seed,run,poll,report}, /t/<tenant>/" }, 404);
+    return json({ error: "not found", routes: `/hosted/tenants/<tenant>/{${ACTIONS.join(",")}}, /t/<tenant>/` }, 404);
   }
   const [, tenant, action] = match;
   if (request.method !== METHOD[action]) return json({ error: `${action} takes ${METHOD[action]}` }, 405);
@@ -56,6 +70,14 @@ export async function handleHostedRequest(request, env, deps) {
 
   if (action === "seed") return json(await deps.seed(tenant));
   if (action === "report") return json(await deps.report(tenant));
+  // A tenant's newsletter address, paused or not, since a paused tenant still takes mail. Only
+  // the operator reads it here, behind Access; no run container can reach the registry.
+  if (action === "address") {
+    const held = await deps.inboundAddress(tenant);
+    return held ? json({ tenant, ...held }) : json({ error: `${tenant} has no newsletter address` }, 404);
+  }
+  if (action === "rotate-address") return json({ tenant, ...(await deps.rotateAddress(tenant)) });
+  if (action === "revoke-address") return json({ tenant, ...(await deps.revokeAddress(tenant)) });
 
   if (registered.status !== ACTIVE) return json({ error: `${tenant} is ${registered.status}, not ${ACTIVE}` }, 409);
   // The tick's poll, out of the cron, so the operator can see a tenant's buffer fill and what one

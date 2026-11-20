@@ -7,6 +7,7 @@
 // TenantDbGateway (tenant_db.js), which answers one tenant's queries and never names this object.
 
 import { DurableObject } from "cloudflare:workers";
+import { randomAddress } from "./inbound_address.js";
 import { LOCATION_HINT, TENANT } from "./tenant_db.js";
 import { ACTIVE, TENANT_STATUSES } from "./tenant_status.js";
 
@@ -14,9 +15,11 @@ import { ACTIVE, TENANT_STATUSES } from "./tenant_status.js";
 // outside TENANT, so no tenant id can ever name it.
 export const REGISTRY_NAME = "cyris:registry";
 
-// The registry's own tables: not schema.sql, which is a tenant's. Only `tenants` has a reader
-// and a writer yet; the others are created empty for the cards that fill them (login,
-// invites, newsletters, budgets), so those cards add code and no new home for state.
+// The registry's own tables: not schema.sql, which is a tenant's. `tenants` and
+// `inbound_addresses` have a reader and a writer; the others are created empty for the cards
+// that fill them (login, invites, budgets), so those cards add code and no new home for state.
+// `inbound_addresses.address` is a newsletter address's random local part (inbound_address.js);
+// a revoked address is deleted, so a row is an address that takes mail.
 // `digest_times` is the tenant's digest hours as a JSON list, kept for the scheduling card;
 // until it lands the tick still reads each tenant's schedule from the tenant's own database.
 export const REGISTRY_SCHEMA = `
@@ -66,6 +69,10 @@ const TENANT_UPSERT =
   `${TENANT_INSERT} ON CONFLICT(id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at`;
 const TENANT_ADD = `${TENANT_INSERT} ON CONFLICT(id) DO NOTHING`;
 
+// An address's tenant, only while the registry holds that tenant.
+const INBOUND_TENANT =
+  "SELECT a.tenant_id FROM inbound_addresses a JOIN tenants t ON t.id = a.tenant_id WHERE a.address = ?";
+
 // The time a row is written at, as the container's stores write it (seconds, UTC offset).
 const stamp = (now) => `${now.toISOString().slice(0, 19)}+00:00`;
 
@@ -110,5 +117,45 @@ export class TenantRegistry extends DurableObject {
     if (status === undefined) this.ctx.storage.sql.exec(TENANT_ADD, id, ACTIVE, at, at);
     else this.ctx.storage.sql.exec(TENANT_UPSERT, id, status, at, at);
     return { tenant: this.tenant(id) };
+  }
+
+  // The tenant `address` delivers to, or null when no registered tenant holds it: the hosted
+  // email() handler's one lookup (hosted_inbound.js).
+  inboundTenant(address) {
+    const [row] = this.ctx.storage.sql.exec(INBOUND_TENANT, address).toArray();
+    return row ? row.tenant_id : null;
+  }
+
+  // The tenant's current address and when it was issued, or null when it has none.
+  inboundAddress(id) {
+    const [row] = this.ctx.storage.sql
+      .exec("SELECT address, created_at FROM inbound_addresses WHERE tenant_id = ?", id)
+      .toArray();
+    return row ? { ...row } : null;
+  }
+
+  // Gives a registered tenant a fresh address and revokes every one it held, so an address that
+  // leaked stops taking mail at once: the statements run in one synchronous turn of the object,
+  // which commits them together. Answers `{address, created_at, revoked}`, or `{refused}` for a
+  // tenant the registry does not hold. `address` is for a test; the Worker never passes one.
+  rotateInboundAddress(id, { now = new Date(), address = randomAddress() } = {}) {
+    if (!this.tenant(id)) return { refused: `${id} is not a registered tenant` };
+    const sql = this.ctx.storage.sql;
+    const revoked = this.#revoke(id);
+    const at = stamp(now);
+    sql.exec("INSERT INTO inbound_addresses (address, tenant_id, created_at) VALUES (?, ?, ?)", address, id, at);
+    return { address, created_at: at, revoked };
+  }
+
+  // Revokes every address the tenant holds, at once; answers `{revoked}`, how many.
+  revokeInboundAddress(id) {
+    return { revoked: this.#revoke(id) };
+  }
+
+  #revoke(id) {
+    const sql = this.ctx.storage.sql;
+    const held = sql.exec("SELECT count(*) AS n FROM inbound_addresses WHERE tenant_id = ?", id).one().n;
+    sql.exec("DELETE FROM inbound_addresses WHERE tenant_id = ?", id);
+    return held;
   }
 }

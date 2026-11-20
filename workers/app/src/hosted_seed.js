@@ -67,7 +67,10 @@ export async function seedTenant({
 // What decides whether a tenant's runs, issues and pages are its own (scripts/hosted_check.py):
 // its tables and their row counts, its sources, which sources its stored articles came from, its
 // runs, its issues, and the page /t/<tenant>/ serves, by path and SHA-256. A table the tenant
-// does not have yet reads as empty, and a site with no page as null.
+// does not have yet reads as empty, and a site with no page as null. Its queued newsletters are
+// listed by sender and subject, never by body, so the operator can see an issue reach each
+// tenant it was sent to, and read the code in the subject of Gmail's forwarding confirmation
+// (docs/hosted-tenants.md) before the tenant's next run acks it.
 export async function tenantReport({ db, tenant }) {
   const tables = await db.tables();
   const rows = async (table, sql) => (table in tables ? (await db.query(sql, [])).rows : []);
@@ -88,6 +91,10 @@ export async function tenantReport({ db, tenant }) {
       "digests",
       "SELECT date, period, saved_at, json_extract(content, '$.articles_included') AS articles_included " +
         "FROM digests ORDER BY date, period",
+    ),
+    newsletters: await rows(
+      "newsletters",
+      "SELECT id, sender, subject, date, received_at FROM newsletters ORDER BY received_at, id",
     ),
     latest_page: latest ? { path: latest.path, sha256: await sha256Hex(latest.body) } : null,
   };

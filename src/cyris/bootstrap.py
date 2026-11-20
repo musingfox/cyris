@@ -517,9 +517,11 @@ def build_deps(
     sources that do not consume — which is a wiring decision, and this is where
     every other one lives.
 
-    A hosted tenant's run is wired the same way for the same reason: it gets no
-    newsletter queue and no vote sync, which are another deployment's queues, and,
-    until operator alerts land, senders that send nothing (`adapters/hosted.py`).
+    A hosted tenant's run is wired the same way for the same reason: it gets neither
+    the newsletter Worker's queue nor the vote sync, which are another deployment's
+    queues, and, until operator alerts land, senders that send nothing
+    (`adapters/hosted.py`). Its newsletters are its own queue in its Durable Object,
+    taken with the same `ack=not dry_run` (ADR-0034).
     Its pages go to its own site in its Durable Object (`HostedPages`), never to
     Pages, whatever `html_output` and `promote` say, and its links point at the
     hosted Worker (ADR-0029).
@@ -543,7 +545,13 @@ def build_deps(
     hosted = cfg.app.store.is_hosted
 
     fetch_sources: list[FetchSource] = []
-    if not hosted and cfg.app.newsletter.worker_url and cfg.app.newsletter.token:
+    if hosted:
+        # The tenant's own queue, which the hosted Worker's email() handler fills from the
+        # tenant's random address (ADR-0034); a preview reads it without the ack's delete.
+        from cyris.adapters.fetch.newsletter_worker_source import TenantNewsletterSource
+
+        fetch_sources.append(TenantNewsletterSource(d1, ack=not dry_run))
+    elif cfg.app.newsletter.worker_url and cfg.app.newsletter.token:
         from cyris.adapters.fetch.newsletter_worker_source import CloudflareNewsletterSource
 
         fetch_sources.append(
