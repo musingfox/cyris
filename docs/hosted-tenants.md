@@ -1,10 +1,11 @@
 # Hosted tenants on the trial account
 
 This deploys the hosted Worker `cyris-hosted` (`wrangler.hosted.toml`) to the **trial** account.
-It then registers two tenants, `alpha` and `bravo`, in the Worker's registry, seeds each, and
-runs one digest for each.
-Last, it checks that each tenant's `digest_runs` and `digests` hold only that tenant's own rows,
-and that each tenant's latest page, `/t/<tenant>/`, answers 200 and is that tenant's own issue.
+It then registers two tenants, `alpha` and `bravo`, in the Worker's registry, seeds and schedules
+each, and queues one digest for each.
+It checks that each tenant's `digest_runs` and `digests` hold only that tenant's own rows, and
+that each tenant's latest page, the one `/t/<tenant>/` serves its readers, answers 200 and is that
+tenant's own issue. Then it gives each tenant a newsletter address and invites a reader.
 Why each tenant has a SQLite Durable Object of its own is
 [ADR-0028](decisions/0028-one-sqlite-durable-object-per-hosted-tenant.md), and why its pages are
 stored there too is [ADR-0029](decisions/0029-a-hosted-tenants-pages-live-in-its-durable-object.md).
@@ -43,8 +44,8 @@ Every command runs, as pasted, from the root of a checkout of this repository. `
   Integrations > Webhooks, *label unverified*). A tenant's failed run is posted there with the
   tenant's id. The run posts its own failures with the raw error: it raised, it fetched nothing
   while a feed failed, or it stopped before its digest began. The Worker posts a start that
-  failed, and a container that exited non-zero or was killed before it reported. Step 7 lists
-  what is not posted.
+  failed, a container that exited non-zero or was killed before it reported, and a queued run
+  whose container never reported its stop. Step 7 lists what is not posted.
 - `CF-Access-Client-Id` and `CF-Access-Client-Secret`: a service token the step-2 application
   allows. The seed, run and check steps sign in with it.
 - `CYRIS_HOSTED_MAIL_FROM`: the address the readers' sign-in mail is sent from. It must be on the
@@ -100,7 +101,7 @@ This runs `wrangler deploy --config wrangler.hosted.toml --env-file /dev/null`, 
 confirm the account. It deploys the Worker, its three Durable Object classes
 (`TenantContainer`, `TenantDb` and `TenantRegistry`), its `MAIL` Email Sending binding and the
 container application `cyris-hosted-tenantcontainer`. It never reads `.env`. A first deploy's registry is empty, so
-until step 5 the Worker has no tenant: the hourly tick starts nothing, and every tenant route
+until step 5 the Worker has no tenant: the hourly tick queues nothing, and every tenant route
 answers 404.
 
 Until step 3 sets the Access secrets, every operator request to the Worker is answered with 403.
@@ -209,7 +210,8 @@ To stop a tenant's runs without deleting anything, register it again as paused. 
 no subcommand for it; send `POST /hosted/tenants/<tenant>/register?status=paused` with the
 service token's two headers, and `?status=active` to resume it. Only a named status changes a
 registered tenant's status. The tick skips a paused tenant,
-and its run route answers 409. Its seed and report routes still answer.
+and its run route answers 409. Its other routes still answer, and it still takes mail at its
+newsletter address (step 9).
 
 `schedule TENANT TIMES TIMEZONE [DAILY_RUN_CAP]` runs
 `POST /hosted/tenants/<tenant>/schedule?times=...&timezone=...` for one tenant. It sets the hours
@@ -274,9 +276,10 @@ scripts/hosted.sh run morning
 This runs `POST /hosted/tenants/<tenant>/run?period=morning` for each tenant. Each answer is
 HTTP 202 with `{"queued": ...}`, the run's row in the registry's queue, dated today in the
 tenant's zone. The registry starts the queued runs, at most `max_instances` (2) at once and one
-per tenant. Each tenant's container starts with the gateway to that tenant's database registered
-before `start()`. A start that gets no container instance waits in the queue and is started
-again, up to four times; after that, the run is recorded as `failed`. A run of an issue that is
+per tenant. Each tenant's container starts with two gateways registered before `start()`, one to
+that tenant's database and one that carries its alerts to your webhook. A start that gets no
+container instance waits in the queue and is started again, up to four times; after that, the run
+is recorded as `failed` and posted to you once. A run of an issue that is
 already queued or running answers 409, and a tenant past its daily cap answers 429; neither
 queues anything.
 
@@ -332,7 +335,8 @@ which the service token is not. Each report has the tenant's
 tables with their row counts, its sources, the sources of its stored articles, its
 `digest_runs`, its `digests`, the path and SHA-256 of the page its site root serves, and its
 `runs`: the registry's last 20 runs of the tenant, each with its period, date, origin, state,
-attempts, start and end times, and why it ended.
+attempts, start and end times, and why it ended, and its `newsletters`, the mail queued at its
+address by sender and subject (step 9).
 `scripts/hosted_check.py` judges the reports and the pages and prints one line per tenant. It
 exits 1 when any tenant fails. A tenant passes when all of these hold:
 
