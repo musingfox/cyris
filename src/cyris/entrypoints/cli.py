@@ -39,6 +39,15 @@ DIGEST_LOCK_POLL_SECONDS = 5
 @app.callback()
 def main() -> None:
     """Cyris — AI-powered information digest agent."""
+    from cyris.config import HOSTED_B_GRADE_ENV_VARS, TENANT_ID
+
+    # Before any command writes: every hosted tenant's runs share one Workers Logs stream, so
+    # each line names its tenant. A malformed id tags nothing; the config load refuses it.
+    tenant = os.environ.get(HOSTED_B_GRADE_ENV_VARS["store.tenant_id"], "")
+    if TENANT_ID.fullmatch(tenant):
+        from cyris.adapters.hosted import tag_output
+
+        tag_output(tenant)
 
 
 def _echo_d1_failure(error: Exception) -> None:

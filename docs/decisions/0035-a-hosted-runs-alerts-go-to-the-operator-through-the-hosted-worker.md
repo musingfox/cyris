@@ -17,9 +17,12 @@ A hosted tenant's reader is not the operator. The operator holds the model keys,
 the code, so only the operator can fix what a raw error describes. A raw error can also name what
 the reader should never see: a provider's message about the operator's key, an account id, or a
 URL. Until this decision a hosted run sent no alert at all (`adapters/hosted.py` was a stub,
-ADR-0028), so the operator heard of a failed tenant only by reading Workers Logs.
+ADR-0028), so the operator heard of a failed tenant only by reading Workers Logs. Those logs
+did not say which tenant a container line belonged to, because every tenant's container writes
+to one stream.
 
-Two questions were open. Where does the operator's alert go? What does the reader still get?
+Three questions were open. Where does the operator's alert go? What does the reader still get?
+How does each line of a run's log name its tenant?
 
 ## Decision Drivers
 
@@ -75,6 +78,12 @@ How it is built:
   can send the raw body to the reader. A hosted container has no Cloudflare API token, so its
   reader's mail alert is not sent and a warning is logged. The digest notification stays a stub
   that sends nothing.
+* **Every line names its tenant.** When `CYRIS_STORE_TENANT_ID` is set, the CLI's callback starts
+  every line written to stdout and stderr with `tenant=<id> `. It does this at the stream, before
+  any command runs, so log records, progress lines, typer messages and tracebacks are all tagged.
+  The entrypoint's own lines carry the tenant too. The egress probe adds a `tenant` field and stays
+  JSON, and the SIGTERM line is prefixed. The Worker's lifecycle lines for a tenant's container
+  (`container stopped`, the start retry) carry `tenant` through `Lifecycle`'s `logFields`.
 
 ### Consequences
 
@@ -84,9 +93,11 @@ How it is built:
   report as another tenant, and no container holds the webhook.
 * Good, because the reader still learns that an issue failed, in their own language, and never
   what the error said.
+* Good, because one Workers Logs search for `tenant=<id>` finds a tenant's whole run.
 * Bad, because a failure the container never reports sends no operator alert. That covers a
   container that never starts, a start the tick gives up on, and a run killed before its alert.
-  These are left to Workers Logs, as a self-hosted deployment leaves them.
+  These are logged with their tenant, in `tick failed` and `container stopped` lines, and
+  nothing more. A self-hosted deployment leaves the same failures to Workers Logs.
 * Bad, because the operator's channel is one Discord webhook. A second channel (mail, paging)
   needs its own sender in the gateway.
 * Neutral, because `digest_runs.summary.error` still holds the raw error in the tenant's own
@@ -98,13 +109,16 @@ How it is built:
 * `tests/test_hosted_run_wiring.py` checks three things. A hosted run that raises posts one alert to
   `http://ops.cyris/t/alpha/alert` with the raw error, while the reader's Discord and mail get
   none of it. A run that fetched nothing tells the operator too. A could-not-start tick tells the
-  reader without the error and the operator with it.
+  reader without the error and the operator with it. The same file checks that every line a hosted
+  `cyris run` writes starts with `tenant=alpha `.
 * `tests/test_run_alert.py` holds `reader_alert_message` to withholding the error for every kind
   that carries one, in both catalogs.
 * `workers/app/test/hosted_alerts.test.js` checks the gateway. It names the tenant it was bound to,
   refuses another tenant and a gateway with no tenant, and never logs the webhook's URL.
   `workers/app/test/hosted.test.js` checks that both interceptions are registered before
-  `start()`, and that no container is handed the webhook.
+  `start()`, that no container is handed the webhook, and that the lifecycle lines name the
+  tenant.
+* `tests/test_entrypoint.py` checks that the probe's line and the SIGTERM line name the tenant.
 * `tests/test_hosted_config.py` holds `ops.cyris` to one name on both sides, and keeps the
   webhook out of `HOSTED_SECRETS`.
 

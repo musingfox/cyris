@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { generateKeyPair, exportJWK, SignJWT, createLocalJWKSet } from "jose";
 import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json" with { type: "json" };
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json" with { type: "json" };
@@ -177,6 +177,22 @@ describe("a hosted tenant's run container", () => {
       expect(container.starts).toEqual([]);
       expect(order).toEqual([]);
     }
+  });
+
+  it("names its tenant on every line it logs about its container", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const { object, container } = await runObject("alpha");
+    const exited = Object.assign(new Error("exit code 1"), { exitCode: 1 });
+    let stopped;
+    container.monitor = () => (stopped = Promise.reject(exited));
+
+    await object.startRun({ period: "morning" });
+    await stopped.catch(() => {});
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(log).toHaveBeenCalledWith("container stopped", expect.objectContaining({ tenant: "alpha", exitCode: 1 }));
+    for (const [, fields] of log.mock.calls) expect(fields).toMatchObject({ tenant: "alpha" });
+    log.mockRestore();
   });
 
   it("retries a start no instance can be given for up to 90 seconds", () => {

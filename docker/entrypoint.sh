@@ -29,7 +29,9 @@ case "${CYRIS_ROLE:-cron}" in
         kill -TERM "$child" 2>/dev/null || true
         wait "$child" || true
       fi
-      echo "entrypoint: SIGTERM, stopping" >&2
+      # A hosted tenant's lines share one Workers Logs stream, so this names its tenant as
+      # every line of `cyris` does (src/cyris/adapters/hosted.py).
+      echo "${CYRIS_STORE_TENANT_ID:+tenant=$CYRIS_STORE_TENANT_ID }entrypoint: SIGTERM, stopping" >&2
       # A run that already failed keeps its status; 143 would hide it.
       if [ "${status:-0}" -ne 0 ]; then
         exit "$status"
@@ -48,17 +50,20 @@ case "${CYRIS_ROLE:-cron}" in
     # The probe stays in the foreground, so a SIGTERM during it ends the pass
     # when the probe returns, before `cyris run` starts.
     # LLM providers refuse by egress location, and placement can move between
-    # runs, so each run logs where it left from. Never fatal.
+    # runs, so each run logs where it left from. Never fatal. A hosted tenant's
+    # line carries its tenant as a field, so the line stays JSON.
     python - <<'PY' || true
 import json
+import os
 from urllib.request import urlopen
 
+tenant = {"tenant": t} if (t := os.environ.get("CYRIS_STORE_TENANT_ID")) else {}
 try:
     body = urlopen("https://cloudflare.com/cdn-cgi/trace", timeout=5).read().decode()
     trace = dict(line.split("=", 1) for line in body.splitlines() if "=" in line)
-    print(json.dumps({"event": "egress_probe", "colo": trace.get("colo"), "loc": trace.get("loc")}))
+    print(json.dumps({"event": "egress_probe", **tenant, "colo": trace.get("colo"), "loc": trace.get("loc")}))
 except Exception as e:
-    print(json.dumps({"event": "egress_probe", "error": str(e)[:200]}))
+    print(json.dumps({"event": "egress_probe", **tenant, "error": str(e)[:200]}))
 PY
     # Votes sync even when the run stops (say, on incomplete settings); the
     # pass still exits with the run's failure.

@@ -217,7 +217,9 @@ scripts/hosted.sh tail
 ```
 
 Stop it with Ctrl-C. The containers' own output is in Workers Logs (Workers & Pages >
-`cyris-hosted` > Logs, *label unverified*). Each alert the Worker forwards leaves an `operator alert
+`cyris-hosted` > Logs, *label unverified*). Every line a tenant's container writes starts with
+`tenant=<tenant> `, and the egress probe's JSON line has a `tenant` field. Search for
+`tenant=alpha` to read one tenant's run. Each alert the Worker forwards leaves an `operator alert
 sent` line, or `operator alert not sent` with its reason, naming the tenant.
 
 ## 8. Check that each tenant holds only its own rows

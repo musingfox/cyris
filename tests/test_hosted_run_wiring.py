@@ -11,7 +11,10 @@ line the run writes names its tenant.
 """
 
 import json
+import os
 import re
+import subprocess
+import sys
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -34,6 +37,7 @@ from cyris.adapters.fetch.rss_worker_source import TenantRssSource
 from cyris.adapters.hosted import (
     NOT_SENT,
     OPERATOR_ORIGIN,
+    TaggedLines,
     skip_digest_notification,
 )
 from cyris.adapters.output import publish
@@ -662,3 +666,79 @@ def test_a_hosted_tick_that_cannot_start_tells_the_operator_and_the_reader_no_er
     assert "max_articles_per_digest" not in d_subject + d_body + m_subject + m_body
     assert tenant == "alpha"
     assert "max_articles_per_digest" in error
+
+
+def test_every_line_a_hosted_run_writes_names_its_tenant(tmp_path: Path) -> None:
+    """The container's stdout and stderr are the run's only log, shared by every tenant."""
+    env = {
+        **os.environ,
+        "CYRIS_STORE_TENANT_ID": "alpha",
+        "CYRIS_STORE_HOSTED_DOMAIN": DOMAIN,
+        # Refused at the load, so the run logs and echoes and stops before any request.
+        "CYRIS_STORE_BACKEND": "sqlite",
+    }
+    missing = tmp_path / "missing"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from cyris.entrypoints.cli import app; app()",
+            "run",
+            "--config",
+            str(missing / "cyris.toml"),
+            "--sources",
+            str(missing / "sources.yaml"),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    assert result.returncode == 1
+    lines = [line for line in (result.stdout + result.stderr).splitlines() if line]
+    assert any("Configuration error" in line for line in lines)
+    assert lines
+    for line in lines:
+        assert line.startswith("tenant=alpha "), line
+
+
+def test_a_self_hosted_runs_lines_carry_no_tenant(tmp_path: Path) -> None:
+    env = {k: v for k, v in os.environ.items() if not k.startswith("CYRIS_STORE_")}
+    missing = tmp_path / "missing"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from cyris.entrypoints.cli import app; app()",
+            "run",
+            "--config",
+            str(missing / "cyris.toml"),
+            "--sources",
+            str(missing / "sources.yaml"),
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+    )
+
+    assert "tenant=" not in result.stdout + result.stderr
+
+
+def test_a_tagged_stream_tags_each_line_once_however_it_is_written() -> None:
+    import io
+
+    out = io.StringIO()
+    tagged = TaggedLines(out, "tenant=alpha ")
+
+    tagged.write("one")
+    tagged.write(" more\ntwo\n")
+    tagged.write("\n")
+    tagged.write("three\nfour")
+
+    assert out.getvalue() == (
+        "tenant=alpha one more\ntenant=alpha two\n\ntenant=alpha three\ntenant=alpha four"
+    )

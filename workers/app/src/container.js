@@ -23,6 +23,8 @@ export class Lifecycle {
   // `startRetry`, when given, is `{ maxWaitMs, backoffMs }`: a start that meets NO_INSTANCE is
   // tried again after each backoff in turn, the last repeating, until the next wait would pass
   // `maxWaitMs`. Without them a start is what it always was: one start() and no retry.
+  // `logFields`, when given, goes on every line this logs: a hosted tenant's container names
+  // its tenant, since every tenant's lines share one Workers Logs stream.
   constructor(
     ctx,
     inactivityTimeoutMs,
@@ -31,6 +33,7 @@ export class Lifecycle {
       pollMs = POLL_MS,
       intercept = null,
       startRetry = null,
+      logFields = {},
       sleep = pause,
       now = Date.now,
     } = {},
@@ -41,6 +44,7 @@ export class Lifecycle {
     this.pollMs = pollMs;
     this.intercept = intercept;
     this.startRetry = startRetry;
+    this.logFields = logFields;
     this.sleep = sleep;
     this.now = now;
   }
@@ -50,8 +54,9 @@ export class Lifecycle {
   adopt() {
     this.ctx.waitUntil(
       this.ctx.container.monitor().then(
-        () => console.log("container stopped", { exitCode: 0 }),
-        (error) => console.log("container stopped", { exitCode: error?.exitCode, reason: String(error) }),
+        () => console.log("container stopped", { ...this.logFields, exitCode: 0 }),
+        (error) =>
+          console.log("container stopped", { ...this.logFields, exitCode: error?.exitCode, reason: String(error) }),
       ).finally(() => {
         this.listening = false;
       }),
@@ -81,7 +86,11 @@ export class Lifecycle {
       } catch (error) {
         const delay = this.#retryDelay(error, attempt, began);
         if (delay === null) throw error;
-        console.log("no container instance yet; starting again", { attempt: attempt + 1, delayMs: delay });
+        console.log("no container instance yet; starting again", {
+          ...this.logFields,
+          attempt: attempt + 1,
+          delayMs: delay,
+        });
         // A start that failed can leave `running` true, and start() throws on a running container.
         if (this.ctx.container.running) await this.ctx.container.destroy();
         await this.sleep(delay);

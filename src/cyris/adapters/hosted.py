@@ -11,13 +11,18 @@ operator-through-the-hosted-worker.md.
 STUB, still. A hosted run's digest notification sends nothing, whatever the tenant's own `notify`
 settings say: `bootstrap` wires `skip_digest_notification` in place of the Discord and mail
 senders, so the decision is the composition root's and no setting can reopen that channel.
+
+Every line a hosted run writes names its tenant (`tag_output`): the container's stdout is the only
+log, and every tenant's runs land in the one Workers Logs stream.
 """
 
 from __future__ import annotations
 
+import io
 import logging
+import sys
 from dataclasses import replace
-from typing import Any
+from typing import Any, TextIO
 
 import httpx
 
@@ -38,6 +43,10 @@ OPERATOR_ORIGIN = "http://ops.cyris"
 
 # One post, no retry: an alert that cannot be sent is logged and never fails or delays the run.
 OPERATOR_TIMEOUT_SECONDS = 10.0
+
+# What starts every line a hosted run writes. `tenant=` so a Workers Logs search for one
+# tenant is one substring.
+LINE_TAG = "tenant={tenant} "
 
 
 async def skip_digest_notification(*_args: Any, **_kwargs: Any) -> dict[str, str]:
@@ -62,3 +71,60 @@ async def send_operator_alert(
             resp.raise_for_status()
     except httpx.HTTPError as e:
         logger.warning("Operator alert failed: %s", redact_webhook_tokens(str(e)))
+
+
+class TaggedLines(io.TextIOBase):
+    """A text stream that starts each line written through it with `tag`."""
+
+    def __init__(self, stream: TextIO, tag: str) -> None:
+        self._stream = stream
+        self._tag = tag
+        self._at_line_start = True
+
+    @property
+    def encoding(self) -> str:  # type: ignore[override]
+        return self._stream.encoding
+
+    @property
+    def errors(self) -> str | None:  # type: ignore[override]
+        return self._stream.errors
+
+    def writable(self) -> bool:
+        return True
+
+    def isatty(self) -> bool:
+        return self._stream.isatty()
+
+    def fileno(self) -> int:
+        return self._stream.fileno()
+
+    def write(self, text: str) -> int:
+        lines = text.split("\n")
+        out = []
+        for i, line in enumerate(lines):
+            if i:
+                out.append("\n")
+                self._at_line_start = True
+            if line:
+                if self._at_line_start:
+                    out.append(self._tag)
+                out.append(line)
+                self._at_line_start = False
+        self._stream.write("".join(out))
+        return len(text)
+
+    def flush(self) -> None:
+        self._stream.flush()
+
+
+def tag_output(tenant_id: str) -> None:
+    """Start every line this process writes to stdout and stderr with the tenant's id.
+
+    At the stream, not the logging formatter, so a progress line, a typer message and a
+    traceback are tagged as a log record is.
+    """
+    tag = LINE_TAG.format(tenant=tenant_id)
+    if not isinstance(sys.stdout, TaggedLines):
+        sys.stdout = TaggedLines(sys.stdout, tag)
+    if not isinstance(sys.stderr, TaggedLines):
+        sys.stderr = TaggedLines(sys.stderr, tag)

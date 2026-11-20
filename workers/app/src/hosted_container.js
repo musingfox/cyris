@@ -71,6 +71,8 @@ export class TenantContainer extends DurableObject {
         await ctx.container.interceptOutboundHttp(OPS_HOST, ctx.exports.OperatorAlertGateway({ props }));
       },
       startRetry: START_RETRY,
+      // Every tenant's container lines share one stream, as its run's own lines do.
+      logFields: { tenant: this.tenant },
     });
     if (ctx.container.running) void ctx.blockConcurrencyWhile(() => this.lifecycle.adopt());
   }
