@@ -1,4 +1,6 @@
 {
   "start_failed": "Digest run could not start",
-  "stopped": "Digest run stopped before it reported"
+  "stopped": "Digest run stopped before it reported",
+  "lost": "Digest run lost: no stop report, queued again",
+  "lost_failed": "Digest run lost on its last start"
 }

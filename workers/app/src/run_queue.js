@@ -13,6 +13,10 @@
 //   out with no stop report, within MAX_START_ATTEMPTS; any other end is recorded.
 // - While a run is held, the registry's alarm is set for its lease's end, so a stop report that
 //   never comes cannot hold the issue live for good.
+// - An end only this queue decides is handed to `tell` (the registry's, which alerts the
+//   operator through alertOperator, ADR-0035): a run failed by its start, or by its last start,
+//   and a run whose lease ran out, lost or failed. A run its container's exit failed is not: the
+//   tenant's run object, or the run's own alert, tells the operator of that (hosted_container.js).
 //
 // The schedule a tenant is ticked on is the registry's too (`digest_times` and `timezone`),
 // checked here before it is written. No workerd-only imports: vitest runs this under Node.
@@ -188,10 +192,13 @@ export function queueRun(sql, tenant, { period, date, origin }, nowMs) {
   return { queued: run };
 }
 
-// A run back in the queue for another start, or failed once it has had MAX_START_ATTEMPTS.
-function requeue(sql, run, why, nowMs) {
+// A run back in the queue for another start, or failed once it has had MAX_START_ATTEMPTS, which
+// `tell` hears of as a start that ended it.
+function requeue(sql, run, why, nowMs, tell) {
   if (run.attempts >= MAX_START_ATTEMPTS) {
-    return end(sql, run, FAILED, `${why}, after ${run.attempts} starts`, nowMs);
+    const ended = end(sql, run, FAILED, `${why}, after ${run.attempts} starts`, nowMs);
+    tell(ended, "start");
+    return ended;
   }
   sql.exec("UPDATE runs SET state = ?, started_at = NULL, outcome = ? WHERE id = ?", QUEUED, why, run.id);
   console.log("run queued again", { tenant: run.tenant_id, period: run.period, date: run.date, why });
@@ -208,10 +215,10 @@ function end(sql, run, state, outcome, nowMs) {
 // answers whether the tenant's digest_runs holds an ok run of that period since the run started:
 // then the run made its issue and only its report was lost, and it is `done`. Otherwise it is
 // `lost` and a new row of the same issue is queued in its place, with its attempts, unless it has
-// had MAX_START_ATTEMPTS, when it is `failed`. The lost row keeps its start, so it counts against
-// the cap and the tenant waits behind those that have not run. A row that changed while
-// `finished` was awaited is left to whoever changed it.
-export async function expireLeases(sql, nowMs, finished = async () => false) {
+// had MAX_START_ATTEMPTS, when it is `failed`; `tell` hears of either as a lease that ended it.
+// The lost row keeps its start, so it counts against the cap and the tenant waits behind those
+// that have not run. A row that changed while `finished` was awaited is left to whoever changed it.
+export async function expireLeases(sql, nowMs, finished = async () => false, tell = () => {}) {
   const minutes = RUN_LEASE_MS / 60_000;
   const stale = rows(sql.exec(`SELECT ${RUN_COLUMNS} FROM runs WHERE ${HELD} AND started_at < ?`, stamp(nowMs - RUN_LEASE_MS)));
   let requeued = 0;
@@ -227,9 +234,9 @@ export async function expireLeases(sql, nowMs, finished = async () => false) {
     if (made) {
       end(sql, still, DONE, `its ${run.period} run is in digest_runs; no stop was reported`, nowMs);
     } else if (still.attempts >= MAX_START_ATTEMPTS) {
-      end(sql, still, FAILED, `no stop reported within ${minutes} minutes, after ${still.attempts} starts`, nowMs);
+      tell(end(sql, still, FAILED, `no stop reported within ${minutes} minutes, after ${still.attempts} starts`, nowMs), "lease");
     } else {
-      end(sql, still, LOST, `no stop reported within ${minutes} minutes; queued again`, nowMs);
+      tell(end(sql, still, LOST, `no stop reported within ${minutes} minutes; queued again`, nowMs), "lease");
       sql.exec(
         "INSERT INTO runs (tenant_id, period, date, origin, state, attempts, queued_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
         still.tenant_id,
@@ -264,9 +271,9 @@ export function nextPassAt(sql, nowMs) {
 // start is awaited, so a stop report or another pass that lands meanwhile sees it held; each
 // answer is applied only to a row still `starting`. Answers `{ started, waiting }`: the runs this
 // pass started, and how many still wait. `now` is read again once the starts have answered,
-// which can be minutes later.
-export async function dispatchRuns(sql, start, { now = Date.now, finished } = {}) {
-  await expireLeases(sql, now(), finished);
+// which can be minutes later. `tell` hears of each run this pass ended as failed or lost.
+export async function dispatchRuns(sql, start, { now = Date.now, finished, tell = () => {} } = {}) {
+  await expireLeases(sql, now(), finished, tell);
   const nowMs = now();
   const { held } = one(sql.exec(`SELECT count(*) AS held FROM runs WHERE ${HELD}`));
   // A tenant with a held run waits; the rest go least recently started first, a tenant never
@@ -297,28 +304,33 @@ export async function dispatchRuns(sql, start, { now = Date.now, finished } = {}
       started.push({ ...run, state: RUNNING });
     } else if (answer.status === "fulfilled") {
       // Its container was already up with a run this queue did not start; try again later.
-      requeue(sql, run, "its container was already running", now());
+      requeue(sql, run, "its container was already running", now(), tell);
     } else if (NO_INSTANCE.test(String(answer.reason))) {
-      requeue(sql, run, "no container instance", now());
+      requeue(sql, run, "no container instance", now(), tell);
     } else {
-      end(sql, run, FAILED, String(answer.reason?.message ?? answer.reason).slice(0, 500), now());
+      tell(end(sql, run, FAILED, String(answer.reason?.message ?? answer.reason).slice(0, 500), now()), "start");
     }
   });
   const { n } = one(sql.exec("SELECT count(*) AS n FROM runs WHERE state = ?", QUEUED));
   return { started, waiting: n };
 }
 
+// `tenant`'s run the queue holds, `starting` or `running`, or null when it holds none.
+export const heldRun = (sql, tenant) =>
+  one(sql.exec(`SELECT ${RUN_COLUMNS} FROM runs WHERE tenant_id = ? AND ${HELD} ORDER BY id DESC LIMIT 1`, tenant));
+
 // The stop of `tenant`'s container, as its object's monitor saw it, applied to the tenant's held
 // run: `done` on exit 0, back in the queue when no instance was ever given (the start looked
 // granted, then the container stopped with NO_INSTANCE), `failed` otherwise. Answers the run, or
-// null when the tenant had no held run (a container this queue did not start).
-export function endRun(sql, tenant, { exitCode, reason } = {}, nowMs) {
-  const run = one(sql.exec(`SELECT ${RUN_COLUMNS} FROM runs WHERE tenant_id = ? AND ${HELD} ORDER BY id DESC LIMIT 1`, tenant));
+// null when the tenant had no held run (a container this queue did not start). Only a run that
+// used its last start is handed to `tell`: any other exit is the run object's to tell.
+export function endRun(sql, tenant, { exitCode, reason } = {}, nowMs, tell = () => {}) {
+  const run = heldRun(sql, tenant);
   if (!run) {
     console.log("container stopped with no run held", { tenant, exitCode });
     return null;
   }
-  if (NO_INSTANCE.test(String(reason ?? ""))) return requeue(sql, run, "no container instance", nowMs);
+  if (NO_INSTANCE.test(String(reason ?? ""))) return requeue(sql, run, "no container instance", nowMs, tell);
   if (exitCode === 0) return end(sql, run, DONE, "exit 0", nowMs);
   return end(sql, run, FAILED, `exit ${exitCode ?? "unknown"}: ${String(reason ?? "")}`.slice(0, 500), nowMs);
 }

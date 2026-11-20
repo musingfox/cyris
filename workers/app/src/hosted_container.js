@@ -3,7 +3,7 @@
 // docs/decisions/0028-one-sqlite-durable-object-per-hosted-tenant.md.
 
 import { DurableObject } from "cloudflare:workers";
-import { Lifecycle } from "./container.js";
+import { Lifecycle, NO_INSTANCE } from "./container.js";
 import { OPS_HOST, alertOperator, workerAlert } from "./hosted_alerts.js";
 import { DB_HOST, TENANT } from "./tenant_db.js";
 import { tenantRegistry } from "./tenant_registry.js";
@@ -42,6 +42,11 @@ export const HOSTED_DOMAIN = "CYRIS_STORE_HOSTED_DOMAIN";
 // OperatorAlertGateway, cleared before every start, read when the container stops abnormally.
 export const REPORTED = "reported";
 
+// Its key for the alert the object sent itself about this start's abnormal stop: set once sent,
+// cleared before every start. With REPORTED, what `endTold` answers the run queue, whose lease
+// end would otherwise tell the operator again of a stop whose report never reached it.
+export const TOLD = "told";
+
 // The environment a tenant's run container starts with. The tenant id comes from the object's
 // own name. Pages publishing is off whatever the image defaults to: a hosted run stores its
 // pages in the tenant's own object (bootstrap wires that whatever this says). Without the hosted
@@ -73,6 +78,7 @@ export class TenantContainer extends DurableObject {
       // nothing yet, so the last one's record goes first.
       intercept: async () => {
         await ctx.storage.delete(REPORTED);
+        await ctx.storage.delete(TOLD);
         const props = { tenant: this.tenant };
         await ctx.container.interceptOutboundHttp(DB_HOST, ctx.exports.TenantDbGateway({ props }));
         await ctx.container.interceptOutboundHttp(OPS_HOST, ctx.exports.OperatorAlertGateway({ props }));
@@ -97,7 +103,9 @@ export class TenantContainer extends DurableObject {
   // first, and this asks again so no other path can start an unregistered one.
   // A start that throws, the 90 s give-up included, tells the operator before it is rethrown: the
   // container never ran, so nothing else will. A tenant the registry does not hold as active is a
-  // refusal, not a failed run, and alerts nobody.
+  // refusal, not a failed run, and alerts nobody. A start the run queue holds is the queue's to
+  // tell: it puts a no-instance start back in the queue and tells the operator once it ends the run
+  // (run_queue.js), so the 90 s give-up of a start it will try again alerts nobody.
   async startRun({ period, date } = {}) {
     if (!TENANT.test(this.tenant ?? "")) throw new Error(`not a tenant's run container: ${this.tenant}`);
     let registered;
@@ -127,21 +135,43 @@ export class TenantContainer extends DurableObject {
     await this.ctx.storage.put(REPORTED, kind);
   }
 
-  #couldNotStart(error, period, date) {
+  // RPC from the registry, when a held run's lease runs out with no stop report: whether the
+  // operator has heard how this object's last start ended, from the run's own alert or from the
+  // object's alert about its abnormal stop.
+  async endTold() {
+    return Boolean((await this.ctx.storage.get(REPORTED)) || (await this.ctx.storage.get(TOLD)));
+  }
+
+  async #couldNotStart(error, period, date) {
+    if (await this.#queueHolds()) return;
     const run = [period && `period=${period}`, date && `date=${date}`].filter(Boolean).join(" ");
     const detail = `${run ? `${run}\n` : ""}${String(error?.message ?? error)}`;
-    return alertOperator(this.env, this.tenant, workerAlert("start_failed", detail));
+    await alertOperator(this.env, this.tenant, workerAlert("start_failed", detail));
+  }
+
+  // Whether the registry's run queue holds this tenant's start, and so tells the operator how it
+  // ends; false when the registry cannot say, so the operator is told here rather than not at all.
+  async #queueHolds() {
+    try {
+      return Boolean(await tenantRegistry(this.env).heldRun(this.tenant));
+    } catch {
+      return false;
+    }
   }
 
   // A container that exited non-zero or was killed (OOM, SIGKILL, the inactivity cap's SIGTERM)
   // tells the operator, unless its run already sent an alert that ends it: that alert said why,
-  // and this one would only repeat it. Never throws: it runs in the monitor's waitUntil.
+  // and this one would only repeat it. A stop with no container instance, of a run the queue
+  // holds, is the queue's: its stop report puts the run back in the queue. Never throws: it runs
+  // in the monitor's waitUntil.
   async #stoppedUnreported(error) {
     try {
       const reported = await this.ctx.storage.get(REPORTED);
       if (reported) return;
+      if (NO_INSTANCE.test(String(error)) && (await this.#queueHolds())) return;
       const detail = `exitCode=${error?.exitCode ?? "unknown"} ${String(error?.message ?? error)}`;
       await alertOperator(this.env, this.tenant, workerAlert("stopped", detail));
+      await this.ctx.storage.put(TOLD, "stopped");
     } catch (failure) {
       console.log("operator alert not sent", { tenant: this.tenant, reason: String(failure?.message ?? failure) });
     }

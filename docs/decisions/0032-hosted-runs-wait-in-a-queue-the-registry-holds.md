@@ -226,3 +226,11 @@ How it is built (`workers/app/src/run_queue.js`, `tenant_registry.js`):
   [ADR-0028](0028-one-sqlite-durable-object-per-hosted-tenant.md). The tick's poll comes first, as
   [ADR-0031](0031-a-hosted-tenants-rss-is-polled-by-the-hosted-worker.md) set out, and the run it
   queues reads the hour's entries whenever it starts.
+* [ADR-0035](0035-a-hosted-runs-alerts-go-to-the-operator-through-the-hosted-worker.md) is how a
+  run's end reaches the operator. With both in one Worker, the queue tells the operator, through
+  that ADR's `alertOperator` and naming the tenant, of each run it ends as `failed` by a start
+  (a start error, or the last of `MAX_START_ATTEMPTS`) and of each run whose lease ends it as
+  `lost` or `failed`. It tells nothing of a run its container's exit failed, which the run object
+  or the run's own alert has told, and no lease end the run object says it already told
+  (`TenantContainer.endTold`). The run object leaves a start the queue holds, and a no-instance
+  stop of a held run, to the queue, so a start the queue will try again alerts nobody.

@@ -226,3 +226,17 @@ failure twice.
   message and no mail" consequence here for alerts. The digest notification is still not sent.
 * [ADR-0027](0027-the-ui-is-worded-from-messageformat-2-catalogs-in-the-output-language.md) is why
   the reader's withheld body is a catalog key.
+* [ADR-0032](0032-hosted-runs-wait-in-a-queue-the-registry-holds.md) puts every hosted run in the
+  registry's run queue, which starts it and tries a no-instance start again. With both in one
+  Worker, "a start that throws always alerts" holds only for a start no queue holds. A start the
+  queue holds is the queue's to tell (the run object asks the registry's `heldRun` first), and the
+  queue sends `Digest run could not start` once, when it ends the run as `failed`: at once for a
+  start error, after the last start for "no container instance". A no-instance stop of a held run
+  is the queue's too, since it puts the run back. The queue also sends `Digest run lost: no stop
+  report, queued again` or `Digest run lost on its last start` for a held run whose lease ran out,
+  unless `TenantContainer.endTold` says this ADR's record (`reported`), or the run object's own
+  record of its abnormal-stop alert (`told`), already covers that start. The abnormal-stop
+  handler runs before the stop is reported to the registry, so a start the report frees cannot
+  clear the record first. Two cases can still alert twice: a start whose run object cannot reach
+  the registry to ask, which alerts itself while the queue alerts too, and a run still running at
+  its lease's end, which the 20-minute lease over the 15-minute inactivity cap is meant to rule out.

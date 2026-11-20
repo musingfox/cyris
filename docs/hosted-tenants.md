@@ -292,10 +292,15 @@ each on one line `[<tenant>] <headline>` and then its detail in a code block:
 - A run that stops at its settings, at its wiring, or at a database that answered an error reads
   `Digest run could not start`. This holds for a scheduled, catch-up or manual run.
 - From the Worker, a start that failed reads `Digest run could not start`, with the period, the
-  date and the error. That covers no free instance for 90 seconds, or no hosted domain.
+  date, the run's state and starts, and the error. The queue sends it once it stops trying: at
+  once for a start error such as no hosted domain, and after the fourth start that found no free
+  instance, since each of the first three goes back in the queue and sends nothing.
 - From the Worker, a container that exited non-zero or was killed reads `Digest run stopped
   before it reported`, with its exit code. That covers an OOM kill, or the 15-minute
   inactivity cap. It is not sent when the run already posted why it ended.
+- From the Worker, a run whose container reported no stop within 20 minutes reads `Digest run lost:
+  no stop report, queued again`, or `Digest run lost on its last start` after its fourth start.
+  It is not sent when the run, or the Worker, already posted why that start ended.
 
 Not posted: a tenant whose schedule the tick cannot read, which gets no run; an alert your
 webhook refused, a `429` included, which leaves an `operator alert not sent` line; and a dry run.

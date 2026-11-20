@@ -2,7 +2,8 @@
 // alert, raw error included, to `http://ops.cyris/t/<tenant>/alert`; its own Durable Object
 // intercepts that host before start() and hands it to OperatorAlertGateway with `props.tenant`
 // set to its name, as it does `db.cyris` (tenant_db.js). The Worker sends its own alerts, about a
-// run that could not start or stopped without reporting, through `alertOperator` too. Either way
+// run that could not start or stopped without reporting, and the registry's run queue about a run
+// it failed or lost, through `alertOperator` too. Either way
 // the tenant is named in front of the alert and it is posted to the operator's Discord webhook, a
 // secret of this Worker that no container holds.
 // docs/decisions/0035-a-hosted-runs-alerts-go-to-the-operator-through-the-hosted-worker.md.
@@ -66,8 +67,8 @@ export const workerAlert = (kind, detail) => ({ subject: WORDING[kind], body: de
 
 // Post one alert about `tenant` to the operator's webhook, and leave one line in the Worker's logs,
 // sent or not. Never throws, so a caller's own failure stands. Answers `{ sent, status }`, the
-// status the gateway answers its container with. A run queue's "run failed" or "run lost" can call
-// this as the gateway and the run object do.
+// status the gateway answers its container with. The registry's run queue calls this for a run it
+// failed or lost (tenant_registry.js), as the gateway and the run object do.
 export async function alertOperator(env, tenant, alert) {
   const webhook = env[OPERATOR_WEBHOOK];
   const notSent = (reason, status) => {

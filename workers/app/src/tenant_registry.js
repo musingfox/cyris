@@ -4,9 +4,11 @@
 //
 // Only the hosted Worker reaches it, through its REGISTRY binding (wrangler.hosted.toml). No
 // tenant's run container does: it holds no binding, and the only Worker code it can reach is
-// TenantDbGateway (tenant_db.js), which answers one tenant's queries and never names this object.
+// TenantDbGateway (tenant_db.js) and OperatorAlertGateway (hosted_alerts.js), which each answer
+// one tenant and never name this object.
 
 import { DurableObject } from "cloudflare:workers";
+import { alertOperator, workerAlert } from "./hosted_alerts.js";
 import RESERVED_IDS from "./hosted_reserved_ids.json";
 import {
   SESSION_TTL_MS,
@@ -23,11 +25,13 @@ import {
 import { randomAddress } from "./inbound_address.js";
 import {
   DEFAULT_DAILY_RUN_CAP,
+  LOST,
   RUNS_SCHEMA,
   checkSchedule,
   dispatchRuns,
   endRun,
   expireLeases,
+  heldRun,
   nextPassAt,
   queueRun,
   recentRuns,
@@ -222,18 +226,28 @@ export class TenantRegistry extends DurableObject {
   // the alarm start it as soon as a slot is free. Leases already over are expired first, so an
   // issue whose stop report never came is queued again rather than refused as live.
   async queueRun(id, issue, { now = new Date() } = {}) {
-    const requeued = await expireLeases(this.ctx.storage.sql, now.getTime(), this.#finished);
+    const told = [];
+    const requeued = await expireLeases(this.ctx.storage.sql, now.getTime(), this.#finished, this.#tell(told));
     const answer = queueRun(this.ctx.storage.sql, this.tenant(id), issue, now.getTime());
     await this.#arm(now.getTime(), Boolean(answer.queued || requeued));
+    await Promise.all(told);
     return answer;
   }
 
   // `id`'s container stopped, `{ exitCode, reason }` as its monitor saw it: its held run ends or
   // goes back in the queue, and the alarm hands the freed slot on.
   async runEnded(id, outcome, { now = new Date() } = {}) {
-    const run = endRun(this.ctx.storage.sql, id, outcome, now.getTime());
+    const told = [];
+    const run = endRun(this.ctx.storage.sql, id, outcome, now.getTime(), this.#tell(told));
     await this.#arm(now.getTime(), true);
+    await Promise.all(told);
     return run;
+  }
+
+  // `id`'s run the queue holds, starting or running, or null: the tenant's run object asks before
+  // it alerts, since a held run's start and its no-instance stop are this queue's to tell.
+  heldRun(id) {
+    return heldRun(this.ctx.storage.sql, id);
   }
 
   // `id`'s most recent runs, newest first.
@@ -244,9 +258,11 @@ export class TenantRegistry extends DurableObject {
   // One pass of the run queue, then the next: a minute on while a run waits, and at the earliest
   // held run's lease end (run_queue.js `nextPassAt`).
   async alarm() {
+    const told = [];
     const start = (run) => tenantRun(this.env, run.tenant_id).startRun({ period: run.period, date: run.date });
-    await dispatchRuns(this.ctx.storage.sql, start, { finished: this.#finished });
+    await dispatchRuns(this.ctx.storage.sql, start, { finished: this.#finished, tell: this.#tell(told) });
     await this.#arm(Date.now(), false);
+    await Promise.all(told);
   }
 
   // Sets the alarm for now when `immediate`, else for `nextPassAt`, unless one is already set
@@ -256,6 +272,35 @@ export class TenantRegistry extends DurableObject {
     if (at === null) return;
     const set = await this.ctx.storage.getAlarm();
     if (set === null || set > at) await this.ctx.storage.setAlarm(at);
+  }
+
+  // The run queue's `tell`: each run it ends as failed or lost is told to the operator once,
+  // through alertOperator, which names the tenant; the alerts go out once the queue's rows are
+  // written, and `told` collects them for the caller to await.
+  #tell(told) {
+    return (run, cause) => told.push(this.#alertEnded(run, cause));
+  }
+
+  // One alert for `run`, ended by its start (`cause` "start") or by its lease ("lease"). None for
+  // a start refused because the tenant is no longer active: that run was never due (ADR-0035).
+  // None for a lease end whose run object already told the operator how that start ended, by the
+  // run's own alert or by its abnormal stop, when the stop's report never reached this registry.
+  async #alertEnded(run, cause) {
+    if (cause === "start" && this.tenant(run.tenant_id)?.status !== ACTIVE) return;
+    if (cause === "lease" && (await this.#endTold(run))) return;
+    const kind = cause === "start" ? "start_failed" : run.state === LOST ? "lost" : "lost_failed";
+    const detail = `period=${run.period} date=${run.date} run=${run.state} starts=${run.attempts}\n${run.outcome}`;
+    await alertOperator(this.env, run.tenant_id, workerAlert(kind, detail));
+  }
+
+  // Whether `run`'s tenant's run object has told the operator how its last start ended; false when
+  // it cannot say, so the alert is sent rather than lost.
+  async #endTold(run) {
+    try {
+      return Boolean(await tenantRun(this.env, run.tenant_id).endTold());
+    } catch {
+      return false;
+    }
   }
 
   // Whether the tenant's own digest_runs holds an ok run of `run`'s period since it started; false

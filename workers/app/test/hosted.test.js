@@ -4,9 +4,10 @@ import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json" with { type:
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json" with { type: "json" };
 import SEED from "../src/hosted_seed.json" with { type: "json" };
 import { OPERATOR_WEBHOOK, OPS_HOST } from "../src/hosted_alerts.js";
-import { REPORTED, START_RETRY, TenantContainer, hostedContainerEnv } from "../src/hosted_container.js";
+import { REPORTED, START_RETRY, TOLD, TenantContainer, hostedContainerEnv } from "../src/hosted_container.js";
 import { handleHostedRequest } from "../src/hosted_router.js";
 import { seedSettings, seedTenant, tenantReport } from "../src/hosted_seed.js";
+import { DISPATCH_EVERY_MS, MAX_START_ATTEMPTS, RUN_LEASE_MS } from "../src/run_queue.js";
 import { DB_HOST } from "../src/tenant_db.js";
 import { REGISTRY_NAME, tenantRegistry } from "../src/tenant_registry.js";
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, drainAlarms, namespace, registryNamespace } from "./sql_storage.js";
@@ -380,6 +381,192 @@ describe("a hosted tenant's run object tells the operator what its container can
 
     expect(ctx.storage.map.has(REPORTED)).toBe(false);
     expect(posted).toEqual([expect.stringContaining("Digest run stopped before it reported")]);
+  });
+});
+
+const NO_INSTANCE_ERROR = "There is no container instance that can be provided to this Durable Object";
+
+// A tenant's run object as hosted.js wires it to the registry's run queue: the queue starts it
+// through TENANT_RUN, it tells the same registry when its container stops, and `posted` is what
+// reached the operator's webhook.
+async function queuedRun(tenant = "alpha") {
+  const posted = webhook();
+  const made = await runObject(tenant, { ...EVERY_BINDING, [OPERATOR_WEBHOOK]: HOOK });
+  made.env.TENANT_RUN = { getByName: () => made.object };
+  const registry = made.env.REGISTRY.getByName(REGISTRY_NAME);
+  await registry.setSchedule(tenant, { times: ["08:00", "20:00"], timeZone: "UTC" });
+  return { ...made, registry, posted };
+}
+
+// What the run object reaches as its registry: the real one, but for `runEnded`, which `stopped`
+// answers instead, as a stop report that fails or one the runtime's alarm follows at once.
+function reportStopsWith(env, stopped) {
+  const registries = env.REGISTRY;
+  env.REGISTRY = {
+    getByName: (...args) =>
+      new Proxy(registries.getByName(...args), {
+        get: (target, key) => (key === "runEnded" ? stopped : typeof target[key] === "function" ? target[key].bind(target) : target[key]),
+      }),
+  };
+}
+
+const morning = { period: "morning", date: "2026-11-20", origin: "operator" };
+
+describe("a queued run's end reaches the operator once, from the run queue or the run object", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+  const exit = (exitCode) => Object.assign(new Error(`exit code ${exitCode}`), { exitCode });
+
+  it("tells a run whose every start found no instance once, when the queue fails it, naming the tenant", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { container, registry, posted } = await queuedRun();
+    container.start = () => {
+      throw new Error(NO_INSTANCE_ERROR);
+    };
+    container.destroy = async () => {};
+
+    await registry.queueRun("alpha", morning);
+    for (let start = 1; start <= MAX_START_ATTEMPTS; start++) {
+      // Each start gives up after its 90 s retry; the queue holds it, so the run object alerts nobody.
+      const pass = drainAlarms(registry);
+      await vi.runAllTimersAsync();
+      await pass;
+      if (start < MAX_START_ATTEMPTS) expect(posted, `start ${start}`).toEqual([]);
+      vi.setSystemTime(Date.now() + DISPATCH_EVERY_MS);
+    }
+
+    expect(registry.runs("alpha")[0]).toMatchObject({ state: "failed", attempts: MAX_START_ATTEMPTS });
+    expect(posted).toEqual([
+      "[alpha] Digest run could not start\n```\nperiod=morning date=2026-11-20 run=failed starts=4\n" +
+        "no container instance, after 4 starts\n```",
+    ]);
+  });
+
+  it("tells a queued start that throws at once once, from the queue, and a paused tenant's refusal not at all", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { env, registry, posted } = await queuedRun();
+    env.CYRIS_STORE_HOSTED_DOMAIN = "";
+
+    await registry.queueRun("alpha", morning);
+    await drainAlarms(registry);
+
+    expect(registry.runs("alpha")[0]).toMatchObject({ state: "failed", attempts: 1 });
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toMatch(/^\[alpha\] Digest run could not start\n```\nperiod=morning date=2026-11-20 run=failed starts=1\n/);
+    expect(posted[0]).toContain("CYRIS_STORE_HOSTED_DOMAIN is not set");
+
+    const paused = await queuedRun("bravo");
+    await paused.registry.queueRun("bravo", morning);
+    await paused.registry.register("bravo", { status: "paused" });
+    await drainAlarms(paused.registry);
+
+    expect(paused.registry.runs("bravo")[0]).toMatchObject({ state: "failed" });
+    expect(paused.posted).toEqual([]);
+  });
+
+  it("tells a run whose lease ran out with no stop report once, naming the tenant, and queues it again", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-20T08:00:00Z"));
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { container, registry, posted } = await queuedRun();
+    await registry.queueRun("alpha", morning);
+    await drainAlarms(registry);
+    expect(registry.runs("alpha")[0]).toMatchObject({ state: "running" });
+
+    // Its container stopped while no monitor watched it, as after a deploy that replaced its object.
+    container.running = false;
+    vi.setSystemTime(Date.now() + RUN_LEASE_MS + 1_000);
+    await drainAlarms(registry);
+
+    expect(registry.runs("alpha").map((run) => [run.state, run.attempts])).toEqual([
+      ["running", 2],
+      ["lost", 1],
+    ]);
+    expect(posted).toEqual([
+      "[alpha] Digest run lost: no stop report, queued again\n```\nperiod=morning date=2026-11-20 run=lost starts=1\n" +
+        "no stop reported within 20 minutes; queued again\n```",
+    ]);
+  });
+
+  it("does not tell a lost run again when its run object, or its run, already told how it stopped", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    for (const runReported of [false, true]) {
+      vi.setSystemTime(new Date("2026-11-20T08:00:00Z"));
+      const { object, container, ctx, env, registry, posted } = await queuedRun();
+      // The stop happens, but its report never reaches the registry.
+      reportStopsWith(env, async () => {
+        throw new Error("registry unreachable");
+      });
+      const exits = [];
+      container.monitor = () => new Promise((_, reject) => exits.push(reject));
+      await registry.queueRun("alpha", morning);
+      await drainAlarms(registry);
+      const watched = [...ctx.waited];
+
+      if (runReported) await object.alertReported("run_failed");
+      container.running = false;
+      exits[0](exit(1));
+      await Promise.allSettled(watched);
+      expect(await object.endTold(), `run reported: ${runReported}`).toBe(true);
+      vi.setSystemTime(Date.now() + RUN_LEASE_MS + 1_000);
+      await drainAlarms(registry);
+
+      expect(registry.runs("alpha")[1]).toMatchObject({ state: "lost" });
+      // The run's own alert went to the gateway, not this webhook; the stop's went here, once.
+      expect(posted).toEqual(runReported ? [] : [expect.stringContaining("[alpha] Digest run stopped before it reported")]);
+      // The next start of the lost run's issue forgets both records.
+      expect(ctx.storage.map.has(REPORTED) || ctx.storage.map.has(TOLD)).toBe(false);
+    }
+  });
+
+  it("tells a queued run's abnormal exit once, from the run object, though the queue records it as failed", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { container, ctx, registry, posted } = await queuedRun();
+    const exits = [];
+    container.monitor = () => new Promise((_, reject) => exits.push(reject));
+    await registry.queueRun("alpha", morning);
+    await drainAlarms(registry);
+
+    exits[0](exit(137));
+    await Promise.allSettled(ctx.waited);
+
+    expect(registry.runs("alpha")[0]).toMatchObject({ state: "failed", outcome: "exit 137: Error: exit code 137" });
+    expect(posted).toEqual([expect.stringContaining("[alpha] Digest run stopped before it reported\n```\nexitCode=137")]);
+  });
+
+  it("reads the run's own report before the stop report frees the tenant for a start that clears it", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { object, container, ctx, env, registry, posted } = await queuedRun();
+    // The runtime may run the registry's alarm as soon as the stop is reported, so the tenant's
+    // next queued run starts, and its interception clears the record, before the monitor goes on.
+    reportStopsWith(env, async (id, stopped) => {
+      const run = await registry.runEnded(id, stopped);
+      container.running = false;
+      await drainAlarms(registry);
+      return run;
+    });
+    const exits = [];
+    container.monitor = () => new Promise((_, reject) => exits.push(reject));
+    await registry.queueRun("alpha", morning);
+    await drainAlarms(registry);
+    await registry.queueRun("alpha", { ...morning, period: "evening" });
+    const watched = [...ctx.waited];
+
+    await object.alertReported("run_failed");
+    exits[0](exit(1));
+    await Promise.allSettled(watched);
+
+    expect(registry.runs("alpha").map((run) => [run.period, run.state])).toEqual([
+      ["evening", "running"],
+      ["morning", "failed"],
+    ]);
+    expect(ctx.storage.map.has(REPORTED)).toBe(false);
+    expect(posted).toEqual([]);
   });
 });
 
