@@ -30,8 +30,10 @@ crons = ["0 * * * *"]
 name = "cyris-hosted-tenantcontainer"
 class_name = "TenantContainer"
 image = "./Dockerfile"
-# One run per tenant at a time; the two tenants' digest hours coincide. A start
-# made while both are held retries for up to 90 s (hosted_container.js).
+# How many tenants' runs hold a container at once. The registry's run queue
+# starts no more than this (`RUN_SLOTS` in workers/app/src/run_queue.js, which
+# tests/test_hosted_config.py holds equal) and the rest wait their turn, so
+# raising it for a larger beta is this line and that constant together (ADR-0032).
 max_instances = 2
 instance_type = "basic"
 

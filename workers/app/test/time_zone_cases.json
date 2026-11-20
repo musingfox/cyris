@@ -1,0 +1,22 @@
+{
+  "_comment": "The time zones the hosted registry's schedule check (`checkSchedule` in workers/app/src/run_queue.js) stores or refuses, held by workers/app/test/run_queue.test.js on the Worker side and by tests/test_hosted_config.py on the container's (`_known_timezone` in src/cyris/config.py): every `stored` name is one the container reads, and every refused zone is one it refuses. A zone with `stored` null is refused.",
+  "cases": [
+    { "zone": "Asia/Taipei", "stored": "Asia/Taipei" },
+    { "zone": "asia/taipei", "stored": "Asia/Taipei" },
+    { "zone": "UTC", "stored": "UTC" },
+    { "zone": "utc", "stored": "UTC" },
+    { "zone": "Etc/GMT+8", "stored": "Etc/GMT+8" },
+    { "zone": "Europe/London", "stored": "Europe/London" },
+    { "zone": "Asia/Kolkata", "stored": "Asia/Kolkata" },
+    { "zone": "America/Argentina/Buenos_Aires", "stored": "America/Argentina/Buenos_Aires" },
+    { "zone": "+08:00", "stored": null },
+    { "zone": "-05:00", "stored": null },
+    { "zone": "+0800", "stored": null },
+    { "zone": "GMT+8", "stored": null },
+    { "zone": "Mars/Olympus", "stored": null },
+    { "zone": "etc/utc", "stored": null },
+    { "zone": "/Asia/Taipei", "stored": null },
+    { "zone": "Asia Taipei", "stored": null },
+    { "zone": "", "stored": null }
+  ]
+}

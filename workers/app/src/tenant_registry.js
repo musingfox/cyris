@@ -7,23 +7,39 @@
 // TenantDbGateway (tenant_db.js), which answers one tenant's queries and never names this object.
 
 import { DurableObject } from "cloudflare:workers";
-import { LOCATION_HINT, TENANT } from "./tenant_db.js";
+import {
+  DEFAULT_DAILY_RUN_CAP,
+  RUNS_SCHEMA,
+  checkSchedule,
+  dispatchRuns,
+  endRun,
+  expireLeases,
+  nextPassAt,
+  queueRun,
+  recentRuns,
+  tenantRun,
+} from "./run_queue.js";
+import { LOCATION_HINT, TENANT, tenantRows } from "./tenant_db.js";
 import { ACTIVE, TENANT_STATUSES } from "./tenant_status.js";
 
 // The registry's name in its namespace. There is one registry, so the name is fixed; it is
 // outside TENANT, so no tenant id can ever name it.
 export const REGISTRY_NAME = "cyris:registry";
 
-// The registry's own tables: not schema.sql, which is a tenant's. Only `tenants` has a reader
-// and a writer yet; the others are created empty for the cards that fill them (login,
-// invites, newsletters, budgets), so those cards add code and no new home for state.
-// `digest_times` is the tenant's digest hours as a JSON list, kept for the scheduling card;
-// until it lands the tick still reads each tenant's schedule from the tenant's own database.
+// The registry's own tables: not schema.sql, which is a tenant's. `tenants` and the run queue's
+// `runs` (run_queue.js) have readers and writers; the others are created empty for the cards that
+// fill them (login, invites, newsletters, budgets), so those cards add code and no new home for
+// state. A tenant's schedule is the registry's, never its own database's, which its run container
+// can rewrite (ADR-0032): `digest_times`, its two digest hours as a JSON list, and `timezone`, the
+// zone they are hours of; neither is set until the operator's schedule route sets both.
+// `daily_run_cap` is the most runs it may start in 24 hours.
 export const REGISTRY_SCHEMA = `
 CREATE TABLE IF NOT EXISTS tenants (
   id TEXT PRIMARY KEY,
   status TEXT NOT NULL,
   digest_times TEXT,
+  timezone TEXT,
+  daily_run_cap INTEGER NOT NULL DEFAULT ${DEFAULT_DAILY_RUN_CAP},
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -57,14 +73,27 @@ CREATE TABLE IF NOT EXISTS spend_rollup (
   updated_at TEXT NOT NULL,
   PRIMARY KEY (tenant_id, month)
 );
-`;
+${RUNS_SCHEMA}`;
 
-const TENANT_COLUMNS = "id, status, digest_times, created_at, updated_at";
+// The columns a registry created before them lacks, added in place: each is additive and has a
+// default, so a check of the table's own columns is the whole migration (ADR-0032).
+const ADDED_COLUMNS = [
+  ["tenants", "timezone", "TEXT"],
+  ["tenants", "daily_run_cap", `INTEGER NOT NULL DEFAULT ${DEFAULT_DAILY_RUN_CAP}`],
+];
+
+const TENANT_COLUMNS = "id, status, digest_times, timezone, daily_run_cap, created_at, updated_at";
 const TENANT_INSERT = "INSERT INTO tenants (id, status, created_at, updated_at) VALUES (?, ?, ?, ?)";
 // A status named sets it; none named adds an absent tenant as active and leaves a present one alone.
 const TENANT_UPSERT =
   `${TENANT_INSERT} ON CONFLICT(id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at`;
 const TENANT_ADD = `${TENANT_INSERT} ON CONFLICT(id) DO NOTHING`;
+// A cap of null keeps the tenant's own: re-scheduling its hours never resets its spend limit.
+const TENANT_SCHEDULE =
+  "UPDATE tenants SET digest_times = ?, timezone = ?, daily_run_cap = COALESCE(?, daily_run_cap), updated_at = ? WHERE id = ?";
+// Whether a run's issue was made since it started, for a run whose lease ran out (expireLeases).
+const MADE_SINCE =
+  "SELECT 1 AS made FROM digest_runs WHERE period = ? AND status = 'ok' AND dry_run = 0 AND finished_at >= ? LIMIT 1";
 
 // The time a row is written at, as the container's stores write it (seconds, UTC offset).
 const stamp = (now) => `${now.toISOString().slice(0, 19)}+00:00`;
@@ -78,6 +107,10 @@ export class TenantRegistry extends DurableObject {
     super(ctx, env);
     // Every statement is CREATE ... IF NOT EXISTS, so this is a no-op on every start but the first.
     ctx.storage.sql.exec(REGISTRY_SCHEMA);
+    for (const [table, column, type] of ADDED_COLUMNS) {
+      const columns = ctx.storage.sql.exec(`PRAGMA table_info(${table})`).toArray().map((row) => row.name);
+      if (!columns.includes(column)) ctx.storage.sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+    }
   }
 
   // The registered tenants in id order, every one or only those with `status`.
@@ -111,4 +144,64 @@ export class TenantRegistry extends DurableObject {
     else this.ctx.storage.sql.exec(TENANT_UPSERT, id, status, at, at);
     return { tenant: this.tenant(id) };
   }
+
+  // Sets a registered tenant's schedule, `{ times, timeZone, dailyRunCap }`, checked by
+  // `checkSchedule`, and answers `{tenant}`, its row, or `{refused}`, writing nothing. With no
+  // `dailyRunCap` the tenant keeps the cap it has.
+  setSchedule(id, schedule, { now = new Date() } = {}) {
+    if (!this.tenant(id)) return { refused: `${id} is not a registered tenant` };
+    const checked = checkSchedule(schedule);
+    if (checked.refused) return checked;
+    const { digestTimes, timeZone, dailyRunCap } = checked.schedule;
+    this.ctx.storage.sql.exec(TENANT_SCHEDULE, JSON.stringify(digestTimes), timeZone, dailyRunCap, stamp(now), id);
+    return { tenant: this.tenant(id) };
+  }
+
+  // Queues one run of `id`'s issue `{ period, date, origin }` (run_queue.js `queueRun`) and has
+  // the alarm start it as soon as a slot is free. Leases already over are expired first, so an
+  // issue whose stop report never came is queued again rather than refused as live.
+  async queueRun(id, issue, { now = new Date() } = {}) {
+    const requeued = await expireLeases(this.ctx.storage.sql, now.getTime(), this.#finished);
+    const answer = queueRun(this.ctx.storage.sql, this.tenant(id), issue, now.getTime());
+    await this.#arm(now.getTime(), Boolean(answer.queued || requeued));
+    return answer;
+  }
+
+  // `id`'s container stopped, `{ exitCode, reason }` as its monitor saw it: its held run ends or
+  // goes back in the queue, and the alarm hands the freed slot on.
+  async runEnded(id, outcome, { now = new Date() } = {}) {
+    const run = endRun(this.ctx.storage.sql, id, outcome, now.getTime());
+    await this.#arm(now.getTime(), true);
+    return run;
+  }
+
+  // `id`'s most recent runs, newest first.
+  runs(id) {
+    return recentRuns(this.ctx.storage.sql, id);
+  }
+
+  // One pass of the run queue, then the next: a minute on while a run waits, and at the earliest
+  // held run's lease end (run_queue.js `nextPassAt`).
+  async alarm() {
+    const start = (run) => tenantRun(this.env, run.tenant_id).startRun({ period: run.period, date: run.date });
+    await dispatchRuns(this.ctx.storage.sql, start, { finished: this.#finished });
+    await this.#arm(Date.now(), false);
+  }
+
+  // Sets the alarm for now when `immediate`, else for `nextPassAt`, unless one is already set
+  // sooner; nothing when no run waits or is held.
+  async #arm(nowMs, immediate) {
+    const at = immediate ? nowMs : nextPassAt(this.ctx.storage.sql, nowMs);
+    if (at === null) return;
+    const set = await this.ctx.storage.getAlarm();
+    if (set === null || set > at) await this.ctx.storage.setAlarm(at);
+  }
+
+  // Whether the tenant's own digest_runs holds an ok run of `run`'s period since it started; false
+  // when it cannot be read, so the run is queued again rather than taken as made.
+  #finished = async (run) => {
+    if (!this.env.TENANT_DB) return false;
+    const rows = await tenantRows(this.env, run.tenant_id)(MADE_SINCE, [run.period, run.started_at], "digest_runs");
+    return Boolean(rows?.length);
+  };
 }

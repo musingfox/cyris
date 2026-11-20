@@ -22,7 +22,8 @@ export class Lifecycle {
   // every start(), because an interception lasts as long as the container it was registered on.
   // `startRetry`, when given, is `{ maxWaitMs, backoffMs }`: a start that meets NO_INSTANCE is
   // tried again after each backoff in turn, the last repeating, until the next wait would pass
-  // `maxWaitMs`. Without them a start is what it always was: one start() and no retry.
+  // `maxWaitMs`. `onStop`, when given, is told `{ exitCode, reason }` each time a container this
+  // object watches stops. Without them a start is what it always was: one start() and no retry.
   constructor(
     ctx,
     inactivityTimeoutMs,
@@ -31,6 +32,7 @@ export class Lifecycle {
       pollMs = POLL_MS,
       intercept = null,
       startRetry = null,
+      onStop = null,
       sleep = pause,
       now = Date.now,
     } = {},
@@ -41,6 +43,7 @@ export class Lifecycle {
     this.pollMs = pollMs;
     this.intercept = intercept;
     this.startRetry = startRetry;
+    this.onStop = onStop;
     this.sleep = sleep;
     this.now = now;
   }
@@ -50,10 +53,22 @@ export class Lifecycle {
   adopt() {
     this.ctx.waitUntil(
       this.ctx.container.monitor().then(
-        () => console.log("container stopped", { exitCode: 0 }),
-        (error) => console.log("container stopped", { exitCode: error?.exitCode, reason: String(error) }),
-      ).finally(() => {
+        () => {
+          console.log("container stopped", { exitCode: 0 });
+          return { exitCode: 0 };
+        },
+        (error) => {
+          console.log("container stopped", { exitCode: error?.exitCode, reason: String(error) });
+          return { exitCode: error?.exitCode, reason: String(error) };
+        },
+      ).then(async (stopped) => {
         this.listening = false;
+        if (!this.onStop) return;
+        try {
+          await this.onStop(stopped);
+        } catch (error) {
+          console.log("container stop not reported", { reason: String(error?.message ?? error) });
+        }
       }),
     );
     return this.ctx.container.setInactivityTimeout(this.inactivityTimeoutMs);

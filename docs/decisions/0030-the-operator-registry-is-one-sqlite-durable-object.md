@@ -150,3 +150,6 @@ How it is built:
   statuses, and no longer lists `CYRIS_HOSTED_TENANTS`.
 * `docs/hosted-tenants.md` registers and seeds `alpha` and `bravo`, then runs and checks each.
 * ADR-0028's tenant list is the stub this replaces.
+* [ADR-0032](0032-hosted-runs-wait-in-a-queue-the-registry-holds.md) fills `digest_times`, adds
+  `tenants.timezone` and `tenants.daily_run_cap` in place, and adds the run queue's `runs`. The
+  tick now reads each tenant's schedule from the registry, not from the tenant's `settings`.

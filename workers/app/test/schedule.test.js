@@ -295,6 +295,18 @@ describe("the hosted Worker's reads go to the tenant's own database", () => {
     expect(await planTick({ env: ENV, fetchImpl: noRest(), now: at, read })).toEqual({});
   });
 
+  it("plans from a schedule handed in, reading no settings, and names the due issue when asked", async () => {
+    const read = tenantRead({ schedule: { "general.digest_schedule": ["06:00", "18:00"], "general.timezone": "UTC" } });
+    const schedule = { times: ["08:00", "20:00"], timeZone: "Asia/Taipei" };
+    const plan = (now, nameDue) => planTick({ env: ENV, fetchImpl: noRest(), now: () => now, read, schedule, nameDue });
+
+    expect(await plan(TAIPEI_8AM, true)).toEqual({ period: "morning", date: "2026-08-27", origin: "tick" });
+    // Without nameDue a digest hour is still `{}`, as the default Worker's tick wants it.
+    expect(await plan(TAIPEI_8AM, false)).toEqual({});
+    expect(await plan(TAIPEI_9AM, true)).toEqual(MORNING_CATCH_UP);
+    expect(read.calls.map((call) => call.what)).toEqual(["digest_runs"]);
+  });
+
   it("reads the time zone a manual run's date is checked against", async () => {
     expect(await readTimeZone({ env: ENV, fetchImpl: noRest(), read: tenantRead() })).toBe("Asia/Taipei");
   });

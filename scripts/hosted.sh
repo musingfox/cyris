@@ -92,8 +92,9 @@ ask_access() {
 
 # call TENANT METHOD PATH OUTFILE: one operator route, signed in with the service token. The
 # headers go in as curl config on stdin; printf is a builtin, so the secret is in no process's
-# argv. Never ends the script: a route that did not answer 200, or never answered (HTTP 000, no
-# file written), is reported for TENANT and returns non-zero, so the caller goes on to the next.
+# argv. Never ends the script: a route that answered neither 200 nor 202 (a run the registry
+# queued), or never answered (HTTP 000, no file written), is reported for TENANT and returns
+# non-zero, so the caller goes on to the next.
 call() {
   local tenant=$1 method=$2 path=$3 out=$4 status
   status=$(
@@ -106,7 +107,7 @@ call() {
     python3 -m json.tool "$out" 2>/dev/null || cat "$out"
     echo
   fi
-  if [[ "$status" != 200 ]]; then
+  if [[ "$status" != 200 && "$status" != 202 ]]; then
     echo "FAILED $tenant: $method $path answered HTTP $status" >&2
     return 1
   fi
@@ -182,6 +183,21 @@ case "${1:-}" in
     done
     finish ${failed[@]+"${failed[@]}"}
     ;;
+  schedule)
+    # schedule TENANT TIMES TIMEZONE [DAILY_RUN_CAP]: the registry's schedule for one tenant,
+    # which is what the hourly tick wakes it by (ADR-0032), e.g. alpha 07:00,19:00 Asia/Taipei.
+    tenant=${2:-} times=${3:-} zone=${4:-} cap=${5:-}
+    [[ -n "$tenant" && -n "$times" && -n "$zone" ]] || {
+      echo "usage: $0 schedule TENANT HH:00,HH:00 TIMEZONE [DAILY_RUN_CAP]" >&2
+      exit 2
+    }
+    # Encoded, so a zone such as Etc/GMT+8 keeps its "+".
+    query=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.urlencode([tuple(a.split("=", 1)) for a in sys.argv[1:] if not a.endswith("=")]))' \
+      "times=$times" "timezone=$zone" "daily_run_cap=$cap")
+    ask_access
+    out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-schedule.XXXXXX")
+    call "$tenant" POST "/hosted/tenants/$tenant/schedule?$query" "$out/$tenant.json" || finish "$tenant"
+    ;;
   seed)
     ask_access
     out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-seed.XXXXXX")
@@ -244,7 +260,7 @@ case "${1:-}" in
     run_wrangler delete
     ;;
   *)
-    echo "usage: $0 deploy|secrets|containers|register|seed|run [morning|evening]|poll|check|tail|delete" >&2
+    echo "usage: $0 deploy|secrets|containers|register|schedule TENANT TIMES TIMEZONE [CAP]|seed|run [morning|evening]|poll|check|tail|delete" >&2
     exit 2
     ;;
 esac

@@ -66,6 +66,12 @@ if "/t/" in url:
         body.write(page)
     sys.stdout.write("200")
     sys.exit(0)
+if "/run?" in url:
+    # A run the registry queued.
+    with open(out, "w") as body:
+        json.dump({"queued": {"tenant_id": tenant, "state": "queued"}}, body)
+    sys.stdout.write("202")
+    sys.exit(0)
 sources = {"alpha": ["Hacker News"], "bravo": ["Aeon"]}[tenant]
 report = {
     "tenant": tenant,
@@ -266,6 +272,39 @@ def test_a_run_names_a_period_the_worker_takes(repo: Path) -> None:
         f"{URL}/hosted/tenants/alpha/run?period=evening",
         f"{URL}/hosted/tenants/bravo/run?period=evening",
     ]
+
+
+def test_a_run_the_registry_queued_is_not_a_failure(repo: Path) -> None:
+    """The run route answers 202: the run waits in the registry's queue (ADR-0032)."""
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, _ = _run(repo, ["run", "morning"], ["client-id.access", "client-SECRET"])
+
+    assert done.returncode == 0, done.stderr
+    assert "run?period=morning -> HTTP 202" in done.stderr
+    assert "FAILED" not in done.stderr
+
+
+def test_schedule_sets_one_tenants_schedule_encoded_with_the_token_on_stdin(repo: Path) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    refused, calls = _run(repo, ["schedule", "alpha", "07:00,19:00"], [])
+    done, calls = _run(
+        repo,
+        ["schedule", "alpha", "07:00,19:00", "Etc/GMT+8", "4"],
+        ["client-id.access", "client-SECRET"],
+    )
+
+    assert refused.returncode == 2
+    assert done.returncode == 0, done.stderr
+    [curl] = [c for c in calls if c["cmd"] == "curl"]
+    assert curl["args"][-1] == (
+        f"{URL}/hosted/tenants/alpha/schedule"
+        "?times=07%3A00%2C19%3A00&timezone=Etc%2FGMT%2B8&daily_run_cap=4"
+    )
+    assert curl["args"][curl["args"].index("-X") + 1] == "POST"
+    assert "CF-Access-Client-Secret: client-SECRET" in curl["stdin"]
+    assert "client-SECRET" not in " ".join(curl["args"])
 
 
 def test_poll_polls_each_seeded_tenant_with_the_token_on_stdin(repo: Path) -> None:

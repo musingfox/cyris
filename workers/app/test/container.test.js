@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { Lifecycle, PORT } from "../src/container.js";
 
 // A stand-in for ctx.container that answers like the runtime's: start() throws
@@ -76,6 +76,51 @@ describe("adopt", () => {
     await new Lifecycle(ctx, 300_000).adopt();
     expect(ctx.container.timeouts).toEqual([300_000]);
     expect(ctx.waited).toHaveLength(1);
+  });
+
+  it("tells onStop how the container stopped: exit 0, or the exit code and reason", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const stops = [];
+    for (const monitor of [
+      () => Promise.resolve(),
+      () => Promise.reject(Object.assign(new Error("exited"), { exitCode: 3 })),
+      () => Promise.reject(new Error("There is no container instance that can be provided to this Durable Object")),
+    ]) {
+      const ctx = fakeContext({ running: true });
+      ctx.container.monitor = monitor;
+      await new Lifecycle(ctx, 300_000, { onStop: async (stopped) => stops.push(stopped) }).adopt();
+      await Promise.all(ctx.waited);
+    }
+
+    expect(stops).toEqual([
+      { exitCode: 0 },
+      { exitCode: 3, reason: "Error: exited" },
+      {
+        exitCode: undefined,
+        reason: "Error: There is no container instance that can be provided to this Durable Object",
+      },
+    ]);
+    vi.restoreAllMocks();
+  });
+
+  it("logs a stop report that fails, and stops listening all the same", async () => {
+    const logs = [];
+    vi.spyOn(console, "log").mockImplementation((...args) => logs.push(args));
+    const ctx = fakeContext({ running: true });
+    ctx.container.monitor = () => Promise.resolve();
+    const lifecycle = new Lifecycle(ctx, 300_000, {
+      onStop: async () => {
+        throw new Error("registry unreachable");
+      },
+    });
+    lifecycle.listening = true;
+
+    await lifecycle.adopt();
+    await expect(Promise.all(ctx.waited)).resolves.toBeDefined();
+
+    expect(lifecycle.listening).toBe(false);
+    expect(logs).toContainEqual(["container stop not reported", { reason: "registry unreachable" }]);
+    vi.restoreAllMocks();
   });
 });
 

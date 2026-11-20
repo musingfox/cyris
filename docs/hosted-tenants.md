@@ -14,6 +14,8 @@ config is [ADR-0030](decisions/0030-the-operator-registry-is-one-sqlite-durable-
 Why each tenant's RSS is polled hourly by this Worker into a buffer in the tenant's own object,
 and what that costs against Cloudflare's limits, is
 [ADR-0031](decisions/0031-a-hosted-tenants-rss-is-polled-by-the-hosted-worker.md).
+Why each tenant's schedule and run cap live in the registry, and why every run waits in a queue
+there, is [ADR-0032](decisions/0032-hosted-runs-wait-in-a-queue-the-registry-holds.md).
 
 `cyris-hosted` is a separate Worker from `cyris-app`. Nothing here deploys or changes
 `wrangler.toml`, which a push to main deploys to production (ADR-0024).
@@ -116,11 +118,13 @@ scripts/hosted.sh containers
 A first deploy can take several minutes before an instance can start. Wait until
 `cyris-hosted-tenantcontainer` is listed and ready.
 
-## 5. Register and seed both tenants
+## 5. Register, seed and schedule both tenants
 
 ```bash
 scripts/hosted.sh register
 scripts/hosted.sh seed
+scripts/hosted.sh schedule alpha 08:00,20:00 UTC
+scripts/hosted.sh schedule bravo 09:00,21:00 UTC
 ```
 
 `register` runs `POST /hosted/tenants/<tenant>/register` for `alpha`, then `bravo`. Each answer is
@@ -149,6 +153,26 @@ service token's two headers, and `?status=active` to resume it. Only a named sta
 registered tenant's status. The tick skips a paused tenant,
 and its run route answers 409. Its seed and report routes still answer.
 
+`schedule TENANT TIMES TIMEZONE [DAILY_RUN_CAP]` runs
+`POST /hosted/tenants/<tenant>/schedule?times=...&timezone=...` for one tenant. It sets the hours
+the hourly tick wakes that tenant at, the zone they are hours of, and, when you name one, its
+daily run cap. The registry holds all three, and the tick reads them nowhere else: the schedule
+the seed wrote into the tenant's own database is not what wakes it. `TIMES` is two whole hours,
+such as `07:00,19:00`. `TIMEZONE` is an IANA zone name such as `Asia/Taipei`, never an offset
+such as `+08:00`, which the container cannot read and the route refuses. The cap is the most runs
+the tenant may start in any 24 hours, from 1 to 24. A new tenant's cap is 6, and scheduling a
+tenant again without naming one keeps the cap it has. The answer is the tenant's registry row,
+and `"settings": true` once the route has copied the hours and the zone into the tenant's own
+settings. `false` means the copy could not be written, and the Worker logs why
+(`schedule copy not written`). For a tenant not yet seeded that is expected: its seed writes the
+copy instead. A schedule the registry does not take answers 400 with the reason. Until a
+tenant has a schedule, the tick polls its feeds and queues no run, and its run route answers
+409. Give each tenant different hours to see each one woken at its own.
+
+On a deployment whose tenants were registered before the registry held schedules, run `schedule`
+for each tenant after you deploy. Until you do, the tick polls its feeds and queues none of its
+runs.
+
 ## 6. Poll each tenant's feeds, and measure a tick
 
 Every hour, on the hour, the Worker's tick polls each active tenant's `rss` sources into that
@@ -171,8 +195,8 @@ unverified*):
 
 - one `hosted tick` line from the scheduled invocation, with `tenants`, `polled`,
   `failed_polls`, `feeds`, `feed_fetches` (the feed requests the tenants' polls made),
-  `max_tenant_fetches` (the most any one tenant's poll made), `written`, `object_calls` (the
-  Durable Object calls the tick made itself) and `wall_ms`;
+  `max_tenant_fetches` (the most any one tenant's poll made), `written`, `queued` (the runs it
+  queued), `object_calls` (the Durable Object calls the tick made itself) and `wall_ms`;
 - one `rss poll` line per tenant, with its own counts;
 - the CPU time and wall time of each invocation, which Workers Logs puts in the invocation log.
   That covers the scheduled invocation and each tenant's `TenantDb` invocation, where the
@@ -189,10 +213,14 @@ ADR-0031.
 scripts/hosted.sh run morning
 ```
 
-This runs `POST /hosted/tenants/<tenant>/run?period=morning` for each tenant. Each tenant's
-container starts with the gateway to that tenant's database registered before `start()`. A
-start made while both instances are held is retried for up to 90 seconds. Each answer is
-`{"started": true, "tenant": ...}`, or `"started": false` when that tenant's run is already up.
+This runs `POST /hosted/tenants/<tenant>/run?period=morning` for each tenant. Each answer is
+HTTP 202 with `{"queued": ...}`, the run's row in the registry's queue, dated today in the
+tenant's zone. The registry starts the queued runs, at most `max_instances` (2) at once and one
+per tenant. Each tenant's container starts with the gateway to that tenant's database registered
+before `start()`. A start that gets no container instance waits in the queue and is started
+again, up to four times; after that, the run is recorded as `failed`. A run of an issue that is
+already queued or running answers 409, and a tenant past its daily cap answers 429; neither
+queues anything.
 
 Each run reads its RSS from the tenant's own buffer, `articles`, which step 6 and the hourly tick
 fill. It does not poll its feeds itself. A run started before any poll finds the buffer empty and
@@ -205,7 +233,9 @@ scripts/hosted.sh tail
 ```
 
 Stop it with Ctrl-C. The containers' own output is in Workers Logs (Workers & Pages >
-`cyris-hosted` > Logs, *label unverified*).
+`cyris-hosted` > Logs, *label unverified*). The queue logs `run queued`, `run started`,
+`run done`, `run failed`, `run lost` and `run queued again` lines, each with the tenant, the
+period and the date.
 
 ## 8. Check that each tenant holds only its own rows
 
@@ -216,7 +246,9 @@ scripts/hosted.sh check
 This reads `GET /hosted/tenants/<tenant>/report` for each tenant, then fetches that tenant's
 latest page, `GET /t/<tenant>/`, with the same service token. Each report has the tenant's
 tables with their row counts, its sources, the sources of its stored articles, its
-`digest_runs`, its `digests`, and the path and SHA-256 of the page its site root serves.
+`digest_runs`, its `digests`, the path and SHA-256 of the page its site root serves, and its
+`runs`: the registry's last 20 runs of the tenant, each with its period, date, origin, state,
+attempts, start and end times, and why it ended.
 `scripts/hosted_check.py` judges the reports and the pages and prints one line per tenant. It
 exits 1 when any tenant fails. A tenant passes when all of these hold:
 
@@ -233,11 +265,17 @@ exits 1 when any tenant fails. A tenant passes when all of these hold:
 issue`, and the same for `bravo`, is the milestone. The reports and the pages are kept in the
 temporary directory the script names. Keep them with the result.
 
-A tenant that has no `ok` run yet may still be running. Check again a few minutes later. A run
-that ended in `error` has its reason in that tenant's Workers Logs.
+A tenant that has no `ok` run yet may still be running, or waiting in the queue: its report's
+`runs` says which. Check again a few minutes later. A run that ended in `error` has its reason in
+that tenant's Workers Logs. A run the registry recorded as `failed` has its reason in `runs`. A
+`lost` row is a run whose container never reported its stop within 20 minutes; the row above it
+is the same issue, queued again.
 
-The hourly tick also runs each active registered tenant at 08:00 and 20:00 UTC. A check after one of those hours
-counts two runs, and each is still that tenant's own.
+The hourly tick also queues each active tenant's run at the hours step 5 scheduled. A check
+after one of those hours counts two runs, and each is still that tenant's own. To see each tenant
+woken at its own hours, run `check` after both tenants' hours have passed. In each report, every
+`digest_runs` row's `finished_at` falls a few minutes after one of that tenant's hours, and its
+`runs` row for the hour has `origin` `tick` and state `done`.
 
 ### Reading a tenant's pages in a browser (optional)
 

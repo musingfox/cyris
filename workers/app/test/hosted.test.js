@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { generateKeyPair, exportJWK, SignJWT, createLocalJWKSet } from "jose";
 import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json" with { type: "json" };
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json" with { type: "json" };
@@ -7,8 +7,8 @@ import { START_RETRY, TenantContainer, hostedContainerEnv } from "../src/hosted_
 import { handleHostedRequest } from "../src/hosted_router.js";
 import { seedSettings, seedTenant, tenantReport } from "../src/hosted_seed.js";
 import { DB_HOST } from "../src/tenant_db.js";
-import { tenantRegistry } from "../src/tenant_registry.js";
-import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace, registryNamespace } from "./sql_storage.js";
+import { REGISTRY_NAME, tenantRegistry } from "../src/tenant_registry.js";
+import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, drainAlarms, namespace, registryNamespace } from "./sql_storage.js";
 
 // Everything the default Worker forwards (index.js `SECRETS` and `DEPLOYMENT`), set.
 const EVERY_BINDING = {
@@ -38,9 +38,10 @@ const EVERY_BINDING = {
 
 const WORKER_URLS = ["CYRIS_PROMOTE_WORKER_URL", "CYRIS_NEWSLETTER_WORKER_URL", "CYRIS_RSS_WORKER_URL"];
 
-// A registry that holds `alpha` and `bravo` as active, and `paused` as paused.
-async function registry() {
-  const REGISTRY = registryNamespace();
+// A registry that holds `alpha` and `bravo` as active, and `paused` as paused; it starts runs
+// through `env`'s TENANT_RUN.
+async function registry(env = {}) {
+  const REGISTRY = registryNamespace(env);
   for (const tenant of ["alpha", "bravo"]) await tenantRegistry({ REGISTRY }).register(tenant);
   await tenantRegistry({ REGISTRY }).register("paused", { status: "paused" });
   return REGISTRY;
@@ -49,7 +50,8 @@ async function registry() {
 // A tenant's run object as the runtime builds it: named by the tenant, its container a fake
 // that logs, in order, each interception registered and each start.
 async function runObject(name, bindings = EVERY_BINDING) {
-  const env = { ...bindings, REGISTRY: await registry() };
+  const env = { ...bindings };
+  env.REGISTRY = await registry(env);
   const order = [];
   const container = {
     running: false,
@@ -73,10 +75,13 @@ async function runObject(name, bindings = EVERY_BINDING) {
     id: { name },
     container,
     exports: { TenantDbGateway: ({ props }) => ({ props }) },
-    waitUntil() {},
+    waited: [],
+    waitUntil(promise) {
+      this.waited.push(promise);
+    },
     blockConcurrencyWhile: (run) => run(),
   };
-  return { object: new TenantContainer(ctx, env), container, order };
+  return { object: new TenantContainer(ctx, env), container, order, ctx, env };
 }
 
 describe("a hosted tenant's run container", () => {
@@ -162,6 +167,34 @@ describe("a hosted tenant's run container", () => {
       expect(container.starts).toEqual([]);
       expect(order).toEqual([]);
     }
+  });
+
+  it("tells the registry when its container stops, which ends the run it held or queues it again", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
+    const { object, container, ctx, env } = await runObject("alpha");
+    env.TENANT_RUN = { getByName: () => object };
+    const registry = env.REGISTRY.getByName(REGISTRY_NAME);
+    await registry.setSchedule("alpha", { times: ["08:00", "20:00"], timeZone: "UTC" });
+    const stops = [];
+    container.monitor = () => new Promise((resolve, reject) => stops.push({ resolve, reject }));
+
+    await registry.queueRun("alpha", { period: "morning", date: "2026-11-18", origin: "operator" });
+    await drainAlarms(registry);
+    expect(container.starts[0].env).toMatchObject({ CYRIS_RUN_PERIOD: "morning", CYRIS_RUN_DATE: "2026-11-18" });
+    expect(registry.runs("alpha")[0]).toMatchObject({ state: "running", attempts: 1 });
+
+    // The start looked granted, then the container stopped with no instance: queued again.
+    container.running = false;
+    stops[0].reject(new Error("There is no container instance that can be provided to this Durable Object"));
+    await Promise.all(ctx.waited);
+    expect(registry.runs("alpha")[0]).toMatchObject({ state: "queued", outcome: "no container instance" });
+
+    await drainAlarms(registry);
+    container.running = false;
+    stops[1].resolve();
+    await Promise.all(ctx.waited);
+    expect(registry.runs("alpha")[0]).toMatchObject({ state: "done", attempts: 2, outcome: "exit 0" });
+    vi.restoreAllMocks();
   });
 
   it("retries a start no instance can be given for up to 90 seconds", () => {
@@ -332,12 +365,12 @@ async function operator(method, path, { signedIn = true } = {}) {
 
 // What the registry answers for each tenant the routes are asked about.
 const REGISTERED = {
-  alpha: { id: "alpha", status: "active" },
-  bravo: { id: "bravo", status: "active" },
-  paused: { id: "paused", status: "paused" },
+  alpha: { id: "alpha", status: "active", timezone: "UTC" },
+  bravo: { id: "bravo", status: "active", timezone: "UTC" },
+  paused: { id: "paused", status: "paused", timezone: "UTC" },
 };
 
-function hostedDeps({ timeZone = "UTC" } = {}) {
+function hostedDeps({ timeZone = "UTC", queued = { queued: { id: 1 } } } = {}) {
   const calls = [];
   const record =
     (name, answer) =>
@@ -349,11 +382,11 @@ function hostedDeps({ timeZone = "UTC" } = {}) {
     calls,
     accessKeys: ACCESS_KEYS,
     register: record("register", { tenant: { id: "registered", status: "active" } }),
-    tenant: async (tenant) => REGISTERED[tenant] ?? null,
+    tenant: async (tenant) => (REGISTERED[tenant] ? { ...REGISTERED[tenant], timezone: timeZone } : null),
+    schedule: record("schedule", { tenant: { id: "scheduled" }, settings: true }),
     seed: record("seed", { seeded: true }),
     report: record("report", { reported: true }),
-    timeZone: record("timeZone", timeZone),
-    startRun: record("startRun", { started: true }),
+    queueRun: record("queueRun", queued),
     now: () => new Date("2026-11-18T06:00:00Z"),
   };
 }
@@ -384,7 +417,7 @@ describe("the hosted Worker's operator routes", () => {
     expect(deps.calls).toEqual([]);
   });
 
-  it("seed, report and start a run for a named tenant", async () => {
+  it("seed, report and queue a run for a named tenant, dated today in its zone when no date is named", async () => {
     const deps = hostedDeps();
 
     const seeded = await handleHostedRequest(await operator("POST", "/hosted/tenants/alpha/seed"), ENV, deps);
@@ -392,13 +425,41 @@ describe("the hosted Worker's operator routes", () => {
     const run = await operator("POST", "/hosted/tenants/bravo/run?period=evening");
     const ran = await handleHostedRequest(run, ENV, deps);
 
-    expect([seeded.status, reported.status, ran.status]).toEqual([200, 200, 200]);
-    expect(await ran.json()).toEqual({ started: true });
+    expect([seeded.status, reported.status, ran.status]).toEqual([200, 200, 202]);
+    expect(await ran.json()).toEqual({ queued: { id: 1 } });
     expect(deps.calls).toEqual([
       ["seed", "alpha"],
       ["report", "bravo"],
-      ["startRun", "bravo", "evening", undefined],
+      ["queueRun", "bravo", { period: "evening", date: "2026-11-18", origin: "operator" }],
     ]);
+  });
+
+  it("answer a run the registry will not queue with its reason: 409 for one already live, 429 at the cap", async () => {
+    for (const [code, status] of [
+      ["live", 409],
+      ["inactive", 409],
+      ["cap", 429],
+    ]) {
+      const deps = hostedDeps({ queued: { refused: `refused: ${code}`, code } });
+      const response = await handleHostedRequest(await operator("POST", "/hosted/tenants/alpha/run?period=morning"), ENV, deps);
+
+      expect(response.status, code).toBe(status);
+      expect((await response.json()).error).toBe(`refused: ${code}`);
+    }
+  });
+
+  it("set a tenant's schedule from the query, and answer the registry's refusal with 400", async () => {
+    const deps = hostedDeps();
+    const path = "/hosted/tenants/alpha/schedule?times=07:00,19:00&timezone=Asia/Taipei&daily_run_cap=4";
+
+    const scheduled = await handleHostedRequest(await operator("POST", path), ENV, deps);
+    const refusing = { ...hostedDeps(), schedule: async () => ({ refused: "not a time zone: Mars" }) };
+    const refused = await handleHostedRequest(await operator("POST", path), ENV, refusing);
+
+    expect(scheduled.status).toBe(200);
+    expect(deps.calls).toEqual([["schedule", "alpha", { times: ["07:00", "19:00"], timeZone: "Asia/Taipei", dailyRunCap: "4" }]]);
+    expect(refused.status).toBe(400);
+    expect(await refused.json()).toEqual({ error: "not a time zone: Mars" });
   });
 
   it("serve no page and no tenant the registry does not hold", async () => {
@@ -461,6 +522,7 @@ describe("the hosted Worker's operator routes", () => {
     const deps = hostedDeps();
     for (const [method, path] of [
       ["GET", "/hosted/tenants/alpha/register"],
+      ["GET", "/hosted/tenants/alpha/schedule"],
       ["GET", "/hosted/tenants/alpha/seed"],
       ["GET", "/hosted/tenants/alpha/run?period=morning"],
       ["POST", "/hosted/tenants/alpha/report"],
@@ -478,15 +540,11 @@ describe("the hosted Worker's operator routes", () => {
     expect((await run("")).status).toBe(400);
     expect((await run("?period=noon")).status).toBe(400);
     expect((await run("?period=morning&date=2026-11-01")).status).toBe(400);
-    expect((await run("?period=morning&date=2026-11-18")).status).toBe(200);
-    expect(deps.calls).toEqual([
-      ["timeZone", "alpha"],
-      ["timeZone", "alpha"],
-      ["startRun", "alpha", "morning", "2026-11-18"],
-    ]);
+    expect((await run("?period=morning&date=2026-11-18")).status).toBe(202);
+    expect(deps.calls).toEqual([["queueRun", "alpha", { period: "morning", date: "2026-11-18", origin: "operator" }]]);
   });
 
-  it("refuse a dated run when the tenant's time zone cannot be read", async () => {
+  it("queue no run for a tenant the registry holds no schedule for: it has no zone to date the issue in", async () => {
     const deps = hostedDeps({ timeZone: null });
     const response = await handleHostedRequest(
       await operator("POST", "/hosted/tenants/alpha/run?period=morning&date=2026-11-18"),
@@ -494,7 +552,10 @@ describe("the hosted Worker's operator routes", () => {
       deps,
     );
 
-    expect(response.status).toBe(503);
-    expect(deps.calls.map(([name]) => name)).toEqual(["timeZone"]);
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toBe(
+      "alpha has no schedule in the registry; POST /hosted/tenants/alpha/schedule first",
+    );
+    expect(deps.calls).toEqual([]);
   });
 });

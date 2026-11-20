@@ -5,7 +5,8 @@ import worker from "../src/hosted.js";
 import { LOCATION_HINT, TENANT } from "../src/tenant_db.js";
 import { REGISTRY_NAME, REGISTRY_SCHEMA, tenantRegistry } from "../src/tenant_registry.js";
 import { TENANT_STATUSES } from "../src/tenant_status.js";
-import { SCHEMA_SQL, namespace, registryNamespace, registryObject } from "./sql_storage.js";
+import { DEFAULT_DAILY_RUN_CAP } from "../src/run_queue.js";
+import { SCHEMA_SQL, drainAlarms, namespace, registryNamespace, registryObject } from "./sql_storage.js";
 
 const AT = new Date("2026-11-18T06:00:00Z");
 const STAMP = "2026-11-18T06:00:00+00:00";
@@ -15,7 +16,7 @@ describe("the operator's registry", () => {
     const created = [...REGISTRY_SCHEMA.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1]);
     const tenants = [...SCHEMA_SQL.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1]);
 
-    expect(created.sort()).toEqual(["inbound_addresses", "invites", "sessions", "spend_rollup", "tenants"]);
+    expect(created.sort()).toEqual(["inbound_addresses", "invites", "runs", "sessions", "spend_rollup", "tenants"]);
     expect(created.filter((name) => tenants.includes(name))).toEqual([]);
   });
 
@@ -30,7 +31,15 @@ describe("the operator's registry", () => {
     const registry = registryObject();
 
     expect(registry.register("alpha", { now: AT })).toEqual({
-      tenant: { id: "alpha", status: "active", digest_times: null, created_at: STAMP, updated_at: STAMP },
+      tenant: {
+        id: "alpha",
+        status: "active",
+        digest_times: null,
+        timezone: null,
+        daily_run_cap: DEFAULT_DAILY_RUN_CAP,
+        created_at: STAMP,
+        updated_at: STAMP,
+      },
     });
     expect(registry.register("bravo", { status: "paused", now: AT }).tenant.status).toBe("paused");
     expect(registry.tenants().map((row) => [row.id, row.status])).toEqual([
@@ -94,7 +103,8 @@ describe("the operator's registry", () => {
 });
 
 // The hosted Worker's entry itself, hosted.js, over the registry, the tenant databases and a
-// TENANT_RUN that records each start instead of starting a container.
+// TENANT_RUN that records each start instead of starting a container. The registry starts runs
+// through the same TENANT_RUN.
 function bindings() {
   const starts = [];
   const TENANT_RUN = {
@@ -109,8 +119,13 @@ function bindings() {
       };
     },
   };
-  return { REGISTRY: registryNamespace(), TENANT_DB: namespace(), TENANT_RUN, starts };
+  const bound = { TENANT_DB: namespace(), TENANT_RUN, starts };
+  bound.REGISTRY = registryNamespace(bound);
+  return bound;
 }
+
+// The registry object behind `env.REGISTRY`, whose alarm a test runs.
+const registryOf = (bound) => bound.REGISTRY.getByName(REGISTRY_NAME);
 
 // A tenant's database with the schema and the schedule the seed writes: 08:00 and 20:00 UTC.
 function scheduled(TENANT_DB, tenant) {
@@ -141,17 +156,23 @@ describe("the hosted Worker's hourly tick", () => {
     await registry.register("alpha");
     await registry.register("bravo", { status: "paused" });
     await registry.register("delta");
+    for (const tenant of ["alpha", "bravo", "delta"]) {
+      await registry.setSchedule(tenant, { times: ["08:00", "20:00"], timeZone: "UTC" });
+    }
     // charlie has a database with a due schedule, but the registry never heard of it.
     for (const tenant of ["alpha", "bravo", "charlie", "delta"]) scheduled(bound.TENANT_DB, tenant);
     bound.TENANT_DB.gets.length = 0;
     vi.setSystemTime(new Date("2026-11-18T08:00:00Z"));
+    vi.spyOn(console, "log").mockImplementation(() => {});
 
     await worker.scheduled();
+    await drainAlarms(registryOf(bound));
 
     expect(bound.starts).toEqual([
-      ["alpha", { period: undefined, date: undefined }],
-      ["delta", { period: undefined, date: undefined }],
+      ["alpha", { period: "morning", date: "2026-11-18" }],
+      ["delta", { period: "morning", date: "2026-11-18" }],
     ]);
+    vi.restoreAllMocks();
     // Each is reached for its RSS poll and then its schedule; no other tenant's is reached at all.
     expect([...new Set(bound.TENANT_DB.gets.map((get) => get.name))].sort()).toEqual(["alpha", "delta"]);
   });
@@ -168,10 +189,12 @@ describe("the hosted Worker's hourly tick", () => {
 
   it("starts no active tenant off its digest hours", async () => {
     await tenantRegistry(env).register("alpha");
+    await tenantRegistry(env).setSchedule("alpha", { times: ["08:00", "20:00"], timeZone: "UTC" });
     scheduled(bound.TENANT_DB, "alpha");
     vi.setSystemTime(new Date("2026-11-18T13:00:00Z"));
 
     await worker.scheduled();
+    await drainAlarms(registryOf(bound));
 
     expect(bound.starts).toEqual([]);
   });
@@ -232,7 +255,8 @@ describe("the hosted Worker's operator routes, over the registry", () => {
     expect(bound.TENANT_DB.gets).toEqual([]);
   });
 
-  it("register, seed and start a tenant, and start none that is paused", async () => {
+  it("register, seed, schedule and start a tenant, and start none that is paused", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
     const registered = await operator("POST", "/hosted/tenants/alpha/register");
     expect(registered.status).toBe(200);
     expect(await registered.json()).toMatchObject({ id: "alpha", status: "active" });
@@ -241,13 +265,63 @@ describe("the hosted Worker's operator routes, over the registry", () => {
     expect(seeded.status).toBe(200);
     expect((await seeded.json()).tenant).toBe("alpha");
 
+    const unscheduled = await operator("POST", "/hosted/tenants/alpha/run?period=morning");
+    expect(unscheduled.status).toBe(409);
+    expect((await unscheduled.json()).error).toContain("has no schedule in the registry");
+
+    const schedule = await operator("POST", "/hosted/tenants/alpha/schedule?times=07:00,19:00&timezone=asia/taipei");
+    expect(schedule.status).toBe(200);
+    expect(await schedule.json()).toMatchObject({
+      tenant: { id: "alpha", digest_times: '["07:00","19:00"]', timezone: "Asia/Taipei" },
+      settings: true,
+    });
+    // The tenant's own settings hold a copy, so its run dates and windows in the same zone.
+    const copied = bound.TENANT_DB.getByName("alpha").query(
+      "SELECT key, value FROM settings WHERE key IN ('general.digest_schedule', 'general.timezone') ORDER BY key",
+    ).rows;
+    expect(copied).toEqual([
+      { key: "general.digest_schedule", value: '["07:00","19:00"]' },
+      { key: "general.timezone", value: '"Asia/Taipei"' },
+    ]);
+
     const ran = await operator("POST", "/hosted/tenants/alpha/run?period=morning");
-    expect(ran.status).toBe(200);
-    expect(bound.starts).toEqual([["alpha", { period: "morning", date: undefined }]]);
+    expect(ran.status).toBe(202);
+    expect((await ran.json()).queued).toMatchObject({ tenant_id: "alpha", period: "morning", state: "queued" });
+    await drainAlarms(registryOf(bound));
+    // Named in the tenant's zone when it was queued: 2026-11-18 there at any hour of the test's.
+    const [[tenant, { period, date }]] = bound.starts;
+    expect([tenant, period]).toEqual(["alpha", "morning"]);
+    expect(date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+    const report = await (await operator("GET", "/hosted/tenants/alpha/report")).json();
+    expect(report.runs.map((run) => [run.period, run.state, run.origin])).toEqual([["morning", "running", "operator"]]);
 
     expect((await operator("POST", "/hosted/tenants/alpha/register?status=paused")).status).toBe(200);
-    expect((await operator("POST", "/hosted/tenants/alpha/run?period=morning")).status).toBe(409);
+    expect((await operator("POST", "/hosted/tenants/alpha/run?period=evening")).status).toBe(409);
     expect(bound.starts).toHaveLength(1);
+    vi.restoreAllMocks();
+  });
+
+  it("refuse a schedule the registry does not take, and write nothing", async () => {
+    await operator("POST", "/hosted/tenants/alpha/register");
+
+    for (const query of [
+      "?timezone=UTC",
+      "?times=08:00&timezone=UTC",
+      "?times=08:30,20:00&timezone=UTC",
+      "?times=08:00,20:00",
+      "?times=08:00,20:00&timezone=Mars/Olympus",
+      // An offset the runtime takes and the container's zoneinfo does not.
+      "?times=08:00,20:00&timezone=%2B08:00",
+      "?times=08:00,20:00&timezone=-05:00",
+      "?times=08:00,20:00&timezone=UTC&daily_run_cap=0",
+      "?times=08:00,20:00&timezone=UTC&daily_run_cap=2.5",
+    ]) {
+      const response = await operator("POST", `/hosted/tenants/alpha/schedule${query}`);
+      expect(response.status, query).toBe(400);
+    }
+    expect(await tenantRegistry(env).tenant("alpha")).toMatchObject({ digest_times: null, timezone: null });
+    expect((await operator("POST", "/hosted/tenants/charlie/schedule?times=08:00,20:00&timezone=UTC")).status).toBe(404);
   });
 
   it("poll an active tenant's feeds into its buffer on request, and refuse a paused one", async () => {
@@ -294,7 +368,9 @@ describe("the hosted Worker's operator routes, over the registry", () => {
   });
 
   it("leave a paused tenant paused on a bare register, and resume it only when told", async () => {
+    vi.spyOn(console, "log").mockImplementation(() => {});
     expect((await operator("POST", "/hosted/tenants/alpha/register?status=paused")).status).toBe(200);
+    await operator("POST", "/hosted/tenants/alpha/schedule?times=08:00,20:00&timezone=UTC");
 
     const again = await operator("POST", "/hosted/tenants/alpha/register");
 
@@ -302,8 +378,10 @@ describe("the hosted Worker's operator routes, over the registry", () => {
     expect((await again.json()).status).toBe("paused");
     expect((await operator("POST", "/hosted/tenants/alpha/run?period=morning")).status).toBe(409);
     expect((await operator("POST", "/hosted/tenants/alpha/register?status=active")).status).toBe(200);
-    expect((await operator("POST", "/hosted/tenants/alpha/run?period=morning")).status).toBe(200);
-    expect(bound.starts).toEqual([["alpha", { period: "morning", date: undefined }]]);
+    expect((await operator("POST", "/hosted/tenants/alpha/run?period=morning")).status).toBe(202);
+    await drainAlarms(registryOf(bound));
+    expect(bound.starts.map(([tenant, { period }]) => [tenant, period])).toEqual([["alpha", "morning"]]);
+    vi.restoreAllMocks();
   });
 
   it("query read and write one registered tenant's own database, and no other tenant's", async () => {

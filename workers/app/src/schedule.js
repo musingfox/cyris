@@ -15,7 +15,7 @@ const SCHEDULE_KEY = "general.digest_schedule";
 const TIMEZONE_KEY = "general.timezone";
 
 // `validate_schedule`: exactly two distinct whole hours, earliest first; null otherwise.
-function digestHours(times) {
+export function digestHours(times) {
   if (!Array.isArray(times) || times.length !== 2) return null;
   const hours = [];
   for (const time of times) {
@@ -173,6 +173,10 @@ function missedDigestHour(now, times, timeZone) {
 //   had not already lost.
 // `unreadable` is the answer when the schedule cannot be read, `{}` unless given:
 // the hosted Worker passes null, since its container would read the same object.
+// The hosted Worker also hands in `schedule`, `{ times, timeZone }` from its registry,
+// which is then not read from `settings`, and `nameDue`, which answers a digest hour
+// as `{ period, date, origin: "tick" }`: its run waits in a queue and may start after
+// the hour, when `--if-due` would find nothing due (ADR-0032).
 export async function planTick({
   env,
   fetchImpl,
@@ -180,13 +184,16 @@ export async function planTick({
   timeoutMs = 5000,
   read = restRead({ env, fetchImpl, timeoutMs }),
   unreadable = {},
+  schedule: given = null,
+  nameDue = false,
 }) {
   const at = now();
-  const schedule = await readSchedule({ read });
+  const schedule = given ?? (await readSchedule({ read }));
   if (!schedule) return unreadable;
   let missed;
   try {
-    if (duePeriod(at, schedule.times, schedule.timeZone) !== null) return {};
+    const due = duePeriod(at, schedule.times, schedule.timeZone);
+    if (due !== null) return nameDue ? { period: due, date: wallClock(at, schedule.timeZone).date, origin: "tick" } : {};
     missed = missedDigestHour(at, schedule.times, schedule.timeZone);
   } catch {
     console.warn("schedule read failed: unknown time zone");

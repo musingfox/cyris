@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { env } from "cloudflare:workers";
 import worker from "../src/hosted.js";
-import { tenantRegistry } from "../src/tenant_registry.js";
-import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace, registryNamespace } from "./sql_storage.js";
+import { REGISTRY_NAME, tenantRegistry } from "../src/tenant_registry.js";
+import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, drainAlarms, namespace, registryNamespace } from "./sql_storage.js";
 
 // The hosted Worker's hourly tick, hosted.js itself, polling each tenant's feeds into its own
 // buffer over real SQLite. Feeds are answered by a stub fetch; TENANT_RUN records each start, and
@@ -52,7 +52,15 @@ function bindings() {
       };
     },
   };
-  return { REGISTRY: registryNamespace(), TENANT_DB, TENANT_RUN, starts };
+  const bound = { TENANT_DB, TENANT_RUN, starts };
+  bound.REGISTRY = registryNamespace(bound);
+  return bound;
+}
+
+// The tick, then the registry's alarm, which starts the runs the tick queued.
+async function tick(bound) {
+  await worker.scheduled();
+  await drainAlarms(bound.REGISTRY.getByName(REGISTRY_NAME));
 }
 
 // A tenant's database as the seed leaves it: both schemas, a schedule due at 08:00 and 20:00 UTC,
@@ -109,7 +117,11 @@ describe("the hosted tick polls each tenant's feeds into its own buffer", () => 
     for (const key of Object.keys(env)) delete env[key];
   });
 
-  const register = async (tenant, status) => tenantRegistry(env).register(tenant, { status });
+  // Registered, and scheduled at 08:00 and 20:00 UTC unless `scheduled` is false.
+  const register = async (tenant, status, { scheduled = true } = {}) => {
+    await tenantRegistry(env).register(tenant, { status });
+    if (scheduled) await tenantRegistry(env).setSchedule(tenant, { times: ["08:00", "20:00"], timeZone: "UTC" });
+  };
   const serve = (feeds) => {
     const server = feedServer(feeds);
     vi.stubGlobal("fetch", server.fetch);
@@ -123,7 +135,7 @@ describe("the hosted tick polls each tenant's feeds into its own buffer", () => 
     seeded(bound.TENANT_DB, "bravo", ["south"]);
     serve({});
 
-    await worker.scheduled();
+    await tick(bound);
 
     expect(urls(bound.TENANT_DB, "alpha")).toEqual(["https://east.test/one", "https://north.test/one"]);
     expect(urls(bound.TENANT_DB, "bravo")).toEqual(["https://south.test/one"]);
@@ -137,7 +149,7 @@ describe("the hosted tick polls each tenant's feeds into its own buffer", () => 
     seeded(bound.TENANT_DB, "bravo", ["shared"]);
     const server = serve({});
 
-    await worker.scheduled();
+    await tick(bound);
 
     expect(urls(bound.TENANT_DB, "alpha")).toEqual(["https://north.test/one", "https://shared.test/one"]);
     expect(urls(bound.TENANT_DB, "bravo")).toEqual(["https://shared.test/one"]);
@@ -152,7 +164,7 @@ describe("the hosted tick polls each tenant's feeds into its own buffer", () => 
     seeded(bound.TENANT_DB, "stranger", ["unasked"]);
     const server = serve({});
 
-    await worker.scheduled();
+    await tick(bound);
 
     expect(server.fetched).toEqual(["north"]);
     expect(rows(bound.TENANT_DB, "paused")).toEqual([]);
@@ -163,7 +175,7 @@ describe("the hosted tick polls each tenant's feeds into its own buffer", () => 
   it("leaves the other tenant's buffer filled and its run started when one tenant's poll fails", async () => {
     await register("alpha");
     await register("broken");
-    await register("unseeded");
+    await register("unseeded", undefined, { scheduled: false });
     seeded(bound.TENANT_DB, "alpha", ["north"]);
     seeded(bound.TENANT_DB, "broken", ["east"]);
     bound.TENANT_DB.getByName("broken").pollRss = async () => {
@@ -171,7 +183,7 @@ describe("the hosted tick polls each tenant's feeds into its own buffer", () => 
     };
     serve({});
 
-    await worker.scheduled();
+    await tick(bound);
 
     expect(urls(bound.TENANT_DB, "alpha")).toEqual(["https://north.test/one"]);
     const failed = logs.filter(([line]) => line === "rss poll failed").map(([, detail]) => detail);
@@ -182,7 +194,7 @@ describe("the hosted tick polls each tenant's feeds into its own buffer", () => 
       ]),
     );
     // A failed poll still lets its tenant's run start, on what its buffer already holds; an
-    // unseeded tenant has no schedule to read, so it starts nothing, and no table was made for it.
+    // unseeded tenant has no schedule in the registry, so it starts nothing, and no table was made for it.
     expect(bound.starts.map((start) => start.tenant).sort()).toEqual(["alpha", "broken"]);
     expect(hasBuffer(bound.TENANT_DB, "unseeded")).toBe(false);
   });
@@ -194,7 +206,7 @@ describe("the hosted tick polls each tenant's feeds into its own buffer", () => 
     seeded(bound.TENANT_DB, "bravo", ["south"]);
     serve({ down: 503 });
 
-    await worker.scheduled();
+    await tick(bound);
 
     const health = (tenant) =>
       bound.TENANT_DB.getByName(tenant)
@@ -212,9 +224,9 @@ describe("the hosted tick polls each tenant's feeds into its own buffer", () => 
     seeded(bound.TENANT_DB, "alpha", ["north"]);
     serve({ north: [["first", HOUR], ["second", 2 * HOUR]] });
 
-    await worker.scheduled();
+    await tick(bound);
 
-    expect(bound.starts).toEqual([{ tenant: "alpha", args: { period: undefined, date: undefined }, buffered: 2 }]);
+    expect(bound.starts).toEqual([{ tenant: "alpha", args: { period: "morning", date: "2026-11-18" }, buffered: 2 }]);
     // Stamped when the poll started, which is before the run's window closes.
     expect(rows(bound.TENANT_DB, "alpha").map((row) => row.fetched_at)).toEqual([
       DIGEST_HOUR.toISOString(),
@@ -228,7 +240,7 @@ describe("the hosted tick polls each tenant's feeds into its own buffer", () => 
     serve({});
     vi.setSystemTime(new Date("2026-11-18T13:00:00Z"));
 
-    await worker.scheduled();
+    await tick(bound);
 
     expect(urls(bound.TENANT_DB, "alpha")).toEqual(["https://north.test/one"]);
     expect(bound.starts).toEqual([]);
@@ -240,7 +252,7 @@ describe("the hosted tick polls each tenant's feeds into its own buffer", () => 
     expect(hasBuffer(bound.TENANT_DB, "alpha")).toBe(false);
     serve({});
 
-    await worker.scheduled();
+    await tick(bound);
 
     expect(urls(bound.TENANT_DB, "alpha")).toEqual(["https://north.test/one"]);
   });
@@ -255,9 +267,9 @@ describe("the hosted tick polls each tenant's feeds into its own buffer", () => 
     db.query(seed, ["https://north.test/late", iso(now - 10 * DAY), iso(now - DAY)]);
     serve({ north: [["new", HOUR], ["history", 9 * DAY]] });
 
-    await worker.scheduled();
+    await tick(bound);
     vi.setSystemTime(new Date(now + HOUR));
-    await worker.scheduled();
+    await tick(bound);
 
     // The feed's 9-day-old entry never entered; the row buffered 9 days ago was pruned; the
     // row its feed dated 10 days back but buffered yesterday stays; the new entry, seen twice,
@@ -277,7 +289,7 @@ describe("the hosted tick polls each tenant's feeds into its own buffer", () => 
     seeded(bound.TENANT_DB, "bravo", ["south"]);
     serve({ west: 500 });
 
-    await worker.scheduled();
+    await tick(bound);
 
     const ticks = logs.filter(([line]) => line === "hosted tick").map(([, detail]) => detail);
     expect(ticks).toEqual([
@@ -285,12 +297,14 @@ describe("the hosted tick polls each tenant's feeds into its own buffer", () => 
         tenants: 2,
         polled: 2,
         failed_polls: 0,
+        queued: 2,
         feeds: 4,
         feed_fetches: 4,
         max_tenant_fetches: 3,
         written: 3,
-        // The registry, then per tenant its poll, its one schedule read and its start.
-        object_calls: 1 + 2 * 3,
+        // The registry, then per tenant its poll and its queued run; the schedule is the registry
+        // row's, and a digest hour reads no digest_runs.
+        object_calls: 1 + 2 * 2,
         wall_ms: expect.any(Number),
       },
     ]);
