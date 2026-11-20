@@ -47,7 +47,7 @@ const VOTE_ONLY = (path) => path === "/api/vote";
 export const RUN_PERIODS = ["morning", "evening"];
 
 // The deployment's own calendar day, YYYY-MM-DD, at `now`.
-const dayIn = (timeZone, now) =>
+export const dayIn = (timeZone, now) =>
   new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" })
     .format(now);
 

@@ -77,8 +77,38 @@ export function namespace(make = () => tenantDb().db) {
   };
 }
 
-// The operator's registry as the runtime builds one: its constructor creates its tables.
-export const registryObject = () => new TenantRegistry({ storage: { sql: sqlStorage() } }, {});
+// `ctx.storage` with the one alarm a Durable Object may have set: `alarm` is when it is set for,
+// or null. The runtime calls the object's alarm() then; a test calls `drainAlarms`.
+export function alarmStorage(sql = sqlStorage()) {
+  return {
+    ...objectStorage(sql),
+    alarm: null,
+    async setAlarm(at) {
+      this.alarm = Number(at);
+    },
+    async getAlarm() {
+      return this.alarm;
+    },
+    async deleteAlarm() {
+      this.alarm = null;
+    },
+  };
+}
+
+// The operator's registry as the runtime builds one: its constructor creates its tables. `env`
+// is what it starts runs through (TENANT_RUN).
+export const registryObject = (env = {}) => new TenantRegistry({ storage: alarmStorage() }, env);
 
 // REGISTRY as the runtime binds it.
-export const registryNamespace = () => namespace(registryObject);
+export const registryNamespace = (env = {}) => namespace(() => registryObject(env));
+
+// Runs the registry's alarm while it is set for now or earlier, as the runtime would, clearing
+// it first as the runtime does; at most `limit` passes, so a test that loops fails instead.
+export async function drainAlarms(registry, limit = 50) {
+  const storage = registry.ctx.storage;
+  for (let pass = 0; storage.alarm !== null && storage.alarm <= Date.now(); pass++) {
+    if (pass >= limit) throw new Error(`the registry's alarm was still due after ${limit} passes`);
+    storage.alarm = null;
+    await registry.alarm();
+  }
+}

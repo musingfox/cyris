@@ -188,3 +188,7 @@ account on 2026-11-18:
 * [ADR-0031](0031-a-hosted-tenants-rss-is-polled-by-the-hosted-worker.md) ends the "polled directly
   at run time" consequence above: the hosted Worker polls each tenant's feeds hourly into the
   tenant's own `articles`, and a run reads its window from there.
+* [ADR-0032](0032-hosted-runs-wait-in-a-queue-the-registry-holds.md) moves the hosted tick's
+  schedule read to the registry and puts every hosted run in a queue there. A start still refused
+  with "no container instance" after the 90-second retry goes back in that queue, instead of
+  failing the run.

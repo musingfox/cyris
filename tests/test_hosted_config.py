@@ -137,6 +137,14 @@ def test_every_tenant_database_is_hinted_to_the_containers_only_region() -> None
     assert container["constraints"]["regions"] == [hint.upper()]
 
 
+def test_the_run_queue_starts_as_many_runs_at_once_as_the_container_has_instances() -> None:
+    """Fewer would leave an instance idle; more would only wait for one (ADR-0032)."""
+    [container] = _toml("wrangler.hosted.toml")["containers"]
+    [slots] = re.findall(r"^export const RUN_SLOTS = (\d+);", _js("run_queue.js"), re.M)
+
+    assert int(slots) == container["max_instances"]
+
+
 def test_the_gateway_host_and_the_tenant_pattern_are_one_on_both_sides() -> None:
     js = _js("tenant_db.js")
     [host] = re.findall(r'^export const DB_HOST = "([^"]+)";', js, re.M)

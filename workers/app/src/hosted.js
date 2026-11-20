@@ -5,8 +5,9 @@
 //
 // It serves the operator's routes and each tenant's pages behind Access (hosted_router.js,
 // hosted_site.js) and runs the hourly tick for every tenant: each tenant's RSS poll into its own
-// buffer (tenant_buffer.js), then its run when one is due. Until later cards land, a run
-// notifies nobody. The tenant list is the operator's registry (tenant_registry.js).
+// buffer (tenant_buffer.js), then its run, queued in the registry, when one is due by the
+// registry's schedule (run_queue.js). Until later cards land, a run notifies nobody. The tenant
+// list is the operator's registry (tenant_registry.js).
 import { env } from "cloudflare:workers";
 import HOSTED_SCHEMA_SQL from "../../../src/cyris/adapters/store/hosted_schema.sql";
 import SCHEMA_SQL from "../../../src/cyris/adapters/store/schema.sql";
@@ -16,9 +17,10 @@ import { accessKeys } from "./access_keys.js";
 import SEED from "./hosted_seed.json";
 import { handleHostedRequest } from "./hosted_router.js";
 import { createSitePage } from "./hosted_site.js";
-import { seedTenant, tenantReport } from "./hosted_seed.js";
-import { planTick, readTimeZone } from "./schedule.js";
-import { LOCATION_HINT, tenantDb, tenantRows } from "./tenant_db.js";
+import { seedTenant, tenantReport, writeSchedule } from "./hosted_seed.js";
+import { registrySchedule } from "./run_queue.js";
+import { planTick } from "./schedule.js";
+import { tenantDb, tenantRows } from "./tenant_db.js";
 import { tenantRegistry } from "./tenant_registry.js";
 import { ACTIVE } from "./tenant_status.js";
 
@@ -26,10 +28,11 @@ export { TenantContainer } from "./hosted_container.js";
 export { TenantDb, TenantDbGateway } from "./tenant_db.js";
 export { TenantRegistry } from "./tenant_registry.js";
 
-// The same hint as the tenant's database: only an object's first get() honours one.
-const tenantRun = (tenant) => env.TENANT_RUN.getByName(tenant, { locationHint: LOCATION_HINT });
-
-const startRun = (tenant, period, date) => tenantRun(tenant).startRun({ period, date });
+// The registry's schedule copied into the tenant's own settings (hosted_seed.js), when it has one.
+async function copySchedule(tenant) {
+  const schedule = registrySchedule(await tenantRegistry(env).tenant(tenant));
+  return schedule ? writeSchedule({ db: tenantDb(env, tenant), schedule }) : false;
+}
 
 // One poll of `tenant`'s buffer through `call`, which counts it, and what it did; a failed one is
 // logged and answers its error.
@@ -56,8 +59,8 @@ const pollMeasure = (polled) => ({
 
 // The tick's own measurement, one log line for the operator to read beside the invocation's CPU
 // time in Workers Logs (docs/hosted-tenants.md): how many tenants it polled and how many polls
-// failed; `object_calls`, the Durable Object calls the tick made itself (the registry, each
-// tenant's poll, its schedule reads and its start), which are the tick's own subrequests if
+// failed; `queued`, the runs it queued; `object_calls`, the Durable Object calls the tick made itself (the registry, each
+// tenant's poll, its digest_runs read and its queued run), which are the tick's own subrequests if
 // Cloudflare counts them as such; `feed_fetches`, the feed requests the tenants' polls made, each
 // in that tenant's object's invocation; and its wall time.
 function tickMeasure(tick, tenants) {
@@ -67,6 +70,7 @@ function tickMeasure(tick, tenants) {
     tenants: tenants.length,
     polled: polled.length,
     failed_polls: tick.polls.length - polled.length,
+    queued: tick.queued,
     feeds: sum("feeds"),
     feed_fetches: sum("fetches"),
     max_tenant_fetches: Math.max(0, ...polled.map((poll) => poll.fetches)),
@@ -85,8 +89,9 @@ export default {
       accessKeys: accessKeys(env.CYRIS_ACCESS_TEAM_DOMAIN),
       register: (tenant, status) => tenantRegistry(env).register(tenant, { status }),
       tenant: (tenant) => tenantRegistry(env).tenant(tenant),
-      seed: (tenant) =>
-        seedTenant({
+      // The seed writes the stub's schedule, and then the registry's over it when it has one.
+      seed: async (tenant) => {
+        const seeded = await seedTenant({
           db: tenantDb(env, tenant),
           tenant,
           schemaSql: SCHEMA_SQL,
@@ -94,37 +99,61 @@ export default {
           startingValues: STARTING_VALUES,
           seed: SEED,
           catalog: FEED_CATALOG,
-        }),
-      report: (tenant) => tenantReport({ db: tenantDb(env, tenant), tenant }),
-      timeZone: (tenant) => readTimeZone({ env, read: tenantRows(env, tenant) }),
-      startRun,
+        });
+        await copySchedule(tenant);
+        return seeded;
+      },
+      schedule: async (tenant, schedule) => {
+        const answer = await tenantRegistry(env).setSchedule(tenant, schedule);
+        if (answer.refused) return answer;
+        return { tenant: answer.tenant, settings: await copySchedule(tenant) };
+      },
+      report: async (tenant) => ({
+        ...(await tenantReport({ db: tenantDb(env, tenant), tenant })),
+        runs: await tenantRegistry(env).runs(tenant),
+      }),
+      queueRun: (tenant, issue) => tenantRegistry(env).queueRun(tenant, issue),
       poll: (tenant) => pollTenant(tenant),
       page: sitePage,
     });
   },
 
   // Each active tenant of the registry first polls its RSS feeds into its own buffer, then asks
-  // its own database whether this is a digest hour or one to catch up; a tenant of any other
-  // status is neither polled nor ticked. The poll comes first so that a run this tick starts reads
-  // this hour's entries: they are stamped when the poll starts, before the run's window closes.
-  // A poll that fails is logged, and its tenant's run still starts on what its buffer holds. A
-  // tenant whose schedule cannot be read gets no start: its container would reach the same
-  // object. One tenant's failure is logged and leaves the others' polls and ticks alone.
+  // the registry's schedule whether this is a digest hour, or the tenant's own digest_runs
+  // whether a digest hour has none to catch up, and queues that issue's run in the registry,
+  // which starts it as a container is free (run_queue.js); a tenant of any other status is
+  // neither polled nor ticked, and one with no schedule in the registry is polled only. The poll
+  // comes first so that a run this tick queues reads this hour's entries: they are stamped when
+  // the poll starts, before the run's window closes. A poll that fails is logged, and its
+  // tenant's run is still queued on what its buffer holds. Off a digest hour, a tenant whose
+  // digest_runs cannot be read gets no catch-up. One tenant's failure is logged and leaves the
+  // others' polls and ticks alone.
   async scheduled() {
-    const tick = { started: Date.now(), calls: 0, polls: [] };
+    const tick = { started: Date.now(), calls: 0, polls: [], queued: 0 };
     const call = (what) => {
       tick.calls += 1;
       return what;
     };
-    const tenants = (await call(tenantRegistry(env).tenants({ status: ACTIVE }))).map((row) => row.id);
+    const registry = tenantRegistry(env);
+    const rows = await call(registry.tenants({ status: ACTIVE }));
+    const tenants = rows.map((row) => row.id);
     const ticks = await Promise.allSettled(
-      tenants.map(async (tenant) => {
+      rows.map(async (row) => {
+        const tenant = row.id;
         tick.polls.push(await pollTenant(tenant, call));
+        const schedule = registrySchedule(row);
+        if (!schedule) {
+          console.log("no schedule in the registry; nothing queued", { tenant });
+          return;
+        }
         const read = tenantRows(env, tenant);
-        const plan = await planTick({ env, read: (...args) => call(read(...args)), unreadable: null });
+        const plan = await planTick({ env, schedule, nameDue: true, read: (...args) => call(read(...args)), unreadable: null });
         if (!plan) return;
-        if (plan.period) console.log("catching up a digest hour with no ok run", { tenant, ...plan });
-        await call(startRun(tenant, plan.period, plan.date));
+        const { period, date, origin = "catch-up" } = plan;
+        if (origin === "catch-up") console.log("catching up a digest hour with no ok run", { tenant, period, date });
+        const answer = await call(registry.queueRun(tenant, { period, date, origin }));
+        if (answer.refused) console.log("run not queued", { tenant, period, date, origin, reason: answer.refused });
+        else tick.queued += 1;
       }),
     );
     ticks.forEach((result, i) => {

@@ -64,6 +64,21 @@ export async function seedTenant({
   };
 }
 
+// The registry's schedule (`registrySchedule` in run_queue.js), copied into the tenant's own
+// `settings` so its run reads its window and dates its times in the zone it is ticked in and its
+// settings show the hours it runs at. A copy only: the tick reads the registry, and a container
+// that rewrites these rows changes neither when nor how often it runs (ADR-0032). Answers false
+// for a tenant never seeded, which has no settings table; its seed writes the copy.
+export async function writeSchedule({ db, schedule, now = new Date() }) {
+  try {
+    await db.query(SETTING_UPSERT, ["general.digest_schedule", JSON.stringify(schedule.times), stamp(now)]);
+    await db.query(SETTING_UPSERT, ["general.timezone", JSON.stringify(schedule.timeZone), stamp(now)]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // What decides whether a tenant's runs, issues and pages are its own (scripts/hosted_check.py):
 // its tables and their row counts, its sources, which sources its stored articles came from, its
 // runs, its issues, and the page /t/<tenant>/ serves, by path and SHA-256. A table the tenant

@@ -9,7 +9,8 @@ import { tenantRegistry } from "./tenant_registry.js";
 import { ACTIVE } from "./tenant_status.js";
 
 // As index.js's run instance: the run exits when its pass ends, so this only caps a hung one.
-const RUN_INACTIVITY_TIMEOUT_MS = 900_000;
+// The run queue's lease (`RUN_LEASE_MS` in run_queue.js) outlasts it.
+export const RUN_INACTIVITY_TIMEOUT_MS = 900_000;
 
 // Tenants share the container application's max_instances, and a start made while every
 // instance is held is refused for about 10 s after a destroy() (ADR-0028). The backoff is the
@@ -68,14 +69,18 @@ export class TenantContainer extends DurableObject {
         return ctx.container.interceptOutboundHttp(DB_HOST, gateway);
       },
       startRetry: START_RETRY,
+      // The run queue's slot is held until the registry hears the container stop (run_queue.js):
+      // a start that looked granted and then stopped with NO_INSTANCE goes back in the queue.
+      onStop: (stopped) => tenantRegistry(this.env).runEnded(this.tenant, stopped),
     });
     if (ctx.container.running) void ctx.blockConcurrencyWhile(() => this.lifecycle.adopt());
   }
 
   // One run of this tenant's digest: `period` names it, as POST /run?period= does, and `date`,
-  // checked by the caller, names the issue's date. Neither names a period lets --if-due decide.
-  // Only an active tenant of the registry is started, whoever asks: the routes and the tick
-  // ask the registry first, and this asks again so no other path can start an unregistered one.
+  // checked by the caller, names the issue's date. The registry's run queue, the one caller,
+  // names both, so a run that waited past its hour still makes its issue (ADR-0032).
+  // Only an active tenant of the registry is started, whoever asks: the queue asks the registry
+  // first, and this asks again so no other path can start an unregistered one.
   async startRun({ period, date } = {}) {
     if (!TENANT.test(this.tenant ?? "")) throw new Error(`not a tenant's run container: ${this.tenant}`);
     const registered = await tenantRegistry(this.env).tenant(this.tenant);
