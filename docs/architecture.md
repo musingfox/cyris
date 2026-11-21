@@ -1568,7 +1568,8 @@ same way: `GET /t/<own tenant>/budget` answers the tenant's UTC month and whethe
 its month before it wires anything and, when it is spent, wires no LLM, embedder or Clef: the
 plain list, its page saying the allowance is used up in place of the degraded notice.
 It reports what it spent as it ends, failed or not, and keeps it in `run_summary` as `ai_spend`.
-A month it cannot read lets it spend, and is still charged. The operator lists every tenant's
+A month it cannot read lets it spend, and is still charged; a month it cannot read or charge
+sends the operator one alert for the run, through `ops.cyris`. The operator lists every tenant's
 month with `GET /hosted/spend` and sets one's allowance with `POST /hosted/tenants/<tenant>/budget`
 ([ADR-0038](decisions/0038-a-hosted-tenants-ai-spend-is-metered-in-the-registry.md)).
 In it, `build_d1_client` returns `GatewayD1Client` and `build_deps` wires no shared queue and no Pages

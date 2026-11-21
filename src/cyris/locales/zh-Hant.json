@@ -1,4 +1,7 @@
 {
+  "alert.ai_ledger_headline": {"text": "AI 花費帳本無法連線", "source": "AI spend ledger unreachable"},
+  "alert.ai_ledger_unread_body": {"text": "本次執行讀不到租戶的每月 AI 額度，所以不受額度限制，可能超支。帳本恢復回應前，每次執行都是如此。{$error}", "source": "This run could not read its tenant's monthly AI allowance, so it is not held to it and may spend past it. Until the ledger answers, no run is. {$error}"},
+  "alert.ai_ledger_unrecorded_body": {"text": "本次執行的 AI 花費沒有記進租戶當月的帳，當月總額少了這一筆；執行本身的摘要仍以 ai_spend 保留金額。{$error}", "source": "This run's AI spend was not added to its tenant's month, so the month's total is short by it; the run's own summary keeps the amount as ai_spend. {$error}"},
   "alert.could_not_start_headline": {"text": "精選無法啟動", "source": "Digest run could not start"},
   "alert.error_withheld_body": {"text": "錯誤內容已送給服務的營運方。", "source": "The error has been sent to the service's operator."},
   "alert.fetched_nothing_body": {"text": "抓取失敗的來源：{$sources}", "source": "Failed sources: {$sources}"},

@@ -465,6 +465,12 @@ scripts/hosted.sh budget alpha 2.25
 A run killed before it could report, for example by running out of memory, is missing from its
 month. The run object's alert in your webhook says it stopped.
 
+A run that cannot reach the ledger still runs, with its AI, and sends your webhook one "AI spend
+ledger unreachable" alert. Its body says whether the run could not read its allowance, so it was
+not held to it, or could not add its spend, so the month's total is short by the `ai_spend` in
+its `digest_runs.summary`. Alerts like this on every run mean no tenant is held to its allowance
+until the ledger answers.
+
 ## 9. Newsletters: the inbound domain and each tenant's address
 
 Each tenant gets a random address, 26 characters of base32 that say nothing about the tenant.

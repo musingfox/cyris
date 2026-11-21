@@ -110,9 +110,12 @@ How it is built:
   with its AI. With two runs a day, the overshoot is at most one run, about 0.02 USD at today's
   measured size. A per-call check would cost a gateway round trip per call. It would also leave
   half-scored issues, which the reader cannot tell from a fault.
-* Bad, because the ledger fails open. A run that cannot read its month may spend. It still
-  reports its spend, so the month's total stays right. Failing closed would cost every tenant
-  its AI for as long as the ledger is down, which was judged worse than one run's spend.
+* Bad, because the ledger fails open. A run that cannot read its month may spend, and a run
+  whose report is lost leaves the month's total short by what it spent. Failing closed would
+  cost every tenant its AI for as long as the ledger is down, which was judged worse than one
+  run's spend. So that an outage cannot pass unseen, which would leave every tenant spending
+  without limit, the run then sends the operator one alert (`ai_ledger_unreachable`) through
+  its operator gateway (ADR-0035): one per run, however many of its ledger calls failed.
 * Bad, because a run killed before its `finally` (OOM, SIGKILL) reports nothing. Its spend is
   lost from the ledger. The run object's abnormal-stop alert still tells the operator that the
   run died.
@@ -149,7 +152,8 @@ How it is built:
     plain list, and its page carries the allowance notice and not the degraded one. An allowance
     of 0 says AI is off, never that the month brings it back.
   * A run that raises after its model calls still charges them.
-  * A ledger that cannot be read lets the run spend and still charges it.
+  * A ledger that cannot be read lets the run spend and still charges it, and the operator gets
+    one alert for the run, however many of its ledger calls failed.
   * Only a hosted run is metered.
 * `tests/test_hosted_script.py` checks the `spend` and `budget` subcommands.
 * The human's check on the trial account is in `docs/hosted-tenants.md`: run a tenant, read its

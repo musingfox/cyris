@@ -24,8 +24,10 @@ from typing import Any
 
 import httpx
 
+from cyris.adapters.hosted import OPERATOR_ORIGIN
 from cyris.adapters.store.d1 import post_with_retries
 from cyris.domain.models import UsageStats
+from cyris.i18n import ENGLISH, translator
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,10 @@ SPEND_ORIGIN = "http://spend.cyris"
 
 # One ask as the run starts. Short, since the answer only decides whether this run may spend.
 BUDGET_TIMEOUT_SECONDS = 10.0
+
+# The `kind` of the operator alert a ledger the run cannot reach sends (`tell_operator`). It ends
+# no run, so it is not among `ENDING_KINDS` in workers/app/src/hosted_alerts.js.
+LEDGER_ALERT_KIND = "ai_ledger_unreachable"
 
 # Why a run may call no model (`SpendLedger.spent`): its month's allowance is spent, or the
 # operator set it to 0. Each has its own notice on the page, since only the first comes back
@@ -156,10 +162,41 @@ class MeteredEmbedder:
 class SpendLedger:
     """The tenant's month in the operator's registry, through the hosted Worker's gateway."""
 
-    def __init__(self, tenant_id: str, origin: str = SPEND_ORIGIN) -> None:
+    def __init__(
+        self, tenant_id: str, origin: str = SPEND_ORIGIN, operator_origin: str = OPERATOR_ORIGIN
+    ) -> None:
         self.tenant_id = tenant_id
         self._base = f"{origin}/t/{tenant_id}"
+        self._alert_url = f"{operator_origin}/t/{tenant_id}/alert"
         self._http = httpx.Client(timeout=BUDGET_TIMEOUT_SECONDS)
+        # One ledger per run, so one alert per run however many of its calls fail.
+        self._told = False
+
+    def tell_operator(self, error: object, *, unread: bool) -> None:
+        """Alert the operator, once per run, that the ledger did not answer: a ledger that is
+        down holds no tenant to its allowance, and a log line alone would go unread. `unread`
+        is the month asked as the run is wired; else it is the run's report that was lost.
+
+        Through the hosted run's operator gateway (ADR-0035), in English as every operator
+        alert is. Never raises.
+        """
+        if self._told:
+            return
+        self._told = True
+        t = translator(ENGLISH)
+        if unread:
+            body = t("alert.ai_ledger_unread_body", error=str(error))
+        else:
+            body = t("alert.ai_ledger_unrecorded_body", error=str(error))
+        payload = {
+            "kind": LEDGER_ALERT_KIND,
+            "subject": t("alert.ai_ledger_headline"),
+            "body": body,
+        }
+        try:
+            self._http.post(self._alert_url, json=payload).raise_for_status()
+        except httpx.HTTPError as e:
+            logger.warning("Operator alert failed: %s", e)
 
     def spent(self) -> str | None:
         """Why this run may call no model: `SPENT`, the tenant's allowance for this month is
@@ -176,6 +213,7 @@ class SpendLedger:
                 raise ValueError(f"the month is not a JSON object: {resp.text[:200]}")
         except (httpx.HTTPError, ValueError) as e:
             logger.warning("AI allowance unreadable, this run may spend: %s", e)
+            self.tell_operator(e, unread=True)
             return None
         logger.info(
             "AI allowance %s: %s of %s USD spent",
@@ -199,5 +237,6 @@ class SpendLedger:
             post_with_retries(self._http, f"{self._base}/spend", spend, what="AI spend ledger")
         except Exception as e:  # noqa: BLE001 - a 2xx that is not JSON raises ValueError, too
             logger.error("AI spend not recorded: %s", e)
+            self.tell_operator(e, unread=False)
             return {**spend, **said, "recorded": False}
         return {**spend, **said, "recorded": True}

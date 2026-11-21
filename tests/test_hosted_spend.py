@@ -49,7 +49,9 @@ class FakeSpendGateway:
     """Answers `GET /t/<tenant>/budget` and `POST /t/<tenant>/spend` as `SpendGateway` does.
 
     Only `tenant` is this run's; another tenant, path or method is refused with 403. `spent`
-    is what the month's answer says; every report posted is kept in `reports`.
+    is what the month's answer says; every report posted is kept in `reports`, and a status
+    other than 200 or 202 answers every ask or every report. The ledger's alerts to the
+    operator's gateway, `ops.cyris`, are kept in `alerts`.
     """
 
     def __init__(self, tenant: str, *, spent: bool = False, budget_status: int = 200) -> None:
@@ -57,10 +59,15 @@ class FakeSpendGateway:
         self.spent = spent
         self.budget_usd = 2.25
         self.budget_status = budget_status
+        self.spend_status = 202
         self.requests: list[httpx.Request] = []
         self.reports: list[dict] = []
+        self.alerts: list[dict] = []
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.url.host == httpx.URL(OPERATOR_ORIGIN).host:
+            self.alerts.append({"path": request.url.path, **json.loads(request.content)})
+            return httpx.Response(202, json={"sent": True})
         self.requests.append(request)
         parts = request.url.path.strip("/").split("/")
         if len(parts) != 3 or parts[0] != "t" or parts[1] != self.tenant:
@@ -71,6 +78,8 @@ class FakeSpendGateway:
             month = {"tenant": self.tenant, "month": "2026-11", "budget_usd": self.budget_usd}
             return httpx.Response(200, json={**month, "cost_usd": 0.0, "spent": self.spent})
         if parts[2] == "spend" and request.method == "POST":
+            if self.spend_status != 202:
+                return httpx.Response(self.spend_status, json={"error": "down"})
             self.reports.append(json.loads(request.content))
             return httpx.Response(202, json={"tenant": self.tenant, "runs": len(self.reports)})
         return httpx.Response(403, json={"error": "not a route of this gateway"})
@@ -317,6 +326,7 @@ async def test_a_hosted_run_charges_its_llm_and_embedding_spend_to_its_own_tenan
     assert charged["embedding_usd"] > 0
     # The run's own record carries what it charged.
     assert _summary(gateway)["ai_spend"] == {**charged, "recorded": True}
+    assert ledger.alerts == []
 
 
 async def test_a_run_whose_month_is_spent_calls_no_model_and_its_page_says_why(tenant) -> None:
@@ -441,6 +451,35 @@ async def test_a_ledger_that_cannot_be_read_lets_the_run_spend_and_still_charges
     assert report.status == "ok"
     assert llm.calls
     assert len(ledger.reports) == 1
+    # Failing open is the operator's to know: one alert, through the run's operator gateway.
+    [alert] = ledger.alerts
+    assert alert["path"] == "/t/alpha/alert"
+    assert alert["kind"] == hosted_spend.LEDGER_ALERT_KIND
+    assert alert["subject"] == "AI spend ledger unreachable"
+    assert "not held to it" in alert["body"] and "503" in alert["body"]
+
+
+async def test_a_ledger_down_all_run_tells_the_operator_once_and_a_lost_report_too(
+    tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cfg, gateway, ledger, llm, _ = tenant
+    monkeypatch.setattr("cyris.adapters.store.d1.time.sleep", lambda _s: None)
+    ledger.budget_status = ledger.spend_status = 503
+    deps = replace(bootstrap.build_deps(cfg), fetch_sources=[FakeSource([_article()])])
+
+    report = await run_digest(deps, RunOptions(period="morning"))
+
+    assert report.status == "ok" and llm.calls
+    assert _summary(gateway)["ai_spend"]["recorded"] is False
+    # Asked and reported, both failed: still one alert for the run.
+    assert len(ledger.alerts) == 1
+
+    # A month that answers and a report that is lost: the alert says what the month lacks.
+    ledger.budget_status, ledger.alerts = 200, []
+    deps = replace(bootstrap.build_deps(cfg), fetch_sources=[FakeSource([_article()])])
+    await run_digest(deps, RunOptions(period="evening"))
+    [alert] = ledger.alerts
+    assert "was not added to its tenant's month" in alert["body"]
 
 
 def test_only_a_tenants_own_run_is_metered_never_a_self_hosted_one_or_the_operators(

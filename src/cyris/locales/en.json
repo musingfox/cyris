@@ -1,4 +1,7 @@
 {
+  "alert.ai_ledger_headline": "AI spend ledger unreachable",
+  "alert.ai_ledger_unread_body": "This run could not read its tenant's monthly AI allowance, so it is not held to it and may spend past it. Until the ledger answers, no run is. {$error}",
+  "alert.ai_ledger_unrecorded_body": "This run's AI spend was not added to its tenant's month, so the month's total is short by it; the run's own summary keeps the amount as ai_spend. {$error}",
   "alert.could_not_start_headline": "Digest run could not start",
   "alert.error_withheld_body": "The error has been sent to the service's operator.",
   "alert.fetched_nothing_body": "Failed sources: {$sources}",
