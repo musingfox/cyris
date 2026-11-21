@@ -206,7 +206,7 @@ cloud deployment's.
 | Wiring | Targets | Swap difficulty |
 |---|---|---|
 | **Via Protocol** (`ports.py`) | `LLMClient`, `ArticleRepository`, `TopicRepository` (`D1TopicStore`), `FetchSource`, `Embedder` | **Low** — swapping the implementation never touches the core |
-| **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish_site` (the Pages publisher, or a hosted tenant's `HostedPages`, ADR-0029), `sync_promotions`, `append_usage_d1`, `notify`, `send_email`, `send_email_alert`, `send_operator_alert` (a hosted run's only, `adapters/hosted.py`), `D1TagStore`, `D1StoryStore`, `D1DigestStore`, `D1DigestInputStore`, `D1AreaStore`, `D1SourceTitles`, `ask_clef` (`ClefClient`), `page_serves`, `FeedChecker` (the wizard's feed check, `bootstrap.build_feed_checker`), `lengthen_articles` (`adapters/fetch/article_page.py`; wired by `build_deps(fetch_pages=True)`, which only `cyris run` and a `regenerate` rerun ask for), `process_usage` (`adapters/process_usage.py`; wired by every `build_deps`), `ai_budget_spent` and `record_spend` (`SpendLedger` in `adapters/hosted_spend.py`; wired only for a hosted tenant's run, ADR-0038) | **Medium** — the core calls them directly; a second backend needs a Protocol first |
+| **Direct injection** (no Protocol) | `HtmlDigestWriter`, `publish_site` (the Pages publisher, or a hosted tenant's `HostedPages`, ADR-0029), `sync_promotions`, `append_usage_d1`, `notify`, `send_email`, `send_email_alert`, `send_operator_alert` (a hosted run's only, `adapters/hosted.py`), `D1TagStore`, `D1StoryStore`, `D1DigestStore`, `D1DigestInputStore`, `D1AreaStore`, `D1SourceTitles`, `ask_clef` (`ClefClient`), `page_serves`, `FeedChecker` (the wizard's feed check, `bootstrap.build_feed_checker`), `lengthen_articles` (`adapters/fetch/article_page.py`; wired by `build_deps(fetch_pages=True)`, which only `cyris run` and a `regenerate` rerun ask for), `process_usage` (`adapters/process_usage.py`; wired by every `build_deps`), `record_spend` (`SpendLedger` in `adapters/hosted_spend.py`; wired only for a hosted tenant's run, ADR-0038) | **Medium** — the core calls them directly; a second backend needs a Protocol first |
 
 `ports.py`'s rule: *only genuine IO boundaries get a Protocol; single-implementation components are
 injected directly.*
@@ -1564,9 +1564,9 @@ alert and posts it to the operator's webhook (§5), which no container holds.
 And it registers `SpendGateway` (`workers/app/src/hosted_spend.js`) for `spend.cyris`, bound the
 same way: `GET /t/<own tenant>/budget` answers the tenant's UTC month and whether its allowance
 (§5) is spent, and `POST /t/<own tenant>/spend` adds one run's report to it in the registry
-(§4). A hosted run meters every LLM response and embedded batch as it arrives, asks its month
-before anything that could call a model and, when it is spent, runs with no LLM, embedder or
-Clef: the plain list, its page saying the allowance is used up in place of the degraded notice.
+(§4). A hosted run meters every LLM response and embedded batch as it arrives. `build_deps` asks
+its month before it wires anything and, when it is spent, wires no LLM, embedder or Clef: the
+plain list, its page saying the allowance is used up in place of the degraded notice.
 It reports what it spent as it ends, failed or not, and keeps it in `run_summary` as `ai_spend`.
 A month it cannot read lets it spend, and is still charged. The operator lists every tenant's
 month with `GET /hosted/spend` and sets one's allowance with `POST /hosted/tenants/<tenant>/budget`
@@ -1906,6 +1906,7 @@ Across local, container, and cloud, `service_layer/` and `domain/` are untouched
 lives in `adapters/` and in `bootstrap.build_deps()`. That is the payoff of the Protocol +
 composition-root design, and the reason the D1 store landed without a single line changing in the
 pipeline. The exception is an optional `Deps` callable that `run_digest` calls, its IO in
-`adapters/` and None leaving the run unchanged. There are four: `lengthen_articles`, `process_usage`,
-and a hosted run's `ai_budget_spent` and `record_spend` (ADR-0038), which also stamp one
-`DigestContent` field, `ai_paused`, so the page can say why it holds no AI.
+`adapters/` and None leaving the run unchanged. There are three: `lengthen_articles`, `process_usage`,
+and a hosted run's `record_spend` (ADR-0038). A hosted run whose AI allowance is spent changes
+nothing here either: `build_deps` asks the ledger, wires no LLM, embedder or Clef, and gives the
+`HtmlDigestWriter` the `AiPause` that words the page.

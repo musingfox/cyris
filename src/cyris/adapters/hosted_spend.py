@@ -7,7 +7,7 @@ a monthly AI allowance, held in the operator's registry where no run container c
 * `SpendMeter` counts every LLM response and every embedded text as it happens, through
   `MeteredLLM` and `MeteredEmbedder`, so a run that raises halfway has still counted what it
   spent. The run's own `UsageStats` cannot do that: it is summed from the stages that finished.
-* `SpendLedger` asks the hosted Worker, as the run starts, whether the tenant's month is spent,
+* `SpendLedger` asks the hosted Worker, as the run is wired, whether the tenant's month is spent,
   and reports the meter, as the run ends, failed or not. Both go to `SPEND_ORIGIN`, which the
   hosted Worker intercepts and answers with a gateway bound to this tenant (`SpendGateway`).
 
@@ -177,15 +177,17 @@ class SpendLedger:
         )
         return bool(month.get("spent"))
 
-    def report(self, meter: SpendMeter) -> dict[str, Any]:
-        """Charge what `meter` counted to the tenant's month; answers it for `run_summary`.
+    def report(self, meter: SpendMeter, *, paused: bool = False) -> dict[str, Any]:
+        """Charge what `meter` counted to the tenant's month; answers it for `run_summary`,
+        with `ai_budget: spent` for a run `paused` because the month was spent as it started.
 
         Never raises: a run's own result stands whatever the ledger says.
         """
         spend = meter.report()
+        said = {"ai_budget": "spent"} if paused else {}
         try:
             post_with_retries(self._http, f"{self._base}/spend", spend, what="AI spend ledger")
         except D1Error as e:
             logger.error("AI spend not recorded: %s", e)
-            return {**spend, "recorded": False}
-        return {**spend, "recorded": True}
+            return {**spend, **said, "recorded": False}
+        return {**spend, **said, "recorded": True}

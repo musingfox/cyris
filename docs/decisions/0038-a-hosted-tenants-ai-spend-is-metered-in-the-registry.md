@@ -37,7 +37,8 @@ its month spent does.
 * Spend must be counted as it is made, so that a failed run's calls are counted too.
 * A spent allowance must still give the reader an issue, without AI, that says why.
 * There must be no new Cloudflare product, binding or external service.
-* The core must not change beyond optional `Deps` callables (`docs/architecture.md` §8).
+* The core must not change beyond optional `Deps` callables whose None changes nothing
+  (`docs/architecture.md` §8).
 * The operator must be able to list every tenant's month in one request.
 
 ## Considered Options
@@ -79,12 +80,12 @@ How it is built:
   in a call that raised. Gemini reports no tokens, so they are estimated at one token per three
   UTF-8 bytes. That is about right for Chinese and about a third high for English: a ceiling
   should err high. They are priced at gemini-embedding-001's list price.
-* **The run is checked once, as it starts.** `run_digest` calls `deps.ai_budget_spent` before
-  anything that could call a model. If the month is spent, the run's LLM, embedder and Clef are
-  None for that run, so it takes the path a missing client takes and makes the plain list. The
-  issue's `DigestContent.ai_paused` is set, so its page (and a re-render) says the allowance is
-  used up and when it returns, in place of the degraded notice. `run_summary` records
-  `ai_budget: spent`, and the run is not counted as degraded.
+* **The run is checked once, as it is wired.** `bootstrap.build_deps` asks the ledger before it
+  wires anything. If the month is spent, it wires no LLM, embedder or Clef, so the run takes the
+  path a missing client takes and makes the plain list. The `HtmlDigestWriter` it wires carries
+  an `AiPause`, so the page of every issue that run starts says the allowance is used up and
+  when it returns, in place of the degraded notice. `run_summary`'s `ai_spend` records
+  `ai_budget: spent`.
 * **The run reports as it ends, failed or not.** `run_digest`'s `finally` calls
   `deps.record_spend`, which posts the meter to the ledger with the store's retry rules and puts
   it in `run_summary` as `ai_spend`. So `digest_runs.summary` holds the same numbers for every
@@ -118,9 +119,15 @@ How it is built:
   measured from the response. The card bounds it at about 0.17 USD per tenant per month.
 * Neutral, because the meter wraps the LLM client and embedder only in a hosted run.
   Self-hosted runs, and the operator's `cyris --tenant` commands, are unchanged.
-* Neutral, because the core changes by one `DigestContent` field (`ai_paused`) and two optional
-  `Deps` callables (`ai_budget_spent`, `record_spend`). Each is None outside a hosted run, and
-  then nothing changes (`docs/architecture.md` §8).
+* Neutral, because the core changes by one optional `Deps` callable, `record_spend`, which is
+  None outside a hosted run, and then nothing changes (`docs/architecture.md` §8). The pause is
+  all wiring: `build_deps` leaves the clients out and words the page through the writer.
+* Bad, because the core cannot tell a paused run from one whose provider key is missing. Its
+  `digest_runs.degraded` is 1, and its log carries the missing-client warning after the line
+  `build_deps` writes about the allowance; `ai_spend.ai_budget` is what tells the two apart.
+  And the notice is not stored with the issue: a later re-render of it, which in hosted mode
+  only a failed publish's republish makes, shows the degraded notice. Storing it would need a
+  `DigestContent` field, which is the core change §8 rules out.
 * Bad, because spend outside a run is not metered: the settings page's model calls and the
   Worker's Gemini probe. A hosted tenant has no settings page yet. When it gets one, its calls
   must go through the same meter and ledger.

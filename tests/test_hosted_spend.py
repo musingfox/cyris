@@ -37,7 +37,7 @@ from cyris.adapters.hosted_spend import (
     estimated_embedding_tokens,
 )
 from cyris.adapters.store.tenant_gateway import apply_hosted_schema
-from cyris.domain.models import Article, Lane, UsageStats
+from cyris.domain.models import Article, DigestContent, Lane, UsageStats
 from cyris.service_layer.run_digest import RunOptions, run_digest
 
 pytestmark = pytest.mark.integration
@@ -269,6 +269,11 @@ def _summary(gateway: FakeGateway) -> dict:
     return json.loads(run["summary"])
 
 
+def _page(gateway: FakeGateway, path: str) -> str:
+    [page] = gateway.db.query("SELECT body FROM hosted_pages WHERE path = ?", [path]).rows
+    return page["body"]
+
+
 async def test_a_hosted_run_charges_its_llm_and_embedding_spend_to_its_own_tenant(tenant) -> None:
     cfg, gateway, ledger, llm, embedder = tenant
     deps = replace(bootstrap.build_deps(cfg), fetch_sources=[FakeSource([_article()])])
@@ -312,21 +317,38 @@ async def test_a_run_whose_month_is_spent_calls_no_model_and_its_page_says_why(t
     assert embedder.calls == []
     # Still an issue: the plain list, every article in it.
     [issue] = gateway.db.query("SELECT date, content FROM digests").rows
-    content = json.loads(issue["content"])
-    assert content["ai_paused"] is True
     assert article.url in issue["content"]
-    [page] = gateway.db.query(
-        "SELECT body FROM hosted_pages WHERE path = ?", [f"/{issue['date']}-morning.html"]
-    ).rows
-    assert "This month&#39;s AI allowance is used up" in page["body"]
+    page = _page(gateway, f"/{issue['date']}-morning.html")
+    assert "This month&#39;s AI allowance is used up" in page
     # Not the degraded notice, whose advice to check the provider would be wrong.
-    assert "Check the provider and its key" not in page["body"]
-    summary = _summary(gateway)
-    assert summary["ai_budget"] == "spent"
-    assert summary["degraded"] is False
+    assert "Check the provider and its key" not in page
+    # The run's record says why it called no model.
+    assert _summary(gateway)["ai_spend"]["ai_budget"] == "spent"
     # What it spent, nothing, is still reported.
     [charged] = ledger.reports
     assert (charged["llm_usd"], charged["embedding_usd"], charged["llm_calls"]) == (0.0, 0.0, 0)
+
+
+def test_a_spent_months_notice_is_on_the_issues_its_run_starts_and_no_older_one(tenant) -> None:
+    cfg, _, ledger, *_ = tenant
+    ledger.spent = True
+    writer = bootstrap.build_deps(cfg).html_writer
+    since = writer.ai_pause.since
+    older = DigestContent(
+        date="2026-11-20",
+        period="morning",
+        started_at=since - timedelta(hours=12),
+        sources_processed=1,
+        articles_received=0,
+        articles_included=0,
+    )
+    this_runs = older.model_copy(update={"started_at": since + timedelta(seconds=1)})
+
+    # An older issue the run republishes, one whose publish failed, keeps its own notice.
+    assert "AI allowance" not in writer.render(older, degraded=True)
+    assert "Check the provider and its key" in writer.render(older, degraded=True)
+    assert "AI allowance is used up" in writer.render(this_runs, degraded=True)
+    assert "Check the provider and its key" not in writer.render(this_runs, degraded=True)
 
 
 async def test_a_run_whose_month_is_not_spent_calls_its_model(tenant) -> None:
@@ -336,9 +358,9 @@ async def test_a_run_whose_month_is_not_spent_calls_its_model(tenant) -> None:
     await run_digest(deps, RunOptions(period="evening"))
 
     assert llm.calls
-    assert "ai_budget" not in _summary(gateway)
-    [issue] = gateway.db.query("SELECT content FROM digests").rows
-    assert json.loads(issue["content"])["ai_paused"] is False
+    assert "ai_budget" not in _summary(gateway)["ai_spend"]
+    [issue] = gateway.db.query("SELECT date FROM digests").rows
+    assert "AI allowance" not in _page(gateway, f"/{issue['date']}-evening.html")
 
 
 async def test_a_run_that_fails_after_its_model_calls_still_charges_what_it_spent(tenant) -> None:
@@ -396,7 +418,7 @@ def test_only_a_tenants_own_run_is_metered_never_a_self_hosted_one_or_the_operat
     hosted = bootstrap.build_deps(cfg)
     assert isinstance(hosted.llm, MeteredLLM)
     assert isinstance(hosted.embedder, MeteredEmbedder)
-    assert hosted.ai_budget_spent is not None and hosted.record_spend is not None
+    assert hosted.record_spend is not None
 
     monkeypatch.delenv("CYRIS_STORE_TENANT_ID")
     monkeypatch.delenv("CYRIS_STORE_HOSTED_DOMAIN")
@@ -412,7 +434,8 @@ def test_only_a_tenants_own_run_is_metered_never_a_self_hosted_one_or_the_operat
         load_files(own / "cyris.toml", own / "sources.yaml", AI_SETTINGS)
     )
     assert not isinstance(self_hosted.llm, MeteredLLM)
-    assert (self_hosted.ai_budget_spent, self_hosted.record_spend) == (None, None)
+    assert self_hosted.record_spend is None
+    assert self_hosted.html_writer is None or self_hosted.html_writer.ai_pause is None
 
 
 def test_the_spend_host_is_one_on_both_sides() -> None:

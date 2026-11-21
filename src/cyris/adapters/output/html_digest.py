@@ -199,6 +199,19 @@ class HeadlineCard:
     topics_lang: str = ""
 
 
+@dataclass(frozen=True)
+class AiPause:
+    """A hosted run that started with its tenant's monthly AI allowance spent (ADR-0038).
+
+    `bootstrap.build_deps` wires that run with no LLM, embedder or Clef, so each issue it starts
+    is the plain list, and its page says why in place of the degraded notice, whose advice to
+    check the provider would be wrong. `since` is when the run was wired: an issue started at or
+    after it is this run's, and an older issue the run republishes keeps its own notice.
+    """
+
+    since: datetime
+
+
 class HtmlDigestWriter:
     """Renders DigestContent as a newspaper-style HTML page."""
 
@@ -217,6 +230,7 @@ class HtmlDigestWriter:
         output_dir: Path,
         language: str = "",
         starts: Callable[[], Mapping[tuple[str, str], datetime]] | None = None,
+        ai_pause: AiPause | None = None,
     ):
         """Initialize writer with output directory.
 
@@ -233,10 +247,13 @@ class HtmlDigestWriter:
                 page are worded in it, and so is an issue stored with none
             starts: Reads each stored issue's `started_at`; `write_index` names the
                 archive's rows by it
+            ai_pause: A hosted run's spent AI allowance, whose issues say so; None
+                everywhere else
         """
         self.output_dir = Path(output_dir)
         self.language = language
         self.starts = starts
+        self.ai_pause = ai_pause
 
     @property
     def env(self) -> Environment:
@@ -267,6 +284,8 @@ class HtmlDigestWriter:
         template = environment(issue_language(content, self.language)).get_template(
             "digest.html.j2"
         )
+        started, pause = content.started_at, self.ai_pause
+        ai_paused = pause is not None and started is not None and started >= pause.since
 
         return template.render(
             date=content.date,
@@ -282,7 +301,7 @@ class HtmlDigestWriter:
             layers=layer_by_lane(content),
             raw_page=raw_page,
             degraded=degraded,
-            ai_paused=content.ai_paused,
+            ai_paused=ai_paused,
             content_lang=_html_lang(content.output_language),
         )
 

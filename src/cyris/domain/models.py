@@ -305,9 +305,6 @@ class DigestContent(BaseModel):
     # The active area names in position order, frozen when the issue is stamped, so a
     # later re-render shows the sections it was published with.
     area_order: list[str] = Field(default_factory=list)
-    # The run started with its hosted tenant's monthly AI allowance spent, so it called no
-    # model and the issue is the plain list: stored so a re-render still says why (ADR-0038).
-    ai_paused: bool = False
 
 
 class ArticleState(StrEnum):

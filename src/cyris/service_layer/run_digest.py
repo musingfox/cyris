@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import time
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -486,17 +486,6 @@ async def send_alert(notify, send_discord_alert, send_email_alert, alert: RunAle
             logger.error("Failure alert: mail skipped: %s", e)
 
 
-def _ai_budget_spent(deps: "Deps") -> bool:
-    """Whether this run's AI allowance is spent; False with no allowance, or none readable."""
-    if deps.ai_budget_spent is None:
-        return False
-    try:
-        return deps.ai_budget_spent()
-    except Exception as e:  # noqa: BLE001 - the ledger's outage costs a run its check, not the run
-        logger.error("Failed to read the AI allowance, this run may spend: %s", e)
-        return False
-
-
 def _worker_domain(deps: "Deps") -> str:
     """The first of the app Worker's custom domains, or "" to fall back to pages.dev.
 
@@ -527,21 +516,11 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     now = now_in_timezone(tz)
     window_start = now - timedelta(hours=cfg.app.general.digest_window_hours)
 
-    # A hosted tenant whose month of AI is spent gets the plain list, by the same path a
-    # missing client takes, and an issue that says why (ADR-0038). Before anything that
-    # could call a model.
-    ai_paused = _ai_budget_spent(deps)
-    if ai_paused:
-        deps = replace(deps, llm=None, embedder=None, ask_clef=None)
-        summary["ai_budget"] = "spent"
-
     # A provider whose key is missing builds no client, and its digest is plain
     # excerpts. Say so on every run: a quietly worse digest is the failure least
     # likely to be noticed. Provider none is the same digest by choice.
     llm_cfg = cfg.app.llm_provider
-    if ai_paused:
-        progress("This month's AI allowance is spent: this digest lists plain excerpts.")
-    elif deps.llm is None and llm_cfg.chooses_no_llm:
+    if deps.llm is None and llm_cfg.chooses_no_llm:
         progress("LLM provider none: this digest lists plain excerpts, by choice.")
     elif deps.llm is None:
         progress(
@@ -931,12 +910,8 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     # Add scoring usage to content
     content.usage.merge(total_usage)
     summary["llm"] = content.usage.model_dump()
-    content.ai_paused = ai_paused
-    # Only this path has usage to judge; the early returns leave the key absent. A spent
-    # allowance is the plain list by design, not a fault, and the page says so itself.
-    degraded = not ai_paused and is_degraded_run(
-        content.usage, chooses_no_llm=llm_cfg.chooses_no_llm
-    )
+    # Only this path has usage to judge; the early returns leave the key absent.
+    degraded = is_degraded_run(content.usage, chooses_no_llm=llm_cfg.chooses_no_llm)
     summary["degraded"] = degraded
     summary["received"] = content.articles_received
     summary["included"] = content.articles_included
