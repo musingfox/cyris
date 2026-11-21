@@ -8,6 +8,7 @@
 // and refuses every other request with 403; the container holds no token and no binding.
 
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
+import { dumpObject, restoreObject } from "./sqlite_dump.js";
 import { pollTenantBuffer } from "./tenant_buffer.js";
 import { storeNewsletter } from "./tenant_inbound.js";
 import { queueVote } from "./tenant_votes.js";
@@ -94,6 +95,17 @@ export class TenantDb extends DurableObject {
     return Object.fromEntries(
       names.map((name) => [name, storage.exec(`SELECT count(*) AS n FROM ${quotedName(name)}`).one().n]),
     );
+  }
+
+  // The whole database as one gzip dump (sqlite_dump.js), for the daily backup (hosted_backup.js).
+  exportDump() {
+    return dumpObject(this.ctx);
+  }
+
+  // A dump loaded into this object, which must hold no table yet: the operator's restore of an
+  // export into a new tenant id (hosted_backup.js).
+  restoreDump(bytes) {
+    return restoreObject(this.ctx, bytes);
   }
 }
 

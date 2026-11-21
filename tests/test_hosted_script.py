@@ -23,6 +23,19 @@ ACCOUNT = "0123456789abcdef0123456789abcdef"
 URL = "https://cyris-hosted.trial.workers.dev"
 # The operator's Discord webhook: its URL is its credential.
 OPERATOR_HOOK = "https://discord.com/api/webhooks/1/operator-SECRET"
+# The daily backup's B2 copy (ADR-0041): the endpoint and bucket, then its credential.
+B2_ENDPOINT = "https://s3.us-west-004.backblazeb2.com"
+B2_TYPED = [B2_ENDPOINT, "cyris-backup", "004keyid-SECRET", "K004-application-SECRET"]
+SECRETS_TYPED = [
+    ACCOUNT,
+    "yes",
+    "team.cloudflareaccess.com",
+    "AUD-1",
+    "client-id.access,owner@example.com",
+    "sk-ant-SECRET",
+    OPERATOR_HOOK,
+    "cyris@mail.example",
+]
 
 # Records its argv and stdin, one JSON line per call, and answers as wrangler would.
 BUN = """#!/usr/bin/env python3
@@ -63,7 +76,8 @@ if "/hosted/spend" in url or "/budget?" in url:
         body.write('{"answered": true}')
     sys.stdout.write("200")
     sys.exit(0)
-if url.endswith(("/invite", "/revoke", "/members")):
+answered = ("/invite", "/revoke", "/members", "/hosted/backup")
+if url.endswith(answered) or "/restore?" in url or "/register" in url:
     with open(out, "w") as body:
         body.write('{"answered": true}')
     sys.stdout.write("200")
@@ -233,18 +247,8 @@ def test_the_account_typed_is_the_one_wrangler_acts_on_whatever_the_environment_
 
 def test_each_secret_reaches_wrangler_on_stdin_and_never_in_argv(repo: Path) -> None:
     (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
-    typed = [
-        ACCOUNT,
-        "yes",
-        "team.cloudflareaccess.com",
-        "AUD-1",
-        "client-id.access,owner@example.com",
-        "sk-ant-SECRET",
-        OPERATOR_HOOK,
-        "cyris@mail.example",
-    ]
 
-    done, calls = _run(repo, ["secrets"], typed)
+    done, calls = _run(repo, ["secrets"], [*SECRETS_TYPED, *B2_TYPED])
 
     assert done.returncode == 0, done.stderr
     puts = [c for c in calls if c["args"][2:4] == ["secret", "put"]]
@@ -260,14 +264,92 @@ def test_each_secret_reaches_wrangler_on_stdin_and_never_in_argv(repo: Path) -> 
         ("CYRIS_HOSTED_MAIL_FROM", "cyris@mail.example"),
         # The host deploy kept: every tenant's links point at it.
         ("CYRIS_STORE_HOSTED_DOMAIN", "cyris-hosted.trial.workers.dev"),
+        # The daily backup's off-Cloudflare copy (ADR-0041).
+        ("CYRIS_HOSTED_B2_ENDPOINT", B2_ENDPOINT),
+        ("CYRIS_HOSTED_B2_BUCKET", "cyris-backup"),
+        ("CYRIS_HOSTED_B2_KEY_ID", "004keyid-SECRET"),
+        ("CYRIS_HOSTED_B2_APPLICATION_KEY", "K004-application-SECRET"),
     ]
     assert all(
         c["args"][5:] == ["--config", "wrangler.hosted.toml", "--env-file", "/dev/null"]
         for c in puts
     )
-    for secret in ("sk-ant-SECRET", OPERATOR_HOOK):
+    for secret in ("sk-ant-SECRET", OPERATOR_HOOK, "004keyid-SECRET", "K004-application-SECRET"):
         assert not any(secret in " ".join(c["args"]) for c in calls)
         assert secret not in done.stdout + done.stderr
+
+
+@pytest.mark.parametrize("b2", [[""], []], ids=["blank", "no-input"])
+def test_secrets_without_a_b2_endpoint_sets_every_other_secret_and_no_b2_setting(
+    repo: Path, b2: list[str]
+) -> None:
+    """No B2 account yet: the backup still writes R2, and the Worker says there is no B2 copy."""
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, calls = _run(repo, ["secrets"], [*SECRETS_TYPED, *b2])
+
+    assert done.returncode == 0, done.stderr
+    names = [c["args"][4] for c in calls if c["args"][2:4] == ["secret", "put"]]
+    assert "CYRIS_STORE_HOSTED_DOMAIN" in names
+    assert [n for n in names if n.startswith("CYRIS_HOSTED_B2_")] == []
+
+
+def test_secrets_refuses_a_b2_endpoint_that_is_not_b2s_before_setting_any(repo: Path) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    typed = [*SECRETS_TYPED, "https://s3.example.com", *B2_TYPED[1:]]
+    done, calls = _run(repo, ["secrets"], typed)
+
+    assert done.returncode == 1
+    assert "CYRIS_HOSTED_B2_ENDPOINT must be https://s3.<region>.backblazeb2.com" in done.stderr
+    assert [c for c in calls if c["args"][2:4] == ["secret", "put"]] == []
+
+
+def test_restore_loads_one_export_into_a_new_id_and_register_names_it_paused(
+    repo: Path,
+) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+    token = ["client-id.access", "client-SECRET"]
+
+    restored, restore_calls = _run(repo, ["restore", "2026-11-22", "alpha", "alpha-copy"], token)
+    (repo / "calls.jsonl").unlink()
+    registered, register_calls = _run(repo, ["register", "alpha-copy", "paused"], token)
+    (repo / "calls.jsonl").unlink()
+    backed_up, backup_calls = _run(repo, ["backup"], token)
+
+    assert (restored.returncode, registered.returncode, backed_up.returncode) == (0, 0, 0)
+    curls = [c for c in restore_calls + register_calls + backup_calls if c["cmd"] == "curl"]
+    assert [(c["args"][c["args"].index("-X") + 1], c["args"][-1]) for c in curls] == [
+        ("POST", f"{URL}/hosted/tenants/alpha-copy/restore?date=2026-11-22&from=alpha"),
+        ("POST", f"{URL}/hosted/tenants/alpha-copy/register?status=paused"),
+        ("POST", f"{URL}/hosted/backup"),
+    ]
+    for c in curls:
+        assert "CF-Access-Client-Secret: client-SECRET" in c["stdin"]
+        assert "client-SECRET" not in " ".join(c["args"])
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["restore"],
+        ["restore", "2026-11-22", "alpha"],
+        ["restore", "22-11-2026", "alpha", "alpha-copy"],
+        ["restore", "2026-11-22", "alpha", "Alpha Copy"],
+        ["register", "alpha", "deleted"],
+        ["register", "a/b"],
+    ],
+)
+def test_restore_and_register_refuse_bad_arguments_before_asking_for_anything(
+    repo: Path, args: list[str]
+) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, calls = _run(repo, args, [])
+
+    assert done.returncode == 2
+    assert "usage: " in done.stderr and "deploy|secrets" not in done.stderr
+    assert calls == []
 
 
 def test_secrets_refuses_an_operator_webhook_that_is_not_https(repo: Path) -> None:
@@ -666,7 +748,7 @@ def test_every_cards_subcommand_is_in_one_script_and_check_judges_the_full_repor
         "deploy",
         "secrets",
         "containers",
-        "register",
+        "register [TENANT [STATUS]]",
         "schedule TENANT TIMES TIMEZONE [CAP]",
         "seed",
         "run [morning|evening]",
@@ -679,6 +761,8 @@ def test_every_cards_subcommand_is_in_one_script_and_check_judges_the_full_repor
         "members TENANT",
         "spend [YYYY-MM]",
         "budget TENANT USD",
+        "backup",
+        "restore DATE TENANT NEW_TENANT",
         "tail",
         "delete",
     ):

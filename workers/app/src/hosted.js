@@ -19,6 +19,7 @@ import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json";
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json";
 import { accessKeys } from "./access_keys.js";
 import { HOSTED_DOMAIN } from "./hosted_container.js";
+import { backupAll, dailyBackup, restoreExport } from "./hosted_backup.js";
 import { createSignIn } from "./hosted_login.js";
 import SEED from "./hosted_seed.json";
 import { receiveInbound } from "./hosted_inbound.js";
@@ -92,7 +93,7 @@ function tickMeasure(tick, tenants) {
 // One memo of each tenant's type size per isolate, as module scope holds it.
 const sitePage = createSitePage(env);
 
-export default {
+const hosted = {
   async fetch(request, _env, ctx) {
     const registry = () => tenantRegistry(env);
     // The sign-in mail goes through the Email Service binding, from the operator's sender, with
@@ -149,6 +150,8 @@ export default {
       voteToken: (sessionHash) => registry().voteToken(sessionHash),
       voteSession: (token) => registry().voteSession(token),
       recordVote: (tenant, vote) => tenantDb(env, tenant).recordVote(vote),
+      restore: (tenant, { date, from }) => restoreExport(env, { date, from, into: tenant }),
+      backup: () => backupAll(env),
       login: {
         signIn,
         waitUntil: (promise) => ctx.waitUntil(promise),
@@ -211,5 +214,23 @@ export default {
       }
     });
     console.log("hosted tick", tickMeasure(tick, tenants));
+  },
+};
+
+// The handlers above, with the hourly tick followed by the daily backup or, later that day, its
+// check (hosted_backup.js): after the tick, so no poll or queued run waits on it, and even when
+// the tick threw. A backup that throws is logged, so the tick's own failure is what the invocation
+// reports.
+export default {
+  ...hosted,
+  async scheduled(controller, ctx) {
+    const at = new Date(controller?.scheduledTime ?? Date.now());
+    try {
+      await hosted.scheduled(controller, ctx);
+    } finally {
+      await dailyBackup(env, { now: at }).catch((error) => {
+        console.log("hosted backup failed", { error: String(error?.message ?? error) });
+      });
+    }
   },
 };

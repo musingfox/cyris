@@ -78,6 +78,16 @@ name = "REGISTRY"
 [[send_email]]
 name = "MAIL"
 
+# The daily backup's first copy (workers/app/src/hosted_backup.js, ADR-0041): each tenant
+# database and the registry, one export each a day under <YYYY-MM-DD>/. Durable Objects have
+# point-in-time recovery but no export API, so this bucket is the one copy outside each object on
+# Cloudflare; the second is in Backblaze B2, for when the account itself is suspended. The
+# operator creates the bucket and its lifecycle rule by hand (docs/hosted-tenants.md): retention
+# is that rule, not code.
+[[r2_buckets]]
+binding = "BACKUP"
+bucket_name = "cyris-hosted-backup"
+
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["TenantContainer"]

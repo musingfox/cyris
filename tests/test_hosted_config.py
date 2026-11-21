@@ -121,6 +121,55 @@ def test_the_sign_in_sender_is_one_name_from_the_runbook_to_the_worker() -> None
     )
 
 
+def test_the_backups_go_to_one_bucket_only_the_hosted_file_binds() -> None:
+    """The daily backup's R2 copy (ADR-0041) is the hosted Worker's; production writes none."""
+    default, hosted = _toml("wrangler.toml"), _toml("wrangler.hosted.toml")
+    backup = _js("hosted_backup.js")
+    [binding] = re.findall(r'^export const BACKUP_BINDING = "(\w+)";', backup, re.M)
+
+    assert "r2_buckets" not in default
+    assert hosted["r2_buckets"] == [{"binding": binding, "bucket_name": "cyris-hosted-backup"}]
+
+
+def test_the_backup_runs_from_the_hourly_tick_and_never_a_second_cron() -> None:
+    hosted = _toml("wrangler.hosted.toml")
+    backup = _js("hosted_backup.js")
+    [hour] = re.findall(r"^export const BACKUP_HOUR_UTC = (\d+);", backup, re.M)
+    [check] = re.findall(r"^export const BACKUP_CHECK_HOURS = (\d+);", backup, re.M)
+
+    assert hosted["triggers"]["crons"] == ["0 * * * *"]
+    assert 0 <= int(hour) <= 23
+    # The check falls on the backup's own UTC date, so it looks for that day's export.
+    assert int(check) > 0 and int(hour) + int(check) <= 23
+    assert "dailyBackup(env, { now: at })" in _js("hosted.js")
+
+
+def test_the_b2_settings_are_set_by_the_runbook_and_never_handed_to_a_container() -> None:
+    [block] = re.findall(r"export const B2_SETTINGS = \{(.*?)\};", _js("hosted_backup.js"), re.S)
+    names = re.findall(r'"(CYRIS_HOSTED_B2_\w+)"', block)
+    [handed] = re.findall(r"const HOSTED_SECRETS = \[(.*?)\];", _js("hosted_container.js"), re.S)
+    script = (ROOT / "scripts/hosted.sh").read_text(encoding="utf-8")
+
+    assert len(names) == 4
+    for name in names:
+        assert name not in handed
+        assert f"put_secret {name} " in script
+
+
+def test_the_b2_key_the_runbook_asks_for_only_writes_as_the_worker_only_puts() -> None:
+    """The registry's export holds the vote key and live session hashes (ADR-0041), so the B2
+    key in the Worker's secrets is writeFiles only: enough while the Worker's one B2 request is
+    a single-part PUT, with no listing, read or multipart upload."""
+    sigv4 = _js("s3_sigv4.js")
+    runbook = (ROOT / "docs/hosted-tenants.md").read_text(encoding="utf-8")
+    [step] = re.findall(r"^3\. Add an application key.*?(?=^### )", runbook, re.M | re.S)
+
+    assert set(re.findall(r'method: "(\w+)"', sigv4)) == {"PUT"}
+    assert "uploads" not in sigv4 + _js("hosted_backup.js")
+    assert "`writeFiles`" in step
+    assert "Read and Write" not in step
+
+
 def test_the_hosted_file_runs_the_same_image_on_the_same_runtime() -> None:
     default, hosted = _toml("wrangler.toml"), _toml("wrangler.hosted.toml")
     [container] = hosted["containers"]

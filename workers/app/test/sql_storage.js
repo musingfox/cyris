@@ -35,18 +35,36 @@ export function sqlStorage() {
     exec(sql, ...params) {
       if (new TextEncoder().encode(sql).length > MAX_STATEMENT_BYTES) throw new Error("SQLITE_TOOBIG: statement too long");
       let rows = [];
+      let raw = [];
       if (params.length === 0 && /;\s*\S/.test(unquoted(sql))) db.exec(sql);
-      else rows = db.prepare(sql).all(...params).map((row) => ({ ...row }));
-      return { toArray: () => rows, one: () => rows[0] };
+      else {
+        const statement = db.prepare(sql);
+        statement.setReturnArrays(true);
+        raw = statement.all(...params);
+        const names = statement.columns().map((column) => column.name);
+        rows = raw.map((values) => Object.fromEntries(names.map((name, i) => [name, values[i]])));
+      }
+      return { toArray: () => rows, one: () => rows[0], raw: () => raw[Symbol.iterator]() };
     },
   };
 }
 
-// `ctx.storage` as the runtime gives a SQLite-backed object: its SQL, and transactionSync, which
-// commits what the callback wrote or, when it throws, none of it.
+// `ctx.storage` as the runtime gives a SQLite-backed object: its SQL, and transactionSync and
+// transaction, which commit what the callback wrote or, when it throws, none of it.
 export function objectStorage(sql = sqlStorage()) {
   return {
     sql,
+    async transaction(run) {
+      sql.db.exec("BEGIN");
+      try {
+        const result = await run();
+        sql.db.exec("COMMIT");
+        return result;
+      } catch (error) {
+        sql.db.exec("ROLLBACK");
+        throw error;
+      }
+    },
     transactionSync(run) {
       sql.db.exec("BEGIN");
       try {
@@ -61,9 +79,31 @@ export function objectStorage(sql = sqlStorage()) {
   };
 }
 
+// An object's `ctx` over `storage`: blockConcurrencyWhile counts its callers, so a test can see a
+// dump held every other event back, and runs the callback, as nothing else is delivered here. A
+// callback that throws is counted in `resets`, since the runtime terminates and resets the object.
+// https://developers.cloudflare.com/durable-objects/api/state/#blockconcurrencywhile
+export function objectContext(storage) {
+  const ctx = {
+    storage,
+    blocked: 0,
+    resets: 0,
+    blockConcurrencyWhile: async (run) => {
+      ctx.blocked += 1;
+      try {
+        return await run();
+      } catch (error) {
+        ctx.resets += 1;
+        throw error;
+      }
+    },
+  };
+  return ctx;
+}
+
 export function tenantDb() {
   const storage = objectStorage();
-  return { db: new TenantDb({ storage }, {}), sql: storage.sql };
+  return { db: new TenantDb(objectContext(storage), {}), sql: storage.sql };
 }
 
 // TENANT_DB as the runtime binds it: getByName returns the tenant's own object, made once.
@@ -102,7 +142,7 @@ export function alarmStorage(sql = sqlStorage()) {
 
 // The operator's registry as the runtime builds one: its constructor creates its tables. `env`
 // is what it starts runs through (TENANT_RUN).
-export const registryObject = (env = {}) => new TenantRegistry({ storage: alarmStorage() }, env);
+export const registryObject = (env = {}) => new TenantRegistry(objectContext(alarmStorage()), env);
 
 // REGISTRY as the runtime binds it.
 export const registryNamespace = (env = {}) => namespace(() => registryObject(env));

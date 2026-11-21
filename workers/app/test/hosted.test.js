@@ -1120,3 +1120,65 @@ describe("the hosted Worker's operator routes", () => {
     expect(deps.calls).toEqual([]);
   });
 });
+
+describe("the hosted Worker's backup routes", () => {
+  const restorePath = "/hosted/tenants/alpha-copy/restore?date=2026-11-22&from=alpha";
+  const backupDeps = (restored = { tenant: "alpha-copy", restored: { sources: 1 } }) => {
+    const deps = hostedDeps();
+    deps.restore = async (...args) => {
+      deps.calls.push(["restore", ...args]);
+      return restored;
+    };
+    deps.backup = async () => {
+      deps.calls.push(["backup"]);
+      return { date: "2026-11-22", exports: 3, failed: [] };
+    };
+    return deps;
+  };
+
+  it("restore an export into an id the registry does not hold, which the registry is never asked to create", async () => {
+    const deps = backupDeps();
+
+    const response = await handleHostedRequest(await operator("POST", restorePath), ENV, deps);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ tenant: "alpha-copy", restored: { sources: 1 } });
+    expect(deps.calls).toEqual([["restore", "alpha-copy", { date: "2026-11-22", from: "alpha" }]]);
+  });
+
+  it("answer a refused restore with its status", async () => {
+    const deps = backupDeps({ refused: "alpha-copy is already registered; restore into a new tenant id", status: 409 });
+
+    const response = await handleHostedRequest(await operator("POST", restorePath), ENV, deps);
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).error).toMatch(/already registered/);
+  });
+
+  it("run today's backup now and answer what it did", async () => {
+    const deps = backupDeps();
+
+    const response = await handleHostedRequest(await operator("POST", "/hosted/backup"), ENV, deps);
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ date: "2026-11-22", exports: 3, failed: [] });
+    expect(deps.calls).toEqual([["backup"]]);
+  });
+
+  it("take only an operator's POST from this site, before restoring or backing up anything", async () => {
+    for (const path of [restorePath, "/hosted/backup"]) {
+      const refused = [
+        [await operator("POST", path, { signedIn: false }), 403],
+        [await operator("POST", path, { claims: { email: "reader@example.com" } }), 403],
+        [await operator("GET", path), 405],
+        [new Request((await operator("POST", path)).url, { method: "POST", headers: { "Cf-Access-Jwt-Assertion": await accessJwt(), "Sec-Fetch-Site": "cross-site" } }), 403],
+      ];
+      for (const [request, status] of refused) {
+        const deps = backupDeps();
+        const response = await handleHostedRequest(request, ENV, deps);
+        expect(response.status, `${request.method} ${path}`).toBe(status);
+        expect(deps.calls).toEqual([]);
+      }
+    }
+  });
+});
