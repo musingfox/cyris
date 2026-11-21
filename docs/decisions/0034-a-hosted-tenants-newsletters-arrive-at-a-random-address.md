@@ -125,8 +125,8 @@ How it is built:
   through its gateway and matches senders as `CloudflareNewsletterSource` does, except that it
   ignores case. The route writes `email_match` in lower case, while `record.js` stores From as the
   sender wrote it (`Letter@News.example`), and an address's case carries no meaning. The KV
-  source's own match is unchanged: it is case-sensitive, a self-hosted bug of its own, and the
-  hosted fix overrides the match rather than changing it. A run acks by deleting the processed
+  source's match has since been fixed the same way (case-insensitive substring, empty From
+  matches nothing); the hosted class still overrides it, as it reads its own queue. A run acks by deleting the processed
   ids in chunks of 50. A dry run reads without deleting.
 * **Unmatched mail waits.** A message no source matches stays queued for
   `UNMATCHED_HOLD_DAYS` (8) from its arrival, and a run acks it only after that. The KV source
