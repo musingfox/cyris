@@ -112,7 +112,9 @@ A browser that names another site (`Origin` not the Worker's and not `null`, or 
 `Sec-Fetch-Site` of `cross-site` or `same-site` with no `Origin`) is refused 403 before any
 session is read, by the sign-in's own `crossSite` helper (`hosted_session.js`); the literal
 `null`, which a sandboxed page sends, is the one cross-site caller let through, and the token is
-what admits it. A body is read as text under 4 KiB, takes `up` or `down` and a URL under 2 KiB.
+what admits it. A body is read only as far as 4 KiB, before the token is checked, so a request
+with any token buffers no more than that: a declared `Content-Length` past it is refused unread,
+and an undeclared body is cancelled once it passes. It takes `up` or `down` and a URL under 2 KiB.
 
 **The article must be the tenant's.** The vote lands through `TenantDb.recordVote`, which looks
 the URL up in the tenant's own `stored_articles` and refuses a miss with 404, so a vote can name
@@ -164,7 +166,8 @@ Worker has neither a Settings page nor an interest page, so the buttons open and
   end a token. A token is refused `VOTE_TOKEN_TTL_MS` after the page view that made it while its
   session lives on, the next page view's token votes, and a token whose issue time is rewritten or
   lies ahead of the clock is refused. A URL the tenant has not stored, a direction but up and down, a body over 4 KiB
-  and a full queue are refused. No request reaches the promote Worker's URL.
+  (read no further than its bound, and not at all when its declared length is over) and a full
+  queue are refused. No request reaches the promote Worker's URL.
 * `tests/test_hosted_votes.py` drains a tenant's queue: a vote stamps its article and no other,
   three posts of one topic click are one topic vote, a change of mind ends on the later vote, a
   vote queued during the write stays queued, and a failed write leaves every vote queued.

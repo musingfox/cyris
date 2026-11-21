@@ -8,6 +8,7 @@ import worker from "../src/hosted.js";
 import { SITE_POLICY, VOTE_TOKEN_META, votePolicy } from "../src/hosted_pages.js";
 import { seedTenant } from "../src/hosted_seed.js";
 import { SESSION_COOKIE, SESSION_TTL_MS, VOTE_TOKEN_TTL_MS } from "../src/hosted_session.js";
+import { MAX_BODY_BYTES, handleVote } from "../src/hosted_vote.js";
 import { MAX_QUEUED_VOTES } from "../src/tenant_votes.js";
 import { tenantRegistry } from "../src/tenant_registry.js";
 import { FakeHTMLRewriter } from "./html_rewriter.js";
@@ -269,6 +270,39 @@ describe("a vote", () => {
     expect((await castVote(token, { url: ALPHA_URL, vote: "up", pad: "x".repeat(5000) })).status).toBe(413);
     expect((await call("/api/vote", { method: "PUT", headers: { "X-Cyris-Vote": token } })).status).toBe(405);
     expect(await queued("alpha")).toEqual([]);
+  });
+
+  it("reads an oversized body only as far as its bound, before any token is checked", async () => {
+    // A body of 8 MiB in 1 KiB chunks, counting what the route pulls from it.
+    const CHUNK = 1024;
+    const sent = { bytes: 0 };
+    const endless = () =>
+      new ReadableStream({
+        pull(controller) {
+          if (sent.bytes >= 8 << 20) return controller.close();
+          sent.bytes += CHUNK;
+          controller.enqueue(new Uint8Array(CHUNK).fill(0x78));
+        },
+      });
+    const deps = {
+      voteSession: vi.fn(async () => null),
+      recordVote: vi.fn(),
+    };
+    const request = (headers) =>
+      new Request(`${ORIGIN}/api/vote`, { method: "POST", headers: { "X-Cyris-Vote": "x", ...headers }, body: endless(), duplex: "half" });
+
+    // Declaring no length, the body is read until it passes the bound, then left.
+    const unsized = await handleVote(request({}), deps);
+    expect(unsized.status).toBe(413);
+    expect(sent.bytes).toBeLessThanOrEqual(MAX_BODY_BYTES + 2 * CHUNK);
+
+    // Declaring a length past the bound, it is refused unread.
+    sent.bytes = 0;
+    const declared = await handleVote(request({ "Content-Length": String(8 << 20) }), deps);
+    expect(declared.status).toBe(413);
+    expect(sent.bytes).toBeLessThanOrEqual(CHUNK);
+    expect(deps.voteSession).not.toHaveBeenCalled();
+    expect(deps.recordVote).not.toHaveBeenCalled();
   });
 
   it("is refused once a tenant's queue is full, until its run drains it", async () => {
