@@ -214,6 +214,10 @@ async function saveSettings(t, body, { db, registryRow, setSchedule }) {
 
 // The page's one script: each form posts its fields as JSON to its own action, a route of this
 // tenant's (relative, so the script names no tenant), and shows the answer. Allowed by its hash.
+// The page is served `Referrer-Policy: no-referrer` (hosted_pages.js), under which a browser sends
+// a POST's Origin as `null` (Fetch, "append a request `Origin` header") and the save would be
+// refused cross-origin; each fetch names `same-origin`, which sends this origin to this origin
+// and nothing elsewhere.
 const SCRIPT = `
 const read = (field) => {
   if (field.dataset.kind === "number") return field.value.trim() === "" ? null : Number(field.value);
@@ -232,6 +236,7 @@ for (const form of document.querySelectorAll("form[data-status]")) {
     try {
       const response = await fetch(form.action, {
         method: "POST",
+        referrerPolicy: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });

@@ -307,6 +307,16 @@ describe("GET /t/<tenant>/settings", () => {
     expect(served.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
   });
 
+  it("saves with a fetch that sends this Origin, though the page itself is no-referrer", async () => {
+    const session = await signIn("ana@example.com");
+
+    const served = await call("/t/alpha/settings", { session });
+    const script = /<script>([\s\S]*?)<\/script>/.exec(await served.text())[1];
+
+    expect(served.headers.get("Referrer-Policy")).toBe("no-referrer");
+    expect(script).toMatch(/fetch\(form\.action, \{[^}]*referrerPolicy: "same-origin",/);
+  });
+
   it("is worded in the catalog the tenant's output language reaches", async () => {
     const session = await signIn("ana@example.com");
     await save(session, "/t/alpha/api/settings", { "digest.output_language": "zh-TW" });
