@@ -6,6 +6,7 @@ config and never `.env` is what wrangler deploys, and every secret reaches wrang
 stdin, never in argv.
 """
 
+import hashlib
 import json
 import os
 import shutil
@@ -314,6 +315,26 @@ def test_check_reads_every_tenant_and_its_page_with_the_token_on_stdin_and_judge
         assert "client-SECRET" not in " ".join(c["args"])
     assert "PASS alpha" in done.stdout
     assert "PASS bravo" in done.stdout
+
+
+@pytest.mark.parametrize("failing", [{}, {"NO_PAGE": "bravo"}, {"UNREACHABLE": "alpha"}])
+def test_check_leaves_no_report_or_page_behind_and_prints_each_pages_hash(
+    repo: Path, failing: dict[str, str]
+) -> None:
+    """A tenant's report and page are its content: none outlives the check, pass or fail."""
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, _ = _run(repo, ["check"], ["client-id.access", "client-SECRET"], **failing)
+
+    assert list(repo.glob("cyris-hosted-report.*")) == []
+    assert "reports and pages deleted" in done.stderr
+    for tenant in ("alpha", "bravo"):
+        page = (
+            '<html><head><meta name="cyris-issue" content="2026-11-18-morning"></head>'
+            f"<body>{tenant}</body></html>"
+        ).encode()
+        fetched = tenant not in failing.values()
+        assert (f"{hashlib.sha256(page).hexdigest()} {tenant}" in done.stdout) is fetched
 
 
 def test_a_token_in_the_environment_is_used_on_stdin_without_asking(repo: Path) -> None:

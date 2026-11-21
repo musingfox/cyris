@@ -370,8 +370,9 @@ exits 1 when any tenant fails. A tenant passes when all of these hold:
   The type size the Worker may add to the page is left out of the hash.
 
 `PASS alpha: 1 run(s), 1 issue(s), only its own sources, and its latest page is its own newest
-issue`, and the same for `bravo`, is the milestone. The reports and the pages are kept in the
-temporary directory the script names. Keep them with the result.
+issue`, and the same for `bravo`, is the milestone. The reports and the pages are tenants'
+content, so the script deletes its temporary directory when it ends, however it ends. It prints
+the SHA-256 of each page it fetched, as `<hash> <tenant>`. Keep those lines with the result.
 
 A tenant that has no `ok` run yet may still be running, or waiting in the queue: its report's
 `runs` says which. Check again a few minutes later. A run that ended in `error` has its reason in

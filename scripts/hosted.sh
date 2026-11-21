@@ -300,6 +300,9 @@ case "${1:-}" in
   check)
     ask_access
     out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-report.XXXXXX")
+    # The reports and pages are tenants' content, so none is left on this machine: the directory
+    # goes when the script ends, however it ends. Each page's SHA-256 is what is kept, printed.
+    trap 'rm -rf "$out"' EXIT
     files=()
     failed=()
     for tenant in $TENANTS; do
@@ -311,10 +314,15 @@ case "${1:-}" in
         failed+=("$tenant")
       fi
     done
-    echo "reports and pages kept in $out" >&2
     # The reports that came back are still judged; a tenant without one fails the check.
     verdict=0
     if ((${#files[@]})); then python3 scripts/hosted_check.py "${files[@]}" || verdict=$?; fi
+    for page in "$out"/*.html; do
+      [[ -e "$page" ]] || continue
+      python3 -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest(), sys.argv[2])' \
+        "$page" "$(basename "$page" .html)"
+    done
+    echo "reports and pages deleted; each page's SHA-256 is above" >&2
     finish ${failed[@]+"${failed[@]}"}
     exit "$verdict"
     ;;
