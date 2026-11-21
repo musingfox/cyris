@@ -28,12 +28,15 @@
 //   POST /hosted/tenants/<tenant>/revoke   {"email": E}     take E off the list, ending its sessions
 //   GET  /hosted/tenants/<tenant>/members                   the tenant's invite list
 //   GET  /t/<tenant>/...                                    the tenant's pages (hosted_pages.js), to its session
+//   /t/<tenant>/settings, /t/<tenant>/api/{settings,sources,sources/delete}
+//                                                           its settings and sources (hosted_settings.js), to its session
 //   /login, /login/confirm, /logout                         the sign-in (hosted_login.js)
 //   POST /api/vote   {url, vote}                            a reader's vote, by a vote token (hosted_vote.js)
 
 import { LOGIN_PATHS, handleLogin } from "./hosted_login.js";
 import { admitOperator, unsetOperators } from "./hosted_operators.js";
 import { PRIVATE_HEADERS, SITE_ROUTE, VOTE_PATH, privateHeaders, siteHeaders } from "./hosted_pages.js";
+import { isSettingsPath } from "./hosted_settings.js";
 import { handleVote } from "./hosted_vote.js";
 import { clearedSessionCookie, crossSite, sessionToken, tokenHash } from "./hosted_session.js";
 import { MONTH } from "./ai_budget.js";
@@ -115,6 +118,9 @@ async function siteRequest(request, tenant, rest, deps) {
   const session = token ? await deps.session(sessionHash) : null;
   if (!session) return signInFirst(request, token !== null);
   if (session.tenant_id !== tenant) return siteHeaders(json(NOT_FOUND, 404));
+  // The tenant's settings page and its routes are the Worker's own (hosted_settings.js, ADR-0040),
+  // not pages its run wrote; a paused tenant may still change them.
+  if (isSettingsPath(rest)) return siteHeaders(await deps.settings(request, tenant, rest));
   // A paused tenant's pages stay readable; only its runs stop. The page carries a vote token for
   // this session, made only if the page is one that is served.
   return siteHeaders(await deps.page(request, tenant, rest, () => deps.voteToken(sessionHash)));
@@ -145,6 +151,8 @@ async function bodyEmail(request) {
 // `revoke(tenant, email)`, which answer the registry's `{member}`, `{revoked}` or
 // `{refused, status}`, `members(tenant)`, and `signIn(email, {invitation})` (hosted_login.js's
 // createSignIn). For readers: `session(sessionHash)`, the registry's live session or null,
+// `settings(request, tenant, rest)`, which answers the tenant's settings page and routes
+// (hosted_settings.js `handleTenantSettings`),
 // `voteToken(sessionHash)`, the token that session's pages vote with, `voteSession(token)`, the
 // live session a vote token names or null, `recordVote(tenant, {url, vote})`, which queues the
 // vote in that tenant's object and answers `{queued}` or `{refused, status}`, and `login`, what

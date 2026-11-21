@@ -59,7 +59,7 @@ const ended = () => answer({ error: "sign in again to vote", code: SESSION_ENDED
 // The body as text, or null once it passes `max` bytes: a declared length past it is refused
 // unread, and a body that sends more than it declared, or declares nothing, is read only until it
 // passes, then cancelled.
-async function boundedText(request, max) {
+export async function boundedText(request, max) {
   const declared = Number(request.headers.get("Content-Length"));
   if (declared > max) return null;
   if (!request.body) return "";
