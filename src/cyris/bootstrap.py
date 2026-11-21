@@ -358,7 +358,13 @@ def load_effective_config(
         from cyris.adapters.store.tenant_gateway import apply_hosted_schema
 
         apply_hosted_schema(d1)
-    cfg = resolve_config(raw, d1_settings=settings.all())
+    stored = settings.all()
+    if cfg.app.store.is_hosted:
+        # What a tenant does not decide, whatever its database holds (ADR-0040).
+        from cyris.adapters.hosted import pin_tenant_settings
+
+        stored = pin_tenant_settings(stored)
+    cfg = resolve_config(raw, d1_settings=stored)
     # The table alone, empty included: sources.yaml is not a run's list.
     cfg.sources = D1SourceStore(d1).list_sources()
     cfg.tracked_topics = D1TrackedTopicStore(d1).list_topics()

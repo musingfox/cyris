@@ -14,22 +14,30 @@ senders, so the decision is the composition root's and no setting can reopen tha
 
 Every line a hosted run writes names its tenant (`tag_output`): the container's stdout is the only
 log, and every tenant's runs land in the one Workers Logs stream.
+
+What no tenant decides is pinned as its settings load (`pin_tenant_settings`): the provider, the
+model and the notify targets, and the article cap clamped, from the hosted Worker's own policy
+file. The tenant's reader writes the rest on the hosted Worker (ADR-0040), and the container can
+write any row of its own database, so the run does not take those rows from there.
 """
 
 from __future__ import annotations
 
+import functools
 import io
+import json
 import logging
 import os
 import sys
 from dataclasses import replace
+from pathlib import Path
 from typing import Any, TextIO
 
 import httpx
 
 from cyris.adapters.notify import redact_webhook_tokens
 from cyris.adapters.run_alert import alert_message
-from cyris.config import HOSTED_B_GRADE_ENV_VARS, TENANT_ID
+from cyris.config import HOSTED_B_GRADE_ENV_VARS, TENANT_ID, validate_setting
 from cyris.i18n import ENGLISH
 from cyris.service_layer.alerts import RunAlert
 
@@ -49,6 +57,42 @@ OPERATOR_TIMEOUT_SECONDS = 10.0
 # What starts every line a hosted run writes. `tenant=` so a Workers Logs search for one
 # tenant is one substring.
 LINE_TAG = "tenant={tenant} "
+
+
+# The hosted Worker's policy file, which the run reads where the Worker does: the image copies it
+# to the same place beside `src` (Dockerfile), so the two read one file.
+POLICY_PATH = Path(__file__).resolve().parents[3] / "workers/app/src/hosted_settings_policy.json"
+
+ARTICLE_CAP_KEY = "digest.max_articles_per_digest"
+
+
+@functools.cache
+def hosted_policy() -> dict[str, Any]:
+    """The hosted policy file, read once per process; a missing file raises, so no run goes on."""
+    return json.loads(POLICY_PATH.read_text(encoding="utf-8"))
+
+
+def pin_tenant_settings(stored: dict[str, Any]) -> dict[str, Any]:
+    """`stored`, a tenant's `settings` rows, with what the tenant does not decide put back.
+
+    The provider and model are the policy's and the notify targets blank, whatever the rows say,
+    and an article cap above the policy's is the policy's. A cap the rule refuses is left as it
+    is, so the load reports it as it reports any refused row.
+    """
+    policy = hosted_policy()
+    pinned = {
+        **stored,
+        "llm_provider.provider": policy["provider"],
+        "llm_provider.model": policy["model"],
+        **dict.fromkeys(policy["blank_settings"], ""),
+    }
+    try:
+        cap = validate_setting(ARTICLE_CAP_KEY, stored[ARTICLE_CAP_KEY])
+    except (KeyError, ValueError):
+        return pinned
+    if cap > policy["max_articles_per_digest"]:
+        pinned[ARTICLE_CAP_KEY] = policy["max_articles_per_digest"]
+    return pinned
 
 
 def tenant_from_environment() -> str | None:

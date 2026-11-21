@@ -36,6 +36,10 @@ RUN uv sync --frozen --no-dev
 COPY docker/crontab /app/crontab
 COPY docker/entrypoint.sh /app/entrypoint.sh
 
+# The hosted Worker's policy file, which a hosted tenant's run pins its settings to; at the
+# path `adapters/hosted.py` reads it from, beside `src` as in the repository (ADR-0040).
+COPY workers/app/src/hosted_settings_policy.json /app/workers/app/src/hosted_settings_policy.json
+
 # Every role's commands name this path (`--sources`), and `read_config_files` still
 # parses it, so bake the tracked example: no run takes a source from it. No cyris.toml
 # is baked: a D1 container reads its runtime settings and sources from D1 and its

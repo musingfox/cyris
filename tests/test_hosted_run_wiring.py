@@ -101,6 +101,9 @@ def _hosted_env(monkeypatch: pytest.MonkeyPatch, tenant: str = "alpha") -> None:
     monkeypatch.setenv("CYRIS_STORE_BACKEND", "d1")
     monkeypatch.setenv("CYRIS_STORE_TENANT_ID", tenant)
     monkeypatch.setenv("CYRIS_STORE_HOSTED_DOMAIN", DOMAIN)
+    # The key of the provider a tenant's settings are pinned to, which the Worker hands every
+    # tenant's container (`HOSTED_SECRETS`, hosted_container.js).
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
 
 def _files(tmp_path: Path) -> tuple[Path, Path]:
@@ -702,10 +705,14 @@ async def test_a_hosted_run_applies_the_votes_its_readers_queued_before_it_score
     assert gateway.db.query("SELECT count(*) AS n FROM hosted_votes").rows[0]["n"] == 0
 
 
-def test_a_hosted_tick_that_cannot_start_tells_the_operator_and_the_reader_no_error(
+def test_a_hosted_tick_that_cannot_start_tells_the_operator_and_no_channel_its_rows_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The CLI's own alert path, before any `Deps`, takes its senders from `bootstrap` too."""
+    """The CLI's own alert path, before any `Deps`, takes its senders from `bootstrap` too.
+
+    The tenant's rows name a webhook and a mail address, which its settings load pins blank
+    (ADR-0040): no tenant's run reaches a channel its own database names.
+    """
     sent: list[tuple[str, str, str]] = []
 
     async def discord(_url, alert, *, wording) -> None:
@@ -739,13 +746,10 @@ def test_a_hosted_tick_that_cannot_start_tells_the_operator_and_the_reader_no_er
     )
 
     assert result.exit_code == 1
-    # The alert was due: the reader's two channels were told it could not start, without the
-    # error, and the operator was told which tenant, with it.
-    [(_, d_subject, d_body), (_, m_subject, m_body), (who, tenant, error)] = sent
-    assert [entry[0] for entry in sent] == ["discord", "mail", "operator"]
-    assert d_subject.startswith("Digest run could not start")
-    assert d_body == m_body == "The error has been sent to the service's operator."
-    assert "max_articles_per_digest" not in d_subject + d_body + m_subject + m_body
+    # The alert was due: the operator was told which tenant, with the error, and the channels
+    # the tenant's rows name were not told at all.
+    [(who, tenant, error)] = sent
+    assert who == "operator"
     assert tenant == "alpha"
     assert "max_articles_per_digest" in error
 
