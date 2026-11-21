@@ -686,11 +686,15 @@ yours is kept.
 To check it on a trial tenant, sign in as alpha's reader, open Settings, change Articles per run
 and add one feed. Then read alpha's report as the operator: its `sources` list the new feed, and
 `POST /hosted/tenants/alpha/query` with `{"sql": "SELECT value FROM settings WHERE key =
-'digest.max_articles_per_digest'"}` answers the new value. A feed on a private address, an IP
-literal, `localhost`, this Worker or any `workers.dev` name is refused at the save, and a feed that
-redirects to one fails its poll with `refused` in the `feed failed` line. *Unverified in a
-browser:* that the page's save carries the `Origin` the routes require; a save refused with "saved
-only from this digest's own settings page" means it did not.
+'digest.max_articles_per_digest'"}` answers the new value. A feed whose host is an IP literal
+(in any spelling the URL parser reads as an address), `localhost`, a `.localhost`, `.local`,
+`.internal` or `.arpa` name, this Worker's host or any `workers.dev` name is refused at the save,
+and a feed that redirects to one fails its poll with `refused` in the `feed failed` line. Nothing
+looks a name up in DNS, so a public name that resolves to a private address is not refused: the
+gap [ADR-0040](decisions/0040-a-hosted-tenant-edits-its-settings-on-the-hosted-worker.md) records
+under its consequences. *Unverified in a browser:* that the page's save carries the `Origin` the
+routes require; a save refused with "saved only from this digest's own settings page" means it did
+not.
 
 ## 11. Tear down (when you are done)
 
