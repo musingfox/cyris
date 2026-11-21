@@ -42,9 +42,19 @@ _UPSERT = (
 )
 
 
+# The tenant's settings page under its site, which the hosted Worker renders itself (ADR-0040).
+# `SETTINGS_PAGE` in workers/app/src/hosted_settings.js; tests/test_hosted_config.py holds them.
+SETTINGS_PAGE = "/settings"
+
+
 def tenant_site(domain: str, tenant: str) -> str:
     """The tenant's site on the hosted Worker, as host and path: `<domain>/t/<tenant>`."""
     return domain + SITE_PATH.format(tenant=tenant)
+
+
+def tenant_settings_path(tenant: str) -> str:
+    """Where a tenant's pages link Settings: its own page on the hosted Worker, by path."""
+    return SITE_PATH.format(tenant=tenant) + SETTINGS_PAGE
 
 
 def _slash(path: str) -> str:

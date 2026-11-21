@@ -33,3 +33,14 @@ def test_the_page_mail_and_discord_get_the_current_language(
     assert deps.html_writer.language == language
     assert deps.send_discord.keywords["language"] == language
     assert deps.send_email.keywords["language"] == language
+
+
+def test_a_deployments_pages_link_its_own_hosts_settings(tmp_path: Path, monkeypatch) -> None:
+    """A hosted tenant's link its own page instead (tests/test_hosted_run_wiring.py, ADR-0040)."""
+    monkeypatch.setattr(bootstrap, "build_d1_client", lambda _cfg: SqliteD1())
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
+
+    deps = bootstrap.build_deps(_config(tmp_path, "en"))
+
+    assert deps.html_writer.settings_path == "/settings"

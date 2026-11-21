@@ -20,9 +20,13 @@ export const VOTE_HEADER = "X-Cyris-Vote";
 // The page's code reads this to tell a session that has ended from a refusal it cannot mend.
 export const SESSION_ENDED = "vote_session_ended";
 
-// What the page's capability probe reads (_probe_script.html.j2): signed in, with no Settings page
-// on this Worker, so the vote buttons show and the links to Settings and the interest page do not.
-const PROBE = { authorized: true, settings: false };
+// What the page's capability probe reads (_probe_script.html.j2): signed in, so the vote buttons
+// show. `settings: false` keeps the self-hosted Settings, the archive link and the gated controls
+// (the interest page) closed, which this Worker does not serve; `settings_link: true` opens the
+// Settings link alone, which on a tenant's page leads to its own settings page (ADR-0040). A page
+// published before that link existed reads only `settings: false`, so its old `/settings` link,
+// an operator route here, stays hidden.
+export const PROBE = { authorized: true, settings: false, settings_link: true };
 
 // The directions a hosted vote takes. The legacy "deep" the promote Worker still passes through
 // (promotions.py) never had a hosted page.

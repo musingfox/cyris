@@ -643,13 +643,19 @@ def build_deps(
     site_filenames: Callable[[], list[str]] = list
     worker_domains = None if hosted else build_worker_domains()
     if hosted or cfg.app.html_output.enabled:
-        from cyris.adapters.output.html_digest import HtmlDigestWriter
+        from cyris.adapters.output.hosted_pages import tenant_settings_path
+        from cyris.adapters.output.html_digest import SETTINGS_PATH, HtmlDigestWriter
 
         html_writer = HtmlDigestWriter(
             Path(cfg.app.html_output.output_dir),
             language=language,
             starts=D1ArchiveMeta(d1).issue_starts,
             ai_pause=ai_pause,
+            # A tenant's pages are served under /t/<tenant>/, where `/settings` is an operator
+            # route; its Settings link is the tenant's own page (ADR-0040).
+            settings_path=(
+                tenant_settings_path(cfg.app.store.tenant_id) if hosted else SETTINGS_PATH
+            ),
         )
     if hosted:
         # The tenant's site is its own Durable Object, which the hosted Worker serves behind

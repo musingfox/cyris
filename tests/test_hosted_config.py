@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 import pytest
 
 from cyris.adapters.hosted import OPERATOR_ORIGIN, OPERATOR_TIMEOUT_SECONDS
-from cyris.adapters.output.hosted_pages import SITE_PATH
+from cyris.adapters.output.hosted_pages import SETTINGS_PAGE, SITE_PATH, tenant_settings_path
 from cyris.adapters.store.source_store import source_from_row
 from cyris.adapters.store.tenant_gateway import GATEWAY_ORIGIN
 from cyris.config import HOSTED_B_GRADE_ENV_VARS, REQUIRED_KEYS, TENANT_ID, validate_setting
@@ -247,6 +247,15 @@ def test_the_tenants_site_path_is_one_shape_on_both_sides() -> None:
         match = re.fullmatch(route, site + page)
         assert match is not None
         assert match.groups() == ("alpha", page)
+
+
+def test_a_tenants_settings_link_is_the_path_the_worker_serves_its_settings_page_at() -> None:
+    settings = _js("hosted_settings.js")
+    [page] = re.findall(r'^export const SETTINGS_PAGE = "([^"]+)";', settings, re.M)
+    [route] = re.findall(r"^export const SITE_ROUTE = /(.+)/;", _js("hosted_pages.js"), re.M)
+
+    assert page == SETTINGS_PAGE
+    assert re.fullmatch(route, tenant_settings_path("alpha")).groups() == ("alpha", page)
 
 
 def test_the_vote_buttons_and_the_vote_route_agree_on_path_token_and_header() -> None:

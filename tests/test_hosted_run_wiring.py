@@ -319,6 +319,8 @@ def test_a_hosted_run_is_wired_to_its_own_site_and_to_no_queue_page_or_channel(h
     assert bootstrap.build_promotion_sync(cfg) is None
     # Every environment switch for Pages is on, and still the publisher is the tenant's site.
     assert deps.html_writer is not None
+    # Its pages link the tenant's own settings page, not the host's `/settings` (ADR-0040).
+    assert deps.html_writer.settings_path == "/t/alpha/settings"
     for wired in (deps.publish_site, deps.page_serves, deps.site_filenames):
         assert isinstance(wired.__self__, HostedPages)
     assert deps.worker_domains() == [f"{DOMAIN}/t/alpha"]

@@ -374,6 +374,9 @@ class TestSiteLinks:
         assert f'href="{site}/index.html"' in footer
         assert 'href="https://cyris-hosted.example.workers.dev/2026-09-27-morning-raw"' not in html
         assert f'href="{site}/"' not in html
+        # The tenant's own settings page (ADR-0040); the host's `/settings` is an operator route.
+        assert f'href="{site}/settings"' in footer
+        assert 'href="https://cyris-hosted.example.workers.dev/settings"' not in html
 
     def test_no_raw_page_means_no_raw_link(self):
         html = render_digest_email(_full(), DIGEST_URL, raw_page=False)
