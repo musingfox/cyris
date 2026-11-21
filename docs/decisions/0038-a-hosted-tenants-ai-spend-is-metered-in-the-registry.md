@@ -76,7 +76,12 @@ How it is built:
   `build_deps` wraps the LLM client in `MeteredLLM` and the embedder in `MeteredEmbedder`
   (`src/cyris/adapters/hosted_spend.py`). Each LLM response is priced at its model's rate in
   `domain/models.py`. A Workers AI response is priced by its neurons. A model with no rate card
-  counts as `unpriced_tokens`, not as zero. Embedded texts are counted batch by batch, including
+  is charged at the dearest input and output rates that table holds
+  (`UNPRICED_USD_PER_MTOK`), and its tokens are also counted as `unpriced_tokens`, so the
+  operator sees which spend is a guess. Charging it nothing would give its tenant AI without
+  limit, since the allowance compares dollars. Refusing to run its AI was the other choice; it
+  was turned down because it costs the reader their issue's AI for a gap in a table the
+  operator closes with one rate card, where the dearest rate only spends the allowance sooner. Embedded texts are counted batch by batch, including
   in a call that raised. Gemini reports no tokens, so they are estimated at one token per three
   UTF-8 bytes. That is about right for Chinese and about a third high for English: a ceiling
   should err high. They are priced at gemini-embedding-001's list price.
@@ -147,7 +152,8 @@ How it is built:
   * `SpendGateway` answers only its own tenant's two routes.
   * The operator's list, month filter, budget route, cross-site refusal and report.
 * `tests/test_hosted_spend.py` checks a hosted run end to end over the fake gateways.
-  * Its LLM and embedding spend are charged once to its own tenant.
+  * Its LLM and embedding spend are charged once to its own tenant. A model with no rate card
+    is charged at the dearest one.
   * A run whose month is spent calls no LLM and no embedder. It still stores and publishes the
     plain list, and its page carries the allowance notice and not the degraded one. An allowance
     of 0 says AI is off, never that the month brings it back.

@@ -29,6 +29,7 @@ from cyris.adapters.hosted_spend import (
     EMBEDDING_BYTES_PER_TOKEN,
     GEMINI_EMBEDDING_USD_PER_MTOK,
     SPEND_ORIGIN,
+    UNPRICED_USD_PER_MTOK,
     WORKERS_AI_USD_PER_KNEURON,
     MeteredEmbedder,
     MeteredLLM,
@@ -37,7 +38,7 @@ from cyris.adapters.hosted_spend import (
     estimated_embedding_tokens,
 )
 from cyris.adapters.store.tenant_gateway import apply_hosted_schema
-from cyris.domain.models import Article, DigestContent, Lane, UsageStats
+from cyris.domain.models import _PRICES_PER_MTOK, Article, DigestContent, Lane, UsageStats
 from cyris.service_layer.run_digest import RunOptions, run_digest
 
 pytestmark = pytest.mark.integration
@@ -144,16 +145,23 @@ async def test_the_meter_prices_each_llm_response_at_its_models_rate_as_it_is_ma
     assert llm.model == HAIKU
 
 
-async def test_a_model_with_no_rate_card_is_counted_apart_and_workers_ai_by_its_neurons() -> None:
+async def test_a_model_with_no_rate_card_is_charged_at_the_dearest_rates_and_named_apart() -> None:
     unpriced = SpendMeter("someones-model")
     await MeteredLLM(
-        FakeLLM(model="someones-model", input_tokens=10, output_tokens=5), unpriced
+        FakeLLM(model="someones-model", input_tokens=1_000_000, output_tokens=100_000), unpriced
     ).complete("p")
     neurons = SpendMeter("@cf/meta/llama")
     neurons.count_llm(type("R", (), {"input_tokens": 1, "output_tokens": 1, "neurons": 2000.0})())
 
-    assert (unpriced.report()["llm_usd"], unpriced.report()["unpriced_tokens"]) == (0.0, 15)
+    # Never zero, which would let a tenant on an unlisted model spend without limit: no rate
+    # card the deployment knows is dearer, input or output.
+    input_rate, output_rate = UNPRICED_USD_PER_MTOK
+    assert all(i <= input_rate and o <= output_rate for i, o in _PRICES_PER_MTOK.values())
+    assert unpriced.report()["llm_usd"] == pytest.approx(input_rate + output_rate / 10)
+    assert unpriced.report()["llm_usd"] > 0
+    assert unpriced.report()["unpriced_tokens"] == 1_100_000
     assert neurons.report()["llm_usd"] == pytest.approx(2 * WORKERS_AI_USD_PER_KNEURON)
+    assert neurons.report()["unpriced_tokens"] == 0
 
 
 async def test_gemini_embeddings_are_estimated_from_the_texts_bytes_and_workers_ai_by_neurons() -> (

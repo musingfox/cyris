@@ -26,7 +26,7 @@ import httpx
 
 from cyris.adapters.hosted import OPERATOR_ORIGIN
 from cyris.adapters.store.d1 import post_with_retries
-from cyris.domain.models import UsageStats
+from cyris.domain.models import _PRICES_PER_MTOK, UsageStats
 from cyris.i18n import ENGLISH, translator
 
 logger = logging.getLogger(__name__)
@@ -58,6 +58,15 @@ GEMINI_EMBEDDING_USD_PER_MTOK = 0.15
 # reads a Chinese text about right and an English one about a third high: a loss ceiling
 # should err high, never low.
 EMBEDDING_BYTES_PER_TOKEN = 3
+# What a model with no rate card in `domain/models.py` is charged per million tokens: the dearest
+# input and the dearest output rate that table knows. Not zero, which would give a tenant on an
+# unlisted model AI without limit; and not a refusal to run its AI, which would cost the reader
+# their issue for a gap in this table, when the operator can close it with one rate card. A
+# ceiling should err high, and this errs as high as any model the deployment has priced.
+UNPRICED_USD_PER_MTOK = (
+    max(rates[0] for rates in _PRICES_PER_MTOK.values()),
+    max(rates[1] for rates in _PRICES_PER_MTOK.values()),
+)
 # Workers AI's price per thousand neurons past the account's free daily allowance. Every neuron
 # is charged here, since the free allowance is the account's, not a tenant's.
 WORKERS_AI_USD_PER_KNEURON = 0.011
@@ -99,9 +108,13 @@ class SpendMeter:
         if cost is None and self.llm.neurons is not None:
             cost = self.llm.neurons * WORKERS_AI_USD_PER_KNEURON / 1000
         elif cost is None:
-            # A model with no rate card here: its tokens are counted, and named apart, so the
-            # operator sees spend the total cannot price.
-            cost, unpriced = 0.0, self.llm.total_tokens
+            # A model with no rate card here: charged at the dearest rates, and its tokens
+            # named apart, so the operator sees which spend is a guess.
+            input_rate, output_rate = UNPRICED_USD_PER_MTOK
+            cost = (
+                self.llm.input_tokens * input_rate + self.llm.output_tokens * output_rate
+            ) / 1_000_000
+            unpriced = self.llm.total_tokens
         return {
             "llm_usd": round(cost, 8),
             "embedding_usd": round(self.embedding_usd, 8),

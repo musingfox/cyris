@@ -19,7 +19,8 @@ export const MAX_MONTHLY_AI_BUDGET_USD = 100;
 // The columns `spend_rollup` gained with this card, and the tenant's allowance, beside the
 // `cost_usd` and `runs` the registry created the table with. `cost_usd` stays the month's total,
 // `llm_usd` plus `embedding_usd`; `unpriced_tokens` are tokens of a model with no rate card in the
-// container, which cost something the total cannot say. Added in place, as ADR-0032's columns are.
+// container, which it charged at the dearest rate card it has. Added in place, as ADR-0032's
+// columns are.
 export const SPEND_COLUMNS = [
   ["spend_rollup", "llm_usd", "REAL NOT NULL DEFAULT 0"],
   ["spend_rollup", "embedding_usd", "REAL NOT NULL DEFAULT 0"],
