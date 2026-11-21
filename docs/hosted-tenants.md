@@ -587,9 +587,16 @@ a flood of three does: asking in the names of about 12 readers, four of each ten
 500-a-day ceiling in about 17 hours, and then every tenant's readers are held, the log line names
 `daily`, and only a re-invite mails a link (ADR-0033).
 
-The vote buttons and the Settings link stay hidden on a tenant's pages, because the hosted Worker
-has no `/api/vote` or `/settings` yet, and each page is served sandboxed, so its scripts run with
-no origin of their own (ADR-0033).
+The Settings link stays hidden on a tenant's pages, because the hosted Worker has no `/settings`
+yet. The vote buttons show on a page served to a signed-in reader, and a vote lands in that
+tenant's own `hosted_votes` table and no one else's, through a token the Worker put in the page
+(ADR-0039): a page is sandboxed, so its scripts have no cookie and no origin of their own
+(ADR-0033). The vote is applied by the tenant's next run, not at once, and a reloaded page does not
+show a past vote (its scripts have no storage). To check a trial tenant, vote once as its reader on a digest page, then read the tenant's report
+as the operator (`GET /hosted/tenants/alpha/report` with the service token): its tables list
+`hosted_votes` with one row, and after the tenant's next run, which applies the vote and deletes
+the row, zero rows. *Unverified in a browser:* that the page's `fetch` passes the route's preflight and
+the buttons appear; look in the browser's console for a blocked request if they do not.
 
 ## 11. Tear down (when you are done)
 
