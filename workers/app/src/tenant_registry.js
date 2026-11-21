@@ -24,6 +24,7 @@ import {
 } from "./ai_budget.js";
 import { alertOperator, workerAlert } from "./hosted_alerts.js";
 import RESERVED_IDS from "./hosted_reserved_ids.json";
+import { dumpObject } from "./sqlite_dump.js";
 import {
   SESSION_TTL_MS,
   SIGN_IN_ADDRESS_CAP,
@@ -202,6 +203,12 @@ export class TenantRegistry extends DurableObject {
       const columns = ctx.storage.sql.exec(`PRAGMA table_info(${table})`).toArray().map((row) => row.name);
       if (!columns.includes(column)) ctx.storage.sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
     }
+  }
+
+  // The registry's tables as one gzip dump (sqlite_dump.js), for the daily backup
+  // (hosted_backup.js). No route loads one back: the registry makes its own tables as it starts.
+  exportDump() {
+    return dumpObject(this.ctx);
   }
 
   // The registered tenants in id order, every one or only those with `status`.
