@@ -2,5 +2,12 @@
   "start_failed": "Digest run could not start",
   "stopped": "Digest run stopped before it reported",
   "lost": "Digest run lost: no stop report, queued again",
-  "lost_failed": "Digest run lost on its last start"
+  "lost_failed": "Digest run lost on its last start",
+  "backup_every_export": "every export",
+  "backup_list_failed": "Daily backup could not list the tenants: only the registry was exported",
+  "backup_export_failed": "Daily backup export failed: no copy written",
+  "backup_r2_failed": "Daily backup not written to R2",
+  "backup_r2_unbound": "Daily backup has no R2 bucket bound: no R2 copy written",
+  "backup_b2_failed": "Daily backup not copied to B2, the off-Cloudflare copy",
+  "backup_b2_unset": "Daily backup has no off-Cloudflare copy: B2 is not configured"
 }

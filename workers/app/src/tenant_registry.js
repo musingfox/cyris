@@ -165,7 +165,7 @@ const after = (now, ms) => stamp(new Date(now.getTime() + ms));
 // Why `id` may not be registered, or null. TENANT is the shape of a name the tenant's objects
 // can take; a new tenant must also start and end with a letter or a digit, as a host label
 // does, and take no reserved word (hosted_reserved_ids.json).
-function refuseTenantId(id) {
+export function refuseTenantId(id) {
   if (typeof id !== "string" || !TENANT.test(id)) return `a tenant id matches ${TENANT}: ${id}`;
   if (id.startsWith("-") || id.endsWith("-")) return `a tenant id starts and ends with a letter or a digit: ${id}`;
   if (RESERVED_IDS.reserved.includes(id)) return `${id} is reserved, so no tenant can take it`;

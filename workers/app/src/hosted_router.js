@@ -9,6 +9,7 @@
 // vitest runs this under Node.
 //
 //   GET  /hosted/spend[?month=YYYY-MM]                      every tenant's AI spend in a UTC month
+//   POST /hosted/backup                                     today's backup, now (hosted_backup.js)
 //   POST /hosted/tenants/<tenant>/register[?status=S]       register a tenant, or set its status
 //   POST /hosted/tenants/<tenant>/schedule?times=T&timezone=Z[&daily_run_cap=N]
 //                                                           the tenant's digest hours and run cap
@@ -27,6 +28,7 @@
 //   POST /hosted/tenants/<tenant>/invite   {"email": E}     put E on the invite list and mail it a link
 //   POST /hosted/tenants/<tenant>/revoke   {"email": E}     take E off the list, ending its sessions
 //   GET  /hosted/tenants/<tenant>/members                   the tenant's invite list
+//   POST /hosted/tenants/<new>/restore?date=D&from=T        T's export of day D into the new id <new>
 //   GET  /t/<tenant>/...                                    the tenant's pages (hosted_pages.js), to its session
 //   /login, /login/confirm, /logout                         the sign-in (hosted_login.js)
 //   POST /api/vote   {url, vote}                            a reader's vote, by a vote token (hosted_vote.js)
@@ -57,6 +59,7 @@ const ACTIONS = [
   "revoke-address",
   "newsletter-source",
   "budget",
+  "restore",
 ];
 const ROUTE = new RegExp(`^/hosted/tenants/([^/]+)/(${ACTIONS.join("|")})$`);
 const METHOD = {
@@ -76,10 +79,12 @@ const METHOD = {
   "revoke-address": "POST",
   "newsletter-source": "POST",
   budget: "POST",
+  restore: "POST",
 };
 // Every POST route changes a tenant or the registry: its status (register), its tables (seed, or
-// any SQL by query), its runs and their spend (run, poll), its schedule, its AI allowance
-// (budget), its newsletter address and sources, and who may sign in to it (invite, revoke). So
+// any SQL by query, or a restored export), its runs and their spend (run, poll), its schedule,
+// its AI allowance (budget), its newsletter address and sources, and who may sign in to it
+// (invite, revoke); and POST /hosted/backup writes every tenant's export. So
 // none takes another site's request (`crossSite`); a GET route changes nothing and is left to
 // Access.
 
@@ -144,7 +149,8 @@ async function bodyEmail(request) {
 // answers under /t/<tenant> from that tenant's object, `invite(tenant, email)` and
 // `revoke(tenant, email)`, which answer the registry's `{member}`, `{revoked}` or
 // `{refused, status}`, `members(tenant)`, and `signIn(email, {invitation})` (hosted_login.js's
-// createSignIn). For readers: `session(sessionHash)`, the registry's live session or null,
+// createSignIn); `restore(tenant, {date, from})`, which answers what hosted_backup.js's
+// restoreExport does, and `backup()`, today's backup's summary. For readers: `session(sessionHash)`, the registry's live session or null,
 // `voteToken(sessionHash)`, the token that session's pages vote with, `voteSession(token)`, the
 // live session a vote token names or null, `recordVote(tenant, {url, vote})`, which queues the
 // vote in that tenant's object and answers `{queued}` or `{refused, status}`, and `login`, what
@@ -178,6 +184,13 @@ async function route(request, env, deps) {
     return json(await deps.spend(month ?? undefined));
   }
 
+  // Today's backup run now, as the tick runs it at its hour, for the operator's restore drill.
+  if (url.pathname === "/hosted/backup") {
+    if (request.method !== "POST") return json({ error: "backup takes POST" }, 405);
+    if (crossSite(request)) return json({ error: "backup is posted from this site or with curl, not from another site" }, 403);
+    return json(await deps.backup());
+  }
+
   const match = ROUTE.exec(url.pathname);
   if (!match) {
     return json({ error: "not found", routes: `/hosted/tenants/<tenant>/{${ACTIONS.join(",")}}` }, 404);
@@ -197,6 +210,13 @@ async function route(request, env, deps) {
   if (action === "register") {
     const answer = await deps.register(tenant, url.searchParams.get("status") ?? undefined);
     return answer.refused ? json({ error: answer.refused }, 400) : json(answer.tenant);
+  }
+  // A restore fills a tenant id the registry does not hold yet (hosted_backup.js), so it comes
+  // before the registry check; registering the id is the operator's next step.
+  if (action === "restore") {
+    const params = { date: url.searchParams.get("date"), from: url.searchParams.get("from") };
+    const answer = await deps.restore(tenant, params);
+    return answer.refused ? json({ error: answer.refused }, answer.status) : json(answer);
   }
   const registered = await deps.tenant(tenant);
   if (!registered) return json({ error: `${tenant} is not a registered tenant` }, 404);

@@ -121,6 +121,25 @@ def test_the_sign_in_sender_is_one_name_from_the_runbook_to_the_worker() -> None
     )
 
 
+def test_the_backups_go_to_one_bucket_only_the_hosted_file_binds() -> None:
+    """The daily backup's R2 copy (ADR-0041) is the hosted Worker's; production writes none."""
+    default, hosted = _toml("wrangler.toml"), _toml("wrangler.hosted.toml")
+    backup = _js("hosted_backup.js")
+    [binding] = re.findall(r'^export const BACKUP_BINDING = "(\w+)";', backup, re.M)
+
+    assert "r2_buckets" not in default
+    assert hosted["r2_buckets"] == [{"binding": binding, "bucket_name": "cyris-hosted-backup"}]
+
+
+def test_the_backup_runs_from_the_hourly_tick_and_never_a_second_cron() -> None:
+    hosted = _toml("wrangler.hosted.toml")
+    [hour] = re.findall(r"^export const BACKUP_HOUR_UTC = (\d+);", _js("hosted_backup.js"), re.M)
+
+    assert hosted["triggers"]["crons"] == ["0 * * * *"]
+    assert 0 <= int(hour) <= 23
+    assert "backupDue(at)" in _js("hosted.js")
+
+
 def test_the_hosted_file_runs_the_same_image_on_the_same_runtime() -> None:
     default, hosted = _toml("wrangler.toml"), _toml("wrangler.hosted.toml")
     [container] = hosted["containers"]
