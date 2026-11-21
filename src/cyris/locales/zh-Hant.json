@@ -113,6 +113,7 @@
   "interest.no_store": {"text": "興趣地圖要從 SQL 儲存區讀取投票和沒興趣標記，但本站的 [store] backend 不是 \"sqlite\" 也不是 \"d1\"。", "source": "The interest map reads votes and holds from the SQL store: this deployment's [store] backend is neither \"sqlite\" nor \"d1\"."},
   "interest.tags": {"text": "標籤", "source": "Tags"},
   "issue.all_articles": {"text": "所有文章", "source": "All articles"},
+  "issue.ai_paused": {"text": "本月的 AI 額度已用完，本期只列出原文摘錄，沒有評分和摘要。AI 會在月份交替時（UTC 午夜）恢復。", "source": "This month's AI allowance is used up, so this issue lists articles as they came in, without scores or summaries. AI returns when the month turns, at midnight UTC."},
   "issue.degraded": {"text": "本期有些步驟無法使用設定的 LLM，部分或全部內容沒有評分，或只有原文摘錄。請到「設定」檢查供應商和金鑰。", "source": "Some or all of this issue is unscored or plain excerpts: the configured LLM could not be used for every step this run. Check the provider and its key on Settings."},
   "issue.digest": {"text": "精選", "source": "Digest"},
   "issue.empty": {"text": "本期沒有內容：這期一篇都沒留下。", "source": "Nothing is in this issue: the run kept no article."},

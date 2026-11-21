@@ -291,6 +291,10 @@ def hosted_cfg(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # What the operator's seed creates beside schema.sql (hosted_seed.js).
     apply_hosted_schema(gateway.db)
     _through(gateway, monkeypatch)
+    # The tenant's AI allowance, which every hosted run asks and charges (ADR-0038).
+    from test_hosted_spend import FakeSpendGateway, ledger_through
+
+    ledger_through(FakeSpendGateway("alpha"), monkeypatch)
     cfg = load_files(*_files(tmp_path), {**TEST_SETTINGS, **NOTIFY})
     return cfg, gateway
 

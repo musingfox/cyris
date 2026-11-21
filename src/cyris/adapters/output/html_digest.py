@@ -282,6 +282,7 @@ class HtmlDigestWriter:
             layers=layer_by_lane(content),
             raw_page=raw_page,
             degraded=degraded,
+            ai_paused=content.ai_paused,
             content_lang=_html_lang(content.output_language),
         )
 

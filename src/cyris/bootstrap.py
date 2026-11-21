@@ -448,6 +448,12 @@ class Deps:
     # Takes nothing and returns `cpu_seconds` and `peak_rss_bytes`, which the run
     # adds to its summary as it ends. None leaves the summary without them.
     process_usage: Callable[[], dict[str, float | int]] | None = None
+    # A hosted run's AI allowance (ADR-0038). `ai_budget_spent` answers, as the run starts,
+    # whether the tenant's month is spent, so the run calls no model; `record_spend` charges
+    # what the run's metered LLM and embedder spent to the month as it ends, failed or not,
+    # and returns it for the summary. None outside a hosted run, which changes nothing.
+    ai_budget_spent: Callable[[], bool] | None = None
+    record_spend: Callable[[], dict] | None = None
 
 
 def build_promotion_sync(
@@ -660,10 +666,33 @@ def build_deps(
         notify_discord = partial(send_discord, language=language)
         send_email = build_send_email(language)
 
+    llm = build_llm(cfg.app.llm_provider)
+    embedder = build_embedder(cfg)
+    ai_budget_spent = None
+    record_spend = None
+    if hosted and not cfg.app.store.operator:
+        # Every model call and embedding a tenant's run makes is metered as it is made and
+        # charged to the tenant's month in the operator's registry, through the hosted Worker
+        # (ADR-0038). Not on the operator's machine, which starts no run (ADR-0036).
+        from cyris.adapters.hosted_spend import (
+            MeteredEmbedder,
+            MeteredLLM,
+            SpendLedger,
+            SpendMeter,
+        )
+
+        meter = SpendMeter(llm.model if llm is not None else "")
+        llm = MeteredLLM(llm, meter) if llm is not None else None
+        if embedder is not None:
+            embedder = MeteredEmbedder(embedder, meter, cfg.app.vote_similarity.provider)
+        ledger = SpendLedger(cfg.app.store.tenant_id)
+        ai_budget_spent = ledger.spent
+        record_spend = partial(ledger.report, meter)
+
     return Deps(
         cfg=cfg,
         store=store,
-        llm=build_llm(cfg.app.llm_provider),
+        llm=llm,
         fetch_sources=fetch_sources,
         html_writer=html_writer,
         publish_site=publish_site,
@@ -675,7 +704,7 @@ def build_deps(
         story_store=D1StoryStore(d1),
         topic_store=topic_store,
         on_progress=on_progress or (lambda _msg: None),
-        embedder=build_embedder(cfg),
+        embedder=embedder,
         embedding_model=embedding_model(
             cfg.app.vote_similarity.provider, cfg.app.vote_similarity.model
         ),
@@ -696,4 +725,6 @@ def build_deps(
         ask_clef=build_ask_clef(),
         lengthen_articles=lengthen_articles,
         process_usage=process_usage.read_process_usage if process_usage.available() else None,
+        ai_budget_spent=ai_budget_spent,
+        record_spend=record_spend,
     )
