@@ -1,5 +1,6 @@
 // The hosted Worker's doors. A tenant's site and the sign-in take a tenant session and never an
-// Access JWT; every other path, the operator's routes above all, takes the Access JWT alone, by
+// Access JWT; /api/vote takes a page's vote token and neither of the two (hosted_vote.js,
+// ADR-0039); every other path, the operator's routes above all, takes the Access JWT alone, by
 // router.js's own check (ADR-0015), and never reads a session. So no tenant session opens an
 // operator route, whatever Access covers, and a request with neither credential learns nothing,
 // not even which tenants exist. Why the two:
@@ -140,8 +141,8 @@ async function bodyEmail(request) {
 // or `{error}`, `query(tenant, request)`, which answers the request's `{sql, params}` from that
 // tenant's object as its run's gateway does, `inboundAddress(tenant)`, `rotateAddress(tenant)`
 // and `revokeAddress(tenant)`, the registry's answers, `addNewsletterSource(tenant, params)`,
-// which answers `{source}` or `{refused, status}`, `page(request, tenant, rest)`, which answers
-// under /t/<tenant> from that tenant's object, `invite(tenant, email)` and
+// which answers `{source}` or `{refused, status}`, `page(request, tenant, rest, voteToken)`, which
+// answers under /t/<tenant> from that tenant's object, `invite(tenant, email)` and
 // `revoke(tenant, email)`, which answer the registry's `{member}`, `{revoked}` or
 // `{refused, status}`, `members(tenant)`, and `signIn(email, {invitation})` (hosted_login.js's
 // createSignIn). For readers: `session(sessionHash)`, the registry's live session or null,

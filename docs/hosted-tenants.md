@@ -140,7 +140,9 @@ dashboard now uses.
    not cover `/hosted` itself; nothing the operator calls is `/hosted` alone. Note the
    application's Application Audience (AUD) Tag *(label unverified)*. A path Access leaves
    uncovered is still refused by the Worker: any `/hosted/` request without a valid JWT answers
-   403, and so does every path that is neither `/hosted/`, `/t/` nor the sign-in.
+   403, and so does every path that is not `/hosted/`, `/t/`, the sign-in or `/api/vote`. The
+   vote route takes neither the JWT nor the session cookie, only the vote token a page served to
+   a signed-in reader carries, and reaches no page and no operator route (ADR-0039).
 2. In Zero Trust > Access > Service credentials *(label unverified)*, create a service token, or
    reuse the trial's. Note its Client ID and Client Secret. The secret is shown once.
 3. In the step-1 application, add a policy whose action is Service Auth *(label unverified)* and
