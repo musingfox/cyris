@@ -10,7 +10,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import {
-  DEFAULT_MONTHLY_AI_BUDGET_USD,
+  MONTHLY_AI_BUDGET_COLUMN,
   SPEND_COLUMNS,
   SPEND_ROLLUP_SCHEMA,
   addSpend,
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS tenants (
   digest_times TEXT,
   timezone TEXT,
   daily_run_cap INTEGER NOT NULL DEFAULT ${DEFAULT_DAILY_RUN_CAP},
-  monthly_ai_budget_usd REAL NOT NULL DEFAULT ${DEFAULT_MONTHLY_AI_BUDGET_USD},
+  monthly_ai_budget_usd ${MONTHLY_AI_BUDGET_COLUMN},
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -344,7 +344,7 @@ export class TenantRegistry extends DurableObject {
     if (checked.refused) return checked;
     const month = spendMonth(now);
     addSpend(this.ctx.storage.sql, id, checked.spend, month, stamp(now));
-    const row = this.tenant(id) ?? { id, monthly_ai_budget_usd: DEFAULT_MONTHLY_AI_BUDGET_USD };
+    const row = this.tenant(id) ?? { id, monthly_ai_budget_usd: null };
     return { spend: monthSpend(this.ctx.storage.sql, row, month) };
   }
 

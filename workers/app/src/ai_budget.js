@@ -16,6 +16,13 @@ export const DEFAULT_MONTHLY_AI_BUDGET_USD = 2.25;
 // is what they choose under it.
 export const MAX_MONTHLY_AI_BUDGET_USD = 100;
 
+// A tenant's allowance as the operator set it, NULL until they do: a tenant that has none is held
+// to DEFAULT_MONTHLY_AI_BUDGET_USD as it reads now (`monthSpend`). No SQL default, which would be
+// a second copy of that constant, frozen into every row the day it was created, so that a release
+// that changed the constant would change no registered tenant, and an allowance the operator set
+// could not be told from the default.
+export const MONTHLY_AI_BUDGET_COLUMN = "REAL";
+
 // The columns `spend_rollup` gained with this card, and the tenant's allowance, beside the
 // `cost_usd` and `runs` the registry created the table with. `cost_usd` stays the month's total,
 // `llm_usd` plus `embedding_usd` plus `clef_usd`; `unpriced_tokens` are tokens of a model with no rate card in the
@@ -28,7 +35,7 @@ export const SPEND_COLUMNS = [
   ["spend_rollup", "input_tokens", "INTEGER NOT NULL DEFAULT 0"],
   ["spend_rollup", "output_tokens", "INTEGER NOT NULL DEFAULT 0"],
   ["spend_rollup", "unpriced_tokens", "INTEGER NOT NULL DEFAULT 0"],
-  ["tenants", "monthly_ai_budget_usd", `REAL NOT NULL DEFAULT ${DEFAULT_MONTHLY_AI_BUDGET_USD}`],
+  ["tenants", "monthly_ai_budget_usd", MONTHLY_AI_BUDGET_COLUMN],
 ];
 
 export const SPEND_ROLLUP_SCHEMA = `
@@ -122,8 +129,16 @@ const NOTHING_SPENT = { cost_usd: 0, llm_usd: 0, embedding_usd: 0, clef_usd: 0, 
 export function monthSpend(sql, tenantRow, month) {
   const [row] = sql.exec(MONTH_ROW, tenantRow.id, month).toArray();
   const spent = row ? { ...row } : { ...NOTHING_SPENT };
-  const budget = tenantRow.monthly_ai_budget_usd ?? DEFAULT_MONTHLY_AI_BUDGET_USD;
-  return { tenant: tenantRow.id, month, budget_usd: budget, ...spent, spent: spent.cost_usd >= budget };
+  const set = tenantRow.monthly_ai_budget_usd ?? null;
+  const budget = set ?? DEFAULT_MONTHLY_AI_BUDGET_USD;
+  return {
+    tenant: tenantRow.id,
+    month,
+    budget_usd: budget,
+    budget_set: set !== null,
+    ...spent,
+    spent: spent.cost_usd >= budget,
+  };
 }
 
 const ALL_TENANTS = "SELECT id, status, monthly_ai_budget_usd FROM tenants ORDER BY id";

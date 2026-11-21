@@ -117,6 +117,20 @@ describe("the registry's AI spend ledger", () => {
     expect(registry.budget("gone", { now: NOV })).toBeNull();
   });
 
+  it("keeps the default allowance in its constant alone, never in a tenant's row or the column", () => {
+    const registry = registered("alpha", "bravo");
+    registry.setBudget("bravo", String(DEFAULT_MONTHLY_AI_BUDGET_USD), { now: NOV });
+    const sql = registry.ctx.storage.sql;
+
+    // No SQL default to freeze 2.25 into every row: a release that changes the constant changes
+    // every tenant the operator has not set, and a set allowance is told from the default.
+    const [column] = sql.exec("SELECT dflt_value FROM pragma_table_info('tenants') WHERE name = 'monthly_ai_budget_usd'").toArray();
+    expect(column.dflt_value).toBeNull();
+    expect(registry.tenant("alpha").monthly_ai_budget_usd).toBeNull();
+    expect(registry.budget("alpha", { now: NOV })).toMatchObject({ budget_usd: DEFAULT_MONTHLY_AI_BUDGET_USD, budget_set: false });
+    expect(registry.budget("bravo", { now: NOV })).toMatchObject({ budget_usd: DEFAULT_MONTHLY_AI_BUDGET_USD, budget_set: true });
+  });
+
   it("takes an allowance only from 0 to the bound, for a registered tenant", () => {
     const registry = registered("alpha");
 

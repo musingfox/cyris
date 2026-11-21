@@ -17,7 +17,6 @@ import {
 import { REGISTRY_NAME, REGISTRY_SCHEMA, TenantRegistry, tenantRegistry } from "../src/tenant_registry.js";
 import { TENANT_STATUSES } from "../src/tenant_status.js";
 import { DEFAULT_DAILY_RUN_CAP } from "../src/run_queue.js";
-import { DEFAULT_MONTHLY_AI_BUDGET_USD } from "../src/ai_budget.js";
 import { SCHEMA_SQL, alarmStorage, drainAlarms, namespace, registryNamespace, registryObject, sqlStorage } from "./sql_storage.js";
 
 const AT = new Date("2026-11-18T06:00:00Z");
@@ -339,7 +338,8 @@ describe("the operator's registry", () => {
         digest_times: null,
         timezone: null,
         daily_run_cap: DEFAULT_DAILY_RUN_CAP,
-        monthly_ai_budget_usd: DEFAULT_MONTHLY_AI_BUDGET_USD,
+        // Unset: the default is DEFAULT_MONTHLY_AI_BUDGET_USD's alone (ai_budget.js).
+        monthly_ai_budget_usd: null,
         created_at: STAMP,
         updated_at: STAMP,
       },

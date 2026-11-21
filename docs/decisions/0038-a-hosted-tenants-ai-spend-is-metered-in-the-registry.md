@@ -58,10 +58,14 @@ counts a failed run's spend, and that adds no product.
 How it is built:
 
 * **The ledger is the registry's.** `spend_rollup` keeps one row per tenant and UTC month. It
-  gains `llm_usd`, `embedding_usd`, `clef_usd`, `input_tokens`, `output_tokens` and `unpriced_tokens` beside
-  its `cost_usd` (their sum) and `runs`. `tenants` gains `monthly_ai_budget_usd`, default
-  `DEFAULT_MONTHLY_AI_BUDGET_USD` (2.25). All of these are added in place, as ADR-0032's columns
-  were (`workers/app/src/ai_budget.js`).
+  gains `llm_usd`, `embedding_usd`, `clef_usd`, `input_tokens`, `output_tokens` and
+  `unpriced_tokens` beside its `cost_usd` (the sum of the three dollar columns) and `runs`.
+  `tenants` gains `monthly_ai_budget_usd`, the allowance the operator set, NULL until then. A
+  NULL allowance is `DEFAULT_MONTHLY_AI_BUDGET_USD` (2.25) as the code reads it now. The column
+  has no SQL default, which would freeze 2.25 into every row: a later release that changed the
+  constant would then change no tenant, and a set allowance could not be told from the default
+  (`budget_set`). All of these are added in place, as ADR-0032's columns were
+  (`workers/app/src/ai_budget.js`).
 * **A month is UTC `YYYY-MM`.** The allowance is the operator's loss ceiling, and providers bill
   in UTC months. One month for every tenant also lets one query list all of them. A month with no
   row has spent nothing, so every allowance comes back at 00:00 UTC on the first of the month,
