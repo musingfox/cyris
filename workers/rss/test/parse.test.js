@@ -209,3 +209,21 @@ test("buffers only an entry whose link is an http(s) address", () => {
   assert.equal(isWebUrl("https:"), false);
   assert.equal(isWebUrl(""), false);
 });
+
+test("an entry whose link does not parse costs only that entry", () => {
+  const item = (link) => `<item><title>${link}</title><link>${link}</link><pubDate>Tue, 18 Mar 2026 10:00:00 GMT</pubDate></item>`;
+  const xml = `<?xml version="1.0"?><rss version="2.0"><channel><title>F</title>${[
+    "http://[x/",
+    "//[x/path",
+    "https://a.test/ok",
+  ]
+    .map(item)
+    .join("")}</channel></rss>`;
+  // With and without a feed URL to resolve a relative link against.
+  for (const base of ["https://a.test/feed.xml", undefined]) {
+    assert.deepEqual(
+      parseFeed(xml, "F", base).map((r) => r.url),
+      ["https://a.test/ok"],
+    );
+  }
+});

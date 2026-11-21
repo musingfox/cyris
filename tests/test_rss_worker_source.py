@@ -186,6 +186,23 @@ async def test_a_buffered_row_whose_url_is_no_http_address_is_skipped():
 
 @respx.mock
 @pytest.mark.asyncio
+async def test_a_buffered_row_whose_url_does_not_parse_costs_only_that_row():
+    """`urlsplit` raises on `http://[x/`; a row stored with it must not fail the read."""
+    rows = [{**ROW, "url": url} for url in ("http://[x/", "//[x/path")]
+    route = respx.get(f"{WORKER}/articles").mock(
+        return_value=httpx.Response(200, json=[*rows, ROW])
+    )
+
+    articles = await CloudflareRssSource(WORKER, "tok").fetch_articles(
+        after=AFTER, before=BEFORE, sources={}
+    )
+
+    assert route.call_count == 1
+    assert [a.url for a in articles] == ["https://a.test/1"]
+
+
+@respx.mock
+@pytest.mark.asyncio
 async def test_a_read_that_fills_the_ceiling_is_logged(monkeypatch, caplog):
     """A full read means the earliest-buffered rows were left in the buffer, never stored."""
     monkeypatch.setattr("cyris.adapters.fetch.rss_worker_source.WORKER_ROW_CEILING", 2)
