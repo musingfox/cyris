@@ -47,7 +47,8 @@ config = sys.stdin.read()
 with open(os.environ["CALLS"], "a") as log:
     log.write(json.dumps({"cmd": "curl", "args": args, "stdin": config}) + "\\n")
 url = args[-1]
-tenant = url.split("/hosted/tenants/")[1].split("/")[0]
+# /hosted/spend names no tenant: it is every tenant's.
+tenant = url.split("/hosted/tenants/")[1].split("/")[0] if "/hosted/tenants/" in url else ""
 if tenant == os.environ.get("UNREACHABLE"):
     # What curl does when it never gets an answer: no file, 000, and exit 7.
     sys.stderr.write("curl: (7) Failed to connect to cyris-hosted\\n")
@@ -56,6 +57,11 @@ if tenant == os.environ.get("UNREACHABLE"):
 page = ('<html><head><meta name="cyris-issue" content="2026-11-18-morning"></head>'
         f'<body>{tenant}</body></html>').encode()
 out = args[args.index("-o") + 1]
+if "/hosted/spend" in url or "/budget?" in url:
+    with open(out, "w") as body:
+        body.write('{"answered": true}')
+    sys.stdout.write("200")
+    sys.exit(0)
 if url.endswith(("/invite", "/revoke", "/members")):
     with open(out, "w") as body:
         body.write('{"answered": true}')
@@ -371,6 +377,38 @@ def test_schedule_sets_one_tenants_schedule_encoded_with_the_token_on_stdin(repo
     assert "client-SECRET" not in " ".join(curl["args"])
 
 
+def test_spend_lists_every_tenants_month_and_budget_sets_one_allowance(repo: Path) -> None:
+    """The operator's two AI-allowance routes (ADR-0038), signed in as every other call is."""
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+    token = ["client-id.access", "client-SECRET"]
+    # Refused first: the call log accumulates across runs in one repo.
+    refused = [
+        _run(repo, args, [])
+        for args in (["spend", "11-2026"], ["budget", "alpha"], ["budget", "alpha", "-1"])
+    ]
+
+    listed, now = _run(repo, ["spend"], token)
+    named, november = _run(repo, ["spend", "2026-11"], token)
+    set_, budget = _run(repo, ["budget", "alpha", "3.5"], token)
+
+    for done in (listed, named, set_):
+        assert done.returncode == 0, done.stderr
+    # The call log accumulates across runs in one repo: each run's own call is its last.
+    curls = [[[c for c in calls if c["cmd"] == "curl"][-1]] for calls in (now, november, budget)]
+    assert [c["args"][-1] for [c] in curls] == [
+        f"{URL}/hosted/spend",
+        f"{URL}/hosted/spend?month=2026-11",
+        f"{URL}/hosted/tenants/alpha/budget?usd=3.5",
+    ]
+    assert [c["args"][c["args"].index("-X") + 1] for [c] in curls] == ["GET", "GET", "POST"]
+    for [curl] in curls:
+        assert "CF-Access-Client-Secret: client-SECRET" in curl["stdin"]
+        assert "client-SECRET" not in " ".join(curl["args"])
+    for done, sent in refused:
+        assert done.returncode == 2
+        assert sent == []
+
+
 def test_poll_polls_each_seeded_tenant_with_the_token_on_stdin(repo: Path) -> None:
     """The tick's RSS poll on request, so the operator can see a buffer fill and measure one."""
     (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
@@ -606,6 +644,8 @@ def test_every_cards_subcommand_is_in_one_script_and_check_judges_the_full_repor
         "invite TENANT EMAIL",
         "revoke TENANT EMAIL",
         "members TENANT",
+        "spend [YYYY-MM]",
+        "budget TENANT USD",
         "tail",
         "delete",
     ):

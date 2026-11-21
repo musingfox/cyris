@@ -330,6 +330,23 @@ case "${1:-}" in
     out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-members.XXXXXX")
     call "$tenant" GET "/hosted/tenants/$tenant/members" "$out/$tenant.json" || finish "$tenant"
     ;;
+  spend)
+    # spend [YYYY-MM]: every tenant's AI spend in a UTC month against its allowance, this
+    # month unless one is named (ADR-0038).
+    month=${2:-}
+    [[ -z "$month" || "$month" =~ ^[0-9]{4}-(0[1-9]|1[0-2])$ ]] || { echo "usage: $0 spend [YYYY-MM]" >&2; exit 2; }
+    ask_access
+    out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-spend.XXXXXX")
+    call spend GET "/hosted/spend${month:+?month=$month}" "$out/spend.json" || finish spend
+    ;;
+  budget)
+    # budget TENANT USD: the tenant's monthly AI allowance, from its next run on (ADR-0038).
+    tenant=${2:-} usd=${3:-}
+    [[ -n "$tenant" && "$usd" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "usage: $0 budget TENANT USD" >&2; exit 2; }
+    ask_access
+    out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-budget.XXXXXX")
+    call "$tenant" POST "/hosted/tenants/$tenant/budget?usd=$usd" "$out/$tenant.json" || finish "$tenant"
+    ;;
   tail)
     ask_account
     run_wrangler tail
@@ -340,7 +357,7 @@ case "${1:-}" in
     run_wrangler delete
     ;;
   *)
-    echo "usage: $0 deploy|secrets|containers|register|schedule TENANT TIMES TIMEZONE [CAP]|seed|run [morning|evening]|poll|address [show|rotate|revoke]|newsletter-source TENANT NAME FROM [HOMEPAGE]|check|invite TENANT EMAIL|revoke TENANT EMAIL|members TENANT|tail|delete" >&2
+    echo "usage: $0 deploy|secrets|containers|register|schedule TENANT TIMES TIMEZONE [CAP]|seed|run [morning|evening]|poll|address [show|rotate|revoke]|newsletter-source TENANT NAME FROM [HOMEPAGE]|check|invite TENANT EMAIL|revoke TENANT EMAIL|members TENANT|spend [YYYY-MM]|budget TENANT USD|tail|delete" >&2
     exit 2
     ;;
 esac
