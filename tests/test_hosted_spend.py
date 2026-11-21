@@ -57,7 +57,8 @@ class FakeSpendGateway:
     """Answers `GET /t/<tenant>/budget` and `POST /t/<tenant>/spend` as `SpendGateway` does.
 
     Only `tenant` is this run's; another tenant, path or method is refused with 403. `spent`
-    is what the month's answer says; every report posted is kept in `reports`, and a status
+    is what the month's answer says; every report posted is kept in `reports`, once per
+    `report_id` as the registry adds it, and a status
     other than 200 or 202 answers every ask or every report. The ledger's alerts to the
     operator's gateway, `ops.cyris`, are kept in `alerts`.
     """
@@ -88,7 +89,11 @@ class FakeSpendGateway:
         if parts[2] == "spend" and request.method == "POST":
             if self.spend_status != 202:
                 return httpx.Response(self.spend_status, json={"error": "down"})
-            self.reports.append(json.loads(request.content))
+            report = json.loads(request.content)
+            # As the registry adds it: once per report id (`addSpend` in ai_budget.js).
+            if any(r["report_id"] == report["report_id"] for r in self.reports):
+                return httpx.Response(202, json={"tenant": self.tenant, "repeated": True})
+            self.reports.append(report)
             return httpx.Response(202, json={"tenant": self.tenant, "runs": len(self.reports)})
         return httpx.Response(403, json={"error": "not a route of this gateway"})
 
@@ -303,6 +308,36 @@ def test_a_ledger_that_cannot_answer_lets_the_run_spend_and_a_lost_report_is_sai
     refused = SpendLedger("alpha", origin="http://spend.cyris")
     refused._http = httpx.Client(transport=httpx.MockTransport(FakeSpendGateway("bravo")))
     assert refused.report(SpendMeter(HAIKU))["recorded"] is False
+
+
+def test_a_report_retried_after_the_registry_took_it_names_the_same_run_so_it_is_added_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("cyris.adapters.store.d1.time.sleep", lambda _s: None)
+    gateway = FakeSpendGateway("alpha")
+    posts: list[dict] = []
+
+    def slow(request: httpx.Request) -> httpx.Response:
+        # The registry adds the first post, and its answer comes after the run gave up on it.
+        posts.append(json.loads(request.content))
+        answered = gateway(request)
+        if len(posts) == 1:
+            raise httpx.ReadTimeout("no answer within 10 s", request=request)
+        return answered
+
+    ledger = SpendLedger("alpha")
+    ledger._http = httpx.Client(transport=httpx.MockTransport(slow))
+    meter = SpendMeter(HAIKU)
+    meter.count_llm(type("R", (), {"input_tokens": 100, "output_tokens": 10, "neurons": None})())
+
+    assert ledger.report(meter)["recorded"] is True
+
+    assert len(posts) == 2
+    assert posts[0]["report_id"] == posts[1]["report_id"] == ledger.report_id
+    [charged] = gateway.reports
+    assert charged["input_tokens"] == 100
+    # Each run draws its own, so two runs' reports are both added.
+    assert SpendLedger("alpha").report_id != ledger.report_id
 
 
 def test_a_report_the_ledger_answers_with_no_json_is_said_lost_and_never_raises() -> None:

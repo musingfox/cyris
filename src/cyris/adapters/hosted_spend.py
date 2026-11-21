@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import uuid
 from typing import Any
 
 import httpx
@@ -235,6 +236,11 @@ class SpendLedger:
         self._http = httpx.Client(timeout=BUDGET_TIMEOUT_SECONDS)
         # One ledger per run, so one alert per run however many of its calls fail.
         self._told = False
+        # The run's report, named once: `post_with_retries` retries a timeout or a 5xx, which can
+        # come after the registry added the report, and the registry adds one id once
+        # (`addSpend` in workers/app/src/ai_budget.js). One container start is one process and
+        # one ledger, so this names the queue's run and its attempt both.
+        self.report_id = uuid.uuid4().hex
 
     def tell_operator(self, error: object, *, unread: bool) -> None:
         """Alert the operator, once per run, that the ledger did not answer: a ledger that is
@@ -295,7 +301,7 @@ class SpendLedger:
 
         Never raises: a run's own result stands whatever the ledger says.
         """
-        spend = meter.report()
+        spend = {"report_id": self.report_id, **meter.report()}
         said = {"ai_budget": paused} if paused else {}
         try:
             post_with_retries(self._http, f"{self._base}/spend", spend, what="AI spend ledger")

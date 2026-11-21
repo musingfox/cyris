@@ -43,8 +43,13 @@ export class SpendGateway extends WorkerEntrypoint {
       console.log("ai spend refused", { tenant, reason: added.refused });
       return answer(400, { error: added.refused });
     }
-    // One line per run in Workers Logs, beside the registry's month, for the operator to read.
+    // One line per run in Workers Logs, beside the registry's month, for the operator to read. A
+    // post the run retried after the registry had added it is answered as accepted, so it stops.
     const { month, cost_usd, budget_usd, spent } = added.spend;
+    if (added.repeated) {
+      console.log("ai spend repeated", { tenant, report_id: report.report_id, month });
+      return answer(202, added.spend);
+    }
     const run = { llm_usd: report.llm_usd ?? 0, embedding_usd: report.embedding_usd ?? 0, clef_usd: report.clef_usd ?? 0 };
     console.log("ai spend", { tenant, ...run, month, month_usd: cost_usd, budget_usd, spent });
     return answer(202, added.spend);

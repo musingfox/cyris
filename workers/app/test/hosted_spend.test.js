@@ -13,6 +13,9 @@ const NOV_END = new Date("2026-11-30T23:59:59Z");
 const DEC = new Date("2026-12-01T00:00:00Z");
 
 // One Haiku 5.5 run as measured on 2026-11-13, and an embedding beside it.
+// Each run's report carries an id of its own, as `SpendLedger` draws one per run.
+const report = (spend) => ({ report_id: crypto.randomUUID().replaceAll("-", ""), ...spend });
+
 const RUN = { llm_usd: 0.0168, embedding_usd: 0.003, input_tokens: 68_393, output_tokens: 20_052, unpriced_tokens: 0 };
 
 const registered = (...ids) => {
@@ -25,9 +28,9 @@ describe("the registry's AI spend ledger", () => {
   it("charges each run to its own tenant's month and keeps tenants apart", () => {
     const registry = registered("alpha", "bravo");
 
-    registry.addSpend("alpha", RUN, { now: NOV });
-    registry.addSpend("alpha", RUN, { now: NOV });
-    registry.addSpend("bravo", { llm_usd: 0.5 }, { now: NOV });
+    registry.addSpend("alpha", report(RUN), { now: NOV });
+    registry.addSpend("alpha", report(RUN), { now: NOV });
+    registry.addSpend("bravo", report({ llm_usd: 0.5 }), { now: NOV });
 
     expect(registry.budget("alpha", { now: NOV })).toMatchObject({
       tenant: "alpha",
@@ -47,7 +50,7 @@ describe("the registry's AI spend ledger", () => {
   it("lists every registered tenant's month for the operator, a tenant that spent nothing with zeros", () => {
     const registry = registered("alpha", "bravo", "charlie");
     registry.register("charlie", { status: "paused", now: NOV });
-    registry.addSpend("bravo", RUN, { now: NOV });
+    registry.addSpend("bravo", report(RUN), { now: NOV });
 
     const listed = registry.spend({ now: NOV });
 
@@ -65,21 +68,21 @@ describe("the registry's AI spend ledger", () => {
     registry.setBudget("alpha", "0.05", { now: NOV });
     registry.setBudget("bravo", "0", { now: NOV });
 
-    registry.addSpend("alpha", { llm_usd: 0.03 }, { now: NOV });
+    registry.addSpend("alpha", report({ llm_usd: 0.03 }), { now: NOV });
     expect(registry.budget("alpha", { now: NOV }).spent).toBe(false);
-    registry.addSpend("alpha", { llm_usd: 0.02 }, { now: NOV });
+    registry.addSpend("alpha", report({ llm_usd: 0.02 }), { now: NOV });
     expect(registry.budget("alpha", { now: NOV })).toMatchObject({ budget_usd: 0.05, spent: true });
     expect(registry.budget("bravo", { now: NOV })).toMatchObject({ budget_usd: 0, cost_usd: 0, spent: true });
   });
 
   it("starts every tenant's allowance again in a new UTC month, and keeps the last month's ledger", () => {
     const registry = registered("alpha");
-    registry.addSpend("alpha", { llm_usd: DEFAULT_MONTHLY_AI_BUDGET_USD }, { now: NOV });
+    registry.addSpend("alpha", report({ llm_usd: DEFAULT_MONTHLY_AI_BUDGET_USD }), { now: NOV });
     expect(registry.budget("alpha", { now: NOV_END }).spent).toBe(true);
 
     expect(registry.budget("alpha", { now: DEC })).toMatchObject({ month: "2026-12", cost_usd: 0, runs: 0, spent: false });
     // A run reported in December is December's, whenever it started.
-    registry.addSpend("alpha", RUN, { now: DEC });
+    registry.addSpend("alpha", report(RUN), { now: DEC });
     expect(registry.budget("alpha", { now: DEC }).runs).toBe(1);
     expect(registry.spend({ month: "2026-11", now: DEC }).tenants[0]).toMatchObject({
       month: "2026-11",
@@ -94,26 +97,47 @@ describe("the registry's AI spend ledger", () => {
     const registry = registered("alpha");
     registry.setBudget("alpha", "0.05", { now: NOV });
 
-    registry.addSpend("alpha", { llm_usd: 0.03, clef_usd: 0.02 }, { now: NOV });
+    registry.addSpend("alpha", report({ llm_usd: 0.03, clef_usd: 0.02 }), { now: NOV });
 
     expect(registry.budget("alpha", { now: NOV })).toMatchObject({ clef_usd: 0.02, llm_usd: 0.03, spent: true });
     expect(registry.budget("alpha", { now: NOV }).cost_usd).toBeCloseTo(0.05, 10);
-    expect(registry.addSpend("alpha", { clef_usd: -0.01 }, { now: NOV }).refused).toMatch(/clef_usd/);
+    expect(registry.addSpend("alpha", report({ clef_usd: -0.01 }), { now: NOV }).refused).toMatch(/clef_usd/);
   });
 
   it("refuses a report that would credit the month, or is not numbers, and writes nothing", () => {
     const registry = registered("alpha");
-    for (const report of [{ llm_usd: -1 }, { embedding_usd: "0.1" }, { input_tokens: 1.5 }, { llm_usd: Infinity }, null]) {
-      expect(registry.addSpend("alpha", report, { now: NOV }).refused, JSON.stringify(report)).toBeTruthy();
+    const refused = [{ llm_usd: -1 }, { embedding_usd: "0.1" }, { input_tokens: 1.5 }, { llm_usd: Infinity }].map(report);
+    for (const bad of [...refused, null, { ...RUN }, { ...RUN, report_id: "not-a-run's" }]) {
+      expect(registry.addSpend("alpha", bad, { now: NOV }).refused, JSON.stringify(bad)).toBeTruthy();
     }
-    expect(registry.addSpend("not a tenant!", RUN, { now: NOV }).refused).toBeTruthy();
+    expect(registry.addSpend("not a tenant!", report(RUN), { now: NOV }).refused).toBeTruthy();
     expect(registry.ctx.storage.sql.exec("SELECT count(*) AS n FROM spend_rollup").one().n).toBe(0);
+  });
+
+  it("adds a report its run retried once, and keeps its id a day, per tenant", () => {
+    const registry = registered("alpha", "bravo");
+    const once = report(RUN);
+
+    expect(registry.addSpend("alpha", once, { now: NOV }).repeated).toBe(false);
+    // The post timed out after the registry wrote it, and the run posted it again.
+    expect(registry.addSpend("alpha", once, { now: NOV }).repeated).toBe(true);
+    expect(registry.budget("alpha", { now: NOV })).toMatchObject({ runs: 1, input_tokens: RUN.input_tokens });
+    // Another tenant naming that id is charged all the same: it cannot drop alpha's, or its own.
+    const halfDayLater = new Date(NOV.getTime() + 12 * 60 * 60 * 1000);
+    expect(registry.addSpend("bravo", once, { now: halfDayLater }).repeated).toBe(false);
+    expect(registry.budget("bravo", { now: NOV }).runs).toBe(1);
+
+    // A day on, alpha's id is dropped as the next report arrives, and bravo's, younger, kept.
+    const dayLater = new Date(NOV.getTime() + 24 * 60 * 60 * 1000 + 1000);
+    registry.addSpend("alpha", report(RUN), { now: dayLater });
+    const kept = registry.ctx.storage.sql.exec("SELECT tenant_id FROM spend_reports WHERE report_id = ?", once.report_id).toArray();
+    expect(kept).toEqual([{ tenant_id: "bravo" }]);
   });
 
   it("charges a tenant the registry no longer holds, since what its run spent was spent", () => {
     const registry = registryObject();
 
-    expect(registry.addSpend("gone", RUN, { now: NOV }).spend).toMatchObject({ tenant: "gone", runs: 1 });
+    expect(registry.addSpend("gone", report(RUN), { now: NOV }).spend).toMatchObject({ tenant: "gone", runs: 1 });
     expect(registry.budget("gone", { now: NOV })).toBeNull();
   });
 
@@ -150,7 +174,7 @@ describe("the registry's AI spend ledger", () => {
 
     const registry = new TenantRegistry({ storage: alarmStorage(sql) }, {});
     registry.register("alpha", { now: NOV });
-    registry.addSpend("alpha", { llm_usd: 0.25 }, { now: NOV });
+    registry.addSpend("alpha", report({ llm_usd: 0.25 }), { now: NOV });
 
     expect(registry.budget("alpha", { now: NOV })).toMatchObject({ cost_usd: 0.5, llm_usd: 0.25, runs: 4 });
   });
@@ -181,7 +205,7 @@ describe("SpendGateway", () => {
     expect(before.status).toBe(200);
     expect(await before.json()).toMatchObject({ tenant: "alpha", month: "2026-11", cost_usd: 0, spent: false });
 
-    const charged = await alpha.fetch(post("/t/alpha/spend", RUN));
+    const charged = await alpha.fetch(post("/t/alpha/spend", report(RUN)));
     expect(charged.status).toBe(202);
     expect(await charged.json()).toMatchObject({ tenant: "alpha", runs: 1, spent: false });
     expect(console.log).toHaveBeenCalledWith("ai spend", expect.objectContaining({ tenant: "alpha", month: "2026-11" }));
@@ -190,7 +214,7 @@ describe("SpendGateway", () => {
   it("refuses another tenant's path, any other shape, and a gateway bound to no tenant, charging nothing", async () => {
     const alpha = gateway({ tenant: "alpha" });
     for (const refused of [
-      post("/t/bravo/spend", RUN),
+      post("/t/bravo/spend", report(RUN)),
       request("/t/bravo/budget"),
       request("/t/alpha/spend"),
       post("/t/alpha/budget", {}),
@@ -199,7 +223,7 @@ describe("SpendGateway", () => {
     ]) {
       expect((await alpha.fetch(refused)).status, refused.url).toBe(403);
     }
-    expect((await gateway(undefined).fetch(post("/t/alpha/spend", RUN))).status).toBe(403);
+    expect((await gateway(undefined).fetch(post("/t/alpha/spend", report(RUN)))).status).toBe(403);
     expect(registryEnv.REGISTRY.getByName(REGISTRY_NAME).budget("alpha").runs).toBe(0);
   });
 
@@ -208,7 +232,7 @@ describe("SpendGateway", () => {
     const alpha = gateway({ tenant: "alpha" });
 
     expect((await alpha.fetch(request("/t/alpha/spend", { method: "POST", body: "not json" }))).status).toBe(400);
-    expect((await alpha.fetch(post("/t/alpha/spend", { llm_usd: -2.25 }))).status).toBe(400);
+    expect((await alpha.fetch(post("/t/alpha/spend", report({ llm_usd: -2.25 })))).status).toBe(400);
     expect(registryEnv.REGISTRY.getByName(REGISTRY_NAME).budget("alpha").runs).toBe(0);
   });
 });
@@ -252,8 +276,8 @@ describe("the operator's spend routes", () => {
   it("list every tenant's spend this month, or a named month", async () => {
     registry().register("alpha");
     registry().register("bravo");
-    registry().addSpend("bravo", RUN);
-    registry().addSpend("alpha", RUN, { now: new Date("2026-10-15T00:00:00Z") });
+    registry().addSpend("bravo", report(RUN));
+    registry().addSpend("alpha", report(RUN), { now: new Date("2026-10-15T00:00:00Z") });
 
     const now = await operator("GET", "/hosted/spend");
     expect(now.status).toBe(200);

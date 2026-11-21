@@ -49,6 +49,22 @@ CREATE TABLE IF NOT EXISTS spend_rollup (
   PRIMARY KEY (tenant_id, month)
 );`;
 
+// Each run's report, by the id its container drew for it, so a post the container retried, after a
+// timeout or a 5xx that came once the registry had added it, is added once. Per tenant, so no run
+// can name another tenant's report and have it dropped. A retry comes within a minute of the
+// first post (`post_with_retries` in src/cyris/adapters/store/d1.py), so a row is kept a day
+// (`SPEND_REPORT_IDS_KEPT_MS`) and then dropped as the next report arrives.
+export const SPEND_REPORTS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS spend_reports (
+  tenant_id TEXT NOT NULL,
+  report_id TEXT NOT NULL,
+  reported_at TEXT NOT NULL,
+  PRIMARY KEY (tenant_id, report_id)
+);`;
+export const SPEND_REPORT_IDS_KEPT_MS = 24 * 60 * 60 * 1000;
+// `uuid.uuid4().hex`, the id `SpendLedger` draws once per run.
+export const REPORT_ID = /^[0-9a-f]{32}$/;
+
 // A month of the ledger, `YYYY-MM` in UTC. UTC and not the tenant's zone: the allowance is the
 // operator's loss ceiling, counted in the months the model providers bill in, and one month for
 // every tenant lets one query list them all.
@@ -59,11 +75,15 @@ export const spendMonth = (now) => now.toISOString().slice(0, 7);
 const DOLLARS = ["llm_usd", "embedding_usd", "clef_usd"];
 const TOKENS = ["input_tokens", "output_tokens", "unpriced_tokens"];
 
-// `report` as the numbers the ledger adds, or `{refused}`. Nothing negative, since a report that
-// credited the month would reopen a spent allowance, and nothing missing or not a number.
+// `report` as the numbers the ledger adds and its `report_id`, or `{refused}`. Nothing negative,
+// since a report that credited the month would reopen a spent allowance, nothing missing or not a
+// number, and a report id that is a run's.
 export function checkSpend(report) {
   if (!report || typeof report !== "object") return { refused: "the body must be a JSON object" };
-  const spend = {};
+  if (typeof report.report_id !== "string" || !REPORT_ID.test(report.report_id)) {
+    return { refused: `report_id must be 32 hex digits, not ${JSON.stringify(report.report_id)}` };
+  }
+  const spend = { report_id: report.report_id };
   for (const key of [...DOLLARS, ...TOKENS]) {
     const value = report[key] ?? 0;
     if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
@@ -100,7 +120,17 @@ ON CONFLICT (tenant_id, month) DO UPDATE SET
 
 // Adds one run's checked spend to `tenant`'s month, the month it is reported in: a run that
 // starts before midnight UTC on the last day and ends after it is charged to the new month.
-export function addSpend(sql, tenant, spend, month, at) {
+// Answers false, adding nothing, for a report already added; `keptSince` is the stamp before
+// which a report's id is no longer kept.
+export function addSpend(sql, tenant, spend, month, at, keptSince) {
+  sql.exec("DELETE FROM spend_reports WHERE reported_at < ?", keptSince);
+  const seen = sql.exec(
+    "SELECT 1 FROM spend_reports WHERE tenant_id = ? AND report_id = ?",
+    tenant,
+    spend.report_id,
+  );
+  if (seen.toArray().length) return false;
+  sql.exec("INSERT INTO spend_reports (tenant_id, report_id, reported_at) VALUES (?, ?, ?)", tenant, spend.report_id, at);
   const cost = spend.llm_usd + spend.embedding_usd + spend.clef_usd;
   sql.exec(
     ADD_SPEND,
@@ -115,6 +145,7 @@ export function addSpend(sql, tenant, spend, month, at) {
     spend.unpriced_tokens,
     at,
   );
+  return true;
 }
 
 const MONTH_ROW = `

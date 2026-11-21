@@ -12,6 +12,8 @@ import { DurableObject } from "cloudflare:workers";
 import {
   MONTHLY_AI_BUDGET_COLUMN,
   SPEND_COLUMNS,
+  SPEND_REPORTS_SCHEMA,
+  SPEND_REPORT_IDS_KEPT_MS,
   SPEND_ROLLUP_SCHEMA,
   addSpend,
   checkBudget,
@@ -119,6 +121,7 @@ CREATE TABLE IF NOT EXISTS inbound_addresses (
 );
 CREATE INDEX IF NOT EXISTS idx_inbound_addresses_tenant ON inbound_addresses(tenant_id);
 ${SPEND_ROLLUP_SCHEMA}
+${SPEND_REPORTS_SCHEMA}
 ${RUNS_SCHEMA}`;
 
 // The columns a registry created before them lacks, added in place: each is additive and has a
@@ -336,16 +339,18 @@ export class TenantRegistry extends DurableObject {
   }
 
   // Adds one run's AI spend, as its run reported it, to `id`'s month, and answers `{spend}`, the
-  // month after it, or `{refused}` for a report `checkSpend` refuses, writing nothing. A tenant
-  // the registry no longer holds is still charged: what a run spent was spent.
+  // month after it, with `repeated` for a report already added, which adds nothing; or
+  // `{refused}` for a report `checkSpend` refuses, writing nothing. A tenant the registry no
+  // longer holds is still charged: what a run spent was spent.
   addSpend(id, report, { now = new Date() } = {}) {
     if (!TENANT.test(id ?? "")) return { refused: `not a tenant: ${id}` };
     const checked = checkSpend(report);
     if (checked.refused) return checked;
     const month = spendMonth(now);
-    addSpend(this.ctx.storage.sql, id, checked.spend, month, stamp(now));
+    const kept = stamp(new Date(now.getTime() - SPEND_REPORT_IDS_KEPT_MS));
+    const added = addSpend(this.ctx.storage.sql, id, checked.spend, month, stamp(now), kept);
     const row = this.tenant(id) ?? { id, monthly_ai_budget_usd: null };
-    return { spend: monthSpend(this.ctx.storage.sql, row, month) };
+    return { spend: monthSpend(this.ctx.storage.sql, row, month), repeated: !added };
   }
 
   // Every registered tenant's `month`, this one unless named: the operator's list.

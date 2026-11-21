@@ -108,7 +108,11 @@ How it is built:
 * **The run reports as it ends, failed or not.** `run_digest`'s `finally` calls
   `deps.record_spend`, which posts the meter to the ledger with the store's retry rules and puts
   it in `run_summary` as `ai_spend`. So `digest_runs.summary` holds the same numbers for every
-  run.
+  run. Those rules retry a timeout or a 5xx, which can come after the registry added the
+  report, so each report carries an id the run draws once (`report_id`). The registry adds one
+  id once per tenant, keeping it a day in `spend_reports`. The queue's run id and attempt would
+  name the same thing, since each attempt is one container start and one process, but the
+  container is not told them, and a start the queue did not make would have none.
 * **The operator reads and sets it.** `GET /hosted/spend[?month=YYYY-MM]` lists every registered
   tenant's month, and a tenant that spent nothing is listed with zeros.
   `POST /hosted/tenants/<tenant>/budget?usd=N` sets an allowance from 0 to
@@ -162,7 +166,8 @@ How it is built:
     always spent.
   * A new UTC month starts every allowance again and keeps last month's row. A report that would
     credit the month is refused, and an old registry gains the columns in place.
-  * `SpendGateway` answers only its own tenant's two routes.
+  * `SpendGateway` answers only its own tenant's two routes. A report its run retried after the
+    registry added it is added once.
   * The operator's list, month filter, budget route, cross-site refusal and report.
 * `tests/test_hosted_spend.py` checks a hosted run end to end over the fake gateways.
   * Its LLM, embedding and Clef spend are charged once to its own tenant. A model with no rate card
