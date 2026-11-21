@@ -192,6 +192,20 @@ def test_a_ledger_that_cannot_answer_lets_the_run_spend_and_a_lost_report_is_sai
     assert refused.report(SpendMeter(HAIKU))["recorded"] is False
 
 
+def test_a_report_the_ledger_answers_with_no_json_is_said_lost_and_never_raises() -> None:
+    ledger = SpendLedger("alpha")
+    ledger._http = httpx.Client(
+        transport=httpx.MockTransport(lambda _request: httpx.Response(202, text="accepted"))
+    )
+
+    assert ledger.report(SpendMeter(HAIKU))["recorded"] is False
+    # And a month that is JSON but no object lets the run spend, as an unreadable one does.
+    ledger._http = httpx.Client(
+        transport=httpx.MockTransport(lambda _request: httpx.Response(200, json=["spent"]))
+    )
+    assert ledger.spent() is None
+
+
 # --- the hosted run --------------------------------------------------------------------------
 
 CONFIG = """

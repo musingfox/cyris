@@ -24,7 +24,7 @@ from typing import Any
 
 import httpx
 
-from cyris.adapters.store.d1 import D1Error, post_with_retries
+from cyris.adapters.store.d1 import post_with_retries
 from cyris.domain.models import UsageStats
 
 logger = logging.getLogger(__name__)
@@ -172,6 +172,8 @@ class SpendLedger:
             resp = self._http.get(f"{self._base}/budget")
             resp.raise_for_status()
             month = resp.json()
+            if not isinstance(month, dict):
+                raise ValueError(f"the month is not a JSON object: {resp.text[:200]}")
         except (httpx.HTTPError, ValueError) as e:
             logger.warning("AI allowance unreadable, this run may spend: %s", e)
             return None
@@ -195,7 +197,7 @@ class SpendLedger:
         said = {"ai_budget": paused} if paused else {}
         try:
             post_with_retries(self._http, f"{self._base}/spend", spend, what="AI spend ledger")
-        except D1Error as e:
+        except Exception as e:  # noqa: BLE001 - a 2xx that is not JSON raises ValueError, too
             logger.error("AI spend not recorded: %s", e)
             return {**spend, **said, "recorded": False}
         return {**spend, **said, "recorded": True}
