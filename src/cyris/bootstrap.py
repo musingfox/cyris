@@ -607,17 +607,18 @@ def build_deps(
     # (ADR-0036). Asked here, before anything is wired: a month already spent wires no model.
     ledger = None
     ai_pause = None
+    paused = None
     if hosted and not cfg.app.store.operator:
-        from cyris.adapters.hosted_spend import SpendLedger
+        from cyris.adapters.hosted_spend import OFF, SpendLedger
         from cyris.adapters.output.html_digest import AiPause
 
         ledger = SpendLedger(cfg.app.store.tenant_id)
-        if ledger.spent():
+        if paused := ledger.spent():
             # To the second, as `run_digest` stamps the issue's start.
-            ai_pause = AiPause(since=datetime.now(UTC).replace(microsecond=0))
+            ai_pause = AiPause(since=datetime.now(UTC).replace(microsecond=0), off=paused == OFF)
             (on_progress or (lambda _msg: None))(
-                "This month's AI allowance is spent: this run calls no model and its digest "
-                "lists plain excerpts."
+                f"This tenant's AI allowance is {'0' if paused == OFF else 'spent this month'}: "
+                "this run calls no model and its digest lists plain excerpts."
             )
 
     html_writer = None
@@ -698,7 +699,7 @@ def build_deps(
         llm = MeteredLLM(llm, meter) if llm is not None else None
         if embedder is not None:
             embedder = MeteredEmbedder(embedder, meter, cfg.app.vote_similarity.provider)
-        record_spend = partial(ledger.report, meter, paused=ai_pause is not None)
+        record_spend = partial(ledger.report, meter, paused=paused)
 
     return Deps(
         cfg=cfg,

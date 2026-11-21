@@ -590,7 +590,9 @@
         <main>
             {#- A spent AI allowance is the plain list by design, so it says why in place of the
                 degraded notice, whose advice to check the provider would be wrong. -#}
-            {% if ai_paused %}
+            {% if ai_off %}
+            <p class="notice issue-note">{{ t("issue.ai_off") }}</p>
+            {% elif ai_paused %}
             <p class="notice issue-note">{{ t("issue.ai_paused") }}</p>
             {% elif degraded %}
             <p class="notice err issue-note">{{ t("issue.degraded") }}</p>

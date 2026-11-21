@@ -37,6 +37,12 @@ SPEND_ORIGIN = "http://spend.cyris"
 # One ask as the run starts. Short, since the answer only decides whether this run may spend.
 BUDGET_TIMEOUT_SECONDS = 10.0
 
+# Why a run may call no model (`SpendLedger.spent`): its month's allowance is spent, or the
+# operator set it to 0. Each has its own notice on the page, since only the first comes back
+# when the month turns.
+SPENT = "spent"
+OFF = "off"
+
 # Grade A, docs/architecture.md §5. gemini-embedding-001's list price per million input tokens,
 # Google's paid tier as published when this was written (not re-read on the account): the API
 # reports no token count, so the tokens are estimated below.
@@ -155,12 +161,12 @@ class SpendLedger:
         self._base = f"{origin}/t/{tenant_id}"
         self._http = httpx.Client(timeout=BUDGET_TIMEOUT_SECONDS)
 
-    def spent(self) -> bool:
-        """Whether the tenant's allowance for this month is spent, so this run may call no model.
+    def spent(self) -> str | None:
+        """Why this run may call no model: `SPENT`, the tenant's allowance for this month is
+        spent, or `OFF`, its allowance is 0, which no new month brings back. None to spend.
 
-        False when the ledger cannot say: one run's spend, about two US cents, is the cost of a
-        ledger outage, where the other answer would cost every reader their issue's AI. The
-        spend is still reported at the end, so the month's total stays right.
+        None when the ledger cannot say: one run's spend, about two US cents, is the cost of a
+        ledger outage, where the other answer would cost every reader their issue's AI.
         """
         try:
             resp = self._http.get(f"{self._base}/budget")
@@ -168,23 +174,25 @@ class SpendLedger:
             month = resp.json()
         except (httpx.HTTPError, ValueError) as e:
             logger.warning("AI allowance unreadable, this run may spend: %s", e)
-            return False
+            return None
         logger.info(
             "AI allowance %s: %s of %s USD spent",
             month.get("month"),
             month.get("cost_usd"),
             month.get("budget_usd"),
         )
-        return bool(month.get("spent"))
+        if not month.get("spent"):
+            return None
+        return OFF if month.get("budget_usd") == 0 else SPENT
 
-    def report(self, meter: SpendMeter, *, paused: bool = False) -> dict[str, Any]:
+    def report(self, meter: SpendMeter, *, paused: str | None = None) -> dict[str, Any]:
         """Charge what `meter` counted to the tenant's month; answers it for `run_summary`,
-        with `ai_budget: spent` for a run `paused` because the month was spent as it started.
+        with `ai_budget` set to why the run was `paused`, `spent` or `off`, when it was.
 
         Never raises: a run's own result stands whatever the ledger says.
         """
         spend = meter.report()
-        said = {"ai_budget": "spent"} if paused else {}
+        said = {"ai_budget": paused} if paused else {}
         try:
             post_with_retries(self._http, f"{self._base}/spend", spend, what="AI spend ledger")
         except D1Error as e:

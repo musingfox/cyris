@@ -206,10 +206,13 @@ class AiPause:
     `bootstrap.build_deps` wires that run with no LLM, embedder or Clef, so each issue it starts
     is the plain list, and its page says why in place of the degraded notice, whose advice to
     check the provider would be wrong. `since` is when the run was wired: an issue started at or
-    after it is this run's, and an older issue the run republishes keeps its own notice.
+    after it is this run's, and an older issue the run republishes keeps its own notice. `off` is
+    an allowance of 0, which the turn of the month does not bring back, so its notice does not
+    promise that it will.
     """
 
     since: datetime
+    off: bool = False
 
 
 class HtmlDigestWriter:
@@ -302,6 +305,7 @@ class HtmlDigestWriter:
             raw_page=raw_page,
             degraded=degraded,
             ai_paused=ai_paused,
+            ai_off=ai_paused and pause.off,
             content_lang=_html_lang(content.output_language),
         )
 

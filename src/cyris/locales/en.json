@@ -74,6 +74,7 @@
   "interest.no_store": "The interest map reads votes and holds from the SQL store: this deployment's [store] backend is neither \"sqlite\" nor \"d1\".",
   "interest.tags": "Tags",
   "issue.all_articles": "All articles",
+  "issue.ai_off": "AI is turned off for this site, so this issue lists articles as they came in, without scores or summaries.",
   "issue.ai_paused": "This month's AI allowance is used up, so this issue lists articles as they came in, without scores or summaries. AI returns when the month turns, at midnight UTC.",
   "issue.degraded": "Some or all of this issue is unscored or plain excerpts: the configured LLM could not be used for every step this run. Check the provider and its key on Settings.",
   "issue.digest": "Digest",

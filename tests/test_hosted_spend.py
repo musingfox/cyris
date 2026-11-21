@@ -55,6 +55,7 @@ class FakeSpendGateway:
     def __init__(self, tenant: str, *, spent: bool = False, budget_status: int = 200) -> None:
         self.tenant = tenant
         self.spent = spent
+        self.budget_usd = 2.25
         self.budget_status = budget_status
         self.requests: list[httpx.Request] = []
         self.reports: list[dict] = []
@@ -67,7 +68,7 @@ class FakeSpendGateway:
         if parts[2] == "budget" and request.method == "GET":
             if self.budget_status != 200:
                 return httpx.Response(self.budget_status, json={"error": "down"})
-            month = {"tenant": self.tenant, "month": "2026-11", "budget_usd": 2.25}
+            month = {"tenant": self.tenant, "month": "2026-11", "budget_usd": self.budget_usd}
             return httpx.Response(200, json={**month, "cost_usd": 0.0, "spent": self.spent})
         if parts[2] == "spend" and request.method == "POST":
             self.reports.append(json.loads(request.content))
@@ -184,7 +185,7 @@ def test_a_ledger_that_cannot_answer_lets_the_run_spend_and_a_lost_report_is_sai
     ledger = SpendLedger("alpha")
     ledger._http = httpx.Client(transport=httpx.MockTransport(down))
 
-    assert ledger.spent() is False
+    assert ledger.spent() is None
 
     refused = SpendLedger("alpha", origin="http://spend.cyris")
     refused._http = httpx.Client(transport=httpx.MockTransport(FakeSpendGateway("bravo")))
@@ -327,6 +328,23 @@ async def test_a_run_whose_month_is_spent_calls_no_model_and_its_page_says_why(t
     # What it spent, nothing, is still reported.
     [charged] = ledger.reports
     assert (charged["llm_usd"], charged["embedding_usd"], charged["llm_calls"]) == (0.0, 0.0, 0)
+
+
+async def test_an_allowance_of_0_says_ai_is_off_and_never_that_the_month_brings_it_back(
+    tenant,
+) -> None:
+    cfg, gateway, ledger, llm, _ = tenant
+    ledger.spent, ledger.budget_usd = True, 0
+    deps = replace(bootstrap.build_deps(cfg), fetch_sources=[FakeSource([_article()])])
+
+    await run_digest(deps, RunOptions(period="morning"))
+
+    assert llm.calls == []
+    [issue] = gateway.db.query("SELECT date FROM digests").rows
+    page = _page(gateway, f"/{issue['date']}-morning.html")
+    assert "AI is turned off for this site" in page
+    assert "month turns" not in page
+    assert _summary(gateway)["ai_spend"]["ai_budget"] == "off"
 
 
 def test_a_spent_months_notice_is_on_the_issues_its_run_starts_and_no_older_one(tenant) -> None:

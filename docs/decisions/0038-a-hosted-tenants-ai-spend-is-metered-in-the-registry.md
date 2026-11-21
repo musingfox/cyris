@@ -84,8 +84,9 @@ How it is built:
   wires anything. If the month is spent, it wires no LLM, embedder or Clef, so the run takes the
   path a missing client takes and makes the plain list. The `HtmlDigestWriter` it wires carries
   an `AiPause`, so the page of every issue that run starts says the allowance is used up and
-  when it returns, in place of the degraded notice. `run_summary`'s `ai_spend` records
-  `ai_budget: spent`.
+  when it returns, in place of the degraded notice. An allowance of 0 is always spent, and no
+  new month brings it back, so its page says the tenant's AI is off and promises nothing.
+  `run_summary`'s `ai_spend` records `ai_budget` as `spent` or `off`.
 * **The run reports as it ends, failed or not.** `run_digest`'s `finally` calls
   `deps.record_spend`, which posts the meter to the ledger with the store's retry rules and puts
   it in `run_summary` as `ai_spend`. So `digest_runs.summary` holds the same numbers for every
@@ -145,7 +146,8 @@ How it is built:
 * `tests/test_hosted_spend.py` checks a hosted run end to end over the fake gateways.
   * Its LLM and embedding spend are charged once to its own tenant.
   * A run whose month is spent calls no LLM and no embedder. It still stores and publishes the
-    plain list, and its page carries the allowance notice and not the degraded one.
+    plain list, and its page carries the allowance notice and not the degraded one. An allowance
+    of 0 says AI is off, never that the month brings it back.
   * A run that raises after its model calls still charges them.
   * A ledger that cannot be read lets the run spend and still charges it.
   * Only a hosted run is metered.

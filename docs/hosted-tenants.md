@@ -429,7 +429,8 @@ The operator pays for every model call, so each tenant has a monthly AI allowanc
 unless you set another. Every run reports what it spent to the registry when it ends, failed or
 not. A run that starts with its tenant's month already spent calls no model. It makes the plain
 list, and its page says the allowance is used up. Months are UTC, and every allowance comes back
-at 00:00 UTC on the first. Why it works this way is
+at 00:00 UTC on the first. An allowance of 0 turns the tenant's AI off: its page says so, and
+does not promise the next month. Why it works this way is
 [ADR-0038](decisions/0038-a-hosted-tenants-ai-spend-is-metered-in-the-registry.md).
 
 After step 7, list every tenant's month:
@@ -452,8 +453,9 @@ scripts/hosted.sh run evening
 scripts/hosted.sh check
 ```
 
-Once both runs are `done`, alpha's latest page opens with "This month's AI allowance is used up"
-and has no scores or summaries. Bravo's page is a normal issue. Alpha's report has a `spend`
+Once both runs are `done`, alpha's latest page opens with "AI is turned off for this site" and
+has no scores or summaries. A tenant whose allowance is above 0 and spent opens with "This
+month's AI allowance is used up" instead. Bravo's page is a normal issue. Alpha's report has a `spend`
 entry, its month, with `"spent": true`. Then give alpha its allowance back:
 
 ```bash
