@@ -212,12 +212,28 @@ describe("a vote", () => {
     expect(await queued("bravo")).toEqual([]);
   });
 
+  it("shows the buttons to a live session's page only: the probe asks with the token, and no Settings opens", async () => {
+    const session = await signIn("ana@example.com");
+    const { token } = await voteTokenOf(session, "alpha");
+    const probe = (headers) => call("/api/vote", { headers: { Origin: "null", "Sec-Fetch-Site": "cross-site", ...headers } });
+
+    const open = await probe({ "X-Cyris-Vote": token });
+    expect(open.status).toBe(200);
+    expect(await open.json()).toEqual({ authorized: true, settings: false });
+    expect(open.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    // The cookie alone, a made-up token and another site each learn nothing.
+    expect((await call("/api/vote", { session, headers: { Origin: "null" } })).status).toBe(401);
+    expect((await probe({ "X-Cyris-Vote": `${token}x` })).status).toBe(401);
+    expect((await probe({ "X-Cyris-Vote": token, Origin: "https://evil.example" })).status).toBe(403);
+    expect(await queued("alpha")).toEqual([]);
+  });
+
   it("is a preflight the page's own header can pass", async () => {
     const preflight = await call("/api/vote", { method: "OPTIONS", headers: { Origin: "null", "Access-Control-Request-Method": "POST" } });
 
     expect(preflight.status).toBe(204);
     expect(preflight.headers.get("Access-Control-Allow-Headers")).toContain("X-Cyris-Vote");
-    expect(preflight.headers.get("Access-Control-Allow-Methods")).toBe("POST");
+    expect(preflight.headers.get("Access-Control-Allow-Methods")).toBe("GET, POST");
   });
 
   it("never reaches the shared promote Worker", async () => {
@@ -251,7 +267,7 @@ describe("a vote", () => {
     expect((await castVote(token, null)).status).toBe(400);
     expect((await call("/api/vote", { method: "POST", headers: { Origin: "null", "X-Cyris-Vote": token }, raw: "{not json" })).status).toBe(400);
     expect((await castVote(token, { url: ALPHA_URL, vote: "up", pad: "x".repeat(5000) })).status).toBe(413);
-    expect((await call("/api/vote", { method: "GET", headers: { "X-Cyris-Vote": token } })).status).toBe(405);
+    expect((await call("/api/vote", { method: "PUT", headers: { "X-Cyris-Vote": token } })).status).toBe(405);
     expect(await queued("alpha")).toEqual([]);
   });
 

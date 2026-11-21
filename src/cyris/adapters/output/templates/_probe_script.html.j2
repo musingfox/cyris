@@ -7,13 +7,20 @@
     //   pages but takes no vote on them) → Settings and the
     //   Archive link show; vote buttons and gated controls stay closed. The Worker's answer
     //   carries no `votes` field, so only `votes === false` closes them.
+    // - 200 JSON {"authorized":true,"settings":false} (a hosted tenant's page, ADR-0039: the
+    //   hosted Worker takes votes but has no Settings, archive link or interest page) → the vote
+    //   buttons show; the Settings link and the gated controls stay closed. Only `settings === false`
+    //   closes them. The hosted Worker answers a request carrying the page's vote token (its
+    //   <meta name="cyris-vote-token">) and refuses one without.
     // - anything else (the Worker's 403, a non-ok status such as a 404 on a host with no
     //   Worker, a 200 that is not authorized JSON, a failed fetch) → nothing shows
     (async () => {
         try {
+            const voteToken = document.querySelectorAll('meta[name="cyris-vote-token"]')[0]?.content;
             const resp = await fetch('/api/vote', {
                 method: 'GET',
                 redirect: 'manual',  // do not follow Access redirects
+                ...(voteToken ? { headers: { 'X-Cyris-Vote': voteToken } } : {}),
             });
             if (resp.type === 'opaqueredirect') return showSignIn();
             if (resp.status === 403) return;
@@ -21,13 +28,16 @@
             const data = await resp.json();
             if (data.authorized !== true) return;
             // Authorized: show the Settings link and the Archive link, and point the brand at the archive
-            document.querySelectorAll('.settings-link').forEach((s) => s.style.display = 'inline');
-            document.querySelectorAll('.archive-link').forEach((a) => a.hidden = false);
-            document.querySelectorAll('[data-gated-href]').forEach((a) => a.href = a.dataset.gatedHref);
+            const settings = data.settings !== false;
+            if (settings) {
+                document.querySelectorAll('.settings-link').forEach((s) => s.style.display = 'inline');
+                document.querySelectorAll('.archive-link').forEach((a) => a.hidden = false);
+                document.querySelectorAll('[data-gated-href]').forEach((a) => a.href = a.dataset.gatedHref);
+            }
             // This server takes no vote: leave the vote buttons and the gated controls closed
             if (data.votes === false) return;
             document.querySelectorAll('.vote-group').forEach((g) => g.style.display = 'inline-flex');
-            document.querySelectorAll('.gated').forEach((g) => g.hidden = false);
+            if (settings) document.querySelectorAll('.gated').forEach((g) => g.hidden = false);
         } catch {
             // Parse error, network failure, or CORS → nothing shows; the controls stay hidden
         }

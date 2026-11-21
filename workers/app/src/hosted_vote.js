@@ -1,4 +1,5 @@
-// A hosted reader's vote: POST /api/vote, from the vote buttons of a page the Worker served them.
+// A hosted reader's vote: POST /api/vote, from the vote buttons of a page the Worker served them,
+// and the GET the page makes first, to learn whether it may show them.
 // Why the page carries a token and not the cookie, and why the vote is queued and not applied:
 // docs/decisions/0039-a-hosted-vote-is-queued-by-the-worker-and-applied-by-the-run.md
 // No workerd-only imports: vitest runs this under Node.
@@ -19,6 +20,10 @@ export const VOTE_HEADER = "X-Cyris-Vote";
 // The page's code reads this to tell a session that has ended from a refusal it cannot mend.
 export const SESSION_ENDED = "vote_session_ended";
 
+// What the page's capability probe reads (_probe_script.html.j2): signed in, with no Settings page
+// on this Worker, so the vote buttons show and the links to Settings and the interest page do not.
+const PROBE = { authorized: true, settings: false };
+
 // The directions a hosted vote takes. The legacy "deep" the promote Worker still passes through
 // (promotions.py) never had a hosted page.
 const VOTES = ["up", "down"];
@@ -32,7 +37,7 @@ const MAX_URL_LENGTH = 2048;
 // token in the header is the credential, and a page that holds none gets a 401.
 const CORS = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST",
+  "Access-Control-Allow-Methods": "GET, POST",
   "Access-Control-Allow-Headers": `Content-Type, ${VOTE_HEADER}`,
   "Access-Control-Max-Age": "600",
 };
@@ -55,7 +60,8 @@ const ended = () => answer({ error: "sign in again to vote", code: SESSION_ENDED
 // `{refused, status}`.
 export async function handleVote(request, deps) {
   if (request.method === "OPTIONS") return answer(null, 204);
-  if (request.method !== "POST") return answer({ error: "a vote takes POST" }, 405);
+  const probe = request.method === "GET" || request.method === "HEAD";
+  if (request.method !== "POST" && !probe) return answer({ error: "a vote takes POST" }, 405);
   // A browser at another site sends its own Origin. The sandboxed page's is the literal "null",
   // which `crossSite` also reads as another site, and which is the one cross-site caller that is
   // wanted; any other, and a request with no token, is refused before any session is read.
@@ -64,6 +70,8 @@ export async function handleVote(request, deps) {
   }
   const token = request.headers.get(VOTE_HEADER);
   if (!token) return ended();
+  // The page asks first whether it may show its vote buttons: yes for a live session's token.
+  if (probe) return (await deps.voteSession(token)) ? answer(PROBE) : ended();
 
   let text;
   try {

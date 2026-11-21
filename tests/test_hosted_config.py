@@ -256,7 +256,13 @@ def test_the_vote_buttons_and_the_vote_route_agree_on_path_token_and_header() ->
     [header] = re.findall(r'^export const VOTE_HEADER = "([^"]+)";', _js("hosted_vote.js"), re.M)
     [ended] = re.findall(r'^export const SESSION_ENDED = "([^"]+)";', _js("hosted_vote.js"), re.M)
 
+    probe = (ROOT / "src/cyris/adapters/output/templates/_probe_script.html.j2").read_text()
+
     assert f"fetch('{path}'" in script
+    assert f"fetch('{path}'" in probe
+    assert f'meta[name="{meta}"]' in probe
+    assert f"'{header}'" in probe
+    assert "data.settings !== false" in probe
     assert f'meta[name="{meta}"]' in script
     assert f"'{header}'" in script
     assert f"body.code === '{ended}'" in script
