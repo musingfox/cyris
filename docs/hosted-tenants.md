@@ -510,8 +510,8 @@ keep the addresses where you keep the service token.
 3. Send a message to an address of the same domain that you made up, with 26 characters from
    `a`–`z` and `2`–`7`. No bounce comes back: an unknown address is dropped in silence, exactly
    as a delivered message is answered.
-4. Run `scripts/hosted.sh check` before either tenant's next run. Whatever it judges, it keeps
-   each tenant's report in the temporary directory it names, and each report's
+4. Run `scripts/hosted.sh check` before either tenant's next run. Whatever it judges, it prints
+   each tenant's report as it reads it (and keeps no copy, step 8), and each report's
    `newsletters` lists that tenant's queued messages by sender, subject and when they arrived.
    It never shows the body. Alpha's and bravo's each list the message once, and neither lists
    the one sent to the made-up address.
