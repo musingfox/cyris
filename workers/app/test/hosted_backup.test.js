@@ -207,6 +207,17 @@ describe("the hosted Worker's daily backup", () => {
     registry.tenants = (filter) => (filter?.status ? Promise.reject(new Error("registry overloaded")) : tenants(filter));
     await expect(worker.scheduled({ scheduledTime: BACKUP_TIME.getTime() })).rejects.toThrow("registry overloaded");
     expect([...bound.BACKUP.objects.keys()]).toEqual([`${DAY}/_registry.jsonl.gz`, `${DAY}/alpha.jsonl.gz`, `${DAY}/bravo.jsonl.gz`]);
+
+    // A backup that throws as well leaves the tick's failure the one the invocation reports.
+    Object.defineProperty(env, "BACKUP", {
+      configurable: true,
+      enumerable: true,
+      get() {
+        throw new Error("binding torn down");
+      },
+    });
+    await expect(worker.scheduled({ scheduledTime: BACKUP_TIME.getTime() })).rejects.toThrow("registry overloaded");
+    expect(logs).toContainEqual(["hosted backup failed", { error: "binding torn down" }]);
   });
 
   it("tells the operator each copy that failed, naming the tenant and the copy, and goes on to the next", async () => {

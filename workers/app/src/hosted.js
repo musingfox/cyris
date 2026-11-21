@@ -90,56 +90,10 @@ function tickMeasure(tick, tenants) {
   };
 }
 
-// Each active tenant of the registry first polls its RSS feeds into its own buffer, then asks
-// the registry's schedule whether this is a digest hour, or the tenant's own digest_runs
-// whether a digest hour has none to catch up, and queues that issue's run in the registry,
-// which starts it as a container is free (run_queue.js); a tenant of any other status is
-// neither polled nor ticked, and one with no schedule in the registry is polled only. The poll
-// comes first so that a run this tick queues reads this hour's entries: they are stamped when
-// the poll starts, before the run's window closes. A poll that fails is logged, and its
-// tenant's run is still queued on what its buffer holds. Off a digest hour, a tenant whose
-// digest_runs cannot be read gets no catch-up. One tenant's failure is logged and leaves the
-// others' polls and ticks alone.
-async function hourlyTick() {
-  const tick = { started: Date.now(), calls: 0, polls: [], queued: 0 };
-  const call = (what) => {
-    tick.calls += 1;
-    return what;
-  };
-  const registry = tenantRegistry(env);
-  const rows = await call(registry.tenants({ status: ACTIVE }));
-  const tenants = rows.map((row) => row.id);
-  const ticks = await Promise.allSettled(
-    rows.map(async (row) => {
-      const tenant = row.id;
-      tick.polls.push(await pollTenant(tenant, call));
-      const schedule = registrySchedule(row);
-      if (!schedule) {
-        console.log("no schedule in the registry; nothing queued", { tenant });
-        return;
-      }
-      const read = tenantRows(env, tenant);
-      const plan = await planTick({ env, schedule, nameDue: true, read: (...args) => call(read(...args)), unreadable: null });
-      if (!plan) return;
-      const { period, date, origin = "catch-up" } = plan;
-      if (origin === "catch-up") console.log("catching up a digest hour with no ok run", { tenant, period, date });
-      const answer = await call(registry.queueRun(tenant, { period, date, origin }));
-      if (answer.refused) console.log("run not queued", { tenant, period, date, origin, reason: answer.refused });
-      else tick.queued += 1;
-    }),
-  );
-  ticks.forEach((result, i) => {
-    if (result.status === "rejected") {
-      console.log("tick failed", { tenant: tenants[i], error: String(result.reason) });
-    }
-  });
-  console.log("hosted tick", tickMeasure(tick, tenants));
-}
-
 // One memo of each tenant's type size per isolate, as module scope holds it.
 const sitePage = createSitePage(env);
 
-export default {
+const hosted = {
   async fetch(request, _env, ctx) {
     const registry = () => tenantRegistry(env);
     // The sign-in mail goes through the Email Service binding, from the operator's sender, with
@@ -216,14 +170,69 @@ export default {
     });
   },
 
-  // The hourly tick, then, at BACKUP_HOUR_UTC, the daily backup (hosted_backup.js): after the
-  // tick, so no poll or queued run waits on it, and even when the tick failed.
-  async scheduled(controller) {
+  // Each active tenant of the registry first polls its RSS feeds into its own buffer, then asks
+  // the registry's schedule whether this is a digest hour, or the tenant's own digest_runs
+  // whether a digest hour has none to catch up, and queues that issue's run in the registry,
+  // which starts it as a container is free (run_queue.js); a tenant of any other status is
+  // neither polled nor ticked, and one with no schedule in the registry is polled only. The poll
+  // comes first so that a run this tick queues reads this hour's entries: they are stamped when
+  // the poll starts, before the run's window closes. A poll that fails is logged, and its
+  // tenant's run is still queued on what its buffer holds. Off a digest hour, a tenant whose
+  // digest_runs cannot be read gets no catch-up. One tenant's failure is logged and leaves the
+  // others' polls and ticks alone.
+  async scheduled() {
+    const tick = { started: Date.now(), calls: 0, polls: [], queued: 0 };
+    const call = (what) => {
+      tick.calls += 1;
+      return what;
+    };
+    const registry = tenantRegistry(env);
+    const rows = await call(registry.tenants({ status: ACTIVE }));
+    const tenants = rows.map((row) => row.id);
+    const ticks = await Promise.allSettled(
+      rows.map(async (row) => {
+        const tenant = row.id;
+        tick.polls.push(await pollTenant(tenant, call));
+        const schedule = registrySchedule(row);
+        if (!schedule) {
+          console.log("no schedule in the registry; nothing queued", { tenant });
+          return;
+        }
+        const read = tenantRows(env, tenant);
+        const plan = await planTick({ env, schedule, nameDue: true, read: (...args) => call(read(...args)), unreadable: null });
+        if (!plan) return;
+        const { period, date, origin = "catch-up" } = plan;
+        if (origin === "catch-up") console.log("catching up a digest hour with no ok run", { tenant, period, date });
+        const answer = await call(registry.queueRun(tenant, { period, date, origin }));
+        if (answer.refused) console.log("run not queued", { tenant, period, date, origin, reason: answer.refused });
+        else tick.queued += 1;
+      }),
+    );
+    ticks.forEach((result, i) => {
+      if (result.status === "rejected") {
+        console.log("tick failed", { tenant: tenants[i], error: String(result.reason) });
+      }
+    });
+    console.log("hosted tick", tickMeasure(tick, tenants));
+  },
+};
+
+// The handlers above, with the hourly tick followed, at BACKUP_HOUR_UTC, by the daily backup
+// (hosted_backup.js): after the tick, so no poll or queued run waits on it, and even when the
+// tick threw. A backup that throws is logged, so the tick's own failure is what the invocation
+// reports.
+export default {
+  ...hosted,
+  async scheduled(controller, ctx) {
     const at = new Date(controller?.scheduledTime ?? Date.now());
     try {
-      await hourlyTick();
+      await hosted.scheduled(controller, ctx);
     } finally {
-      if (backupDue(at)) await backupAll(env, { now: at });
+      if (backupDue(at)) {
+        await backupAll(env, { now: at }).catch((error) => {
+          console.log("hosted backup failed", { error: String(error?.message ?? error) });
+        });
+      }
     }
   },
 };

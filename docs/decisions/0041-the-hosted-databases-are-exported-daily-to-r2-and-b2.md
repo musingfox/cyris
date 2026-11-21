@@ -114,7 +114,10 @@ unregistered, empty tenant id.
 
 `BACKUP_HOUR_UTC` is 4, a grade-A constant in `workers/app/src/hosted_backup.js`
 (`docs/architecture.md` §5). The existing hourly `scheduled()` runs the tick, and then, in that
-hour only, `backupAll`. It runs in a `finally`, so a tick that threw still backs up. Because it
+hour only, `backupAll`. The default export wraps the tick's own `scheduled()`, left where it
+was, rather than moving its body. The backup runs in a `finally`, so a tick that threw still
+backs up, and a backup that throws is only logged, so the tick's failure is the one the
+invocation reports. Because it
 runs after the tick, the polls have run and the runs are queued in the registry before any
 export starts. The registry's alarm starts those runs on its own, so they do not wait for the
 backup either. The exports run one at a time, the registry first and then every registered
