@@ -53,6 +53,9 @@ Every command runs, as pasted, from the root of a checkout of this repository. `
   allows. The seed, run and check steps sign in with it.
 - `CYRIS_HOSTED_MAIL_FROM`: the address the readers' sign-in mail is sent from. It must be on the
   domain you onboard to Email Sending in step 0.
+- `CYRIS_HOSTED_B2_ENDPOINT`, `CYRIS_HOSTED_B2_BUCKET`, `CYRIS_HOSTED_B2_KEY_ID` and
+  `CYRIS_HOSTED_B2_APPLICATION_KEY`: the daily backup's copy outside Cloudflare, in a Backblaze B2
+  bucket (step 11). Leave the endpoint blank to skip all four until you have the bucket.
 
 The secrets are read without echo each time, and they are never written down. They reach
 wrangler and curl on stdin, never on a command line. The one value the script keeps is the
@@ -106,6 +109,14 @@ acts as, since none of them reads `.env`.
 
 ## 1. Deploy
 
+The Worker binds the R2 bucket its daily backup writes to (`BACKUP` in `wrangler.hosted.toml`),
+and a deploy that binds a bucket the account does not have fails. Create it once, on the trial
+account, before the first deploy (step 11 sets its lifecycle rule):
+
+```bash
+CLOUDFLARE_ACCOUNT_ID=<trial account id> bun x wrangler r2 bucket create cyris-hosted-backup --config wrangler.hosted.toml --env-file /dev/null
+```
+
 ```bash
 scripts/hosted.sh deploy
 ```
@@ -113,7 +124,7 @@ scripts/hosted.sh deploy
 This runs `wrangler deploy --config wrangler.hosted.toml --env-file /dev/null`, after you
 confirm the account. It deploys the Worker, its three Durable Object classes
 (`TenantContainer`, `TenantDb` and `TenantRegistry`), its `MAIL` Email Sending binding and the
-container application `cyris-hosted-tenantcontainer`. It never reads `.env`. A first deploy's registry is empty, so
+container application `cyris-hosted-tenantcontainer` and its `BACKUP` R2 binding. It never reads `.env`. A first deploy's registry is empty, so
 until step 5 the Worker has no tenant: the hourly tick queues nothing, and every tenant route
 answers 404.
 
@@ -174,8 +185,8 @@ scripts/hosted.sh secrets
 ```
 
 This asks for `CYRIS_ACCESS_TEAM_DOMAIN`, `CYRIS_ACCESS_AUD`, `CYRIS_HOSTED_OPERATORS`,
-`ANTHROPIC_API_KEY`, `CYRIS_HOSTED_OPERATOR_WEBHOOK` and `CYRIS_HOSTED_MAIL_FROM`, and sets each
-one as a secret of `cyris-hosted` on stdin. `CYRIS_HOSTED_OPERATORS` is the list the Worker checks
+`ANTHROPIC_API_KEY`, `CYRIS_HOSTED_OPERATOR_WEBHOOK`, `CYRIS_HOSTED_MAIL_FROM` and the four B2
+settings of step 11, and sets each one as a secret of `cyris-hosted` on stdin. `CYRIS_HOSTED_OPERATORS` is the list the Worker checks
 every operator request's Access identity against
 ([ADR-0037](decisions/0037-the-hosted-operator-routes-admit-only-named-identities.md)): an entry
 with an `@` is an Access email, and any other is a service token's Client ID, which Access signs
@@ -671,7 +682,136 @@ as the operator (`GET /hosted/tenants/alpha/report` with the service token): its
 the row, zero rows. *Unverified in a browser:* that the page's `fetch` passes the route's preflight and
 the buttons appear; look in the browser's console for a blocked request if they do not.
 
-## 11. Tear down (when you are done)
+## 11. Back up every tenant daily, and drill a restore
+
+Once a day, in the hourly tick of 04:00 UTC (`BACKUP_HOUR_UTC`) and after that tick's polls and
+queued runs, the Worker exports the registry and every registered tenant, paused ones too. Each
+export goes to the R2 bucket `cyris-hosted-backup` and to the same key in a Backblaze B2 bucket,
+so a copy outlives the Cloudflare account itself
+([ADR-0041](decisions/0041-the-hosted-databases-are-exported-daily-to-r2-and-b2.md)):
+
+```
+<YYYY-MM-DD>/_registry.jsonl.gz
+<YYYY-MM-DD>/<tenant>.jsonl.gz
+```
+
+Each file is a gzip of JSON lines, every table of that database with its rows, indexes, triggers
+and views. Each copy that fails is posted to the operator's webhook with the tenant (or
+`_registry`) in front and the copy in the headline: the export, the R2 write or the B2 copy.
+The next tenant's export goes on. With the B2 settings unset, or an endpoint that is not B2's,
+R2 is still written and one alert a day says there is no off-Cloudflare copy. A tenant whose
+export is over 32 MiB compressed, roughly 100 MB of data, fails its export with an alert every
+day until the dump streams (ADR-0041).
+
+### 11.1 Create the buckets and their retention (once)
+
+Retention is not in code. Each bucket deletes old exports by a rule of its own. 30 days is
+assumed below; choose your own.
+
+R2. Create the bucket (step 1) and give it a rule that deletes every object 30 days after upload
+([object lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)):
+
+```bash
+CLOUDFLARE_ACCOUNT_ID=<trial account id> bun x wrangler r2 bucket lifecycle add cyris-hosted-backup expire-exports --expire-days 30 --config wrangler.hosted.toml --env-file /dev/null
+```
+
+The rule's prefix is left empty, so it covers every date's folder. The flags are the
+[Wrangler R2 reference](https://developers.cloudflare.com/workers/wrangler/commands/r2/)'s; the
+command was not run when this was written, so check the rule with
+`bun x wrangler r2 bucket lifecycle list cyris-hosted-backup` afterwards. In the dashboard, the same rule
+is R2 > `cyris-hosted-backup` > Settings > Object Lifecycle Rules (*label unverified*).
+
+B2. In the Backblaze web UI (*labels unverified*):
+
+1. Create a **private** bucket, e.g. `cyris-hosted-backup`, and note its S3 endpoint
+   (`https://s3.<region>.backblazeb2.com`), shown on the bucket's card.
+2. Set its lifecycle settings to a custom rule with an empty file-name prefix,
+   `daysFromUploadingToHiding` 30 and `daysFromHidingToDeleting` 1. Each export has a name of its
+   own, so it is hidden 30 days after upload and deleted a day later. A re-run of the same day's
+   backup makes a new version of the same name; the old version is hidden at once and deleted a
+   day later too
+   ([lifecycle rules](https://www.backblaze.com/docs/cloud-storage-lifecycle-rules)).
+3. Under Application Keys, add a key with **Read and Write** access to that bucket only. The
+   master key does not work with the S3-compatible API
+   ([S3 app keys](https://www.backblaze.com/docs/cloud-storage-s3-compatible-app-keys)). Its
+   `keyID` is `CYRIS_HOSTED_B2_KEY_ID`, and its `applicationKey`, shown once, is
+   `CYRIS_HOSTED_B2_APPLICATION_KEY`.
+
+### 11.2 Set the B2 settings
+
+```bash
+scripts/hosted.sh secrets
+```
+
+Step 3's command, run again. After the sign-in sender it asks for `CYRIS_HOSTED_B2_ENDPOINT`.
+That endpoint must be `https://s3.<region>.backblazeb2.com`, and anything else is refused before
+any secret is set. It then asks for `CYRIS_HOSTED_B2_BUCKET`, then `CYRIS_HOSTED_B2_KEY_ID` and
+`CYRIS_HOSTED_B2_APPLICATION_KEY`, both read without echo. A blank endpoint skips all four. The
+endpoint and bucket are not secret; they are set as secrets so that `wrangler.hosted.toml` names
+no deployment's bucket. No container is handed any of them.
+
+### 11.3 Run a backup now, and read it
+
+```bash
+scripts/hosted.sh backup
+```
+
+This runs today's backup at once, as the 04:00 tick would (`POST /hosted/backup`). It answers
+`{date, exports, r2, b2, bytes, failed}`: `exports` counts the registry and every tenant, and
+`r2` and `b2` should equal it. `failed` names each failed copy, which the webhook was also told
+of. Check the R2 copy, and read it back into an ordinary SQLite file on your machine:
+
+```bash
+CLOUDFLARE_ACCOUNT_ID=<trial account id> bun x wrangler r2 object get cyris-hosted-backup/<YYYY-MM-DD>/alpha.jsonl.gz --file alpha.jsonl.gz --remote --config wrangler.hosted.toml --env-file /dev/null
+python3 scripts/backup_to_sqlite.py alpha.jsonl.gz alpha.sqlite3
+```
+
+The script prints each table's row count. In the B2 web UI, the bucket lists the same keys with
+the same sizes. A file downloaded from B2 reads the same way, with no Cloudflare tool needed.
+These are a tenant's data: delete the local files when you are done.
+
+### 11.4 Drill a restore into a new tenant id
+
+```bash
+scripts/hosted.sh restore <YYYY-MM-DD> alpha alpha-restored
+scripts/hosted.sh register alpha-restored paused
+```
+
+`restore DATE TENANT NEW_TENANT` loads TENANT's R2 export of that UTC day into NEW_TENANT
+(`POST /hosted/tenants/<new>/restore?date=D&from=T`). It refuses with 409 an id the registry
+already holds, of any status, or whose database already holds a table. It refuses with 400 an
+id no tenant may take, and with 404 a day with no export; in each case it writes nothing. The
+answer lists each table with the rows it restored. The restore is one transaction, so a restore
+that fails leaves the new id empty, and running it again is safe. Registering the id paused lets
+the operator's routes read it while no tick polls or runs it.
+
+To check the drill, run `scripts/hosted.sh check` right after 11.3's `backup`, before the next
+hour's tick polls `alpha` again. Its report for `alpha` lists `tables`, each with its row count.
+The restore's `restored` must list the same tables with the same counts. To compare rows rather
+than counts, `cyris --tenant alpha-restored` (step 8, *Reading or changing one tenant from the
+CLI*) reads the registered, paused id the way `cyris --tenant alpha` reads `alpha`. To replace a lost tenant, invite its readers to the new id (step 10) and
+resume it with `register alpha-restored active`. Give it a schedule (step 5) and a newsletter
+address too: neither is in a tenant's own export, since both are the registry's. To retire a
+drill's id, pause it and leave it, as nothing deletes a tenant yet.
+
+### 11.5 The registry: by hand
+
+No route restores the registry: it makes its own tables as it starts, so a restore would collide
+with them. Its export is the record of what to re-enter. Read it with `backup_to_sqlite.py` as in
+11.3, from `<YYYY-MM-DD>/_registry.jsonl.gz`. Then use the existing routes, from the
+`tenants`, `members` and `inbound_addresses` tables:
+
+- `register` each tenant with its status;
+- `schedule` each one with its `digest_times`, `timezone` and `daily_run_cap`, and `budget`
+  each `monthly_ai_budget_usd` that is set;
+- `invite` each member again, which mails each reader a new link.
+
+What cannot be re-entered: sessions, sign-in links, the vote key and spend. Readers sign in
+again, open pages get a new vote token, and a month's spend starts over. A tenant's newsletter
+address cannot be set either, only rotated to a new one, so each newsletter's sender must be
+told the new address (step 9).
+
+## 12. Tear down (when you are done)
 
 ```bash
 scripts/hosted.sh delete
@@ -681,4 +821,6 @@ This asks for the account and a `yes`, then deletes `cyris-hosted` and its Durab
 tenant databases and the registry included. Afterwards, check the dashboard's Containers page (*label
 unverified*) for a leftover `cyris-hosted-tenantcontainer` application, and delete the Access
 application from step 2. The sending domain stays onboarded to Email Sending until you remove it
-there.
+there. The backup buckets are kept: delete `cyris-hosted-backup` in R2
+(`bun x wrangler r2 bucket delete cyris-hosted-backup --config wrangler.hosted.toml --env-file /dev/null` once it is empty) and the B2 bucket
+yourself, when you no longer want the exports.
