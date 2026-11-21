@@ -523,6 +523,26 @@ describe("a save that writes settings rows and the schedule", () => {
     expect(answer.status).toBe(409);
     expect(written).toEqual([{ times: ["06:00", "18:00"], timeZone: "Asia/Taipei" }, SCHEDULE]);
   });
+
+  it("writes no schedule for a tenant never seeded, whose registry held none", async () => {
+    const written = [];
+    const unseeded = { settings: () => null, saveSettings: () => ({ refused: "not_seeded", status: 409 }) };
+
+    const answer = await post({ db: unseeded, registryRow: () => ({}), setSchedule: async (schedule) => (written.push(schedule), {}) });
+
+    expect(answer.status).toBe(409);
+    expect(written).toEqual([]);
+  });
+
+  it("puts the registry's schedule back when writing the rows throws", async () => {
+    const db = await seeded();
+    const written = [];
+    const throwing = { settings: () => db.settings(), saveSettings: () => { throw new Error("storage reset"); } };
+
+    await expect(post({ db: throwing, setSchedule: async (schedule) => (written.push(schedule), {}) })).rejects.toThrow("storage reset");
+
+    expect(written).toEqual([{ times: ["06:00", "18:00"], timeZone: "Asia/Taipei" }, SCHEDULE]);
+  });
 });
 
 describe("POST /t/<tenant>/api/sources", () => {
