@@ -186,24 +186,30 @@ export async function handleTenantSettings(request, { rest, db, registryRow, set
 
 // One save: every key checked before anything is written. The schedule goes to the registry,
 // which the tick reads (ADR-0032), with the hours or zone it does not name kept; the run cap is
-// never named, so the registry keeps the operator's.
+// never named, so the registry keeps the operator's. The whole save lands or none of it: the
+// registry can still refuse what passed the check here (a tenant no longer registered), so the
+// schedule is written first and the rows only once it is, and rows refused then put the schedule
+// the registry held back.
 async function saveSettings(t, body, { db, registryRow, setSchedule }) {
   const checked = checkSettings(body);
   if (checked.refused) return refused(t, checked.refused);
   let schedule = null;
+  let previous = null;
   if (checked.schedule) {
-    const current = registrySchedule(await registryRow()) ?? {};
+    previous = registrySchedule(await registryRow());
+    const current = previous ?? {};
     schedule = { times: checked.schedule.times ?? current.times, timeZone: checked.schedule.timeZone ?? current.timeZone };
     if (!digestHours(schedule.times)) return refused(t, { reason: "schedule" });
     if (checkSchedule(schedule).refused) return refused(t, { reason: "time_zone", zone: String(schedule.timeZone) });
+    const answer = await setSchedule(schedule);
+    if (answer.refused) return refused(t, { reason: "time_zone", zone: String(schedule.timeZone) });
   }
   if (checked.rows.length) {
     const saved = await db.saveSettings(checked.rows);
-    if (saved.refused) return refused(t, { reason: saved.refused, key: saved.key });
-  }
-  if (schedule) {
-    const answer = await setSchedule(schedule);
-    if (answer.refused) return refused(t, { reason: "time_zone", zone: String(schedule.timeZone) });
+    if (saved.refused) {
+      if (schedule && previous) await setSchedule(previous);
+      return refused(t, { reason: saved.refused, key: saved.key });
+    }
   }
   return json({
     ok: true,

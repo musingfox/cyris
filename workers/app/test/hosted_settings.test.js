@@ -10,7 +10,7 @@ import SEED from "../src/hosted_seed.json" with { type: "json" };
 import POLICY from "../src/hosted_settings_policy.json" with { type: "json" };
 import worker from "../src/hosted.js";
 import { seedTenant } from "../src/hosted_seed.js";
-import { CATALOGS, REFUSAL_REASONS } from "../src/hosted_settings.js";
+import { CATALOGS, REFUSAL_REASONS, handleTenantSettings } from "../src/hosted_settings.js";
 import { WRITABLE, catalogTag, checkSettings, rssSource, urlRefusal } from "../src/hosted_settings_rules.js";
 import { SESSION_COOKIE } from "../src/hosted_session.js";
 import { tenantRegistry } from "../src/tenant_registry.js";
@@ -486,6 +486,39 @@ describe("POST /t/<tenant>/api/settings", () => {
     expect(answer.schedule).toEqual({ times: ["08:00", "20:00"], timeZone: "UTC" });
     expect(answer.max_articles_per_digest).toBe(POLICY.max_articles_per_digest);
     expect(answer.max_sources).toBe(POLICY.max_sources);
+  });
+});
+
+// A save straight to the settings handler over a seeded tenant's object, with a registry whose
+// schedule writes the test sees and can refuse.
+describe("a save that writes settings rows and the schedule", () => {
+  const SCHEDULE = { times: ["08:00", "20:00"], timeZone: "UTC" };
+  const body = { "digest.style_prompt": "Short.", "general.digest_schedule": ["06:00", "18:00"], "general.timezone": "Asia/Taipei" };
+  const post = (deps) =>
+    handleTenantSettings(
+      new Request(`${ORIGIN}/t/alpha/api/settings`, { method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+      { rest: "/api/settings", registryRow: () => ({ digest_times: JSON.stringify(SCHEDULE.times), timezone: SCHEDULE.timeZone }), ...deps },
+    );
+
+  it("writes no row when the registry refuses the schedule", async () => {
+    const db = await seeded();
+    const before = db.query("SELECT key, value FROM settings ORDER BY key").rows;
+
+    const answer = await post({ db, setSchedule: async () => ({ refused: "alpha is not a registered tenant" }) });
+
+    expect(answer.status).toBe(400);
+    expect(db.query("SELECT key, value FROM settings ORDER BY key").rows).toEqual(before);
+  });
+
+  it("puts the registry's schedule back when the rows are refused", async () => {
+    const db = await seeded();
+    const written = [];
+    const refusing = { settings: () => db.settings(), saveSettings: () => ({ refused: "not_seeded", status: 409 }) };
+
+    const answer = await post({ db: refusing, setSchedule: async (schedule) => (written.push(schedule), {}) });
+
+    expect(answer.status).toBe(409);
+    expect(written).toEqual([{ times: ["06:00", "18:00"], timeZone: "Asia/Taipei" }, SCHEDULE]);
   });
 });
 
