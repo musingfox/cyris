@@ -5,9 +5,23 @@
 // Only the hosted Worker reaches it, through its REGISTRY binding (wrangler.hosted.toml). No
 // tenant's run container does: it holds no binding, and the only Worker code it can reach is
 // TenantDbGateway (tenant_db.js) and OperatorAlertGateway (hosted_alerts.js), which each answer
-// one tenant and never name this object.
+// one tenant and never name this object, and SpendGateway (hosted_spend.js), which answers one
+// tenant's allowance and adds to its spend here and does nothing else.
 
 import { DurableObject } from "cloudflare:workers";
+import {
+  MONTHLY_AI_BUDGET_COLUMN,
+  SPEND_COLUMNS,
+  SPEND_REPORTS_SCHEMA,
+  SPEND_REPORT_IDS_KEPT_MS,
+  SPEND_ROLLUP_SCHEMA,
+  addSpend,
+  checkBudget,
+  checkSpend,
+  monthSpend,
+  spendMonth,
+  spendReport,
+} from "./ai_budget.js";
 import { alertOperator, workerAlert } from "./hosted_alerts.js";
 import RESERVED_IDS from "./hosted_reserved_ids.json";
 import {
@@ -55,8 +69,10 @@ export const REGISTRY_NAME = "cyris:registry";
 // tenant per address; `invites`, each single-use sign-in link, the operator's invitation and
 // every later one alike, keyed by its token's SHA-256 in `code` and never by the token;
 // `sessions`, keyed the same way; and `sign_in_asks`, each link a reader asked for at /login,
-// kept a day so the caps on asking can count it. `spend_rollup` is created empty for the budget
-// card, so that card adds code and no new home for state.
+// kept a day so the caps on asking can count it. `spend_rollup` is each tenant's AI spend per UTC
+// month, which its runs report through SpendGateway (hosted_spend.js), and
+// `tenants.monthly_ai_budget_usd` the allowance a run is checked against as it starts
+// (ai_budget.js, ADR-0038).
 export const REGISTRY_SCHEMA = `
 CREATE TABLE IF NOT EXISTS tenants (
   id TEXT PRIMARY KEY,
@@ -64,6 +80,7 @@ CREATE TABLE IF NOT EXISTS tenants (
   digest_times TEXT,
   timezone TEXT,
   daily_run_cap INTEGER NOT NULL DEFAULT ${DEFAULT_DAILY_RUN_CAP},
+  monthly_ai_budget_usd ${MONTHLY_AI_BUDGET_COLUMN},
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -103,14 +120,8 @@ CREATE TABLE IF NOT EXISTS inbound_addresses (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_inbound_addresses_tenant ON inbound_addresses(tenant_id);
-CREATE TABLE IF NOT EXISTS spend_rollup (
-  tenant_id TEXT NOT NULL,
-  month TEXT NOT NULL,
-  cost_usd REAL NOT NULL DEFAULT 0,
-  runs INTEGER NOT NULL DEFAULT 0,
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY (tenant_id, month)
-);
+${SPEND_ROLLUP_SCHEMA}
+${SPEND_REPORTS_SCHEMA}
 ${RUNS_SCHEMA}`;
 
 // The columns a registry created before them lacks, added in place: each is additive and has a
@@ -118,9 +129,11 @@ ${RUNS_SCHEMA}`;
 const ADDED_COLUMNS = [
   ["tenants", "timezone", "TEXT"],
   ["tenants", "daily_run_cap", `INTEGER NOT NULL DEFAULT ${DEFAULT_DAILY_RUN_CAP}`],
+  ...SPEND_COLUMNS,
 ];
 
-const TENANT_COLUMNS = "id, status, digest_times, timezone, daily_run_cap, created_at, updated_at";
+const TENANT_COLUMNS =
+  "id, status, digest_times, timezone, daily_run_cap, monthly_ai_budget_usd, created_at, updated_at";
 const TENANT_INSERT = "INSERT INTO tenants (id, status, created_at, updated_at) VALUES (?, ?, ?, ?)";
 // A status named sets it; none named adds an absent tenant as active and leaves a present one alone.
 const TENANT_UPSERT =
@@ -315,6 +328,50 @@ export class TenantRegistry extends DurableObject {
     const rows = await tenantRows(this.env, run.tenant_id)(MADE_SINCE, [run.period, run.started_at], "digest_runs");
     return Boolean(rows?.length);
   };
+
+  // AI spend (ai_budget.js, ADR-0038). Every month is a UTC `YYYY-MM`, taken from `now`.
+
+  // `id`'s month so far and whether its allowance is spent: what its run asks as it starts, and
+  // what its report shows. Null for a tenant the registry does not hold.
+  budget(id, { now = new Date() } = {}) {
+    const row = this.tenant(id);
+    return row ? monthSpend(this.ctx.storage.sql, row, spendMonth(now)) : null;
+  }
+
+  // Adds one run's AI spend, as its run reported it, to `id`'s month, and answers `{spend}`, the
+  // month after it, with `repeated` for a report already added, which adds nothing; or
+  // `{refused}` for a report `checkSpend` refuses, writing nothing. A tenant the registry no
+  // longer holds is still charged: what a run spent was spent.
+  addSpend(id, report, { now = new Date() } = {}) {
+    if (!TENANT.test(id ?? "")) return { refused: `not a tenant: ${id}` };
+    const checked = checkSpend(report);
+    if (checked.refused) return checked;
+    const month = spendMonth(now);
+    const kept = stamp(new Date(now.getTime() - SPEND_REPORT_IDS_KEPT_MS));
+    const added = addSpend(this.ctx.storage.sql, id, checked.spend, month, stamp(now), kept);
+    const row = this.tenant(id) ?? { id, monthly_ai_budget_usd: null };
+    return { spend: monthSpend(this.ctx.storage.sql, row, month), repeated: !added };
+  }
+
+  // Every registered tenant's `month`, this one unless named: the operator's list.
+  spend({ month, now = new Date() } = {}) {
+    return { month: month ?? spendMonth(now), tenants: spendReport(this.ctx.storage.sql, month ?? spendMonth(now)) };
+  }
+
+  // Sets a registered tenant's monthly allowance, in USD, from the next run that starts; answers
+  // `{tenant}`, its row, or `{refused}`, writing nothing. What the month has spent stays.
+  setBudget(id, raw, { now = new Date() } = {}) {
+    if (!this.tenant(id)) return { refused: `${id} is not a registered tenant` };
+    const checked = checkBudget(raw);
+    if (checked.refused) return checked;
+    this.ctx.storage.sql.exec(
+      "UPDATE tenants SET monthly_ai_budget_usd = ?, updated_at = ? WHERE id = ?",
+      checked.usd,
+      stamp(now),
+      id,
+    );
+    return { tenant: this.tenant(id) };
+  }
 
   // The tenant `address` delivers to, or null when no registered tenant holds it: the hosted
   // email() handler's one lookup (hosted_inbound.js).

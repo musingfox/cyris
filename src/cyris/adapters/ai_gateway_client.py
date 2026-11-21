@@ -20,10 +20,15 @@ another author would report zero tokens, which reads as a measurement.
 """
 
 import asyncio
+from dataclasses import replace
 
 import httpx
 
-from cyris.adapters.gemini_client import OutputBudgetSpentError
+from cyris.adapters.gemini_client import (
+    NoCandidatesError,
+    OutputBudgetSpentError,
+    billed_usage,
+)
 from cyris.service_layer.ports import LLMResponse
 
 _GATEWAY_ROOT = "https://gateway.ai.cloudflare.com/v1"
@@ -134,24 +139,22 @@ class AIGatewayClient:
             raise self._refusal(response)
 
         data = response.json()
+        billed = billed_usage(data)
         if not data.get("candidates"):
             block_reason = (data.get("promptFeedback") or {}).get("blockReason", "unknown")
-            raise RuntimeError(f"{self.model} returned no candidates (blockReason {block_reason})")
+            raise NoCandidatesError(
+                f"{self.model} returned no candidates (blockReason {block_reason})", billed
+            )
         candidate = data["candidates"][0]
         parts = candidate.get("content", {}).get("parts")
         if parts is None:
             raise OutputBudgetSpentError(
                 f"{self.model} returned no output "
                 f"(finishReason {candidate.get('finishReason', 'unknown')}) — "
-                "raise max_tokens if this is a reasoning model"
+                "raise max_tokens if this is a reasoning model",
+                billed,
             )
-        usage = data.get("usageMetadata", {})
-        return LLMResponse(
-            text="".join(part.get("text", "") for part in parts),
-            input_tokens=usage.get("promptTokenCount", 0),
-            # Thinking is billed as output but reported in its own field.
-            output_tokens=usage.get("candidatesTokenCount", 0) + usage.get("thoughtsTokenCount", 0),
-        )
+        return replace(billed, text="".join(part.get("text", "") for part in parts))
 
     def _refusal(self, response: httpx.Response) -> AIGatewayError:
         """The body's own code and words; raise_for_status() would keep only the status."""

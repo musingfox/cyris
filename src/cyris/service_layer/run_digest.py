@@ -334,6 +334,12 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
                 summary.update(deps.process_usage())
             except Exception as e:  # noqa: BLE001 - a failed read must not replace the run's result
                 logger.error("Failed to read the process's resource use: %s", e)
+        if deps.record_spend is not None:
+            # Whatever ended the run: a run that raised after its model calls spent them too.
+            try:
+                summary["ai_spend"] = deps.record_spend()
+            except Exception as e:  # noqa: BLE001 - a lost record must not replace the result
+                logger.error("Failed to record the run's AI spend: %s", e)
         if failure is not None:
             # What the failure alert says, kept with the run: the onboarding's
             # first issue tells the reader why the run it started failed.

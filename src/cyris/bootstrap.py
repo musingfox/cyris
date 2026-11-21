@@ -4,7 +4,7 @@ import json
 import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from functools import cache, partial
 from importlib.resources import files
 from pathlib import Path
@@ -448,6 +448,10 @@ class Deps:
     # Takes nothing and returns `cpu_seconds` and `peak_rss_bytes`, which the run
     # adds to its summary as it ends. None leaves the summary without them.
     process_usage: Callable[[], dict[str, float | int]] | None = None
+    # A hosted run's AI spend (ADR-0038): charges what the run's metered LLM, embedder and
+    # Clef spent to the tenant's month as the run ends, failed or not, and returns it for the
+    # summary. None outside a hosted tenant's run, which changes nothing.
+    record_spend: Callable[[], dict] | None = None
 
 
 def build_promotion_sync(
@@ -598,6 +602,25 @@ def build_deps(
 
     fetch_sources.append(build_rss_source(cfg, d1))
 
+    # A tenant's run is held to its monthly AI allowance in the operator's registry, through
+    # the hosted Worker (ADR-0038); not on the operator's machine, which starts no run
+    # (ADR-0036). Asked here, before anything is wired: a month already spent wires no model.
+    ledger = None
+    ai_pause = None
+    paused = None
+    if hosted and not cfg.app.store.operator:
+        from cyris.adapters.hosted_spend import OFF, SpendLedger
+        from cyris.adapters.output.html_digest import AiPause
+
+        ledger = SpendLedger(cfg.app.store.tenant_id)
+        if paused := ledger.spent():
+            # To the second, as `run_digest` stamps the issue's start.
+            ai_pause = AiPause(since=datetime.now(UTC).replace(microsecond=0), off=paused == OFF)
+            (on_progress or (lambda _msg: None))(
+                f"This tenant's AI allowance is {'0' if paused == OFF else 'spent this month'}: "
+                "this run calls no model and its digest lists plain excerpts."
+            )
+
     html_writer = None
     publish_site = None
     page_serves = None
@@ -610,6 +633,7 @@ def build_deps(
             Path(cfg.app.html_output.output_dir),
             language=language,
             starts=D1ArchiveMeta(d1).issue_starts,
+            ai_pause=ai_pause,
         )
     if hosted:
         # The tenant's site is its own Durable Object, which the hosted Worker serves behind
@@ -660,10 +684,34 @@ def build_deps(
         notify_discord = partial(send_discord, language=language)
         send_email = build_send_email(language)
 
+    llm = build_llm(cfg.app.llm_provider)
+    embedder = build_embedder(cfg)
+    ask_clef = build_ask_clef()
+    record_spend = None
+    if ai_pause is not None:
+        # The plain list, by the path a missing client takes; the page says why (`AiPause`).
+        llm = embedder = ask_clef = None
+    if ledger is not None:
+        # Every model call, embedding and Clef question the tenant's run makes is metered as
+        # it is made and charged to the tenant's month as the run ends (ADR-0038).
+        from cyris.adapters.hosted_spend import (
+            MeteredClef,
+            MeteredEmbedder,
+            MeteredLLM,
+            SpendMeter,
+        )
+
+        meter = SpendMeter(llm.model if llm is not None else "")
+        llm = MeteredLLM(llm, meter) if llm is not None else None
+        if embedder is not None:
+            embedder = MeteredEmbedder(embedder, meter, cfg.app.vote_similarity.provider)
+        ask_clef = MeteredClef(ask_clef, meter) if ask_clef is not None else None
+        record_spend = partial(ledger.report, meter, paused=paused)
+
     return Deps(
         cfg=cfg,
         store=store,
-        llm=build_llm(cfg.app.llm_provider),
+        llm=llm,
         fetch_sources=fetch_sources,
         html_writer=html_writer,
         publish_site=publish_site,
@@ -675,7 +723,7 @@ def build_deps(
         story_store=D1StoryStore(d1),
         topic_store=topic_store,
         on_progress=on_progress or (lambda _msg: None),
-        embedder=build_embedder(cfg),
+        embedder=embedder,
         embedding_model=embedding_model(
             cfg.app.vote_similarity.provider, cfg.app.vote_similarity.model
         ),
@@ -693,7 +741,8 @@ def build_deps(
         send_email_alert=send_email_alert,
         send_discord_alert=send_discord_alert_to,
         send_operator_alert=build_operator_alert(cfg),
-        ask_clef=build_ask_clef(),
+        ask_clef=ask_clef,
         lengthen_articles=lengthen_articles,
         process_usage=process_usage.read_process_usage if process_usage.available() else None,
+        record_spend=record_spend,
     )

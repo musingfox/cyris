@@ -277,7 +277,16 @@ describe("the registry's schema on a registry an earlier version created", () =>
 
     const created = [...REGISTRY_SCHEMA.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1]).sort();
     expect(made.tables).toEqual(created);
-    expect(made.tenants).toEqual(["id", "status", "digest_times", "created_at", "updated_at", "timezone", "daily_run_cap"]);
+    expect(made.tenants).toEqual([
+      "id",
+      "status",
+      "digest_times",
+      "created_at",
+      "updated_at",
+      "timezone",
+      "daily_run_cap",
+      "monthly_ai_budget_usd",
+    ]);
     expect(registry.tenants().map(({ id, status, daily_run_cap }) => [id, status, daily_run_cap])).toEqual([
       ["alpha", "active", DEFAULT_DAILY_RUN_CAP],
       ["bravo", "paused", DEFAULT_DAILY_RUN_CAP],
@@ -308,7 +317,7 @@ describe("the operator's registry", () => {
     const created = [...REGISTRY_SCHEMA.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1]);
     const tenants = [...SCHEMA_SQL.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1]);
 
-    expect(created.sort()).toEqual(["inbound_addresses", "invites", "members", "runs", "sessions", "sign_in_asks", "spend_rollup", "tenants"]);
+    expect(created.sort()).toEqual(["inbound_addresses", "invites", "members", "runs", "sessions", "sign_in_asks", "spend_reports", "spend_rollup", "tenants"]);
     expect(created.filter((name) => tenants.includes(name))).toEqual([]);
   });
 
@@ -329,6 +338,8 @@ describe("the operator's registry", () => {
         digest_times: null,
         timezone: null,
         daily_run_cap: DEFAULT_DAILY_RUN_CAP,
+        // Unset: the default is DEFAULT_MONTHLY_AI_BUDGET_USD's alone (ai_budget.js).
+        monthly_ai_budget_usd: null,
         created_at: STAMP,
         updated_at: STAMP,
       },

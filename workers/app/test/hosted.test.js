@@ -4,6 +4,7 @@ import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json" with { type:
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json" with { type: "json" };
 import SEED from "../src/hosted_seed.json" with { type: "json" };
 import { ALERT_TIMEOUT_MS, OPERATOR_WEBHOOK, OPS_HOST } from "../src/hosted_alerts.js";
+import { SPEND_HOST } from "../src/hosted_spend.js";
 import { REPORTED, RUN, START_RETRY, TOLD, TenantContainer, hostedContainerEnv } from "../src/hosted_container.js";
 import { handleHostedRequest } from "../src/hosted_router.js";
 import { seedSettings, seedTenant, tenantReport } from "../src/hosted_seed.js";
@@ -80,6 +81,7 @@ async function runObject(name, bindings = EVERY_BINDING) {
     exports: {
       TenantDbGateway: ({ props }) => ({ props }),
       OperatorAlertGateway: ({ props }) => ({ props }),
+      SpendGateway: ({ props }) => ({ props }),
     },
     waited: [],
     waitUntil(promise) {
@@ -147,7 +149,7 @@ describe("a hosted tenant's run container", () => {
     expect(container.starts).toEqual([]);
   });
 
-  it("registers both gateways for its own tenant before the container starts", async () => {
+  it("registers every gateway for its own tenant before the container starts", async () => {
     const { object, container, order } = await runObject("bravo");
 
     expect(await object.startRun({ period: "morning", date: "2026-11-18" })).toEqual({
@@ -157,6 +159,7 @@ describe("a hosted tenant's run container", () => {
     expect(order).toEqual([
       { intercept: DB_HOST, props: { tenant: "bravo" } },
       { intercept: OPS_HOST, props: { tenant: "bravo" } },
+      { intercept: SPEND_HOST, props: { tenant: "bravo" } },
       "start",
     ]);
     const [{ env, enableInternet }] = container.starts;

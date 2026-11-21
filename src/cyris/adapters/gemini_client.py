@@ -1,6 +1,7 @@
 """Gemini REST adapter satisfying the LLMClient protocol."""
 
 import asyncio
+from dataclasses import replace
 
 import httpx
 
@@ -31,8 +32,35 @@ class GeminiAPIError(httpx.HTTPStatusError):
         self.message = message
 
 
-class OutputBudgetSpentError(RuntimeError):
+class BilledError(RuntimeError):
+    """The model took the request, was billed for it, and gave no usable answer.
+
+    `billed` is what the response said it spent, so a meter still counts tokens that were paid
+    for (`MeteredLLM`, adapters/hosted_spend.py); None when the raiser had no response to read.
+    """
+
+    def __init__(self, message: str, billed: LLMResponse | None = None) -> None:
+        super().__init__(message)
+        self.billed = billed
+
+
+class OutputBudgetSpentError(BilledError):
     """The model took the request and spent the whole output budget thinking."""
+
+
+class NoCandidatesError(BilledError):
+    """The model answered with no candidate, as a blocked prompt is answered."""
+
+
+def billed_usage(data: dict) -> LLMResponse:
+    """The tokens a `generateContent` answer reports, with no text: what it was billed."""
+    usage = data.get("usageMetadata", {})
+    return LLMResponse(
+        text="",
+        input_tokens=usage.get("promptTokenCount", 0),
+        # Thinking is billed as output but reported in its own field.
+        output_tokens=usage.get("candidatesTokenCount", 0) + usage.get("thoughtsTokenCount", 0),
+    )
 
 
 class GeminiClient:
@@ -107,9 +135,12 @@ class GeminiClient:
         response.raise_for_status()
 
         data = response.json()
+        billed = billed_usage(data)
         if not data.get("candidates"):
             block_reason = (data.get("promptFeedback") or {}).get("blockReason", "unknown")
-            raise RuntimeError(f"{self.model} returned no candidates (blockReason {block_reason})")
+            raise NoCandidatesError(
+                f"{self.model} returned no candidates (blockReason {block_reason})", billed
+            )
         candidate = data["candidates"][0]
         # A thinking model can spend the whole output budget before writing a
         # word, and then `content` carries no `parts` at all. Reading through it
@@ -119,12 +150,7 @@ class GeminiClient:
             raise OutputBudgetSpentError(
                 f"{self.model} returned no output "
                 f"(finishReason {candidate.get('finishReason', 'unknown')}) — "
-                "raise max_tokens if this is a reasoning model"
+                "raise max_tokens if this is a reasoning model",
+                billed,
             )
-        usage = data.get("usageMetadata", {})
-        return LLMResponse(
-            text="".join(part.get("text", "") for part in parts),
-            input_tokens=usage.get("promptTokenCount", 0),
-            # Thinking is billed as output but reported in its own field.
-            output_tokens=usage.get("candidatesTokenCount", 0) + usage.get("thoughtsTokenCount", 0),
-        )
+        return replace(billed, text="".join(part.get("text", "") for part in parts))

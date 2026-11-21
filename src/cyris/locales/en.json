@@ -1,4 +1,7 @@
 {
+  "alert.ai_ledger_headline": "AI spend ledger unreachable",
+  "alert.ai_ledger_unread_body": "This run could not read its tenant's monthly AI allowance, so it is not held to it and may spend past it. Until the ledger answers, no run is. {$error}",
+  "alert.ai_ledger_unrecorded_body": "This run's AI spend was not added to its tenant's month, so the month's total is short by it; the run's own summary keeps the amount as ai_spend. {$error}",
   "alert.could_not_start_headline": "Digest run could not start",
   "alert.error_withheld_body": "The error has been sent to the service's operator.",
   "alert.fetched_nothing_body": "Failed sources: {$sources}",
@@ -74,6 +77,8 @@
   "interest.no_store": "The interest map reads votes and holds from the SQL store: this deployment's [store] backend is neither \"sqlite\" nor \"d1\".",
   "interest.tags": "Tags",
   "issue.all_articles": "All articles",
+  "issue.ai_off": "AI is turned off for this site, so this issue lists articles as they came in, without scores or summaries.",
+  "issue.ai_paused": "This month's AI allowance is used up, so this issue lists articles as they came in, without scores or summaries. AI returns when the month turns, at midnight UTC.",
   "issue.degraded": "Some or all of this issue is unscored or plain excerpts: the configured LLM could not be used for every step this run. Check the provider and its key on Settings.",
   "issue.digest": "Digest",
   "issue.empty": "Nothing is in this issue: the run kept no article.",
