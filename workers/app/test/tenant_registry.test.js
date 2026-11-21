@@ -17,6 +17,7 @@ import {
 import { REGISTRY_NAME, REGISTRY_SCHEMA, TenantRegistry, tenantRegistry } from "../src/tenant_registry.js";
 import { TENANT_STATUSES } from "../src/tenant_status.js";
 import { DEFAULT_DAILY_RUN_CAP } from "../src/run_queue.js";
+import { DEFAULT_MONTHLY_AI_BUDGET_USD } from "../src/ai_budget.js";
 import { SCHEMA_SQL, alarmStorage, drainAlarms, namespace, registryNamespace, registryObject, sqlStorage } from "./sql_storage.js";
 
 const AT = new Date("2026-11-18T06:00:00Z");
@@ -277,7 +278,16 @@ describe("the registry's schema on a registry an earlier version created", () =>
 
     const created = [...REGISTRY_SCHEMA.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1]).sort();
     expect(made.tables).toEqual(created);
-    expect(made.tenants).toEqual(["id", "status", "digest_times", "created_at", "updated_at", "timezone", "daily_run_cap"]);
+    expect(made.tenants).toEqual([
+      "id",
+      "status",
+      "digest_times",
+      "created_at",
+      "updated_at",
+      "timezone",
+      "daily_run_cap",
+      "monthly_ai_budget_usd",
+    ]);
     expect(registry.tenants().map(({ id, status, daily_run_cap }) => [id, status, daily_run_cap])).toEqual([
       ["alpha", "active", DEFAULT_DAILY_RUN_CAP],
       ["bravo", "paused", DEFAULT_DAILY_RUN_CAP],
@@ -329,6 +339,7 @@ describe("the operator's registry", () => {
         digest_times: null,
         timezone: null,
         daily_run_cap: DEFAULT_DAILY_RUN_CAP,
+        monthly_ai_budget_usd: DEFAULT_MONTHLY_AI_BUDGET_USD,
         created_at: STAMP,
         updated_at: STAMP,
       },

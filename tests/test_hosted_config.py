@@ -159,6 +159,7 @@ def test_the_hosted_worker_exports_exactly_the_classes_it_binds() -> None:
     assert names == _classes(_toml("wrangler.hosted.toml")) | {
         "TenantDbGateway",
         "OperatorAlertGateway",
+        "SpendGateway",
     }
 
 

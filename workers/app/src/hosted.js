@@ -9,8 +9,9 @@
 // into its own buffer (tenant_buffer.js), then its run, queued in the registry, when one is due
 // by the registry's schedule (run_queue.js). Its email() handler takes each tenant's newsletters
 // at the tenant's random address into the tenant's own object (hosted_inbound.js). A run's alerts
-// reach the operator through OperatorAlertGateway (hosted_alerts.js). The tenant list is the
-// operator's registry (tenant_registry.js).
+// reach the operator through OperatorAlertGateway (hosted_alerts.js), and its AI spend reaches the
+// registry through SpendGateway (hosted_spend.js). The tenant list is the operator's registry
+// (tenant_registry.js).
 import { env } from "cloudflare:workers";
 import HOSTED_SCHEMA_SQL from "../../../src/cyris/adapters/store/hosted_schema.sql";
 import SCHEMA_SQL from "../../../src/cyris/adapters/store/schema.sql";
@@ -32,6 +33,7 @@ import { ACTIVE } from "./tenant_status.js";
 
 export { OperatorAlertGateway } from "./hosted_alerts.js";
 export { TenantContainer } from "./hosted_container.js";
+export { SpendGateway } from "./hosted_spend.js";
 export { TenantDb, TenantDbGateway } from "./tenant_db.js";
 export { TenantRegistry } from "./tenant_registry.js";
 
@@ -127,7 +129,10 @@ export default {
       report: async (tenant) => ({
         ...(await tenantReport({ db: tenantDb(env, tenant), tenant })),
         runs: await tenantRegistry(env).runs(tenant),
+        spend: await tenantRegistry(env).budget(tenant),
       }),
+      setBudget: (tenant, usd) => registry().setBudget(tenant, usd),
+      spend: (month) => registry().spend({ month }),
       query: (tenant, request) => answerQuery(tenantDb(env, tenant), request),
       queueRun: (tenant, issue) => tenantRegistry(env).queueRun(tenant, issue),
       poll: (tenant) => pollTenant(tenant),

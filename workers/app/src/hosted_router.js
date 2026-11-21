@@ -6,6 +6,7 @@
 // docs/decisions/0033-hosted-readers-sign-in-with-a-mailed-link.md. No workerd-only imports:
 // vitest runs this under Node.
 //
+//   GET  /hosted/spend[?month=YYYY-MM]                      every tenant's AI spend in a UTC month
 //   POST /hosted/tenants/<tenant>/register[?status=S]       register a tenant, or set its status
 //   POST /hosted/tenants/<tenant>/schedule?times=T&timezone=Z[&daily_run_cap=N]
 //                                                           the tenant's digest hours and run cap
@@ -13,6 +14,7 @@
 //   POST /hosted/tenants/<tenant>/run?period=P[&date=D]     queue one run of the tenant's digest
 //   POST /hosted/tenants/<tenant>/poll                      one poll of the tenant's RSS buffer
 //   GET  /hosted/tenants/<tenant>/report                    what the tenant's database holds
+//   POST /hosted/tenants/<tenant>/budget?usd=N              the tenant's monthly AI allowance
 //   POST /hosted/tenants/<tenant>/query                     one {sql, params} on its database
 //   GET  /hosted/tenants/<tenant>/address                   the tenant's newsletter address
 //   POST /hosted/tenants/<tenant>/rotate-address            a new address; every old one revoked
@@ -29,6 +31,7 @@
 import { LOGIN_PATHS, handleLogin } from "./hosted_login.js";
 import { PRIVATE_HEADERS, SITE_ROUTE, siteHeaders } from "./hosted_pages.js";
 import { clearedSessionCookie, crossSite, sessionToken, tokenHash } from "./hosted_session.js";
+import { MONTH } from "./ai_budget.js";
 import { RUN_PERIODS, accessRefusal, dayIn, refuseRunDate } from "./router.js";
 import { ACTIVE } from "./tenant_status.js";
 
@@ -48,6 +51,7 @@ const ACTIONS = [
   "rotate-address",
   "revoke-address",
   "newsletter-source",
+  "budget",
 ];
 const ROUTE = new RegExp(`^/hosted/tenants/([^/]+)/(${ACTIONS.join("|")})$`);
 const METHOD = {
@@ -66,10 +70,11 @@ const METHOD = {
   "rotate-address": "POST",
   "revoke-address": "POST",
   "newsletter-source": "POST",
+  budget: "POST",
 };
 // The POST routes the hosted cards added after the first hosted Worker, each of which changes a
 // tenant: its database, by any SQL (query); its schedule; its newsletter address and sources; who
-// may sign in to it (invite, revoke). They take no other site's request (`crossSite`). The
+// may sign in to it (invite, revoke); its AI allowance (budget). They take no other site's request (`crossSite`). The
 // routes the first hosted Worker had (register, seed, run, poll) do not check it yet: they are
 // item M1 of the deferred hardening card (ADR-0033).
 const SAME_SITE_ONLY = new Set([
@@ -80,6 +85,7 @@ const SAME_SITE_ONLY = new Set([
   "newsletter-source",
   "invite",
   "revoke",
+  "budget",
 ]);
 
 // What a run the registry would not queue is answered with: an issue already queued or running,
@@ -131,7 +137,8 @@ async function bodyEmail(request) {
 // `deps`: accessKeys, as router.js takes them; and per tenant, `register(tenant, status)`,
 // which answers `{tenant}` or `{refused}`, `tenant(tenant)`, its registry row or null,
 // `schedule(tenant, { times, timeZone, dailyRunCap })`, which answers `{tenant, settings}` or
-// `{refused}`, `seed(tenant)`, `report(tenant)`, `queueRun(tenant, { period, date, origin })`,
+// `{refused}`, `setBudget(tenant, usd)`, which answers `{tenant}` or `{refused}`, `spend(month)`,
+// every tenant's month (tenant_registry.js `spend`), `seed(tenant)`, `report(tenant)`, `queueRun(tenant, { period, date, origin })`,
 // which answers `{queued}` or `{refused, code}`, `poll(tenant)`, which answers what the poll did
 // or `{error}`, `query(tenant, request)`, which answers the request's `{sql, params}` from that
 // tenant's object as its run's gateway does, `inboundAddress(tenant)`, `rotateAddress(tenant)`
@@ -151,6 +158,15 @@ export async function handleHostedRequest(request, env, deps) {
   // Every other path is the operator's: the Access JWT, and only it.
   const refusal = await accessRefusal(request, env, deps);
   if (refusal) return json({ error: "forbidden", detail: refusal }, 403);
+
+  // Every tenant's AI spend in one UTC month, this one unless named (ADR-0038): the one operator
+  // route that names no tenant, since the question is the whole deployment's.
+  if (url.pathname === "/hosted/spend") {
+    if (request.method !== "GET") return json({ error: "spend takes GET" }, 405);
+    const month = url.searchParams.get("month");
+    if (month !== null && !MONTH.test(month)) return json({ error: `month is YYYY-MM, not ${month}` }, 400);
+    return json(await deps.spend(month ?? undefined));
+  }
 
   const match = ROUTE.exec(url.pathname);
   if (!match) {
@@ -191,6 +207,11 @@ export async function handleHostedRequest(request, env, deps) {
       dailyRunCap: url.searchParams.get("daily_run_cap") ?? undefined,
     });
     return answer.refused ? json({ error: answer.refused }, 400) : json(answer);
+  }
+  // A paused tenant may be given an allowance, which its next run after resuming is held to.
+  if (action === "budget") {
+    const answer = await deps.setBudget(tenant, url.searchParams.get("usd"));
+    return answer.refused ? json({ error: answer.refused }, 400) : json(answer.tenant);
   }
   // A tenant's newsletter address, paused or not, since a paused tenant still takes mail. Only
   // the operator reads it here, behind Access; no run container can reach the registry.

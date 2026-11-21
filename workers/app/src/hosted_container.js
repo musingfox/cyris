@@ -5,6 +5,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { Lifecycle, NO_INSTANCE } from "./container.js";
 import { OPS_HOST, alertOperator, workerAlert } from "./hosted_alerts.js";
+import { SPEND_HOST } from "./hosted_spend.js";
 import { DB_HOST, TENANT } from "./tenant_db.js";
 import { tenantRegistry } from "./tenant_registry.js";
 import { ACTIVE } from "./tenant_status.js";
@@ -82,9 +83,10 @@ export class TenantContainer extends DurableObject {
     // so nothing a caller passes can point this container at another tenant's database.
     this.tenant = ctx.id.name;
     this.lifecycle = new Lifecycle(ctx, RUN_INACTIVITY_TIMEOUT_MS, {
-      // Both gateways answer only this tenant; registered before every start(). The second
-      // carries the run's alerts to the operator (hosted_alerts.js). A new start has reported
-      // nothing yet, so the last one's record goes first.
+      // Every gateway answers only this tenant; registered before every start(). The second
+      // carries the run's alerts to the operator (hosted_alerts.js), the third its AI allowance
+      // and spend to the registry (hosted_spend.js). A new start has reported nothing yet, so the
+      // last one's record goes first.
       intercept: async (run) => {
         await ctx.storage.delete(REPORTED);
         await ctx.storage.delete(TOLD);
@@ -93,6 +95,7 @@ export class TenantContainer extends DurableObject {
         const props = { tenant: this.tenant };
         await ctx.container.interceptOutboundHttp(DB_HOST, ctx.exports.TenantDbGateway({ props }));
         await ctx.container.interceptOutboundHttp(OPS_HOST, ctx.exports.OperatorAlertGateway({ props }));
+        await ctx.container.interceptOutboundHttp(SPEND_HOST, ctx.exports.SpendGateway({ props }));
       },
       startRetry: START_RETRY,
       // The run queue's slot is held until the registry hears the container stop (run_queue.js):
