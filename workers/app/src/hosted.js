@@ -48,7 +48,7 @@ async function copySchedule(tenant) {
 // logged and answers its error.
 async function pollTenant(tenant, call = (what) => what) {
   try {
-    const polled = await call(tenantDb(env, tenant).pollRss());
+    const polled = await call(tenantDb(env, tenant).pollRss({ ownHosts: [env[HOSTED_DOMAIN]].filter(Boolean) }));
     console.log("rss poll", { tenant, ...pollMeasure(polled) });
     return { tenant, ...polled };
   } catch (error) {
@@ -65,6 +65,7 @@ const pollMeasure = (polled) => ({
   fresh: polled.fresh,
   written: polled.written,
   failed_feeds: polled.failures.length,
+  skipped_feeds: polled.skipped ?? 0,
 });
 
 // The tick's own measurement, one log line for the operator to read beside the invocation's CPU

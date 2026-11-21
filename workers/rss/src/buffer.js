@@ -11,14 +11,61 @@ const FETCH_TIMEOUT_MS = 20000;
 // Substack rate-limits Cloudflare's egress; 10 at once drew HTTP 429s.
 const CONCURRENCY = 4;
 
-async function fetchFeed(feed) {
-  const response = await fetch(feed.url, {
-    headers: { "User-Agent": "cyris-rss/1.0 (+https://github.com/musingfox/cyris)" },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    cf: { cacheTtl: 0 },
-  });
+const request = (options = {}) => ({
+  headers: { "User-Agent": "cyris-rss/1.0 (+https://github.com/musingfox/cyris)" },
+  signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  cf: { cacheTtl: 0 },
+  ...options,
+});
+
+// `url`'s answer with each redirect followed by hand, up to `maxRedirects`, and every hop's URL,
+// the first included, held to `refuse(url)`, which answers why it may not be asked, or null.
+async function fetchHeld(url, { maxRedirects, refuse }) {
+  for (let hop = 0, at = url; ; hop++) {
+    const refused = refuse(at);
+    if (refused) throw new Error(`${hop ? "redirect to" : "URL"} ${at} refused: ${refused}`);
+    const response = await fetch(at, request({ redirect: "manual" }));
+    const location = response.headers.get("Location");
+    if (response.status < 300 || response.status > 399 || !location) return response;
+    await response.body?.cancel();
+    if (hop >= maxRedirects) throw new Error(`more than ${maxRedirects} redirects`);
+    at = new URL(location, at).href;
+  }
+}
+
+// The body as text, or an error once it passes `maxBytes`: a declared length past it is refused
+// unread, and any other body is read only until it passes.
+async function textWithin(response, maxBytes) {
+  const tooLarge = () => new Error(`feed over ${maxBytes} bytes`);
+  if (Number(response.headers.get("Content-Length")) > maxBytes) {
+    await response.body?.cancel();
+    throw tooLarge();
+  }
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let text = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return text + decoder.decode();
+    size += value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel().catch(() => {});
+      throw tooLarge();
+    }
+    text += decoder.decode(value, { stream: true });
+  }
+}
+
+// One feed's entries. With `held` (pollFeeds' option), its redirects are followed by hand and
+// held to its rules, and its body read only so far; without, the runtime follows redirects and
+// reads the whole body, as this Worker always has.
+async function fetchFeed(feed, held) {
+  const response = held ? await fetchHeld(feed.url, held) : await fetch(feed.url, request());
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return parseFeed(await response.text(), feed.name, feed.url);
+  const text = held ? await textWithin(response, held.maxBytes) : await response.text();
+  return parseFeed(text, feed.name, feed.url);
 }
 
 // One upsert per polled feed, so a feed that keeps failing outlives Workers Logs'
@@ -45,8 +92,10 @@ async function recordHealth(db, outcomes, now) {
 }
 
 // Polls `feeds` ({name, url} each) into `db`, which answers D1's prepare/bind/run/batch, and
-// says what it found. The tables are the caller's to have created.
-export async function pollFeeds(db, feeds) {
+// says what it found. The tables are the caller's to have created. `held` is the hosted poll's
+// (workers/app/src/tenant_buffer.js), whose feeds a tenant names: `{maxRedirects, maxBytes,
+// refuse(url)}`. This Worker's own poll passes none, so its feeds are fetched as they were.
+export async function pollFeeds(db, feeds, { held } = {}) {
   const fetchedAt = new Date().toISOString();
   const rows = [];
   const failures = [];
@@ -54,7 +103,7 @@ export async function pollFeeds(db, feeds) {
 
   for (let i = 0; i < feeds.length; i += CONCURRENCY) {
     const batch = feeds.slice(i, i + CONCURRENCY);
-    const results = await Promise.allSettled(batch.map(fetchFeed));
+    const results = await Promise.allSettled(batch.map((feed) => fetchFeed(feed, held)));
     results.forEach((result, index) => {
       const name = batch[index].name;
       if (result.status === "fulfilled") {

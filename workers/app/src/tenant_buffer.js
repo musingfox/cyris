@@ -10,6 +10,7 @@
 import HOSTED_SCHEMA_SQL from "../../../src/cyris/adapters/store/hosted_schema.sql";
 import { pollFeeds } from "../../rss/src/buffer.js";
 import { loadFeeds } from "../../rss/src/feeds.js";
+import { POLICY, urlRefusal } from "./hosted_settings_rules.js";
 
 // D1's prepare/bind/all/first/run/batch over a Durable Object's storage, which is what buffer.js
 // and feeds.js are written against. `changes` is the difference of two `total_changes()`
@@ -35,15 +36,29 @@ export function d1Handle(storage) {
   };
 }
 
+// What a tenant's feed is held to at every poll, as at its save (ADR-0040): a tenant names its
+// feeds, so each hop of each is checked before it is asked, redirects included, and no body is
+// read past feed_check.py's cap. `ownHosts` are the hosted Worker's own names.
+export const heldPoll = (ownHosts = []) => ({
+  maxRedirects: POLICY.poll.max_redirects,
+  maxBytes: POLICY.poll.max_feed_bytes,
+  refuse: (url) => urlRefusal(url, ownHosts)?.reason ?? null,
+});
+
 // One poll of the tenant's buffer, and what it did. The sources are read first, so a tenant that
 // was never seeded fails here and gets no table; then the hosted schema is applied, which gives a
-// tenant seeded before the buffer existed its `articles` table. `fetches` is the feed requests
-// this poll made, one per feed: the subrequests the object's invocation spends (a redirect a feed
-// answers with is one more, which nothing here can count).
-export async function pollTenantBuffer(storage) {
+// tenant seeded before the buffer existed its `articles` table. Past the policy's source cap, the
+// feeds after the first `max_sources` by name are skipped and named in the log: the cap is held
+// at the save, and a row the container wrote past it buys no more fetches. `fetches` is the feed
+// requests this poll made, one per feed polled: the subrequests the object's invocation spends
+// (a redirect followed is one more, which this does not count).
+export async function pollTenantBuffer(storage, { ownHosts = [] } = {}) {
   const db = d1Handle(storage);
-  const feeds = await loadFeeds({ DB: db });
+  const listed = await loadFeeds({ DB: db });
+  const feeds = listed.slice(0, POLICY.max_sources);
+  const skipped = listed.slice(POLICY.max_sources).map((feed) => feed.name);
+  if (skipped.length) console.warn("rss poll skipped feeds past the source cap", { cap: POLICY.max_sources, skipped });
   storage.sql.exec(HOSTED_SCHEMA_SQL);
-  const polled = await pollFeeds(db, feeds);
-  return { ...polled, fetches: feeds.length };
+  const polled = await pollFeeds(db, feeds, { held: heldPoll(ownHosts) });
+  return { ...polled, fetches: feeds.length, skipped: skipped.length };
 }

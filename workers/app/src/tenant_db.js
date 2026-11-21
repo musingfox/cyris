@@ -78,9 +78,10 @@ export class TenantDb extends DurableObject {
   }
 
   // One poll of the tenant's RSS feeds into its own buffer (tenant_buffer.js), which the hourly
-  // tick asks for: the feed requests are this object's invocation's, not the tick's.
-  pollRss() {
-    return pollTenantBuffer(this.ctx.storage);
+  // tick asks for: the feed requests are this object's invocation's, not the tick's. `ownHosts`,
+  // the hosted Worker's names, are hosts no feed of the tenant's may be fetched from.
+  pollRss({ ownHosts = [] } = {}) {
+    return pollTenantBuffer(this.ctx.storage, { ownHosts });
   }
 
   // One newsletter the hosted Worker's email() handler took at this tenant's address, into its own
