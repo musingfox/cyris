@@ -11,7 +11,15 @@
     "notify.email_from": ""
   },
   "sources": {
-    "alpha": ["Hacker News", "Ars Technica", "The Verge", "Simon Willison's Weblog"],
-    "bravo": ["Quanta Magazine", "Nautilus", "Aeon", "The Conversation"]
+    "alpha": [
+      "Hacker News", "Ars Technica", "The Verge", "Simon Willison's Weblog",
+      "BBC News", "The Guardian", "The New York Times", "NPR",
+      "Techmeme", "Bloomberg", "The Economist", "Financial Times"
+    ],
+    "bravo": [
+      "Quanta Magazine", "Nautilus", "Aeon", "The Conversation",
+      "中央社即時新聞 政治新聞", "中央社即時新聞 科技新聞", "自由時報", "公視新聞網",
+      "關鍵評論網", "iThome", "科技新報", "經濟日報"
+    ]
   }
 }
