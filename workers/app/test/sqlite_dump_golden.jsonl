@@ -1,0 +1,12 @@
+{"format":"cyris-sqlite-dump","version":1}
+{"table":"areas","sql":"CREATE TABLE areas (id INTEGER PRIMARY KEY, name TEXT NOT NULL, merged_into INTEGER REFERENCES areas(id))","columns":["id","name","merged_into"]}
+[1,"Old",2]
+[2,"New",null]
+{"table":"audit","sql":"CREATE TABLE audit (id INTEGER)","columns":["id"]}
+{"table":"odd \"name\"","sql":"CREATE TABLE \"odd \"\"name\"\"\" (i INTEGER, r REAL, t TEXT, b BLOB, n)","columns":["i","r","t","b","n"]}
+[1099511627776,0.25,"line one\nline \"two\" 一",{"blob":"AP8Q"},{"real":7}]
+[null,{"real":3},"",{"blob":""},42]
+{"schema":"index","name":"idx_areas_name","table":"areas","sql":"CREATE INDEX idx_areas_name ON areas(name)"}
+{"schema":"trigger","name":"areas_audit","table":"areas","sql":"CREATE TRIGGER areas_audit AFTER INSERT ON areas BEGIN INSERT INTO audit VALUES (new.id); END"}
+{"schema":"view","name":"area_names","table":"area_names","sql":"CREATE VIEW area_names AS SELECT name FROM areas"}
+{"end":{"tables":3,"rows":4}}

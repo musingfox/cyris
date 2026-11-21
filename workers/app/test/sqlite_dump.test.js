@@ -1,5 +1,6 @@
 // The dump the daily backup exports of each hosted database (sqlite_dump.js), over real SQLite: a
 // seeded tenant's every table, exported and loaded into an empty object, comes back row for row.
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { DUMP_FORMAT, DUMP_VERSION, PAGE_ROWS } from "../src/sqlite_dump.js";
 import { isTenantTable, quotedName } from "../src/tenant_db.js";
@@ -179,4 +180,29 @@ describe("a hosted database's dump", () => {
 
     expect(target.db.tables()).toEqual({});
   });
+
+  it("of the golden database is the golden file scripts/backup_to_sqlite.py is tested on", async () => {
+    const { db } = tenantDb();
+    for (const statement of GOLDEN_SQL) db.query(statement);
+
+    const golden = readFileSync(new URL("./sqlite_dump_golden.jsonl", import.meta.url), "utf8");
+
+    expect(await gunzip(await db.exportDump())).toBe(golden);
+  });
 });
+
+// The golden database: a value of each kind SQLite stores, a quoted name, a foreign key named
+// before its row, an index, a trigger and a view. tests/test_backup_to_sqlite.py loads its dump.
+const GOLDEN_SQL = [
+  "CREATE TABLE areas (id INTEGER PRIMARY KEY, name TEXT NOT NULL, merged_into INTEGER REFERENCES areas(id))",
+  "INSERT INTO areas VALUES (2, 'New', NULL)",
+  "INSERT INTO areas VALUES (1, 'Old', 2)",
+  'CREATE TABLE "odd ""name""" (i INTEGER, r REAL, t TEXT, b BLOB, n)',
+  `INSERT INTO "odd ""name""" VALUES (1099511627776, 0.25, 'line one
+line "two" 一', X'00FF10', CAST(7 AS REAL))`,
+  'INSERT INTO "odd ""name""" VALUES (NULL, 3.0, \'\', X\'\', 42)',
+  "CREATE INDEX idx_areas_name ON areas(name)",
+  "CREATE TABLE audit (id INTEGER)",
+  "CREATE TRIGGER areas_audit AFTER INSERT ON areas BEGIN INSERT INTO audit VALUES (new.id); END",
+  "CREATE VIEW area_names AS SELECT name FROM areas",
+];
