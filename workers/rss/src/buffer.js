@@ -18,7 +18,7 @@ async function fetchFeed(feed) {
     cf: { cacheTtl: 0 },
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return parseFeed(await response.text(), feed.name);
+  return parseFeed(await response.text(), feed.name, feed.url);
 }
 
 // One upsert per polled feed, so a feed that keeps failing outlives Workers Logs'

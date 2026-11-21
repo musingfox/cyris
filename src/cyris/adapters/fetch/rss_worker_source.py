@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 
 import httpx
 
+from cyris.adapters.fetch.email_parser import is_web_url
 from cyris.adapters.fetch.html_text import plain_text
 from cyris.adapters.store.d1 import D1Queryable
 from cyris.domain.models import Article, Lane, SourceConfig
@@ -56,10 +57,16 @@ def _worker_bound(value: datetime) -> str:
 def _articles_from_rows(rows: list[dict], sources: dict[str, SourceConfig]) -> list[Article]:
     """Map the Worker's rows onto Articles, skipping a malformed row.
 
+    A row whose URL is no http(s) address is skipped too: the buffer takes none now, but one
+    written before it refused them may still be in its window.
+
     Blocking: `fetch_articles` runs it in a worker thread.
     """
     articles = []
     for row in rows:
+        if not is_web_url(str(row.get("url", ""))):
+            logger.warning("Skipping a row whose URL is no http(s) address: %.80s", row.get("url"))
+            continue
         source = sources.get(row.get("source_name", ""))
         try:
             articles.append(

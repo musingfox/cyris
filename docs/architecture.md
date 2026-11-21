@@ -283,6 +283,12 @@ stays on publish time. **There is no ack**, so a crashed digest simply reads the
 Each poll also upserts every polled feed's outcome into `feed_health` (§4), after the articles and
 never at their expense: a feed that keeps failing used to be a `console.warn` per hour, gone with
 Workers Logs after 7 days, and on 2026-09-28 one had stored no article ever behind an hourly HTTP 503.
+An entry is buffered only when its link is an http(s) address once a relative link is resolved
+against the feed's own URL (`isWebUrl` in `workers/rss/src/parse.js`): a feed's link is its
+publisher's to write, and a `javascript:` or `data:` one would be a live link on the raw page.
+`RssSource` takes the same rule (`is_web_url` in `adapters/fetch/email_parser.py`), both
+buffered readers skip any row written before it, and the raw page puts no `href` on a stored URL
+that is not http(s), a synthetic `newsletter:` one included.
 
 One reader outside the run reads this edge: the onboarding wizard's vote cards (§6). It asks the
 Worker for a `POST /poll` out of the cron, so the feeds a reader picked a moment ago are in the buffer,

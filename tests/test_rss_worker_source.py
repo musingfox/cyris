@@ -169,6 +169,20 @@ async def test_malformed_row_is_skipped_not_fatal():
 
 @respx.mock
 @pytest.mark.asyncio
+async def test_a_buffered_row_whose_url_is_no_http_address_is_skipped():
+    """The buffer takes none now; a row it took before still in the window is no article."""
+    rows = [{**ROW, "url": url} for url in ("javascript:alert(1)", "data:text/html,x", "/a/b")]
+    respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=[*rows, ROW]))
+
+    articles = await CloudflareRssSource(WORKER, "tok").fetch_articles(
+        after=AFTER, before=BEFORE, sources={}
+    )
+
+    assert [a.url for a in articles] == ["https://a.test/1"]
+
+
+@respx.mock
+@pytest.mark.asyncio
 async def test_a_read_that_fills_the_ceiling_is_logged(monkeypatch, caplog):
     """A full read means the earliest-buffered rows were left in the buffer, never stored."""
     monkeypatch.setattr("cyris.adapters.fetch.rss_worker_source.WORKER_ROW_CEILING", 2)

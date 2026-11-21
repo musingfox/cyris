@@ -5,7 +5,7 @@ from contextlib import suppress
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from html.parser import HTMLParser
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlsplit, urlunparse
 
 from pydantic import BaseModel
 
@@ -20,6 +20,20 @@ from cyris.adapters.fetch.keywords import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def is_web_url(url: str) -> bool:
+    """Whether `url` is an http(s) address with a host: the only article link a page may carry.
+
+    A feed entry's link is the publisher's to write, and `javascript:` or `data:` would run on
+    the page it is linked from; the RSS sources take no entry whose link is anything else, as
+    the Worker's buffer (`isWebUrl`, workers/rss/src/parse.js) takes none.
+    """
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return False
+    return parts.scheme.lower() in ("http", "https") and bool(parts.netloc)
 
 
 def strip_tracking_params(url: str, extra_params: frozenset[str] | None = None) -> str:

@@ -6,6 +6,7 @@ import pytest
 
 from cyris.adapters.fetch.email_parser import (
     is_content_url,
+    is_web_url,
     parse_newsletter,
     strip_tracking_params,
     unwrap_tracking_redirect,
@@ -384,3 +385,21 @@ def test_click_wrapper_host_is_rejected_and_never_a_view_url() -> None:
     assert not is_view_url_host("us1.list-manage.com")
     assert is_view_url_host("mailchi.mp")
     assert is_view_url_host("us7.campaign-archive3.com")
+
+
+@pytest.mark.parametrize(
+    ("url", "web"),
+    [
+        ("https://a.test/1", True),
+        ("HTTP://a.test/1", True),
+        ("javascript:alert(1)", False),
+        ("data:text/html,x", False),
+        ("newsletter:42", False),
+        ("https:", False),
+        ("/relative", False),
+        ("http://[x/", False),
+        ("", False),
+    ],
+)
+def test_only_an_http_address_with_a_host_is_a_web_url(url: str, web: bool) -> None:
+    assert is_web_url(url) is web

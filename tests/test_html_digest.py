@@ -1404,6 +1404,23 @@ def test_write_raw_groups_by_source_and_escapes(tmp_path):
     assert 'href="2026-08-20-morning.html"' in html
 
 
+def test_the_raw_page_links_only_an_http_address(tmp_path):
+    """A stored URL of any other scheme is shown as its title with no href, never as a link."""
+    writer = HtmlDigestWriter(tmp_path)
+    articles = [
+        _stored("Script", "Src").model_copy(update={"url": "javascript:alert(document.cookie)"}),
+        _stored("Letter", "Src").model_copy(update={"url": "newsletter:42"}),
+        _stored("Web", "Src").model_copy(update={"url": "https://a.test/web"}),
+    ]
+
+    html = writer.render_raw("2026-08-20", "morning", articles, "en")
+
+    assert 'href="javascript:' not in html
+    assert 'href="newsletter:42"' not in html
+    assert 'href="https://a.test/web"' in html
+    assert '<a target="_blank" rel="noopener" lang="">Script</a>' in html
+
+
 def test_index_skips_raw_pages(tmp_path):
     """A raw companion is an entry on its issue's row, not an issue of its own."""
     writer = HtmlDigestWriter(tmp_path)
