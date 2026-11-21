@@ -23,7 +23,8 @@ compatibility_flags = ["durable_object_io_tasks_prevent_eviction"]
 
 # workers.dev only, as a clone of wrangler.toml. The operator's routes check the Access
 # JWT themselves (ADR-0015), so the Access application over /hosted/* is what lets the
-# operator through; a tenant's pages and the sign-in take a tenant session instead
+# operator through, and of those only the identities CYRIS_HOSTED_OPERATORS names, a secret
+# hosted.sh sets (ADR-0037); a tenant's pages and the sign-in take a tenant session instead
 # (ADR-0033). No Preview URLs: each would be another public hostname.
 workers_dev = true
 preview_urls = false

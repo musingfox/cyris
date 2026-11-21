@@ -17,11 +17,13 @@ const AUD = "AUD-HOSTED";
 const { privateKey, publicKey } = await generateKeyPair("RS256");
 const JWK = { ...(await exportJWK(publicKey)), kid: "k1", alg: "RS256", use: "sig" };
 const ACCESS_KEYS = { keySet: createLocalJWKSet({ keys: [JWK] }), issuer: `https://${TEAM}` };
-const ENV = { CYRIS_ACCESS_TEAM_DOMAIN: TEAM, CYRIS_ACCESS_AUD: AUD };
+// The service token the operator signs in with: its Client ID, which Access signs in as `common_name`.
+const OPERATOR = "operator-token.access";
+const ENV = { CYRIS_ACCESS_TEAM_DOMAIN: TEAM, CYRIS_ACCESS_AUD: AUD, CYRIS_HOSTED_OPERATORS: OPERATOR };
 const ORIGIN = "https://cyris-hosted.example.workers.dev";
 
 const accessJwt = () =>
-  new SignJWT({})
+  new SignJWT({ common_name: OPERATOR })
     .setProtectedHeader({ alg: "RS256", kid: "k1" })
     .setIssuer(`https://${TEAM}`)
     .setAudience(AUD)

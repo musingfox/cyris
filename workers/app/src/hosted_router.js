@@ -1,6 +1,7 @@
 // The hosted Worker's doors. A tenant's site and the sign-in take a tenant session and never an
 // Access JWT; every other path, the operator's routes above all, takes the Access JWT alone, by
-// router.js's own check (ADR-0015), and never reads a session. So no tenant session opens an
+// router.js's own check (ADR-0015), of an identity `CYRIS_HOSTED_OPERATORS` names (ADR-0037), and
+// never reads a session. So no tenant session opens an
 // operator route, whatever Access covers, and a request with neither credential learns nothing,
 // not even which tenants exist. Why the two:
 // docs/decisions/0033-hosted-readers-sign-in-with-a-mailed-link.md. No workerd-only imports:
@@ -27,6 +28,7 @@
 //   /login, /login/confirm, /logout                         the sign-in (hosted_login.js)
 
 import { LOGIN_PATHS, handleLogin } from "./hosted_login.js";
+import { admitOperator, unsetOperators } from "./hosted_operators.js";
 import { PRIVATE_HEADERS, SITE_ROUTE, siteHeaders } from "./hosted_pages.js";
 import { clearedSessionCookie, crossSite, sessionToken, tokenHash } from "./hosted_session.js";
 import { RUN_PERIODS, accessRefusal, dayIn, refuseRunDate } from "./router.js";
@@ -148,8 +150,10 @@ export async function handleHostedRequest(request, env, deps) {
   if (site) return siteRequest(request, site[1], site[2] ?? "", deps);
   if (LOGIN_PATHS.has(url.pathname)) return handleLogin(request, deps.login);
 
-  // Every other path is the operator's: the Access JWT, and only it.
-  const refusal = await accessRefusal(request, env, deps);
+  // Every other path is the operator's: the Access JWT, and only it, of an identity the operator
+  // list names (hosted_operators.js). Access lets in whoever its application admits; a reader put
+  // there by mistake would otherwise hold the operator's every route.
+  const refusal = unsetOperators(env) ?? (await accessRefusal(request, env, deps, admitOperator(env)));
   if (refusal) return json({ error: "forbidden", detail: refusal }, 403);
 
   const match = ROUTE.exec(url.pathname);

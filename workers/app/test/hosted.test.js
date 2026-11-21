@@ -832,10 +832,12 @@ const AUD = "AUD-HOSTED";
 const { privateKey, publicKey } = await generateKeyPair("RS256");
 const JWK = { ...(await exportJWK(publicKey)), kid: "k1", alg: "RS256", use: "sig" };
 const ACCESS_KEYS = { keySet: createLocalJWKSet({ keys: [JWK] }), issuer: `https://${TEAM}` };
-const ENV = { CYRIS_ACCESS_TEAM_DOMAIN: TEAM, CYRIS_ACCESS_AUD: AUD };
+// The service token the operator signs in with: its Client ID, which Access signs in as `common_name`.
+const OPERATOR = "operator-token.access";
+const ENV = { CYRIS_ACCESS_TEAM_DOMAIN: TEAM, CYRIS_ACCESS_AUD: AUD, CYRIS_HOSTED_OPERATORS: OPERATOR };
 
-const accessJwt = () =>
-  new SignJWT({})
+const accessJwt = (claims = { common_name: OPERATOR }) =>
+  new SignJWT(claims)
     .setProtectedHeader({ alg: "RS256", kid: "k1" })
     .setIssuer(`https://${TEAM}`)
     .setAudience(AUD)
@@ -843,8 +845,8 @@ const accessJwt = () =>
     .setExpirationTime(Math.floor(Date.now() / 1000) + 3600)
     .sign(privateKey);
 
-async function operator(method, path, { signedIn = true } = {}) {
-  const headers = signedIn ? { "Cf-Access-Jwt-Assertion": await accessJwt() } : {};
+async function operator(method, path, { signedIn = true, claims } = {}) {
+  const headers = signedIn ? { "Cf-Access-Jwt-Assertion": await accessJwt(claims) } : {};
   return new Request(`https://cyris-hosted.example.workers.dev${path}`, { method, headers });
 }
 
@@ -900,6 +902,55 @@ describe("the hosted Worker's operator routes", () => {
 
     expect(response.status).toBe(403);
     expect(deps.calls).toEqual([]);
+  });
+
+  it("refuse a valid Access sign-in whose identity the operator list does not name, before naming any tenant", async () => {
+    const env = { ...ENV, CYRIS_HOSTED_OPERATORS: `${OPERATOR}, Owner@Example.com` };
+    for (const claims of [
+      // A reader added to the Access application by mistake, and another service token.
+      { email: "reader@example.com" },
+      { common_name: "another-token.access" },
+      // An entry with an @ names an email, never a service token, and the other way round.
+      { common_name: "owner@example.com" },
+      { email: OPERATOR },
+      {},
+    ]) {
+      for (const [method, path] of [
+        ["POST", "/hosted/tenants/alpha/register?status=paused"],
+        ["POST", "/hosted/tenants/alpha/seed"],
+        ["POST", "/hosted/tenants/alpha/run?period=morning"],
+        ["POST", "/hosted/tenants/alpha/query"],
+        ["GET", "/hosted/tenants/alpha/report"],
+        ["GET", "/hosted/tenants/alpha/page"],
+      ]) {
+        const deps = hostedDeps();
+        const response = await handleHostedRequest(await operator(method, path, { claims }), env, deps);
+        expect(response.status, `${JSON.stringify(claims)} ${path}`).toBe(403);
+        expect((await response.json()).detail).toMatch(/not one the hosted Worker's operators list names/);
+        expect(deps.calls).toEqual([]);
+      }
+    }
+  });
+
+  it("admit the service token and the operator's email the list names, the email in any case", async () => {
+    const env = { ...ENV, CYRIS_HOSTED_OPERATORS: ` ${OPERATOR} ,Owner@Example.com,` };
+    for (const claims of [{ common_name: OPERATOR }, { email: "owner@example.com" }, { email: "OWNER@example.COM" }]) {
+      const deps = hostedDeps();
+      const response = await handleHostedRequest(await operator("GET", "/hosted/tenants/alpha/report", { claims }), env, deps);
+      expect(response.status, JSON.stringify(claims)).toBe(200);
+      expect(deps.calls).toEqual([["report", "alpha"]]);
+    }
+  });
+
+  it("refuse every operator route on a Worker that names no operator, whoever Access signed in", async () => {
+    for (const operators of [undefined, "", " , "]) {
+      const deps = hostedDeps();
+      const env = { ...ENV, CYRIS_HOSTED_OPERATORS: operators };
+      const response = await handleHostedRequest(await operator("GET", "/hosted/tenants/alpha/report"), env, deps);
+      expect(response.status).toBe(403);
+      expect((await response.json()).detail).toBe("The Worker has no CYRIS_HOSTED_OPERATORS set, so no operator can be admitted.");
+      expect(deps.calls).toEqual([]);
+    }
   });
 
   it("seed, report and queue a run for a named tenant, dated today in its zone when no date is named", async () => {

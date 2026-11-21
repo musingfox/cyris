@@ -183,6 +183,10 @@ case "${1:-}" in
     confirm_account "set the secrets of"
     ask TEAM_DOMAIN "CYRIS_ACCESS_TEAM_DOMAIN, the Access team domain without a scheme (yourteam.cloudflareaccess.com)"
     ask AUD "CYRIS_ACCESS_AUD, the Application Audience (AUD) tag of the cyris-hosted Access application"
+    # Who the operator routes admit, of whoever Access signs in (ADR-0037): the service token's
+    # Client ID, which Access signs in as its common_name, and an operator's Access email if one
+    # signs in with a browser. Not a secret; set as one so wrangler.hosted.toml names no one.
+    ask OPERATORS "CYRIS_HOSTED_OPERATORS, comma separated: the service token's Client ID (xxxx.access), and your Access email if you sign in with a browser"
     ask ANTHROPIC "ANTHROPIC_API_KEY for the tenants' runs" secret
     # Where every tenant's failed run is reported, with its tenant id (ADR-0035). Its URL is its
     # credential, so it is read as a secret, and only the Worker's alert gateway holds it.
@@ -191,6 +195,7 @@ case "${1:-}" in
     ask MAIL_FROM "CYRIS_HOSTED_MAIL_FROM, the sign-in mail's sender, on a domain onboarded to Email Sending (cyris@yourdomain.com)"
     put_secret CYRIS_ACCESS_TEAM_DOMAIN "$TEAM_DOMAIN"
     put_secret CYRIS_ACCESS_AUD "$AUD"
+    put_secret CYRIS_HOSTED_OPERATORS "$OPERATORS"
     put_secret ANTHROPIC_API_KEY "$ANTHROPIC"
     put_secret CYRIS_HOSTED_OPERATOR_WEBHOOK "$OPERATOR_WEBHOOK"
     # Not a secret either; set the same way, so wrangler.hosted.toml names no deployment's domain.

@@ -28,6 +28,8 @@ const DOMAIN = "cyris-hosted.example.workers.dev";
 const ORIGIN = `https://${DOMAIN}`;
 const SENDER = "cyris@mail.example";
 const AUD = "AUD-LOGIN";
+// The service token the operator signs in with: its Client ID, which Access signs in as `common_name`.
+const OPERATOR = "operator-token.access";
 const HTML = "text/html; charset=utf-8";
 const AT = new Date("2026-11-20T06:00:00Z");
 
@@ -75,6 +77,7 @@ beforeEach(async () => {
   Object.assign(env, bound, {
     CYRIS_ACCESS_TEAM_DOMAIN: `${crypto.randomUUID()}.team.example`,
     CYRIS_ACCESS_AUD: AUD,
+    CYRIS_HOSTED_OPERATORS: OPERATOR,
     CYRIS_STORE_HOSTED_DOMAIN: DOMAIN,
     CYRIS_HOSTED_MAIL_FROM: SENDER,
   });
@@ -115,7 +118,7 @@ afterEach(() => {
 });
 
 const accessJwt = () =>
-  new SignJWT({})
+  new SignJWT({ common_name: OPERATOR })
     .setProtectedHeader({ alg: "RS256", kid: "k1" })
     .setIssuer(`https://${env.CYRIS_ACCESS_TEAM_DOMAIN}`)
     .setAudience(AUD)

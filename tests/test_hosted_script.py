@@ -181,6 +181,7 @@ def test_deploy_ships_the_hosted_config_without_dotenv_and_keeps_its_url(repo: P
                 "yes",
                 "team.cloudflareaccess.com",
                 "AUD-1",
+                "client-id.access",
                 "sk-ant-SECRET",
                 OPERATOR_HOOK,
                 "cyris@mail.example",
@@ -230,6 +231,7 @@ def test_each_secret_reaches_wrangler_on_stdin_and_never_in_argv(repo: Path) -> 
         "yes",
         "team.cloudflareaccess.com",
         "AUD-1",
+        "client-id.access,owner@example.com",
         "sk-ant-SECRET",
         OPERATOR_HOOK,
         "cyris@mail.example",
@@ -242,6 +244,8 @@ def test_each_secret_reaches_wrangler_on_stdin_and_never_in_argv(repo: Path) -> 
     assert [(c["args"][4], c["stdin"]) for c in puts] == [
         ("CYRIS_ACCESS_TEAM_DOMAIN", "team.cloudflareaccess.com"),
         ("CYRIS_ACCESS_AUD", "AUD-1"),
+        # Who the operator routes admit of whoever Access signs in (ADR-0037).
+        ("CYRIS_HOSTED_OPERATORS", "client-id.access,owner@example.com"),
         ("ANTHROPIC_API_KEY", "sk-ant-SECRET"),
         # Where every tenant's failed run is reported (ADR-0035).
         ("CYRIS_HOSTED_OPERATOR_WEBHOOK", OPERATOR_HOOK),
@@ -261,7 +265,15 @@ def test_each_secret_reaches_wrangler_on_stdin_and_never_in_argv(repo: Path) -> 
 
 def test_secrets_refuses_an_operator_webhook_that_is_not_https(repo: Path) -> None:
     (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
-    typed = [ACCOUNT, "yes", "team.cloudflareaccess.com", "AUD-1", "sk-ant-SECRET", "hook"]
+    typed = [
+        ACCOUNT,
+        "yes",
+        "team.cloudflareaccess.com",
+        "AUD-1",
+        "client-id.access",
+        "sk-ant-SECRET",
+        "hook",
+    ]
 
     done, calls = _run(repo, ["secrets"], typed)
 
