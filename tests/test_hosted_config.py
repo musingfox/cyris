@@ -156,6 +156,20 @@ def test_the_b2_settings_are_set_by_the_runbook_and_never_handed_to_a_container(
         assert f"put_secret {name} " in script
 
 
+def test_the_b2_key_the_runbook_asks_for_only_writes_as_the_worker_only_puts() -> None:
+    """The registry's export holds the vote key and live session hashes (ADR-0041), so the B2
+    key in the Worker's secrets is writeFiles only: enough while the Worker's one B2 request is
+    a single-part PUT, with no listing, read or multipart upload."""
+    sigv4 = _js("s3_sigv4.js")
+    runbook = (ROOT / "docs/hosted-tenants.md").read_text(encoding="utf-8")
+    [step] = re.findall(r"^3\. Add an application key.*?(?=^### )", runbook, re.M | re.S)
+
+    assert set(re.findall(r'method: "(\w+)"', sigv4)) == {"PUT"}
+    assert "uploads" not in sigv4 + _js("hosted_backup.js")
+    assert "`writeFiles`" in step
+    assert "Read and Write" not in step
+
+
 def test_the_hosted_file_runs_the_same_image_on_the_same_runtime() -> None:
     default, hosted = _toml("wrangler.toml"), _toml("wrangler.hosted.toml")
     [container] = hosted["containers"]
