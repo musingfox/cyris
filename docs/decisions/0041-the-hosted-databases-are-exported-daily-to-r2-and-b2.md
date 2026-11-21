@@ -137,9 +137,10 @@ the operator gets one alert. Only one tick a day is that hour, so it is one aler
 A day whose registry export failed on its own also gets it, after that failure's own alert. An
 R2 binding that is missing is not checked, since the backup alerts that itself. A tenant list
 that could not be read still exports the registry last, so that day is not flagged as missing;
-its own alert says the tenants could not be listed. The registry going last costs nothing in
-consistency: it is its own `blockConcurrencyWhile` dump either way, and a tenant registered
-during the backup is in the registry's export with no export of its own until the next day.
+its own alert says no tenant was exported, which holds whether or not the registry's export
+lands. The registry going last costs nothing in consistency: it is its own
+`blockConcurrencyWhile` dump either way, and a tenant registered during the backup is in the
+registry's export with no export of its own until the next day.
 
 ### Where the copies go
 

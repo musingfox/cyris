@@ -258,6 +258,26 @@ describe("the hosted Worker's daily backup", () => {
     );
   });
 
+  it("says no tenant was exported when the list cannot be read, which holds when the registry's export fails too", async () => {
+    start();
+    await tenant(bound, "alpha");
+    const registry = bound.REGISTRY.getByName(REGISTRY_NAME);
+    registry.tenants = async () => {
+      throw new Error("registry overloaded");
+    };
+    registry.exportDump = async () => {
+      throw new Error("registry overloaded");
+    };
+
+    const done = await backupAll(env, { now: BACKUP_TIME });
+
+    expect(done).toMatchObject({ exports: 0, failed: [{ name: REGISTRY_EXPORT, copy: "list" }, { name: REGISTRY_EXPORT, copy: "export" }] });
+    expect(net.sent.alerts.map((alert) => alert.split("\n")[0])).toEqual([
+      `[${REGISTRY_EXPORT}] Daily backup could not list the tenants: no tenant was exported`,
+      `[${REGISTRY_EXPORT}] ${WORDING.backup_export_failed}`,
+    ]);
+  });
+
   it("still writes R2 without B2's settings, and tells the operator once that there is no off-Cloudflare copy", async () => {
     for (const unset of [[B2_SETTINGS.applicationKey], Object.values(B2_SETTINGS)]) {
       start();

@@ -4,7 +4,7 @@
   "lost": "Digest run lost: no stop report, queued again",
   "lost_failed": "Digest run lost on its last start",
   "backup_every_export": "every export",
-  "backup_list_failed": "Daily backup could not list the tenants: only the registry was exported",
+  "backup_list_failed": "Daily backup could not list the tenants: no tenant was exported",
   "backup_export_failed": "Daily backup export failed: no copy written",
   "backup_r2_failed": "Daily backup not written to R2",
   "backup_r2_unbound": "Daily backup has no R2 bucket bound: no R2 copy written",
