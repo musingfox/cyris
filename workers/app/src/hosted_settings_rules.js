@@ -34,21 +34,22 @@ const TYPE_SCALES = [0.875, 1, 1.125];
 const typeScale = (value) => (TYPE_SCALES.includes(value) ? null : { reason: "type_scale" });
 
 // Every key of `writable_settings`, with its rule: the bounds config.py sets on the field, and
-// for the article cap the policy's, which is tighter than the field's.
-const RULES = {
-  "digest.output_language": nonBlank,
-  "digest.style_prompt": text,
-  "digest.type_scale": typeScale,
-  "digest.max_articles_per_digest": whole(1, POLICY.max_articles_per_digest),
-  "general.digest_window_hours": whole(1, 168),
-  "digest.rank_by_preference": onOff,
-  "digest.summarize_follow": onOff,
-  "routing.score_threshold": whole(0, 100),
-};
-export const WRITABLE = Object.freeze(Object.keys(RULES));
+// for the article cap the policy's, which is tighter than the field's. A Map, so a key a request
+// names is only ever one of these and never an object's own, as `__proto__` or `constructor`.
+const RULES = new Map([
+  ["digest.output_language", nonBlank],
+  ["digest.style_prompt", text],
+  ["digest.type_scale", typeScale],
+  ["digest.max_articles_per_digest", whole(1, POLICY.max_articles_per_digest)],
+  ["general.digest_window_hours", whole(1, 168)],
+  ["digest.rank_by_preference", onOff],
+  ["digest.summarize_follow", onOff],
+  ["routing.score_threshold", whole(0, 100)],
+]);
+export const WRITABLE = Object.freeze([...RULES.keys()]);
 
 // A key the operator alone sets: any other settings key, and what lives outside `settings`.
-const operatorKey = (key) => key in FIELDS || key.startsWith("notify.") || POLICY.operator_keys.includes(key);
+const operatorKey = (key) => Object.hasOwn(FIELDS, key) || key.startsWith("notify.") || POLICY.operator_keys.includes(key);
 
 // `body`, a save's JSON, as `{rows, schedule}`: the settings rows to write, as [key, value], and
 // the schedule's parts it names, or null for none. Or `{refused}` for the first key it refuses,
@@ -64,7 +65,7 @@ export function checkSettings(body) {
       schedule = { ...schedule, [key === SCHEDULE_KEY ? "times" : "timeZone"]: value };
       continue;
     }
-    const rule = RULES[key];
+    const rule = RULES.get(key);
     if (!rule) return refuse(operatorKey(key) ? "operator_key" : "unknown_key", { key });
     const wrong = rule(value);
     if (wrong) return { refused: { ...wrong, key } };

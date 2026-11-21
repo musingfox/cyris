@@ -393,6 +393,11 @@ describe("POST /t/<tenant>/api/settings", () => {
     ["daily_run_cap", 24, "operator_key"],
     ["monthly_ai_budget_usd", 100, "operator_key"],
     ["digest.colour", "red", "unknown_key"],
+    ["__proto__", "x", "unknown_key"],
+    ["constructor", "x", "unknown_key"],
+    ["hasOwnProperty", "x", "unknown_key"],
+    ["toString", "x", "unknown_key"],
+    ["valueOf", "x", "unknown_key"],
   ])("refuses %s with a catalog message naming why", async (key, value, reason) => {
     const session = await signIn("ana@example.com");
     const before = await bound.TENANT_DB.getByName("alpha").query("SELECT key, value FROM settings ORDER BY key", []);
