@@ -71,10 +71,11 @@ human decision is a row a signed-in reader's request put there.
 **A vote token, not the cookie.** The Worker puts a vote token in a `<meta name="cyris-vote-token">`
 of every HTML page it serves to a live session (`serveTenantPage`, `hosted_pages.js`), and the
 page sends it in an `X-Cyris-Vote` header, with its probe and its votes. The token is the
-session's hash and an HMAC of it under a key the registry makes on first use and never reads out
-(`voteToken`, `voteSession`, `tenant_registry.js`). It opens no page and no operator route, and
-the registry still looks the session up, and its address and tenant up, at every vote, so
-revoking, signing out and expiry end it at the next vote. The tenant is that session's
+session's hash, the second the page view made it at, and an HMAC of both under a key the registry
+makes on first use and never reads out (`voteToken`, `voteSession`, `tenant_registry.js`). It opens
+no page and no operator route, it ends 12 hours after the page view that made it
+(`VOTE_TOKEN_TTL_MS`, `hosted_session.js`), and the registry still looks the session up, and its
+address and tenant up, at every vote, so revoking, signing out and expiry end it at the next vote. The tenant is that session's
 `tenant_id`: the body, the query string, `Referer` and any header but this one are never read for
 it. The route reads no cookie at all.
 
@@ -84,9 +85,26 @@ the operator's copy of a page, keeps `'none'`. The sandbox itself, the opaque or
 origin are unchanged. The route answers with `Access-Control-Allow-Origin: *`, because the page is
 `Origin: null` and the credential is a header the page holds, not anything the browser sends of
 its own accord. A script injected into a tenant page could already read the page; it can now also
-cast votes for that page's own tenant, as that reader, while the session lasts. It cannot read the
-session, vote for another tenant, or reach `/hosted/`. A vote is cheap to reverse, so this is the
-one thing taken from H2's margin.
+cast votes for that page's own tenant, as that reader. It cannot read the session, vote for another
+tenant, or reach `/hosted/`. A vote is cheap to reverse, so this is the one thing taken from H2's
+margin.
+
+**A stolen token votes for hours, not for the session's 14 days.** The token sits in the page, so
+an injected script can read it, and it can send it away: the policy keeps `img-src https:`, which
+a digest needs for the feeds' own images, and the sandbox keeps `allow-popups` and top-level
+navigation, which the article links need, and a URL carrying the token is enough to leak it. So
+the channel out is not closed; tightening `img-src` on token-bearing pages would break every
+digest's images and still leave a popup or a navigation. The window is shortened instead. Whoever
+holds the token can vote from any client with no `Origin`, as the route allows (a script, curl),
+after the page is closed, but only until 12 hours after the page view that made it, and only
+while the session is live. Each page view mints a fresh token, so a reader who keeps reading is
+never cut off; a page left open past the lifetime gets the signed-out answer, whose message asks
+for a reload, and the reload carries a new token. The issue second is under the MAC, so a holder
+cannot move it later, and a token dated after the registry's clock is refused. Twelve hours
+covers an issue read on the day it arrives: the default schedule runs twice a day. The bound is
+on each token, not on the script: a script injected into a page runs again at every page view and
+takes that view's fresh token, so the window ends 12 hours after the page's last view, not its
+first.
 
 **CSRF.** The credential is a header a form cannot set, and the route ignores the cookie, so a
 form or a fetch from another site, which a browser sends with the reader's cookie, votes nothing.
@@ -121,7 +139,13 @@ Worker has neither a Settings page nor an interest page, so the buttons open and
   a reload: an opaque origin has no `localStorage`, so a reader sees their votes painted only in
   the page they cast them on. The run's verdicts reach the next issue.
 * Bad, because a script injected into a tenant page can cast votes for that tenant as that
-  reader. It is narrower than the cookie it replaces and the registry ends it with the session.
+  reader, and can send the token out through an image or a popup, after which its holder votes
+  from anywhere until 12 hours after the page's last view (each view hands the script a fresh
+  token), up to the queue's 2000 rows a run. It is
+  narrower than the cookie it replaces, it reaches only that tenant's stored articles, and the
+  registry ends it with the session.
+* Bad, because a page left open more than 12 hours shows the signed-out message at its next vote
+  although the session is live; a reload mends it.
 * Bad, because every page view of a signed-in reader makes one more registry call, for the token,
   and the route's CORS answer is open to any origin. The credential, not the origin, is what is
   checked.
@@ -137,7 +161,9 @@ Worker has neither a Settings page nor an interest page, so the buttons open and
   alpha, and a vote for bravo's article is a 404 that writes nothing. A token with another
   session's hash or a wrong MAC, a cookie with no token, a request from another site and a request
   with `Sec-Fetch-Site: cross-site` and no `Origin` each vote nothing. Sign-out, revoke and expiry
-  end a token. A URL the tenant has not stored, a direction but up and down, a body over 4 KiB
+  end a token. A token is refused `VOTE_TOKEN_TTL_MS` after the page view that made it while its
+  session lives on, the next page view's token votes, and a token whose issue time is rewritten or
+  lies ahead of the clock is refused. A URL the tenant has not stored, a direction but up and down, a body over 4 KiB
   and a full queue are refused. No request reaches the promote Worker's URL.
 * `tests/test_hosted_votes.py` drains a tenant's queue: a vote stamps its article and no other,
   three posts of one topic click are one topic vote, a change of mind ends on the later vote, a
@@ -155,8 +181,8 @@ Worker has neither a Settings page nor an interest page, so the buttons open and
 
 * Good, because one Python rule writes every vote, and the sandbox stays.
 * Good, because the token is revocable with the session and needs no secret.
-* Bad, because the page holds a credential an injected script can read, and a vote waits for the
-  next run.
+* Bad, because the page holds a credential an injected script can read and send away, usable for
+  12 hours, and a vote waits for the next run.
 
 ### The same token, with the write rule in the Worker
 

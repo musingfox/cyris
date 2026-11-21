@@ -7,7 +7,7 @@ import SEED from "../src/hosted_seed.json" with { type: "json" };
 import worker from "../src/hosted.js";
 import { SITE_POLICY, VOTE_TOKEN_META, votePolicy } from "../src/hosted_pages.js";
 import { seedTenant } from "../src/hosted_seed.js";
-import { SESSION_COOKIE, SESSION_TTL_MS } from "../src/hosted_session.js";
+import { SESSION_COOKIE, SESSION_TTL_MS, VOTE_TOKEN_TTL_MS } from "../src/hosted_session.js";
 import { MAX_QUEUED_VOTES } from "../src/tenant_votes.js";
 import { tenantRegistry } from "../src/tenant_registry.js";
 import { FakeHTMLRewriter } from "./html_rewriter.js";
@@ -327,10 +327,22 @@ describe("one tenant's session and another tenant's votes", () => {
     const bea = await signIn("bea@example.com");
     const { token: anaToken } = await voteTokenOf(ana, "alpha");
     const { token: beaToken } = await voteTokenOf(bea, "bravo");
-    const [anaHash, anaMac] = anaToken.split(".");
-    const [beaHash, beaMac] = beaToken.split(".");
+    const [anaHash, anaIssued, anaMac] = anaToken.split(".");
+    const [beaHash, beaIssued, beaMac] = beaToken.split(".");
 
-    for (const forged of [`${beaHash}.${anaMac}`, `${anaHash}.`, anaHash, `${anaHash}.${anaMac}.x`, `${beaHash}.${"0".repeat(64)}`, ".", ""]) {
+    for (const forged of [
+      `${beaHash}.${anaIssued}.${anaMac}`,
+      `${beaHash}.${beaIssued}.${anaMac}`,
+      `${anaHash}.${anaIssued}.`,
+      `${anaHash}.${anaMac}`,
+      anaHash,
+      `${anaHash}.${anaIssued}.${anaMac}.x`,
+      `${anaHash}.x.${anaMac}`,
+      `${beaHash}.${beaIssued}.${"0".repeat(64)}`,
+      "..",
+      ".",
+      "",
+    ]) {
       expect((await castVote(forged, { url: BRAVO_URL, vote: "up" })).status, forged).toBe(401);
     }
     expect(beaMac).not.toBe(anaMac);
@@ -386,6 +398,47 @@ describe("a vote and forged requests", () => {
     vi.setSystemTime(new Date(AT.getTime() + SESSION_TTL_MS + 1000));
     expect((await castVote(revokedToken, { url: ALPHA_URL, vote: "up" })).status).toBe(401);
     expect(await queued("alpha")).toHaveLength(2);
+  });
+});
+
+describe("a vote token's own lifetime", () => {
+  it("ends hours after the page view that made it, while the session lives on", async () => {
+    const session = await signIn("ana@example.com");
+    const { token } = await voteTokenOf(session, "alpha");
+    const vote = { url: ALPHA_URL, vote: "up" };
+
+    vi.setSystemTime(new Date(AT.getTime() + VOTE_TOKEN_TTL_MS - 1000));
+    expect((await castVote(token, vote)).status).toBe(200);
+
+    vi.setSystemTime(new Date(AT.getTime() + VOTE_TOKEN_TTL_MS));
+    const stale = await castVote(token, vote);
+    expect(stale.status).toBe(401);
+    expect(await stale.json()).toEqual({ error: "sign in again to vote", code: "vote_session_ended" });
+    const probe = await call("/api/vote", { headers: { Origin: "null", "X-Cyris-Vote": token } });
+    expect(probe.status).toBe(401);
+    // Far under the session's own fourteen days.
+    expect(VOTE_TOKEN_TTL_MS).toBeLessThanOrEqual(SESSION_TTL_MS / 28);
+
+    // The session is still live: the next page view, a reload, carries a fresh token that votes.
+    const { token: fresh } = await voteTokenOf(session, "alpha");
+    expect(fresh).not.toBe(token);
+    expect((await castVote(fresh, vote)).status).toBe(200);
+    expect(await queued("alpha")).toHaveLength(2);
+  });
+
+  it("cannot be lengthened by rewriting the time it names", async () => {
+    const session = await signIn("ana@example.com");
+    const { token } = await voteTokenOf(session, "alpha");
+    const [hash, issued, mac] = token.split(".");
+    vi.setSystemTime(new Date(AT.getTime() + VOTE_TOKEN_TTL_MS + 60_000));
+
+    const later = String(Number(issued) + VOTE_TOKEN_TTL_MS / 1000);
+    expect((await castVote(`${hash}.${later}.${mac}`, { url: ALPHA_URL, vote: "up" })).status).toBe(401);
+    // Nor made in advance: a token dated after now is refused even with its own MAC.
+    const registry = tenantRegistry(env);
+    const ahead = await registry.voteToken(hash, { now: new Date(Date.now() + 60_000) });
+    expect(await registry.voteSession(ahead)).toBeNull();
+    expect(await queued("alpha")).toEqual([]);
   });
 });
 

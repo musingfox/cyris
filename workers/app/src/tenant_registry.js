@@ -19,6 +19,7 @@ import {
   SIGN_IN_HOUR_MS,
   SIGN_IN_TENANT_CAP,
   SIGN_IN_TTL_MS,
+  VOTE_TOKEN_TTL_MS,
   isEmail,
   normalEmail,
 } from "./hosted_session.js";
@@ -508,28 +509,34 @@ export class TenantRegistry extends DurableObject {
   // The vote token for the live session keyed by `sessionHash`: what the Worker puts in a tenant
   // page it serves to that session, for the page's own votes (ADR-0039). The page is sandboxed
   // and its requests carry no cookie, so a vote cannot use the session cookie; this is the
-  // session's own, narrower credential. It is the session's hash and an HMAC of it under the
-  // registry's `vote_key`, so it opens no page and no operator route, and a request that holds
-  // it still has to be a live session at the vote. Null when the session is not live.
+  // session's own, narrower credential. It is the session's hash, the second it was made at, and
+  // an HMAC of both under the registry's `vote_key`, so it opens no page and no operator route,
+  // it ends `VOTE_TOKEN_TTL_MS` after the page view that made it, and a request that holds it
+  // still has to be a live session at the vote. Null when the session is not live.
   async voteToken(sessionHash, { now = new Date() } = {}) {
     if (!this.session(sessionHash, { now })) return null;
-    return `${sessionHash}.${await this.#voteMac(sessionHash)}`;
+    const issued = String(Math.floor(now.getTime() / 1000));
+    return `${sessionHash}.${issued}.${await this.#voteMac(sessionHash, issued)}`;
   }
 
   // The live session a vote token names, `{tenant_id, email, expires_at}`, or null for a token
-  // whose MAC is not this registry's, whose session has ended, or whose address was revoked: the
-  // caller cannot tell which. The tenant is the session's, never one the request names.
+  // whose MAC is not this registry's, that is past its own lifetime, whose session has ended, or
+  // whose address was revoked: the caller cannot tell which. The tenant is the session's, never
+  // one the request names.
   async voteSession(token, { now = new Date() } = {}) {
-    const [sessionHash, mac, ...extra] = typeof token === "string" ? token.split(".") : [];
-    if (!sessionHash || !mac || extra.length) return null;
-    const expected = await this.#voteMac(sessionHash);
+    const [sessionHash, issued, mac, ...extra] = typeof token === "string" ? token.split(".") : [];
+    if (!sessionHash || !/^\d{1,12}$/.test(issued ?? "") || !mac || extra.length) return null;
+    const expected = await this.#voteMac(sessionHash, issued);
     if (!sameText(mac, expected)) return null;
+    const age = now.getTime() - Number(issued) * 1000;
+    if (age < 0 || age >= VOTE_TOKEN_TTL_MS) return null;
     return this.session(sessionHash, { now });
   }
 
-  // HMAC-SHA-256, as hex, over the session hash under `vote_key`, made here on first use. The key
-  // is made before any await, so two first calls cannot make two; INSERT OR IGNORE keeps the first.
-  async #voteMac(sessionHash) {
+  // HMAC-SHA-256, as hex, over the session hash and the token's issue second under `vote_key`,
+  // made here on first use. The key is made before any await, so two first calls cannot make two;
+  // INSERT OR IGNORE keeps the first.
+  async #voteMac(sessionHash, issued) {
     const sql = this.ctx.storage.sql;
     let [row] = sql.exec("SELECT key FROM vote_key WHERE id = 1").toArray();
     if (!row) {
@@ -538,7 +545,7 @@ export class TenantRegistry extends DurableObject {
       [row] = sql.exec("SELECT key FROM vote_key WHERE id = 1").toArray();
     }
     const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(row.key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-    const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`vote:${sessionHash}`));
+    const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`vote:${sessionHash}.${issued}`));
     return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
   }
 
