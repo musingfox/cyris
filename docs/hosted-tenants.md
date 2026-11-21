@@ -423,6 +423,46 @@ refusals:
 - a tenant the registry does not hold is answered 404, as on every other tenant route. A paused
   tenant is still answered.
 
+### Each tenant's AI spend, and its monthly allowance
+
+The operator pays for every model call, so each tenant has a monthly AI allowance, 2.25 USD
+unless you set another. Every run reports what it spent to the registry when it ends, failed or
+not. A run that starts with its tenant's month already spent calls no model. It makes the plain
+list, and its page says the allowance is used up. Months are UTC, and every allowance comes back
+at 00:00 UTC on the first. Why it works this way is
+[ADR-0038](decisions/0038-a-hosted-tenants-ai-spend-is-metered-in-the-registry.md).
+
+After step 7, list every tenant's month:
+
+```bash
+scripts/hosted.sh spend
+scripts/hosted.sh spend 2026-11
+```
+
+Each tenant has one entry: its `budget_usd`, `cost_usd` (the sum of `llm_usd` and
+`embedding_usd`), its tokens and `runs`, the number of runs that reported. A Haiku 5.5 run of
+about 150 articles costs about 0.017 USD. `unpriced_tokens` above 0 means a tenant runs a model
+this release has no rate card for. Those tokens cost something the total does not show.
+
+To see a spent month stop the AI, set one tenant's allowance to 0 and run both tenants:
+
+```bash
+scripts/hosted.sh budget alpha 0
+scripts/hosted.sh run evening
+scripts/hosted.sh check
+```
+
+Once both runs are `done`, alpha's latest page opens with "This month's AI allowance is used up"
+and has no scores or summaries. Bravo's page is a normal issue. Alpha's report has a `spend`
+entry, its month, with `"spent": true`. Then give alpha its allowance back:
+
+```bash
+scripts/hosted.sh budget alpha 2.25
+```
+
+A run killed before it could report, for example by running out of memory, is missing from its
+month. The run object's alert in your webhook says it stopped.
+
 ## 9. Newsletters: the inbound domain and each tenant's address
 
 Each tenant gets a random address, 26 characters of base32 that say nothing about the tenant.
