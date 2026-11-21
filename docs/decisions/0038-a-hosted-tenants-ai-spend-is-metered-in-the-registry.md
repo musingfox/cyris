@@ -176,7 +176,8 @@ How it is built:
     plain list, and its page carries the allowance notice and not the degraded one. An allowance
     of 0 says AI is off, never that the month brings it back.
   * A run that raises after its model calls still charges them, and so does a Gemini or AI
-    Gateway response that was billed and then raised on.
+    Gateway response that was billed and then raised on. A run the container stops with
+    SIGTERM charges what it had spent, and `cyris run` exits 143.
   * A ledger that cannot be read lets the run spend and still charges it, and the operator gets
     one alert for the run, however many of its ledger calls failed.
   * Only a hosted run is metered.

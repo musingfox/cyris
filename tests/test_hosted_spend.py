@@ -9,7 +9,10 @@ itself, and its reset on the first of the next, is the registry's (`workers/app/
 hosted_spend.test.js`).
 """
 
+import asyncio
 import json
+import os
+import signal
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -17,6 +20,7 @@ from pathlib import Path
 import httpx
 import pytest
 import respx
+import typer
 from fakes import TEST_SETTINGS, FakeLLM, load_files
 from test_run_digest import FakeSource
 from test_tenant_gateway import FakeGateway
@@ -584,6 +588,43 @@ async def test_a_run_that_fails_after_its_model_calls_still_charges_what_it_spen
     summary = _summary(gateway)
     assert summary["status"] == "error"
     assert summary["ai_spend"]["recorded"] is True
+
+
+def test_a_run_the_container_stops_with_sigterm_still_charges_what_it_had_spent(
+    tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The container stops a run with SIGTERM: `cyris run` cancels the run's task, so
+    `run_digest`'s `finally` still reports, and the CLI exits 143 (`_run_pipeline`)."""
+    from cyris.entrypoints import cli
+
+    cfg, gateway, ledger, llm, _ = tenant
+    inner = llm.complete
+
+    async def stopped_on_the_second_call(prompt: str, **kwargs):
+        if len(llm.calls) == 1:
+            # As the container's stop arrives: mid-call, at an await.
+            os.kill(os.getpid(), signal.SIGTERM)
+            await asyncio.sleep(60)
+        return await inner(prompt, **kwargs)
+
+    monkeypatch.setattr(llm, "complete", stopped_on_the_second_call)
+    build = bootstrap.build_deps
+    monkeypatch.setattr(
+        bootstrap,
+        "build_deps",
+        lambda *a, **k: replace(
+            build(*a, **k), fetch_sources=[FakeSource([_article()])], lengthen_articles=None
+        ),
+    )
+
+    with pytest.raises(typer.Exit) as stopped:
+        cli._run_pipeline(cfg, "morning", False, False, None, None, False)
+
+    assert stopped.value.exit_code == 128 + signal.SIGTERM
+    # The first call was answered and billed; the second was cut off before any answer.
+    [charged] = ledger.reports
+    assert (charged["llm_calls"], charged["input_tokens"]) == (1, 1_000)
+    assert _summary(gateway)["ai_spend"]["recorded"] is True
 
 
 async def test_a_ledger_that_cannot_be_read_lets_the_run_spend_and_still_charges_it(tenant) -> None:
