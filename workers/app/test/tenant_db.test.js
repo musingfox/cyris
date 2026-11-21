@@ -5,6 +5,7 @@ import {
   TenantDbGateway,
   failureStatus,
   isTenantTable,
+  quotedName,
   tenantRows,
 } from "../src/tenant_db.js";
 import { REGISTRY_NAME, tenantRegistry } from "../src/tenant_registry.js";
@@ -53,6 +54,24 @@ describe("TenantDb", () => {
     expect(Object.keys(tables)).toEqual(created);
     expect(tables.sources).toBe(1);
     expect(Object.keys(tables).filter((name) => name.startsWith("_"))).toEqual([]);
+  });
+
+  it("counts a table whatever its name, and runs nothing a name holds", () => {
+    const { db } = tenantDb();
+    db.query(SCHEMA_SQL);
+    db.query("INSERT INTO sources (name, url) VALUES (?, ?)", ["A", "https://a.test/feed"]);
+    // Tables the tenant's container could create in its own database.
+    const names = ['x"; DROP TABLE sources; --', 'a""b', "with space", "'single'"];
+    for (const name of names) {
+      db.query(`CREATE TABLE ${quotedName(name)} (v)`);
+      db.query(`INSERT INTO ${quotedName(name)} VALUES (1)`);
+    }
+
+    const tables = db.tables();
+
+    for (const name of names) expect(tables[name], name).toBe(1);
+    expect(tables.sources).toBe(1);
+    expect(db.query("SELECT count(*) AS n FROM sources").rows[0].n).toBe(1);
   });
 
   it("leaves out the object's own tables and SQLite's", () => {
