@@ -69,20 +69,10 @@ const METHOD = {
   "revoke-address": "POST",
   "newsletter-source": "POST",
 };
-// The POST routes the hosted cards added after the first hosted Worker, each of which changes a
-// tenant: its database, by any SQL (query); its schedule; its newsletter address and sources; who
-// may sign in to it (invite, revoke). They take no other site's request (`crossSite`). The
-// routes the first hosted Worker had (register, seed, run, poll) do not check it yet: they are
-// item M1 of the deferred hardening card (ADR-0033).
-const SAME_SITE_ONLY = new Set([
-  "query",
-  "schedule",
-  "rotate-address",
-  "revoke-address",
-  "newsletter-source",
-  "invite",
-  "revoke",
-]);
+// Every POST route changes a tenant or the registry: its status (register), its tables (seed, or
+// any SQL by query), its runs and their spend (run, poll), its schedule, its newsletter address
+// and sources, and who may sign in to it (invite, revoke). So none takes another site's request
+// (`crossSite`); a GET route changes nothing and is left to Access.
 
 // What a run the registry would not queue is answered with: an issue already queued or running,
 // or a tenant no longer active, is a conflict; a tenant at its daily cap is told to wait.
@@ -163,10 +153,10 @@ export async function handleHostedRequest(request, env, deps) {
   const [, tenant, action] = match;
   if (request.method !== METHOD[action]) return json({ error: `${action} takes ${METHOD[action]}` }, 405);
   // The Access cookie is SameSite=None, so a page on any site can post to the operator's routes
-  // with the operator's sign-in, a text/plain body included. So these routes take no other site's
-  // request, before any tenant is looked up or any body read; curl, hosted.sh's, sends none of the
-  // headers that would mark one.
-  if (SAME_SITE_ONLY.has(action) && crossSite(request)) {
+  // with the operator's sign-in, a text/plain body included. So no POST route takes another
+  // site's request, before any tenant is looked up or any body read; curl, hosted.sh's, sends none
+  // of the headers that would mark one.
+  if (METHOD[action] === "POST" && crossSite(request)) {
     return json({ error: `${action} is posted from this site or with curl, not from another site` }, 403);
   }
 

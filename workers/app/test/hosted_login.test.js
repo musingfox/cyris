@@ -607,13 +607,14 @@ describe("the operator's routes and a tenant session", () => {
     expect(curl.status).toBe(200);
   });
 
-  it("refuse every POST route the hosted cards added, posted from another site with the operator's sign-in, changing nothing", async () => {
+  it("refuse every operator POST route, posted from another site with the operator's sign-in, changing nothing", async () => {
     // The review's finding: the query route runs any SQL for whoever passes Access, and a page on
     // another site can post it a text/plain body while the operator's browser holds the Access cookie.
     const alpha = bound.TENANT_DB.getByName("alpha");
     const ran = vi.spyOn(alpha, "query");
     bound.TENANT_DB.gets.length = 0;
-    const registryRows = () => JSON.stringify(["tenants", "inbound_addresses", "members"].map((table) => rows(table)));
+    const registryRows = () => JSON.stringify(["tenants", "runs", "inbound_addresses", "members"].map((table) => rows(table)));
+    const polled = vi.spyOn(globalThis, "fetch");
     const before = registryRows();
     const sql = { sql: "DELETE FROM digests", params: [] };
 
@@ -624,6 +625,14 @@ describe("the operator's routes and a tenant session", () => {
       { "Sec-Fetch-Site": "same-site" },
     ]) {
       for (const path of [
+        // The first hosted Worker's routes: a pause, a seed over the tenant's settings and
+        // sources, a run that spends the operator's model key, and a poll of every feed.
+        "/hosted/tenants/alpha/register?status=paused",
+        "/hosted/tenants/alpha/seed",
+        "/hosted/tenants/alpha/run?period=morning",
+        "/hosted/tenants/alpha/poll",
+        "/hosted/tenants/alpha/invite",
+        "/hosted/tenants/alpha/revoke",
         "/hosted/tenants/alpha/query",
         "/hosted/tenants/alpha/schedule?times=07:00,19:00&timezone=UTC",
         "/hosted/tenants/alpha/rotate-address",
@@ -635,8 +644,11 @@ describe("the operator's routes and a tenant session", () => {
       }
     }
 
-    // No SQL ran: the tenant's database was not even reached, and its rows are all there.
+    // No SQL ran and no feed was fetched: the tenant's database was not even reached, and its
+    // rows are all there.
     expect(ran).not.toHaveBeenCalled();
+    expect(polled.mock.calls.map(([url]) => String(url)).filter((url) => !url.endsWith("/cdn-cgi/access/certs"))).toEqual([]);
+    polled.mockRestore();
     expect(bound.TENANT_DB.gets).toEqual([]);
     expect(registryRows()).toBe(before);
     ran.mockRestore();
@@ -650,6 +662,8 @@ describe("the operator's routes and a tenant session", () => {
     const schedule = "/hosted/tenants/alpha/schedule?times=07:00,19:00&timezone=UTC";
     expect((await call(schedule, { method: "POST", operator: true, headers: here })).status).toBe(200);
     expect((await call("/hosted/tenants/alpha/rotate-address", { method: "POST", operator: true })).status).toBe(200);
+    expect((await call("/hosted/tenants/alpha/register?status=paused", { method: "POST", operator: true })).status).toBe(200);
+    expect(rows("tenants").find((row) => row.id === "alpha").status).toBe("paused");
   });
 
   it("give the operator a tenant's latest page under /hosted/, sandboxed as /t/ serves it", async () => {

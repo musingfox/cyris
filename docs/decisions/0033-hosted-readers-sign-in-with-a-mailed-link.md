@@ -333,5 +333,7 @@ self-hosted deployment, production, trials and forks, ADR-0015 is unchanged: `wr
   `register`, `seed`, `run` and `poll`. That is item M1 of the hardening card, which the product
   owner has deferred. Until it lands, a page on another site can post to them with the operator's
   Access cookie.
+  Closed on 2026-11-21 by the hardening card: every operator POST route now refuses a cross-site
+  request, and `SAME_SITE_ONLY` is gone.
 * Left to other cards: the operator's own identity check (H1's operator allow-list), M1 above,
   and the tenant's language on the sign-in pages.
