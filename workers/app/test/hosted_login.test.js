@@ -6,7 +6,7 @@ import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json" w
 import SEED from "../src/hosted_seed.json" with { type: "json" };
 import worker from "../src/hosted.js";
 import { createSignIn, signInMail } from "../src/hosted_login.js";
-import { SITE_POLICY } from "../src/hosted_pages.js";
+import { SITE_POLICY, votePolicy } from "../src/hosted_pages.js";
 import { seedTenant } from "../src/hosted_seed.js";
 import {
   SESSION_COOKIE,
@@ -20,6 +20,7 @@ import {
   tokenHash,
 } from "../src/hosted_session.js";
 import { tenantRegistry } from "../src/tenant_registry.js";
+import { FakeHTMLRewriter } from "./html_rewriter.js";
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace, registryNamespace } from "./sql_storage.js";
 
 // The hosted Worker's entry itself, hosted.js, over the real registry and tenant databases; only
@@ -34,6 +35,10 @@ const AT = new Date("2026-11-20T06:00:00Z");
 const page = (tenant, slug) =>
   `<!doctype html><html><head><meta name="cyris-issue" content="${slug}"><title>${tenant}</title></head>` +
   `<body>${tenant}'s ${slug}</body></html>`;
+
+// A page served to a session carries its vote token in a <meta> (hosted_vote.test.js); the page
+// itself is what a test compares.
+const withoutVoteToken = (html) => html.replace(/<meta name="cyris-vote-token" content="[^"]+">/, "");
 
 const UPSERT =
   "INSERT INTO hosted_pages (path, body, content_type, updated_at) VALUES (?, ?, ?, ?) " +
@@ -60,6 +65,8 @@ let ctx;
 beforeEach(async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(AT);
+  // A page served to a session carries its vote token, which workerd's HTMLRewriter puts in <head>.
+  vi.stubGlobal("HTMLRewriter", FakeHTMLRewriter);
   const keys = await generateKeyPair("RS256");
   privateKey = keys.privateKey;
   const jwk = { ...(await exportJWK(keys.publicKey)), kid: "k1", alg: "RS256", use: "sig" };
@@ -197,7 +204,7 @@ describe("signing in to a hosted tenant", () => {
     expect(confirmed.headers.get("Location")).not.toContain(token);
     const latest = await call("/t/alpha/", { session });
     expect(latest.status).toBe(200);
-    expect(await latest.text()).toBe(page("alpha", "2026-11-20-morning"));
+    expect(withoutVoteToken(await latest.text())).toBe(page("alpha", "2026-11-20-morning"));
     expect((await call("/t/alpha/2026-11-19-evening", { session })).status).toBe(200);
     expect((await call("/t/alpha/2026-11-20-morning-raw", { session })).status).toBe(200);
   });
@@ -464,7 +471,7 @@ describe("a tenant session and the paths of other tenants", () => {
   it("serve bravo's reader bravo's page, and never alpha's", async () => {
     const { session } = await signIn("bea@example.com");
 
-    expect(await (await call("/t/bravo/", { session })).text()).toBe(page("bravo", "2026-11-20-morning"));
+    expect(withoutVoteToken(await (await call("/t/bravo/", { session })).text())).toBe(page("bravo", "2026-11-20-morning"));
     expect((await call("/t/alpha/", { session })).status).toBe(404);
     expect((await call("/t/alpha/2026-11-20-morning", { session })).status).toBe(404);
   });
@@ -664,7 +671,9 @@ describe("a tenant's site, as served", () => {
 
     for (const path of ["/t/alpha/", "/t/alpha/2026-11-20-morning-raw", "/t/alpha/missing", "/t/alpha", "/t/bravo/"]) {
       const response = await call(path, { session });
-      expect(response.headers.get("Content-Security-Policy"), path).toBe(SITE_POLICY);
+      // A page served to the session may post its votes to the vote route alone (hosted_vote.test.js).
+      const pageServed = response.status === 200 && response.headers.get("Content-Type") === HTML;
+      expect(response.headers.get("Content-Security-Policy"), path).toBe(pageServed ? votePolicy(ORIGIN) : SITE_POLICY);
       expect(response.headers.get("X-Robots-Tag"), path).toBe("noindex, nofollow");
       expect(response.headers.get("X-Content-Type-Options"), path).toBe("nosniff");
       expect(response.headers.get("Referrer-Policy"), path).toBe("no-referrer");

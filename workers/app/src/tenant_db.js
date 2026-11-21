@@ -10,6 +10,7 @@
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
 import { pollTenantBuffer } from "./tenant_buffer.js";
 import { storeNewsletter } from "./tenant_inbound.js";
+import { queueVote } from "./tenant_votes.js";
 
 // The host the container queries; `GATEWAY_ORIGIN` in src/cyris/adapters/store/tenant_gateway.py
 // names the same one, and tests/test_hosted_config.py holds the two together.
@@ -66,6 +67,13 @@ export class TenantDb extends DurableObject {
   // not passed here.
   receiveNewsletter(id, record) {
     return storeNewsletter(this.ctx.storage, id, record);
+  }
+
+  // One vote the hosted Worker took from a reader whose session names this tenant, into the
+  // tenant's own vote queue (tenant_votes.js); the Worker took the tenant from the session, and
+  // the object checks that the article is its own.
+  recordVote(vote) {
+    return queueVote(this.ctx.storage, vote);
   }
 
   // Each of the tenant's tables with its row count, in name order.

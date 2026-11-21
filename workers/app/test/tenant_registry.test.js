@@ -308,7 +308,7 @@ describe("the operator's registry", () => {
     const created = [...REGISTRY_SCHEMA.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1]);
     const tenants = [...SCHEMA_SQL.matchAll(/CREATE TABLE IF NOT EXISTS (\w+)/g)].map((m) => m[1]);
 
-    expect(created.sort()).toEqual(["inbound_addresses", "invites", "members", "runs", "sessions", "sign_in_asks", "spend_rollup", "tenants"]);
+    expect(created.sort()).toEqual(["inbound_addresses", "invites", "members", "runs", "sessions", "sign_in_asks", "spend_rollup", "tenants", "vote_key"]);
     expect(created.filter((name) => tenants.includes(name))).toEqual([]);
   });
 

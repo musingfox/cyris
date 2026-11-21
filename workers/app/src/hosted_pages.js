@@ -29,18 +29,29 @@ const SERVED_TYPES = ["text/html", "image/svg+xml"];
 // operator's, and every request they make is cross-site. The rest keeps what a script could
 // still do small: no fetch, no form, no base, no frame, and fonts and styles only from where the
 // templates load them. Images are any https: a digest shows the feeds' own.
-export const SITE_POLICY = [
-  "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox",
-  "default-src 'none'",
-  "script-src 'unsafe-inline'",
-  "style-src 'unsafe-inline' https://fonts.googleapis.com",
-  "font-src https://fonts.gstatic.com",
-  "img-src https: data:",
-  "connect-src 'none'",
-  "form-action 'none'",
-  "base-uri 'none'",
-  "frame-ancestors 'none'",
-].join("; ");
+export const SITE_POLICY = sitePolicy("'none'");
+
+// The one route a tenant's page may send to (hosted_vote.js). The vote buttons post here.
+export const VOTE_PATH = "/api/vote";
+
+// A page served to a signed-in reader may send its votes, to one URL and no other (ADR-0039):
+// the vote route's own, on this Worker's origin. Everything else in the policy is unchanged.
+export const votePolicy = (origin) => sitePolicy(`${origin}${VOTE_PATH}`);
+
+function sitePolicy(connect) {
+  return [
+    "sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox",
+    "default-src 'none'",
+    "script-src 'unsafe-inline'",
+    "style-src 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src https://fonts.gstatic.com",
+    "img-src https: data:",
+    `connect-src ${connect}`,
+    "form-action 'none'",
+    "base-uri 'none'",
+    "frame-ancestors 'none'",
+  ].join("; ");
+}
 
 // Behind a sign-in: never indexed, and a link out names no page of the site.
 export const PRIVATE_HEADERS = {
@@ -49,15 +60,22 @@ export const PRIVATE_HEADERS = {
   "X-Content-Type-Options": "nosniff",
 };
 
-// `response` with the site's policy and the private headers set. An answer that names no caching
-// of its own, a refusal or a redirect, is kept by no cache at all.
+// `response` with the site's policy and the private headers set. Only a page served to a session,
+// with its vote token, names a policy of its own. An answer that names no caching of its own, a
+// refusal or a redirect, is kept by no cache at all.
 export function siteHeaders(response) {
   const headers = new Headers(response.headers);
   if (!headers.has("Cache-Control")) headers.set("Cache-Control", "no-store");
-  headers.set("Content-Security-Policy", SITE_POLICY);
+  // A page served with its vote token already carries the policy that lets it vote (serveTenantPage).
+  if (!headers.has("Content-Security-Policy")) headers.set("Content-Security-Policy", SITE_POLICY);
   for (const [name, value] of Object.entries(PRIVATE_HEADERS)) headers.set(name, value);
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
+
+const isHtml = (contentType) => String(contentType).split(";")[0].trim().toLowerCase() === "text/html";
+
+// The <meta> the page's vote buttons read their token from (_promote_script.html.j2).
+export const VOTE_TOKEN_META = "cyris-vote-token";
 
 const served = (contentType) => SERVED_TYPES.includes(String(contentType).split(";")[0].trim().toLowerCase());
 
@@ -95,8 +113,11 @@ function storedPaths(name) {
 // Answers a request under one tenant's site. `rest` is the path after /t/<tenant>, the caller
 // has checked the sign-in and the tenant, and `db` is that tenant's object alone, so no path
 // here can reach another tenant's pages. `deps`: typeScale (type_scale.js, this tenant's own)
-// and injectStyle, as router.js takes them.
-export async function serveTenantPage(request, { tenant, rest, db, deps }) {
+// and injectStyle, as router.js takes them. `voteToken`, from a reader's session, is a function
+// answering the token this page's votes carry (hosted_vote.js), or null; with it, an HTML page
+// is served with the token in a <meta> and a policy that lets it post its votes. The operator's
+// copy of a page is read with none.
+export async function serveTenantPage(request, { tenant, rest, db, deps, voteToken }) {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return json({ error: "a page takes GET or HEAD" }, 405);
   }
@@ -134,6 +155,9 @@ export async function serveTenantPage(request, { tenant, rest, db, deps }) {
     // (ADR-0013) never meets a browser revalidating an older size.
     "Cache-Control": "private, no-cache",
   };
+  const token = voteToken && request.method === "GET" && isHtml(row.content_type) ? await voteToken() : null;
+  if (token) headers["Content-Security-Policy"] = votePolicy(new URL(request.url).origin);
   const page = new Response(request.method === "HEAD" ? null : row.body, { status: 200, headers });
-  return sized(page, await deps.typeScale.current(), deps);
+  const sizedPage = await sized(page, await deps.typeScale.current(), deps);
+  return token ? deps.injectStyle(sizedPage, `<meta name="${VOTE_TOKEN_META}" content="${token}">`) : sizedPage;
 }

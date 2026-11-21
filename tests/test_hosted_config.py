@@ -248,6 +248,20 @@ def test_the_tenants_site_path_is_one_shape_on_both_sides() -> None:
         assert match.groups() == ("alpha", page)
 
 
+def test_the_vote_buttons_and_the_vote_route_agree_on_path_token_and_header() -> None:
+    """The page posts to the Worker's route, with the token the Worker put in its <meta>."""
+    script = (ROOT / "src/cyris/adapters/output/templates/_promote_script.html.j2").read_text()
+    [path] = re.findall(r'^export const VOTE_PATH = "([^"]+)";', _js("hosted_pages.js"), re.M)
+    [meta] = re.findall(r'^export const VOTE_TOKEN_META = "([^"]+)";', _js("hosted_pages.js"), re.M)
+    [header] = re.findall(r'^export const VOTE_HEADER = "([^"]+)";', _js("hosted_vote.js"), re.M)
+    [ended] = re.findall(r'^export const SESSION_ENDED = "([^"]+)";', _js("hosted_vote.js"), re.M)
+
+    assert f"fetch('{path}'" in script
+    assert f'meta[name="{meta}"]' in script
+    assert f"'{header}'" in script
+    assert f"body.code === '{ended}'" in script
+
+
 def test_the_hosted_domain_is_one_name_from_the_worker_to_the_container() -> None:
     [name] = re.findall(r'^export const HOSTED_DOMAIN = "(\w+)";', _js("hosted_container.js"), re.M)
 
