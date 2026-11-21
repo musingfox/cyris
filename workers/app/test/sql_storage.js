@@ -80,14 +80,22 @@ export function objectStorage(sql = sqlStorage()) {
 }
 
 // An object's `ctx` over `storage`: blockConcurrencyWhile counts its callers, so a test can see a
-// dump held every other event back, and runs the callback, as nothing else is delivered here.
+// dump held every other event back, and runs the callback, as nothing else is delivered here. A
+// callback that throws is counted in `resets`, since the runtime terminates and resets the object.
+// https://developers.cloudflare.com/durable-objects/api/state/#blockconcurrencywhile
 export function objectContext(storage) {
   const ctx = {
     storage,
     blocked: 0,
+    resets: 0,
     blockConcurrencyWhile: async (run) => {
       ctx.blocked += 1;
-      return run();
+      try {
+        return await run();
+      } catch (error) {
+        ctx.resets += 1;
+        throw error;
+      }
     },
   };
   return ctx;

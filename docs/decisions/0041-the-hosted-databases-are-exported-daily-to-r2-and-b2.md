@@ -98,6 +98,12 @@ unregistered, empty tenant id.
 * The dump runs inside `blockConcurrencyWhile`, so it is one moment's data even while the
   tenant's run writes. The runtime resets an object that blocks for more than 30 s. Compressing
   100 MB takes a few seconds of CPU.
+* The runtime also terminates and resets an object whose `blockConcurrencyWhile` callback
+  throws. A dump refused as over size, or a failed read, would then reset a tenant, or the
+  registry, at the backup hour every day, possibly mid-run. So the callback never throws: it
+  answers the error, and `dumpObject` throws it once the object is unblocked. Dropping
+  `blockConcurrencyWhile` for one synchronous read was rejected: compression is asynchronous,
+  so that read would hold the whole database as text, about 100 MB, in a 128 MB isolate.
 * The restore streams the decompression line by line. It does not hold the whole uncompressed
   dump. It runs as one `ctx.storage.transaction()` with `PRAGMA defer_foreign_keys = ON`, so a
   row may name a row inserted after it (`areas.merged_into`). A restore that fails, or a dump
@@ -194,7 +200,8 @@ path for the registry, and the way to reach a tenant's data if the account is go
   object, equals the source table by table with each value's type. Covered: both schemas, more
   than two pages, a rowid gap, a BLOB, whole-number REALs, a quoted table name, `WITHOUT ROWID`,
   FTS5, a forward foreign key, an index, a trigger and a view. The test also checks the same
-  bytes twice and from the restored copy, the line format, `blockConcurrencyWhile`, that the
+  bytes twice and from the restored copy, the line format, `blockConcurrencyWhile`, that a dump
+  over `MAX_DUMP_BYTES` and a failed read are refused without resetting the object, that the
   registry's export round-trips, a refused non-empty object, and that a cut-short or foreign
   dump writes nothing. The golden dump pins the format against `tests/test_backup_to_sqlite.py`.
 * `workers/app/test/hosted_backup.test.js`: the tick at its hour writes every tenant, paused

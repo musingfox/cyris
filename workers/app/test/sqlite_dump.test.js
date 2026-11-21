@@ -1,8 +1,9 @@
 // The dump the daily backup exports of each hosted database (sqlite_dump.js), over real SQLite: a
 // seeded tenant's every table, exported and loaded into an empty object, comes back row for row.
+import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DUMP_FORMAT, DUMP_VERSION, PAGE_ROWS } from "../src/sqlite_dump.js";
+import { DUMP_FORMAT, DUMP_VERSION, MAX_DUMP_BYTES, PAGE_ROWS } from "../src/sqlite_dump.js";
 import { isTenantTable, quotedName } from "../src/tenant_db.js";
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, registryObject, tenantDb } from "./sql_storage.js";
 
@@ -143,6 +144,33 @@ describe("a hosted database's dump", () => {
 
     expect(db.ctx.blocked).toBe(1);
     expect(registry.ctx.blocked).toBe(1);
+  });
+
+  it("is refused past MAX_DUMP_BYTES compressed, without resetting the object, which keeps its rows", async () => {
+    const { db, sql } = tenantDb();
+    db.query("CREATE TABLE noise (b BLOB)");
+    // Random bytes do not compress, so this many MiB of them is a dump past the limit.
+    const rows = Math.ceil(MAX_DUMP_BYTES / 2 ** 20) + 2;
+    for (let i = 0; i < rows; i++) sql.exec("INSERT INTO noise VALUES (?)", randomBytes(2 ** 20));
+
+    await expect(db.exportDump()).rejects.toThrow(`the dump passed ${MAX_DUMP_BYTES} bytes compressed`);
+
+    expect(db.ctx.blocked).toBe(1);
+    expect(db.ctx.resets).toBe(0);
+    expect(db.tables()).toEqual({ noise: rows });
+  });
+
+  it("throws a failed read only once the object is unblocked, so the object is not reset", async () => {
+    const registry = registryObject();
+    const exec = registry.ctx.storage.sql.exec;
+    registry.ctx.storage.sql.exec = (statement, ...params) => {
+      if (statement.startsWith("PRAGMA table_info")) throw new Error("SQLITE_IOERR: disk I/O error");
+      return exec(statement, ...params);
+    };
+
+    await expect(registry.exportDump()).rejects.toThrow("SQLITE_IOERR");
+
+    expect(registry.ctx.resets).toBe(0);
   });
 
   it("carries the registry's tables, which load into an empty object as they were", async () => {

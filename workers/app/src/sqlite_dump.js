@@ -181,10 +181,19 @@ function* dumpLines(sql) {
 // The dump of the object whose state is `ctx`, as gzip bytes. No other event reaches the object
 // until it is made, so it is one moment's data even while a run writes to the same object; the
 // runtime resets an object that blocks for 30 s, which a dump of the size ADR-0041 designs for
-// stays far under.
+// stays far under. It also resets one whose callback throws, so a dump refused as over size, or
+// a failed read, is caught inside and thrown only once the object is unblocked.
 // https://developers.cloudflare.com/durable-objects/api/state/#blockconcurrencywhile
-export function dumpObject(ctx) {
-  return ctx.blockConcurrencyWhile(() => gzipLines(dumpLines(ctx.storage.sql)));
+export async function dumpObject(ctx) {
+  const made = await ctx.blockConcurrencyWhile(async () => {
+    try {
+      return { bytes: await gzipLines(dumpLines(ctx.storage.sql)) };
+    } catch (error) {
+      return { error };
+    }
+  });
+  if (made.error) throw made.error;
+  return made.bytes;
 }
 
 // Each line of a gzip dump, as it is decompressed.
