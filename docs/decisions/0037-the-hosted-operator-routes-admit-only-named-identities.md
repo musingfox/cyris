@@ -123,9 +123,22 @@ How it is built:
 
 ## More Information
 
-* Not verified here: that Access's service token JWT names the token's Client ID in
-  `common_name`. This ADR takes it from the 2026-11-19 review and from ADR-0036's option of the
-  same name. The trial's `scripts/hosted.sh check` confirms it: if the claim were named otherwise,
-  every call with the token would be refused 403.
+* Cloudflare documents the claim: the application token's `common_name` is "The Client ID of the
+  service token (`CF-Access-Client-Id`)"
+  (https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/authorization-cookie/application-token/).
+  The header's Client ID ends in `.access`, so the entry is pasted whole and matched exactly. Not
+  verified here: that the live JWT carries it so. The trial's `scripts/hosted.sh check` is the
+  receipt: if the claim were named otherwise, every call with the token would be refused 403.
+* A Client ID entry matches `common_name` whatever authenticated the request. Cloudflare's
+  identity endpoint also puts a client certificate's common name in `common_name`, so a
+  certificate whose CN equals a listed Client ID would pass `admitOperator`, if an mTLS rule were
+  ever added to the application. Not verified: whether the application JWT carries `common_name`
+  for an mTLS identity. This is accepted, not excluded in code: the application's policy admits
+  the operator alone, and the runbook names no mTLS rule
+  (`docs/hosted-tenants.md`, step 2), and a certificate carrying that CN has to be issued by a CA
+  the application trusts, which only an operator-added mTLS rule creates. The same rule that keeps
+  other identities out of the application keeps this out. If an mTLS rule is ever added, the entry
+  should also require the service-token shape, which the same document gives as `sub` being
+  empty, and that is a change to `hosted_operators.js` with its own test.
 * Still the operator's to do in the dashboard: set the Access application's cookie to `HttpOnly`
   and `SameSite=Lax`, and keep its policy to the operator alone (`docs/hosted-tenants.md`, step 2).

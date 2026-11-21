@@ -335,5 +335,6 @@ self-hosted deployment, production, trials and forks, ADR-0015 is unchanged: `wr
   Access cookie.
   Closed on 2026-11-21 by the hardening card: every operator POST route now refuses a cross-site
   request, and `SAME_SITE_ONLY` is gone.
-* Left to other cards: the operator's own identity check (H1's operator allow-list), M1 above,
-  and the tenant's language on the sign-in pages.
+* Left to another card: the tenant's language on the sign-in pages.
+  Closed on 2026-11-21 by the hardening card: the operator's own identity check (H1's operator
+  allow-list, ADR-0037) and M1 above.
