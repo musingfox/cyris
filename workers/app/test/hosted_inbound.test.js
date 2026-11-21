@@ -25,6 +25,8 @@ import { namespace, registryNamespace } from "./sql_storage.js";
 const DOMAIN = "in.cyris.example";
 const TEAM = "inbound-team.example";
 const AUD = "AUD-INBOUND";
+// The service token the operator signs in with: its Client ID, which Access signs in as `common_name`.
+const OPERATOR = "operator-token.access";
 
 // One issue as a publisher sends it, to `to`, with Cloudflare's Authentication-Results on top.
 const issue = (
@@ -138,7 +140,7 @@ describe("the hosted Worker's email() handler", () => {
     logs = [];
     vi.spyOn(console, "log").mockImplementation((...args) => logs.push(JSON.stringify(args)));
     bound = { REGISTRY: registryNamespace(), TENANT_DB: namespace(), TENANT_RUN: namespace() };
-    Object.assign(env, bound, { CYRIS_ACCESS_TEAM_DOMAIN: `${crypto.randomUUID()}.${TEAM}`, CYRIS_ACCESS_AUD: AUD });
+    Object.assign(env, bound, { CYRIS_ACCESS_TEAM_DOMAIN: `${crypto.randomUUID()}.${TEAM}`, CYRIS_ACCESS_AUD: AUD, CYRIS_HOSTED_OPERATORS: OPERATOR });
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -147,7 +149,7 @@ describe("the hosted Worker's email() handler", () => {
   });
 
   const operator = async (method, path) => {
-    const jwt = await new SignJWT({})
+    const jwt = await new SignJWT({ common_name: OPERATOR })
       .setProtectedHeader({ alg: "RS256", kid: "k1" })
       .setIssuer(`https://${env.CYRIS_ACCESS_TEAM_DOMAIN}`)
       .setAudience(AUD)
@@ -378,7 +380,7 @@ describe("the operator's address routes", () => {
     const jwk = { ...(await exportJWK(keys.publicKey)), kid: "k1", alg: "RS256", use: "sig" };
     vi.stubGlobal("fetch", async () => Response.json({ keys: [jwk] }));
     bound = { REGISTRY: registryNamespace(), TENANT_DB: namespace(), TENANT_RUN: namespace() };
-    Object.assign(env, bound, { CYRIS_ACCESS_TEAM_DOMAIN: `${crypto.randomUUID()}.${TEAM}`, CYRIS_ACCESS_AUD: AUD });
+    Object.assign(env, bound, { CYRIS_ACCESS_TEAM_DOMAIN: `${crypto.randomUUID()}.${TEAM}`, CYRIS_ACCESS_AUD: AUD, CYRIS_HOSTED_OPERATORS: OPERATOR });
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -388,7 +390,7 @@ describe("the operator's address routes", () => {
   const call = async (method, path, { signedIn = true } = {}) => {
     const headers = {};
     if (signedIn) {
-      headers["Cf-Access-Jwt-Assertion"] = await new SignJWT({})
+      headers["Cf-Access-Jwt-Assertion"] = await new SignJWT({ common_name: OPERATOR })
         .setProtectedHeader({ alg: "RS256", kid: "k1" })
         .setIssuer(`https://${env.CYRIS_ACCESS_TEAM_DOMAIN}`)
         .setAudience(AUD)
@@ -451,7 +453,7 @@ describe("the operator's newsletter-source route", () => {
     vi.stubGlobal("fetch", async () => Response.json({ keys: [jwk] }));
     vi.spyOn(console, "log").mockImplementation(() => {});
     bound = { REGISTRY: registryNamespace(), TENANT_DB: namespace(), TENANT_RUN: namespace() };
-    Object.assign(env, bound, { CYRIS_ACCESS_TEAM_DOMAIN: `${crypto.randomUUID()}.${TEAM}`, CYRIS_ACCESS_AUD: AUD });
+    Object.assign(env, bound, { CYRIS_ACCESS_TEAM_DOMAIN: `${crypto.randomUUID()}.${TEAM}`, CYRIS_ACCESS_AUD: AUD, CYRIS_HOSTED_OPERATORS: OPERATOR });
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -460,7 +462,7 @@ describe("the operator's newsletter-source route", () => {
   });
 
   const call = async (method, path) => {
-    const jwt = await new SignJWT({})
+    const jwt = await new SignJWT({ common_name: OPERATOR })
       .setProtectedHeader({ alg: "RS256", kid: "k1" })
       .setIssuer(`https://${env.CYRIS_ACCESS_TEAM_DOMAIN}`)
       .setAudience(AUD)

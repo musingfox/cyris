@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parseFeed, stripTrackingParams } from "../src/parse.js";
+import { isWebUrl, parseFeed, stripTrackingParams } from "../src/parse.js";
 
 const RSS = `<?xml version="1.0"?>
 <rss version="2.0"><channel><title>Feed</title>
@@ -160,7 +160,10 @@ test("an entry whose link is relative still keeps an absolute image", () => {
     <pubDate>Tue, 18 Mar 2026 10:00:00 GMT</pubDate>
     <media:thumbnail url="https://cdn.d.test/a.jpg"/>
   </item></channel></rss>`;
-  assert.equal(parseFeed(xml, "D")[0].image_url, "https://cdn.d.test/a.jpg");
+  const [row] = parseFeed(xml, "D", "https://d.test/feed.xml");
+  assert.equal(row.image_url, "https://cdn.d.test/a.jpg");
+  // Resolved against the feed's own URL, the relative link is an address the buffer takes.
+  assert.equal(row.url, "https://d.test/posts/1");
 });
 
 test("an Atom entry's image enclosure link is its image", () => {
@@ -173,4 +176,54 @@ test("an Atom entry's image enclosure link is its image", () => {
     <published>2026-03-18T10:00:00Z</published>
   </entry></feed>`;
   assert.equal(parseFeed(xml, "B")[0].image_url, "https://b.test/pic.jpg");
+});
+
+test("buffers only an entry whose link is an http(s) address", () => {
+  const item = (link) => `<item><title>${link}</title><link>${link}</link><pubDate>Tue, 18 Mar 2026 10:00:00 GMT</pubDate></item>`;
+  const xml = `<?xml version="1.0"?><rss version="2.0"><channel><title>F</title>${[
+    "javascript:alert(document.cookie)",
+    "JavaScript:alert(1)",
+    "data:text/html,&lt;script&gt;alert(1)&lt;/script&gt;",
+    "vbscript:msgbox(1)",
+    // Relative, with no feed URL to resolve it against.
+    "/relative/post",
+    "https://a.test/kept",
+    "http://a.test/also-kept",
+  ]
+    .map(item)
+    .join("")}</channel></rss>`;
+  // An Atom entry with no link falls back to its id, which is no address when it is a URN.
+  const atom = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom">
+    <entry><title>no link</title><id>urn:uuid:1</id><published>2026-03-18T10:00:00Z</published></entry>
+    <entry><title>id link</title><id>https://b.test/1</id><published>2026-03-18T10:00:00Z</published></entry>
+  </feed>`;
+
+  assert.deepEqual(
+    parseFeed(xml, "F").map((r) => r.url),
+    ["https://a.test/kept", "http://a.test/also-kept"],
+  );
+  assert.deepEqual(
+    parseFeed(atom, "A").map((r) => r.url),
+    ["https://b.test/1"],
+  );
+  assert.equal(isWebUrl("https:"), false);
+  assert.equal(isWebUrl(""), false);
+});
+
+test("an entry whose link does not parse costs only that entry", () => {
+  const item = (link) => `<item><title>${link}</title><link>${link}</link><pubDate>Tue, 18 Mar 2026 10:00:00 GMT</pubDate></item>`;
+  const xml = `<?xml version="1.0"?><rss version="2.0"><channel><title>F</title>${[
+    "http://[x/",
+    "//[x/path",
+    "https://a.test/ok",
+  ]
+    .map(item)
+    .join("")}</channel></rss>`;
+  // With and without a feed URL to resolve a relative link against.
+  for (const base of ["https://a.test/feed.xml", undefined]) {
+    assert.deepEqual(
+      parseFeed(xml, "F", base).map((r) => r.url),
+      ["https://a.test/ok"],
+    );
+  }
 });

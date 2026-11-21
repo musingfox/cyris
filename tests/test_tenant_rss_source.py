@@ -90,6 +90,20 @@ async def test_a_run_reads_its_window_by_buffer_entry_from_its_own_object() -> N
     assert [a.url for a in articles] == ["https://known.test/last", "https://known.test/first"]
 
 
+async def test_a_buffered_row_whose_url_does_not_parse_costs_only_that_row() -> None:
+    _, client = _tenant(
+        "alpha",
+        [
+            _row("http://[x/", "Known", "2026-11-18T01:00:00.000Z"),
+            _row("https://known.test/ok", "Known", "2026-11-18T02:00:00.000Z"),
+        ],
+    )
+
+    articles = await TenantRssSource(client).fetch_articles(AFTER, BEFORE, SOURCES)
+
+    assert [a.url for a in articles] == ["https://known.test/ok"]
+
+
 async def test_the_query_goes_only_to_this_runs_tenant() -> None:
     gateway, client = _tenant(
         "alpha", [_row("https://known.test/1", "Known", "2026-11-18T01:00:00.000Z")]

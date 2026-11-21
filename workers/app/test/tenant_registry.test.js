@@ -503,6 +503,8 @@ describe("the hosted Worker's hourly tick", () => {
 
 describe("the hosted Worker's operator routes, over the registry", () => {
   const TEAM = "registry-team.example";
+  // The service token the operator signs in with: its Client ID, which Access signs in as `common_name`.
+  const OPERATOR = "operator-token.access";
   const AUD = "AUD-REGISTRY";
   let bound;
   let privateKey;
@@ -514,7 +516,7 @@ describe("the hosted Worker's operator routes, over the registry", () => {
     // The Access team's certs, which accessKeys fetches once per team domain.
     vi.stubGlobal("fetch", async () => Response.json({ keys: [jwk] }));
     bound = bindings();
-    Object.assign(env, bound, { CYRIS_ACCESS_TEAM_DOMAIN: `${crypto.randomUUID()}.${TEAM}`, CYRIS_ACCESS_AUD: AUD });
+    Object.assign(env, bound, { CYRIS_ACCESS_TEAM_DOMAIN: `${crypto.randomUUID()}.${TEAM}`, CYRIS_ACCESS_AUD: AUD, CYRIS_HOSTED_OPERATORS: OPERATOR });
   });
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -522,7 +524,7 @@ describe("the hosted Worker's operator routes, over the registry", () => {
   });
 
   const signIn = () =>
-    new SignJWT({})
+    new SignJWT({ common_name: OPERATOR })
       .setProtectedHeader({ alg: "RS256", kid: "k1" })
       .setIssuer(`https://${env.CYRIS_ACCESS_TEAM_DOMAIN}`)
       .setAudience(AUD)
@@ -734,7 +736,7 @@ describe("the hosted Worker's operator routes, over the registry", () => {
     bound.REGISTRY.gets.length = 0;
     const body = JSON.stringify({ sql: "SELECT * FROM settings" });
     const url = "https://cyris-hosted.example.workers.dev/hosted/tenants/alpha/query";
-    const forged = await new SignJWT({})
+    const forged = await new SignJWT({ common_name: OPERATOR })
       .setProtectedHeader({ alg: "RS256", kid: "k1" })
       .setIssuer("https://someone-else.cloudflareaccess.com")
       .setAudience(AUD)

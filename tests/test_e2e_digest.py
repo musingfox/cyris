@@ -794,8 +794,12 @@ def test_pages_receives_every_file_of_the_site_once(receipts) -> None:
 
 
 def test_the_raw_page_lists_the_window_and_the_index_links_both_pages(receipts) -> None:
-    raw = parse_html(receipts.site[f"/{receipts.slug}-raw.html"])
-    assert {h for h in raw.hrefs() if h in set(URL.values())} == set(URL.values())
+    raw = set(parse_html(receipts.site[f"/{receipts.slug}-raw.html"]).hrefs())
+    # The raw page gives an href to an http(s) URL only: the synthetic one links nowhere.
+    web = {u for u in URL.values() if u.startswith(("http://", "https://"))}
+    assert set(URL.values()) - web == {UNLINKED_URL}
+    assert web <= raw
+    assert UNLINKED_URL not in raw
     index = parse_html(receipts.site["/index.html"]).hrefs()
     assert {f"{receipts.slug}.html", f"{receipts.slug}-raw.html"} <= set(index)
 

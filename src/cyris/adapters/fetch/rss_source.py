@@ -21,7 +21,7 @@ from urllib.parse import urljoin, urlsplit
 
 import feedparser
 
-from cyris.adapters.fetch.email_parser import strip_tracking_params
+from cyris.adapters.fetch.email_parser import is_web_url, strip_tracking_params
 from cyris.adapters.fetch.html_text import plain_text
 from cyris.adapters.http_client import HttpClient
 from cyris.domain.models import Article, Lane, SourceConfig
@@ -75,8 +75,20 @@ def _articles_from_feed(
         # Without stripping, the same article arrives under two URLs and
         # defeats the store's URL primary key.
         link = getattr(entry, "link", "")
+        # A relative link is the feed's own page, as the Worker's buffer resolves it; an
+        # absolute one is left as it is, so no stored URL changes.
+        try:
+            if link and not urlsplit(link).scheme:
+                link = urljoin(source.url or "", link)
+        except ValueError:
+            # A malformed authority, such as `http://[x/`: this entry has no usable link, and
+            # the feed's other entries are still articles, as in the Worker's `absoluteLink`.
+            logger.debug("Entry whose link does not parse skipped: %.80s", link)
+            continue
         url = strip_tracking_params(link)
-        if not url:
+        if not is_web_url(url):
+            if url:
+                logger.debug("Entry whose link is no http(s) URL skipped: %.80s", url)
             continue
 
         content = _entry_content(entry)

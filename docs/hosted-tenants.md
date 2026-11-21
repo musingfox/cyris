@@ -38,6 +38,9 @@ Every command runs, as pasted, from the root of a checkout of this repository. `
   account name `wrangler whoami` gives for it. It does nothing until you type `yes`.
 - `CYRIS_ACCESS_TEAM_DOMAIN` and `CYRIS_ACCESS_AUD`: the Access team domain, and the AUD tag of
   the Access application from step 2.
+- `CYRIS_HOSTED_OPERATORS`: who the operator routes admit, comma separated. Give the step-2
+  service token's Client ID, and your own Access email only if you also sign in with a browser.
+  The Worker refuses a valid Access sign-in of anyone else.
 - `ANTHROPIC_API_KEY`: the key the tenants' runs call `claude-haiku-5-5` with. The seed fixes
   that model for both tenants.
 - `CYRIS_HOSTED_OPERATOR_WEBHOOK`: a Discord webhook URL of your own (Server Settings >
@@ -144,7 +147,9 @@ dashboard now uses.
 2. In Zero Trust > Access > Service credentials *(label unverified)*, create a service token, or
    reuse the trial's. Note its Client ID and Client Secret. The secret is shown once.
 3. In the step-1 application, add a policy whose action is Service Auth *(label unverified)* and
-   that includes that token.
+   that includes that token. Add no other identity to this application, and no policy that admits
+   a group, a domain or everyone. It is the operator's alone; readers sign in at `/login`
+   (step 10), never through Access.
 4. Note the team domain, `<team>.cloudflareaccess.com` (Zero Trust > Settings, *label
    unverified*).
 
@@ -166,9 +171,14 @@ domain too, Access still covers `/t/`, and readers will meet its login instead o
 scripts/hosted.sh secrets
 ```
 
-This asks for `CYRIS_ACCESS_TEAM_DOMAIN`, `CYRIS_ACCESS_AUD`, `ANTHROPIC_API_KEY` and
-`CYRIS_HOSTED_OPERATOR_WEBHOOK` and `CYRIS_HOSTED_MAIL_FROM`, and sets each one as a secret of
-`cyris-hosted` on stdin. The webhook is read without echo, because its URL is its credential, and
+This asks for `CYRIS_ACCESS_TEAM_DOMAIN`, `CYRIS_ACCESS_AUD`, `CYRIS_HOSTED_OPERATORS`,
+`ANTHROPIC_API_KEY`, `CYRIS_HOSTED_OPERATOR_WEBHOOK` and `CYRIS_HOSTED_MAIL_FROM`, and sets each
+one as a secret of `cyris-hosted` on stdin. `CYRIS_HOSTED_OPERATORS` is the list the Worker checks
+every operator request's Access identity against
+([ADR-0037](decisions/0037-the-hosted-operator-routes-admit-only-named-identities.md)): an entry
+with an `@` is an Access email, and any other is a service token's Client ID, which Access signs
+into the token as `common_name`. Until it is set, every operator route answers 403 naming it, and
+a valid sign-in of an identity it does not name answers 403 too. It is not secret either. The webhook is read without echo, because its URL is its credential, and
 it must start with `https://`. The sender is not secret; it is set the same way so that
 `wrangler.hosted.toml` names no deployment's domain. It also sets `CYRIS_STORE_HOSTED_DOMAIN` to the
 host of the `HOSTED_URL` that step 1 kept, so it refuses to start without one. Every link a
@@ -360,8 +370,9 @@ exits 1 when any tenant fails. A tenant passes when all of these hold:
   The type size the Worker may add to the page is left out of the hash.
 
 `PASS alpha: 1 run(s), 1 issue(s), only its own sources, and its latest page is its own newest
-issue`, and the same for `bravo`, is the milestone. The reports and the pages are kept in the
-temporary directory the script names. Keep them with the result.
+issue`, and the same for `bravo`, is the milestone. The reports and the pages are tenants'
+content, so the script deletes its temporary directory when it ends, however it ends. It prints
+the SHA-256 of each page it fetched, as `<hash> <tenant>`. Keep those lines with the result.
 
 A tenant that has no `ok` run yet may still be running, or waiting in the queue: its report's
 `runs` says which. Check again a few minutes later. A run that ended in `error` has its reason in
@@ -375,9 +386,16 @@ woken at its own hours, run `check` after both tenants' hours have passed. In ea
 `digest_runs` row's `finished_at` falls a few minutes after one of that tenant's hours, and its
 `runs` row for the hour has `origin` `tick` and state `done`.
 
-Do not add a reader, or yourself, to the step-2 Access application to read a tenant's pages.
-Access no longer opens `/t/`, and any identity that application admits can call every operator
-route. To read a tenant's pages in a browser, sign in as its reader (step 10).
+### Reading the pages in a browser
+
+The step-2 Access application must admit no identity but the operator's: the service token, and
+your own email if you sign in with a browser. Never add a reader, a tester or a group to it, and
+never add one to read a tenant's pages. Access no longer opens `/t/`. The Worker also refuses any
+sign-in `CYRIS_HOSTED_OPERATORS` does not name (step 3), but the list is a second line, not a
+reason to widen the first. An email you add to the list must be one the application admits
+already; adding a reader's email to either would give that reader every tenant's data and every
+operator route. To read a tenant's pages in a browser, sign in as its reader (step 10). To read one
+as the operator, use `GET /hosted/tenants/<tenant>/page`, which serves the same sandboxed page.
 
 ### Reading or changing one tenant from the CLI (optional)
 
@@ -492,8 +510,8 @@ keep the addresses where you keep the service token.
 3. Send a message to an address of the same domain that you made up, with 26 characters from
    `a`–`z` and `2`–`7`. No bounce comes back: an unknown address is dropped in silence, exactly
    as a delivered message is answered.
-4. Run `scripts/hosted.sh check` before either tenant's next run. Whatever it judges, it keeps
-   each tenant's report in the temporary directory it names, and each report's
+4. Run `scripts/hosted.sh check` before either tenant's next run. Whatever it judges, it prints
+   each tenant's report as it reads it (and keeps no copy, step 8), and each report's
    `newsletters` lists that tenant's queued messages by sender, subject and when they arrived.
    It never shows the body. Alpha's and bravo's each list the message once, and neither lists
    the one sent to the made-up address.

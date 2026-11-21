@@ -1,6 +1,7 @@
 // The hosted Worker's doors. A tenant's site and the sign-in take a tenant session and never an
 // Access JWT; every other path, the operator's routes above all, takes the Access JWT alone, by
-// router.js's own check (ADR-0015), and never reads a session. So no tenant session opens an
+// router.js's own check (ADR-0015), of an identity `CYRIS_HOSTED_OPERATORS` names (ADR-0037), and
+// never reads a session. So no tenant session opens an
 // operator route, whatever Access covers, and a request with neither credential learns nothing,
 // not even which tenants exist. Why the two:
 // docs/decisions/0033-hosted-readers-sign-in-with-a-mailed-link.md. No workerd-only imports:
@@ -27,7 +28,8 @@
 //   /login, /login/confirm, /logout                         the sign-in (hosted_login.js)
 
 import { LOGIN_PATHS, handleLogin } from "./hosted_login.js";
-import { PRIVATE_HEADERS, SITE_ROUTE, siteHeaders } from "./hosted_pages.js";
+import { admitOperator, unsetOperators } from "./hosted_operators.js";
+import { PRIVATE_HEADERS, SITE_ROUTE, privateHeaders, siteHeaders } from "./hosted_pages.js";
 import { clearedSessionCookie, crossSite, sessionToken, tokenHash } from "./hosted_session.js";
 import { RUN_PERIODS, accessRefusal, dayIn, refuseRunDate } from "./router.js";
 import { ACTIVE } from "./tenant_status.js";
@@ -67,20 +69,10 @@ const METHOD = {
   "revoke-address": "POST",
   "newsletter-source": "POST",
 };
-// The POST routes the hosted cards added after the first hosted Worker, each of which changes a
-// tenant: its database, by any SQL (query); its schedule; its newsletter address and sources; who
-// may sign in to it (invite, revoke). They take no other site's request (`crossSite`). The
-// routes the first hosted Worker had (register, seed, run, poll) do not check it yet: they are
-// item M1 of the deferred hardening card (ADR-0033).
-const SAME_SITE_ONLY = new Set([
-  "query",
-  "schedule",
-  "rotate-address",
-  "revoke-address",
-  "newsletter-source",
-  "invite",
-  "revoke",
-]);
+// Every POST route changes a tenant or the registry: its status (register), its tables (seed, or
+// any SQL by query), its runs and their spend (run, poll), its schedule, its newsletter address
+// and sources, and who may sign in to it (invite, revoke). So none takes another site's request
+// (`crossSite`); a GET route changes nothing and is left to Access.
 
 // What a run the registry would not queue is answered with: an issue already queued or running,
 // or a tenant no longer active, is a conflict; a tenant at its daily cap is told to wait.
@@ -143,13 +135,20 @@ async function bodyEmail(request) {
 // createSignIn). For readers: `session(sessionHash)`, the registry's live session or null, and
 // `login`, what handleLogin takes.
 export async function handleHostedRequest(request, env, deps) {
+  // Every answer, a refusal or an operator's JSON as much as a page, is kept out of any index.
+  return privateHeaders(await route(request, env, deps));
+}
+
+async function route(request, env, deps) {
   const url = new URL(request.url);
   const site = SITE_ROUTE.exec(url.pathname);
   if (site) return siteRequest(request, site[1], site[2] ?? "", deps);
   if (LOGIN_PATHS.has(url.pathname)) return handleLogin(request, deps.login);
 
-  // Every other path is the operator's: the Access JWT, and only it.
-  const refusal = await accessRefusal(request, env, deps);
+  // Every other path is the operator's: the Access JWT, and only it, of an identity the operator
+  // list names (hosted_operators.js). Access lets in whoever its application admits; a reader put
+  // there by mistake would otherwise hold the operator's every route.
+  const refusal = unsetOperators(env) ?? (await accessRefusal(request, env, deps, admitOperator(env)));
   if (refusal) return json({ error: "forbidden", detail: refusal }, 403);
 
   const match = ROUTE.exec(url.pathname);
@@ -159,10 +158,10 @@ export async function handleHostedRequest(request, env, deps) {
   const [, tenant, action] = match;
   if (request.method !== METHOD[action]) return json({ error: `${action} takes ${METHOD[action]}` }, 405);
   // The Access cookie is SameSite=None, so a page on any site can post to the operator's routes
-  // with the operator's sign-in, a text/plain body included. So these routes take no other site's
-  // request, before any tenant is looked up or any body read; curl, hosted.sh's, sends none of the
-  // headers that would mark one.
-  if (SAME_SITE_ONLY.has(action) && crossSite(request)) {
+  // with the operator's sign-in, a text/plain body included. So no POST route takes another
+  // site's request, before any tenant is looked up or any body read; curl, hosted.sh's, sends none
+  // of the headers that would mark one.
+  if (METHOD[action] === "POST" && crossSite(request)) {
     return json({ error: `${action} is posted from this site or with curl, not from another site` }, 403);
   }
 

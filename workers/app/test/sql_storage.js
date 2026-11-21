@@ -22,6 +22,11 @@ export const MAX_STATEMENT_BYTES = 100_000;
 // cursor. A script with no bindings runs whole, as the probe measured schema.sql run in one
 // exec; node's prepare() would stop at the first statement. The object's own `_cf_KV` table is
 // there as in a real one, and a statement over the runtime's limit is refused as it would be.
+// `sql` with its quoted names, string literals and line comments emptied in one left-to-right
+// pass, so a ";" inside any of them is not taken for the end of a statement, as SQLite's own
+// parser does not take it; a quote inside a comment, or "--" inside a name, is passed over too.
+const unquoted = (sql) => sql.replace(/"(?:[^"]|"")*"|'(?:[^']|'')*'|--[^\n]*/g, "");
+
 export function sqlStorage() {
   const db = new DatabaseSync(":memory:");
   db.exec("CREATE TABLE _cf_KV (key TEXT PRIMARY KEY, value BLOB)");
@@ -30,7 +35,7 @@ export function sqlStorage() {
     exec(sql, ...params) {
       if (new TextEncoder().encode(sql).length > MAX_STATEMENT_BYTES) throw new Error("SQLITE_TOOBIG: statement too long");
       let rows = [];
-      if (params.length === 0 && /;\s*\S/.test(sql.replace(/--.*$/gm, ""))) db.exec(sql);
+      if (params.length === 0 && /;\s*\S/.test(unquoted(sql))) db.exec(sql);
       else rows = db.prepare(sql).all(...params).map((row) => ({ ...row }));
       return { toArray: () => rows, one: () => rows[0] };
     },

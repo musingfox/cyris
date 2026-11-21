@@ -33,6 +33,18 @@ export function stripTrackingParams(url) {
   return parsed.toString().replace(/\?$/, "");
 }
 
+// Whether `url` is an http(s) address: the only article link the buffer takes. A feed's link
+// is its publisher's to write, and a `javascript:` or `data:` one would run on the page that
+// links it. `is_web_url` in src/cyris/adapters/fetch/email_parser.py is the same rule.
+export function isWebUrl(url) {
+  try {
+    const { protocol, host } = new URL(url);
+    return (protocol === "http:" || protocol === "https:") && host !== "";
+  } catch {
+    return false;
+  }
+}
+
 function asArray(value) {
   if (value === undefined || value === null) return [];
   return Array.isArray(value) ? value : [value];
@@ -129,7 +141,21 @@ function entryImage(entry, link) {
   return img ? imageAddress(img[1], link) : null;
 }
 
-export function parseFeed(xml, sourceName) {
+// `link` resolved against `base`, the feed's own URL, when it is relative; an absolute link is
+// returned as it is, so no URL already in a buffer changes. Without this, a feed that writes
+// its links relative would lose every entry to the http(s) rule below.
+function absoluteLink(link, base) {
+  if (!link || URL.canParse(link) || !URL.canParse(base)) return link;
+  try {
+    return new URL(link, base).toString();
+  } catch {
+    return link;
+  }
+}
+
+// `base`, the feed's URL, resolves an entry's relative link; an entry whose link is still no
+// http(s) address is not buffered at all.
+export function parseFeed(xml, sourceName, base) {
   const doc = parser.parse(xml);
   const entries = [
     ...asArray(doc?.rss?.channel?.item),
@@ -139,10 +165,10 @@ export function parseFeed(xml, sourceName) {
 
   const rows = [];
   for (const entry of entries) {
-    const link = entryLink(entry);
+    const link = absoluteLink(entryLink(entry), base);
     const url = stripTrackingParams(link);
     const publishedAt = entryPublished(entry);
-    if (!url || !publishedAt) continue;
+    if (!isWebUrl(url) || !publishedAt) continue;
     rows.push({
       url,
       guid: text(entry.guid) || text(entry.id) || null,

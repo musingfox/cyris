@@ -99,20 +99,22 @@ const NOT_SIGNED_IN = "This page needs a Cloudflare Access sign-in, and this req
 // null when the request carries a valid Access JWT, else the detail a 403 names.
 // Errors from parsing, signature, claims or the key fetch all mean refused, and
 // the token never reaches the detail or the console. The hosted Worker's operator
-// routes (hosted_router.js) are gated by this same check.
-export async function accessRefusal(request, env, deps) {
+// routes (hosted_router.js) are gated by this same check, and pass `admit`, which is
+// handed the verified token's claims and answers null or the detail a 403 names; this
+// Worker passes none, so any identity its Access application lets in is signed in.
+export async function accessRefusal(request, env, deps, admit = () => null) {
   const unset = ACCESS_SETTINGS.filter((name) => !env[name]);
   if (unset.length) {
     return `The Worker has no ${unset.join(" and ")} set, so no Access sign-in can be checked.`;
   }
   const token = request.headers.get("Cf-Access-Jwt-Assertion");
   if (!token || !deps.accessKeys) return NOT_SIGNED_IN;
+  let payload;
   try {
-    await jwtVerify(token, deps.accessKeys.keySet, {
+    ({ payload } = await jwtVerify(token, deps.accessKeys.keySet, {
       issuer: deps.accessKeys.issuer,
       audience: env.CYRIS_ACCESS_AUD,
-    });
-    return null;
+    }));
   } catch (err) {
     // A bad token is the request's own failure. Anything else, such as a certs fetch that failed
     // or found no matching key, is the deployment's, and refuses every reader: name it in the
@@ -122,6 +124,7 @@ export async function accessRefusal(request, env, deps) {
     }
     return NOT_SIGNED_IN;
   }
+  return admit(payload);
 }
 
 // A path a browser would read as another host: two slashes, or a slash and a

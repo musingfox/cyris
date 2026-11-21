@@ -136,6 +136,45 @@ async def test_every_feed_failing_is_a_failed_fetch_not_an_empty_one():
 
 
 @pytest.mark.asyncio
+async def test_an_entry_whose_link_is_no_http_address_is_skipped():
+    """A feed's link is its publisher's to write; a `javascript:` one would run on the raw page."""
+    date = "Tue, 18 Mar 2026 10:00:00 GMT"
+    links = [
+        "javascript:alert(1)",
+        "data:text/html,x",
+        "mailto:a@b.test",
+        "https://a.test/kept",
+        # Relative: resolved against the feed's own URL, as the Worker's buffer resolves it.
+        "/posts/2",
+    ]
+    http = _http_returning(_feed(*(_item(f"T{i}", link, date) for i, link in enumerate(links))))
+
+    articles = await RssSource(http).fetch_articles(
+        after=AFTER,
+        before=BEFORE,
+        sources={"F": SourceConfig(name="F", url="https://a.test/feed")},
+    )
+
+    assert [a.url for a in articles] == ["https://a.test/kept", "https://a.test/posts/2"]
+
+
+@pytest.mark.asyncio
+async def test_an_entry_whose_link_does_not_parse_costs_only_that_entry():
+    """`urlsplit` raises on `http://[x/`; one such link must not fail the feed's other entries."""
+    date = "Tue, 18 Mar 2026 10:00:00 GMT"
+    links = ["http://[x/", "//[x/path", "https://a.test/ok"]
+    http = _http_returning(_feed(*(_item(f"T{i}", link, date) for i, link in enumerate(links))))
+
+    articles = await RssSource(http).fetch_articles(
+        after=AFTER,
+        before=BEFORE,
+        sources={"F": SourceConfig(name="F", url="https://a.test/feed")},
+    )
+
+    assert [a.url for a in articles] == ["https://a.test/ok"]
+
+
+@pytest.mark.asyncio
 async def test_tracking_params_are_stripped():
     """Unstripped tracking params defeat the store's URL primary key."""
     http = _http_returning(

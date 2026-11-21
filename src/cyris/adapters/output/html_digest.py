@@ -99,6 +99,9 @@ def _environment(tag: str, search_path: tuple[Path, ...]) -> Environment:
     env.filters["hostname"] = _hostname
     env.filters["card_line"] = functools.partial(cut, length=CARD_LINE_CHARS)
     env.filters["paragraph_links"] = paragraph_links
+    # `is web_link`: a URL a page may put in an href. A feed or a mail names any scheme, and a
+    # `javascript:` link would run on the page; a synthetic `newsletter:` URL links nowhere.
+    env.tests["web_link"] = lambda url: _href(str(url)) is not None
     env.globals["project_url"] = PROJECT_URL
     env.globals["t"] = translator(tag)
     # An issue is named by its run's start, never by its period, which stays in file names

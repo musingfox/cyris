@@ -90,7 +90,7 @@
             <div class="list-row raw-row">
                 <span class="state {{ a.state }}">{{ t("article_state." ~ a.state) }}</span>
                 <span class="score">{{ "%.2f" | format(a.score) if a.score is not none else "—" }}</span>
-                <a href="{{ a.url }}" target="_blank" rel="noopener" lang="">{{ a.title }}</a>
+                <a{% if a.url is web_link %} href="{{ a.url }}"{% endif %} target="_blank" rel="noopener" lang="">{{ a.title }}</a>
                 <span class="vote-group" data-urls='{{ [a.url] | tojson }}'><button class="btn sm secondary promote-btn" data-vote="up" title="{{ t("vote.more") }}" aria-label="{{ t("vote.more") }}" aria-pressed="false">↑</button><button class="btn sm secondary promote-btn" data-vote="down" title="{{ t("vote.less") }}" aria-label="{{ t("vote.less") }}" aria-pressed="false">↓</button></span>
             </div>
             {% endfor %}
@@ -260,7 +260,9 @@
     // is the next card rather than the one still on screen.
     function openCard() {
         const [row] = pool();
-        if (!busy && row) window.open(row.querySelector('a').href, '_blank', 'noopener');
+        // An article whose URL is no web link has an anchor with no href, which opens nothing.
+        const href = row && row.querySelector('a').getAttribute('href');
+        if (!busy && href) window.open(href, '_blank', 'noopener');
     }
     card.addEventListener('pointerup', endDrag);
     card.addEventListener('pointercancel', endDrag);

@@ -43,6 +43,9 @@ export const tenantRows = (env, tenant) => async (sql, params, what) => {
   }
 };
 
+// `name` as an SQL identifier: in double quotes, each double quote in it doubled.
+export const quotedName = (name) => `"${String(name).replaceAll('"', '""')}"`;
+
 export class TenantDb extends DurableObject {
   // `D1Queryable.query`'s shape: SQL and its bound values in, rows and rows changed out.
   // `changes` is the difference of two `total_changes()` readings, the rows-affected figure D1
@@ -68,7 +71,11 @@ export class TenantDb extends DurableObject {
     return storeNewsletter(this.ctx.storage, id, record);
   }
 
-  // Each of the tenant's tables with its row count, in name order.
+  // Each of the tenant's tables with its row count, in name order. A table's name cannot be bound,
+  // and the tenant's container can create a table of any name, a double quote or a second
+  // statement in it included; so each name is quoted as an SQL identifier, its double quotes
+  // doubled, and is only ever the one name it says. Every table is counted, not only the ones
+  // schema.sql makes, so the operator's report shows what else the container created.
   tables() {
     const storage = this.ctx.storage.sql;
     const names = storage
@@ -77,7 +84,7 @@ export class TenantDb extends DurableObject {
       .map((row) => row.name)
       .filter(isTenantTable);
     return Object.fromEntries(
-      names.map((name) => [name, storage.exec(`SELECT count(*) AS n FROM "${name}"`).one().n]),
+      names.map((name) => [name, storage.exec(`SELECT count(*) AS n FROM ${quotedName(name)}`).one().n]),
     );
   }
 }

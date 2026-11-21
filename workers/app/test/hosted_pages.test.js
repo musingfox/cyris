@@ -17,11 +17,13 @@ const AUD = "AUD-HOSTED";
 const { privateKey, publicKey } = await generateKeyPair("RS256");
 const JWK = { ...(await exportJWK(publicKey)), kid: "k1", alg: "RS256", use: "sig" };
 const ACCESS_KEYS = { keySet: createLocalJWKSet({ keys: [JWK] }), issuer: `https://${TEAM}` };
-const ENV = { CYRIS_ACCESS_TEAM_DOMAIN: TEAM, CYRIS_ACCESS_AUD: AUD };
+// The service token the operator signs in with: its Client ID, which Access signs in as `common_name`.
+const OPERATOR = "operator-token.access";
+const ENV = { CYRIS_ACCESS_TEAM_DOMAIN: TEAM, CYRIS_ACCESS_AUD: AUD, CYRIS_HOSTED_OPERATORS: OPERATOR };
 const ORIGIN = "https://cyris-hosted.example.workers.dev";
 
 const accessJwt = () =>
-  new SignJWT({})
+  new SignJWT({ common_name: OPERATOR })
     .setProtectedHeader({ alg: "RS256", kid: "k1" })
     .setIssuer(`https://${TEAM}`)
     .setAudience(AUD)
@@ -223,6 +225,33 @@ describe("a hosted tenant's pages", () => {
     expect((await get("/t/charlie/")).status).toBe(404);
     expect((await get("/t/alpha/2020-01-01-morning")).status).toBe(404);
     expect((await get("/t/alpha/nested/2026-11-17-evening")).status).toBe(404);
+  });
+
+  it("take each page's type from its name, never from the type its row stores, and serve no other kind of file", async () => {
+    const { get, alpha } = await hosted();
+    // Rows a run container could write into its own database: a page stored as script, an icon
+    // stored as HTML, the latest issue stored as plain text, and files the run never writes.
+    await alpha.query(UPSERT, ["/2026-11-17-evening.html", page("alpha", "2026-11-17-evening"), "text/javascript", ""]);
+    await alpha.query(UPSERT, ["/favicon.svg", "<svg/>", "text/html", ""]);
+    await alpha.query(UPSERT, ["/2026-11-18-morning.html", page("alpha", "2026-11-18-morning"), "text/plain", ""]);
+    await alpha.query(UPSERT, ["/evil.js", "alert(1)", "text/html", ""]);
+    await alpha.query(UPSERT, ["/notes.txt", "<script>alert(1)</script>", "text/html", ""]);
+
+    const older = await get("/t/alpha/2026-11-17-evening");
+    const icon = await get("/t/alpha/favicon.svg");
+    const latest = await get("/t/alpha/");
+
+    expect([older.status, icon.status, latest.status]).toEqual([200, 200, 200]);
+    expect(older.headers.get("Content-Type")).toBe(HTML);
+    expect(icon.headers.get("Content-Type")).toBe("image/svg+xml");
+    expect(latest.headers.get("Content-Type")).toBe(HTML);
+    for (const response of [older, icon, latest]) expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    for (const path of ["/t/alpha/evil.js", "/t/alpha/notes.txt"]) {
+      const refused = await get(path);
+      expect(refused.status, path).toBe(404);
+      expect(refused.headers.get("Content-Type"), path).toBe("application/json");
+      expect(await refused.text(), path).not.toContain("alert");
+    }
   });
 
   it("answer HEAD without a body and refuse a write", async () => {
