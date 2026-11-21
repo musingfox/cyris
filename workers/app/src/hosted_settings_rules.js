@@ -127,8 +127,10 @@ export function urlRefusal(raw, ownHosts = []) {
 // As newsletterSource's (hosted_seed.js): what a source's name may be.
 const NAME = /^[^\u0000-\u001f\u007f]{1,80}$/;
 
-// The `sources` row an RSS source a tenant adds is, from its JSON `{name, url, lane}`: lane
-// `skim` unless named, as `SourceConfig` defaults it. Or `{refused}`.
+// The `sources` row an RSS source a tenant adds or rewrites is, from its JSON `{name, url, lane}`:
+// lane `skim` unless named, as `SourceConfig` defaults it. Its config names the lane alone, so a
+// rewrite keeps the tags and the rest the row held (TenantDb.saveSource), and a new source has
+// `SourceConfig`'s own none. Or `{refused}`.
 export function rssSource(body, ownHosts = []) {
   if (body === null || typeof body !== "object" || Array.isArray(body)) return refuse("body");
   const name = typeof body.name === "string" ? body.name.trim() : "";
@@ -137,5 +139,5 @@ export function rssSource(body, ownHosts = []) {
   if (!LANES.includes(lane)) return refuse("lane");
   const wrong = urlRefusal(body.url, ownHosts);
   if (wrong) return { refused: wrong };
-  return { row: { name, url: new URL(body.url.trim()).href, type: "rss", config: { lane, tags: [] } } };
+  return { row: { name, url: new URL(body.url.trim()).href, type: "rss", config: { lane } } };
 }

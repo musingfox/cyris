@@ -56,15 +56,15 @@
     "written": [
       {
         "body": { "name": " Example Feed ", "url": "https://Example.org/feed.xml", "lane": "read" },
-        "row": { "name": "Example Feed", "url": "https://example.org/feed.xml", "type": "rss", "config": { "lane": "read", "tags": [] } }
+        "row": { "name": "Example Feed", "url": "https://example.org/feed.xml", "type": "rss", "config": { "lane": "read" } }
       },
       {
         "body": { "name": "Plain", "url": "http://news.example.com:80/rss" },
-        "row": { "name": "Plain", "url": "http://news.example.com/rss", "type": "rss", "config": { "lane": "skim", "tags": [] } }
+        "row": { "name": "Plain", "url": "http://news.example.com/rss", "type": "rss", "config": { "lane": "skim" } }
       },
       {
         "body": { "name": "Port 443", "url": "https://blog.example.net:443/atom", "lane": "follow" },
-        "row": { "name": "Port 443", "url": "https://blog.example.net/atom", "type": "rss", "config": { "lane": "follow", "tags": [] } }
+        "row": { "name": "Port 443", "url": "https://blog.example.net/atom", "type": "rss", "config": { "lane": "follow" } }
       }
     ],
     "refused": [

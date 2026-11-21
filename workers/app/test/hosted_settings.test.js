@@ -171,13 +171,16 @@ describe("TenantDb's settings and sources", () => {
     expect(db.saveSource(rss("Letter"), POLICY.max_sources).refused).toBe("source_taken");
   });
 
-  it("keeps what else a rewritten source's config held", async () => {
+  it("keeps what else a rewritten source's config held, its tags too", async () => {
     const db = await seeded();
     db.query("INSERT INTO sources (name, url, type, config) VALUES (?, ?, 'rss', ?)", ["Kept", "https://kept.example/feed", '{"lane":"skim","tags":["x"],"area_id":3}']);
 
-    db.saveSource({ ...rss("Kept"), config: { lane: "read", tags: [] } }, POLICY.max_sources);
+    db.saveSource(rssSource({ name: "Kept", url: "https://kept.example/new", lane: "read" }).row, POLICY.max_sources);
 
-    expect(JSON.parse(db.query("SELECT config FROM sources WHERE name = 'Kept'").rows[0].config)).toEqual({ lane: "read", tags: [], area_id: 3 });
+    expect(db.query("SELECT url, config FROM sources WHERE name = 'Kept'").rows[0]).toEqual({
+      url: "https://kept.example/new",
+      config: JSON.stringify({ lane: "read", tags: ["x"], area_id: 3 }),
+    });
   });
 
   it("answers a tenant never seeded with no settings and no sources, and writes nothing", () => {
@@ -535,6 +538,19 @@ describe("POST /t/<tenant>/api/sources", () => {
     expect(names).toContain("Example");
     expect(names).not.toContain("Hacker News");
     expect((await bound.TENANT_DB.getByName("bravo").sources()).map((source) => source.name)).not.toContain("Example");
+  });
+
+  it("rewrites a source of the name it names, keeping its tags", async () => {
+    const session = await signIn("ana@example.com");
+    const db = bound.TENANT_DB.getByName("alpha");
+    await db.query("INSERT INTO sources (name, url, type, config) VALUES (?, ?, 'rss', ?)", ["Tagged", "https://tagged.example/feed", '{"lane":"skim","tags":["ai","policy"]}']);
+
+    const answer = await save(session, "/t/alpha/api/sources", { name: "Tagged", url: "https://tagged.example/rss", lane: "read" });
+
+    expect(answer.status).toBe(200);
+    const row = (await db.query("SELECT url, config FROM sources WHERE name = 'Tagged'", [])).rows[0];
+    expect(row.url).toBe("https://tagged.example/rss");
+    expect(JSON.parse(row.config)).toEqual({ lane: "read", tags: ["ai", "policy"] });
   });
 
   it("refuses a URL the write rules refuse, with the catalog's reason", async () => {

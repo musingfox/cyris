@@ -79,6 +79,7 @@ def test_a_source_the_page_writes_is_one_the_run_fetches(case) -> None:
     assert source.fetchable
     assert source.url == row["url"]
     assert source.lane.value == row["config"]["lane"]
+    assert source.tags == row["config"].get("tags", [])
 
 
 @pytest.mark.parametrize("case", CASES["languages"], ids=lambda c: c["tag"])
