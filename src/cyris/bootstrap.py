@@ -686,19 +686,26 @@ def build_deps(
 
     llm = build_llm(cfg.app.llm_provider)
     embedder = build_embedder(cfg)
+    ask_clef = build_ask_clef()
     record_spend = None
     if ai_pause is not None:
         # The plain list, by the path a missing client takes; the page says why (`AiPause`).
-        llm = embedder = None
+        llm = embedder = ask_clef = None
     if ledger is not None:
-        # Every model call and embedding the tenant's run makes is metered as it is made and
-        # charged to the tenant's month as the run ends (ADR-0038).
-        from cyris.adapters.hosted_spend import MeteredEmbedder, MeteredLLM, SpendMeter
+        # Every model call, embedding and Clef question the tenant's run makes is metered as
+        # it is made and charged to the tenant's month as the run ends (ADR-0038).
+        from cyris.adapters.hosted_spend import (
+            MeteredClef,
+            MeteredEmbedder,
+            MeteredLLM,
+            SpendMeter,
+        )
 
         meter = SpendMeter(llm.model if llm is not None else "")
         llm = MeteredLLM(llm, meter) if llm is not None else None
         if embedder is not None:
             embedder = MeteredEmbedder(embedder, meter, cfg.app.vote_similarity.provider)
+        ask_clef = MeteredClef(ask_clef, meter) if ask_clef is not None else None
         record_spend = partial(ledger.report, meter, paused=paused)
 
     return Deps(
@@ -734,7 +741,7 @@ def build_deps(
         send_email_alert=send_email_alert,
         send_discord_alert=send_discord_alert_to,
         send_operator_alert=build_operator_alert(cfg),
-        ask_clef=None if ai_pause is not None else build_ask_clef(),
+        ask_clef=ask_clef,
         lengthen_articles=lengthen_articles,
         process_usage=process_usage.read_process_usage if process_usage.available() else None,
         record_spend=record_spend,

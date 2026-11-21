@@ -440,8 +440,8 @@ scripts/hosted.sh spend
 scripts/hosted.sh spend 2026-11
 ```
 
-Each tenant has one entry: its `budget_usd`, `cost_usd` (the sum of `llm_usd` and
-`embedding_usd`), its tokens and `runs`, the number of runs that reported. A Haiku 5.5 run of
+Each tenant has one entry: its `budget_usd`, `cost_usd` (the sum of `llm_usd`,
+`embedding_usd` and `clef_usd`), its tokens and `runs`, the number of runs that reported. A Haiku 5.5 run of
 about 150 articles costs about 0.017 USD. `unpriced_tokens` above 0 means a tenant runs a model
 this release has no rate card for. Those tokens are charged at the dearest rate card it has, so
 that tenant's allowance runs out sooner than its model's real price would make it; add the

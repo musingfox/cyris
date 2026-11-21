@@ -45,7 +45,7 @@ export class SpendGateway extends WorkerEntrypoint {
     }
     // One line per run in Workers Logs, beside the registry's month, for the operator to read.
     const { month, cost_usd, budget_usd, spent } = added.spend;
-    const run = { llm_usd: report.llm_usd ?? 0, embedding_usd: report.embedding_usd ?? 0 };
+    const run = { llm_usd: report.llm_usd ?? 0, embedding_usd: report.embedding_usd ?? 0, clef_usd: report.clef_usd ?? 0 };
     console.log("ai spend", { tenant, ...run, month, month_usd: cost_usd, budget_usd, spent });
     return answer(202, added.spend);
   }

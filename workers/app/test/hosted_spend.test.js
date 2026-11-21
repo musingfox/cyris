@@ -90,6 +90,17 @@ describe("the registry's AI spend ledger", () => {
     expect(spendMonth(DEC)).toBe("2026-12");
   });
 
+  it("counts a run's Clef questions in its month's total, so they spend the allowance too", () => {
+    const registry = registered("alpha");
+    registry.setBudget("alpha", "0.05", { now: NOV });
+
+    registry.addSpend("alpha", { llm_usd: 0.03, clef_usd: 0.02 }, { now: NOV });
+
+    expect(registry.budget("alpha", { now: NOV })).toMatchObject({ clef_usd: 0.02, llm_usd: 0.03, spent: true });
+    expect(registry.budget("alpha", { now: NOV }).cost_usd).toBeCloseTo(0.05, 10);
+    expect(registry.addSpend("alpha", { clef_usd: -0.01 }, { now: NOV }).refused).toMatch(/clef_usd/);
+  });
+
   it("refuses a report that would credit the month, or is not numbers, and writes nothing", () => {
     const registry = registered("alpha");
     for (const report of [{ llm_usd: -1 }, { embedding_usd: "0.1" }, { input_tokens: 1.5 }, { llm_usd: Infinity }, null]) {

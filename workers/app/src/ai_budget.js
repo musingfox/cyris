@@ -18,12 +18,13 @@ export const MAX_MONTHLY_AI_BUDGET_USD = 100;
 
 // The columns `spend_rollup` gained with this card, and the tenant's allowance, beside the
 // `cost_usd` and `runs` the registry created the table with. `cost_usd` stays the month's total,
-// `llm_usd` plus `embedding_usd`; `unpriced_tokens` are tokens of a model with no rate card in the
+// `llm_usd` plus `embedding_usd` plus `clef_usd`; `unpriced_tokens` are tokens of a model with no rate card in the
 // container, which it charged at the dearest rate card it has. Added in place, as ADR-0032's
 // columns are.
 export const SPEND_COLUMNS = [
   ["spend_rollup", "llm_usd", "REAL NOT NULL DEFAULT 0"],
   ["spend_rollup", "embedding_usd", "REAL NOT NULL DEFAULT 0"],
+  ["spend_rollup", "clef_usd", "REAL NOT NULL DEFAULT 0"],
   ["spend_rollup", "input_tokens", "INTEGER NOT NULL DEFAULT 0"],
   ["spend_rollup", "output_tokens", "INTEGER NOT NULL DEFAULT 0"],
   ["spend_rollup", "unpriced_tokens", "INTEGER NOT NULL DEFAULT 0"],
@@ -47,8 +48,8 @@ CREATE TABLE IF NOT EXISTS spend_rollup (
 export const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 export const spendMonth = (now) => now.toISOString().slice(0, 7);
 
-// The fields one run's report carries (`report_spend` in src/cyris/adapters/hosted_spend.py).
-const DOLLARS = ["llm_usd", "embedding_usd"];
+// The fields one run's report carries (`SpendMeter.report` in src/cyris/adapters/hosted_spend.py).
+const DOLLARS = ["llm_usd", "embedding_usd", "clef_usd"];
 const TOKENS = ["input_tokens", "output_tokens", "unpriced_tokens"];
 
 // `report` as the numbers the ledger adds, or `{refused}`. Nothing negative, since a report that
@@ -77,12 +78,13 @@ export function checkBudget(raw) {
 }
 
 const ADD_SPEND = `
-INSERT INTO spend_rollup (tenant_id, month, cost_usd, llm_usd, embedding_usd, input_tokens, output_tokens, unpriced_tokens, runs, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+INSERT INTO spend_rollup (tenant_id, month, cost_usd, llm_usd, embedding_usd, clef_usd, input_tokens, output_tokens, unpriced_tokens, runs, updated_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
 ON CONFLICT (tenant_id, month) DO UPDATE SET
   cost_usd = cost_usd + excluded.cost_usd,
   llm_usd = llm_usd + excluded.llm_usd,
   embedding_usd = embedding_usd + excluded.embedding_usd,
+  clef_usd = clef_usd + excluded.clef_usd,
   input_tokens = input_tokens + excluded.input_tokens,
   output_tokens = output_tokens + excluded.output_tokens,
   unpriced_tokens = unpriced_tokens + excluded.unpriced_tokens,
@@ -92,7 +94,7 @@ ON CONFLICT (tenant_id, month) DO UPDATE SET
 // Adds one run's checked spend to `tenant`'s month, the month it is reported in: a run that
 // starts before midnight UTC on the last day and ends after it is charged to the new month.
 export function addSpend(sql, tenant, spend, month, at) {
-  const cost = spend.llm_usd + spend.embedding_usd;
+  const cost = spend.llm_usd + spend.embedding_usd + spend.clef_usd;
   sql.exec(
     ADD_SPEND,
     tenant,
@@ -100,6 +102,7 @@ export function addSpend(sql, tenant, spend, month, at) {
     cost,
     spend.llm_usd,
     spend.embedding_usd,
+    spend.clef_usd,
     spend.input_tokens,
     spend.output_tokens,
     spend.unpriced_tokens,
@@ -108,10 +111,10 @@ export function addSpend(sql, tenant, spend, month, at) {
 }
 
 const MONTH_ROW = `
-SELECT cost_usd, llm_usd, embedding_usd, input_tokens, output_tokens, unpriced_tokens, runs
+SELECT cost_usd, llm_usd, embedding_usd, clef_usd, input_tokens, output_tokens, unpriced_tokens, runs
 FROM spend_rollup WHERE tenant_id = ? AND month = ?`;
 
-const NOTHING_SPENT = { cost_usd: 0, llm_usd: 0, embedding_usd: 0, input_tokens: 0, output_tokens: 0, unpriced_tokens: 0, runs: 0 };
+const NOTHING_SPENT = { cost_usd: 0, llm_usd: 0, embedding_usd: 0, clef_usd: 0, input_tokens: 0, output_tokens: 0, unpriced_tokens: 0, runs: 0 };
 
 // `tenant`'s `month`: its allowance, what it has spent, and `spent`, whether a run starting now
 // may call no model. A month with no row has spent nothing, which is how every tenant's allowance

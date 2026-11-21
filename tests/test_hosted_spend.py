@@ -24,23 +24,28 @@ from test_tenant_gateway import FakeGateway
 from cyris import bootstrap
 from cyris.adapters import hosted_spend
 from cyris.adapters.ai_gateway_client import AIGatewayClient
+from cyris.adapters.clef import CLEF_MODEL, ClefError
 from cyris.adapters.embedding import _Usage
 from cyris.adapters.gemini_client import GeminiClient, OutputBudgetSpentError
 from cyris.adapters.hosted import OPERATOR_ORIGIN
 from cyris.adapters.hosted_spend import (
+    CLEF_FLASH_USD_PER_MTOK,
     EMBEDDING_BYTES_PER_TOKEN,
     GEMINI_EMBEDDING_USD_PER_MTOK,
     SPEND_ORIGIN,
     UNPRICED_USD_PER_MTOK,
     WORKERS_AI_USD_PER_KNEURON,
+    MeteredClef,
     MeteredEmbedder,
     MeteredLLM,
     SpendLedger,
     SpendMeter,
+    estimated_clef_tokens,
     estimated_embedding_tokens,
 )
 from cyris.adapters.store.tenant_gateway import apply_hosted_schema
 from cyris.domain.models import _PRICES_PER_MTOK, Article, DigestContent, Lane, UsageStats
+from cyris.service_layer.ports import NoulAnswer
 from cyris.service_layer.run_digest import RunOptions, run_digest
 
 pytestmark = pytest.mark.integration
@@ -215,6 +220,46 @@ async def test_a_response_billed_then_raised_on_is_still_charged(client, url) ->
     )
 
 
+async def test_each_clef_question_is_charged_by_its_tokens_or_an_estimate_of_what_it_sent() -> None:
+    meter = SpendMeter(HAIKU)
+    answers = [
+        NoulAnswer(noul=0.7, model=CLEF_MODEL, input_tokens=1_200),
+        NoulAnswer(noul=0.2, model=CLEF_MODEL, input_tokens=None),
+    ]
+
+    async def ask(_state: dict, _instructions: str) -> NoulAnswer:
+        if not answers:
+            raise ClefError("Clef answered without a noul probability")
+        return answers.pop(0)
+
+    clef = MeteredClef(ask, meter)
+    state = {"item": "台灣半導體", "nearest": "A launch"}
+    await clef(state, "Would the reader keep this?")
+    await clef(state, "Would the reader keep this?")
+    # Answered 200 and unusable: it may have been billed, so it is charged, erring high.
+    with pytest.raises(ClefError):
+        await clef(state, "Would the reader keep this?")
+
+    guess = estimated_clef_tokens(state, "Would the reader keep this?")
+    report = meter.report()
+    assert (report["clef_calls"], report["clef_tokens"]) == (3, 1_200 + 2 * guess)
+    assert report["clef_usd"] == pytest.approx(
+        (1_200 + 2 * guess) * CLEF_FLASH_USD_PER_MTOK / 1_000_000, abs=1e-8
+    )
+
+
+async def test_a_hosted_runs_clef_is_metered_and_charged_to_its_tenant(tenant) -> None:
+    cfg, _, ledger, *_ = tenant
+    deps = bootstrap.build_deps(cfg)
+
+    await deps.ask_clef({"item": "x"}, "keep?")
+    deps.record_spend()
+
+    [charged] = ledger.reports
+    assert (charged["clef_calls"], charged["clef_tokens"]) == (1, 300)
+    assert charged["clef_usd"] == pytest.approx(300 * CLEF_FLASH_USD_PER_MTOK / 1_000_000)
+
+
 async def test_gemini_embeddings_are_estimated_from_the_texts_bytes_and_workers_ai_by_neurons() -> (
     None
 ):
@@ -332,6 +377,11 @@ def tenant(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     embedder = UsageEmbedder()
     monkeypatch.setattr(bootstrap, "build_llm", lambda _cfg: llm)
     monkeypatch.setattr(bootstrap, "make_embedder", lambda _provider, _model: embedder)
+
+    async def clef(_state: dict, _instructions: str) -> NoulAnswer:
+        return NoulAnswer(noul=0.5, model=CLEF_MODEL, input_tokens=300)
+
+    monkeypatch.setattr(bootstrap, "build_ask_clef", lambda: clef)
     config_path = tmp_path / "cyris.toml"
     config_path.write_text(CONFIG.format(vault=tmp_path / "vault"), encoding="utf-8")
     sources_path = tmp_path / "sources.yaml"
@@ -399,6 +449,7 @@ async def test_a_run_whose_month_is_spent_calls_no_model_and_its_page_says_why(t
     assert report.status == "ok"
     assert llm.calls == []
     assert embedder.calls == []
+    assert deps.ask_clef is None
     # Still an issue: the plain list, every article in it.
     [issue] = gateway.db.query("SELECT date, content FROM digests").rows
     assert article.url in issue["content"]
@@ -548,6 +599,7 @@ def test_only_a_tenants_own_run_is_metered_never_a_self_hosted_one_or_the_operat
     hosted = bootstrap.build_deps(cfg)
     assert isinstance(hosted.llm, MeteredLLM)
     assert isinstance(hosted.embedder, MeteredEmbedder)
+    assert isinstance(hosted.ask_clef, MeteredClef)
     assert hosted.record_spend is not None
 
     monkeypatch.delenv("CYRIS_STORE_TENANT_ID")
@@ -564,6 +616,7 @@ def test_only_a_tenants_own_run_is_metered_never_a_self_hosted_one_or_the_operat
         load_files(own / "cyris.toml", own / "sources.yaml", AI_SETTINGS)
     )
     assert not isinstance(self_hosted.llm, MeteredLLM)
+    assert not isinstance(self_hosted.ask_clef, MeteredClef)
     assert self_hosted.record_spend is None
     assert self_hosted.html_writer is None or self_hosted.html_writer.ai_pause is None
 

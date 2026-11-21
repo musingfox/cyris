@@ -4,20 +4,22 @@ The beta charges readers nothing and the operator pays for every model call, so 
 a monthly AI allowance, held in the operator's registry where no run container can write it
 (`workers/app/src/ai_budget.js`). This module is the run's side of it:
 
-* `SpendMeter` counts every LLM response and every embedded text as it happens, through
-  `MeteredLLM` and `MeteredEmbedder`, so a run that raises halfway has still counted what it
-  spent. The run's own `UsageStats` cannot do that: it is summed from the stages that finished.
+* `SpendMeter` counts every LLM response, every embedded text and every Clef question as it
+  happens, through `MeteredLLM`, `MeteredEmbedder` and `MeteredClef`, so a run that raises
+  halfway has still counted what it spent. The run's own `UsageStats` cannot do that: it is
+  summed from the stages that finished.
 * `SpendLedger` asks the hosted Worker, as the run is wired, whether the tenant's month is spent,
   and reports the meter, as the run ends, failed or not. Both go to `SPEND_ORIGIN`, which the
   hosted Worker intercepts and answers with a gateway bound to this tenant (`SpendGateway`).
 
-Why the allowance lives in the registry, why a run is checked only as it starts, and why an
+Why the allowance lives in the registry, why a run is checked only as it is wired, and why an
 unreachable ledger lets the run spend: docs/decisions/0038-a-hosted-tenants-ai-spend-is-metered-
 in-the-registry.md.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 from typing import Any
@@ -67,14 +69,25 @@ UNPRICED_USD_PER_MTOK = (
     max(rates[0] for rates in _PRICES_PER_MTOK.values()),
     max(rates[1] for rates in _PRICES_PER_MTOK.values()),
 )
-# Workers AI's price per thousand neurons past the account's free daily allowance. Every neuron
-# is charged here, since the free allowance is the account's, not a tenant's.
+# Clef's price per million input tokens: `@cf/cloudflare/clef-flash`, the one model `ClefClient`
+# asks, on Cloudflare's Workers AI pricing page (3,455 neurons per million, read 2026-11-21). A
+# Clef answer that reports no input tokens, or a call that raised, is estimated from the bytes
+# it sent, as an embedding is.
+CLEF_FLASH_USD_PER_MTOK = 0.038
+# Workers AI's price per thousand neurons past the account's free daily allowance, on Cloudflare's
+# pricing page (read 2026-11-21). Every neuron is charged here, since the free allowance is the
+# account's, not a tenant's.
 WORKERS_AI_USD_PER_KNEURON = 0.011
 
 
 def estimated_embedding_tokens(texts: list[str]) -> int:
     """The tokens `texts` are charged as when the provider reports none."""
     return sum(math.ceil(len(t.encode("utf-8")) / EMBEDDING_BYTES_PER_TOKEN) for t in texts)
+
+
+def estimated_clef_tokens(state: dict, instructions: str) -> int:
+    """The input tokens one Clef question is charged as when its answer reports none."""
+    return estimated_embedding_tokens([json.dumps(state, ensure_ascii=False), instructions])
 
 
 class SpendMeter:
@@ -86,6 +99,8 @@ class SpendMeter:
         self.embedded_texts = 0
         self.embedding_tokens = 0
         self.embedding_usd = 0.0
+        self.clef_calls = 0
+        self.clef_tokens = 0
 
     def count_llm(self, response: Any) -> None:
         self.llm.add(response.input_tokens, response.output_tokens, response.neurons)
@@ -100,6 +115,10 @@ class SpendMeter:
         self.embedding_tokens += tokens
         if provider == "gemini":
             self.embedding_usd += tokens * GEMINI_EMBEDDING_USD_PER_MTOK / 1_000_000
+
+    def count_clef(self, input_tokens: int) -> None:
+        self.clef_calls += 1
+        self.clef_tokens += input_tokens
 
     def report(self) -> dict[str, float | int]:
         """What the ledger adds to the tenant's month (`checkSpend` in ai_budget.js)."""
@@ -118,12 +137,15 @@ class SpendMeter:
         return {
             "llm_usd": round(cost, 8),
             "embedding_usd": round(self.embedding_usd, 8),
+            "clef_usd": round(self.clef_tokens * CLEF_FLASH_USD_PER_MTOK / 1_000_000, 8),
             "input_tokens": self.llm.input_tokens,
             "output_tokens": self.llm.output_tokens,
             "unpriced_tokens": unpriced,
             "llm_calls": self.llm.api_calls,
             "embedded_texts": self.embedded_texts,
             "embedding_tokens_estimated": self.embedding_tokens,
+            "clef_calls": self.clef_calls,
+            "clef_tokens": self.clef_tokens,
         }
 
 
@@ -178,6 +200,27 @@ class MeteredEmbedder:
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)
+
+
+class MeteredClef:
+    """An `AskClef` that counts each question on `meter`: the input tokens its answer reports,
+    or, for an answer that reports none or a call that raised, an estimate from what it sent.
+    A raised call may have cost nothing; a ceiling errs high."""
+
+    def __init__(self, inner: Any, meter: SpendMeter) -> None:
+        self._inner = inner
+        self._meter = meter
+
+    async def __call__(self, state: dict, instructions: str) -> Any:
+        answer = None
+        try:
+            answer = await self._inner(state, instructions)
+            return answer
+        finally:
+            tokens = getattr(answer, "input_tokens", None)
+            if not isinstance(tokens, int) or isinstance(tokens, bool):
+                tokens = estimated_clef_tokens(state, instructions)
+            self._meter.count_clef(tokens)
 
 
 class SpendLedger:

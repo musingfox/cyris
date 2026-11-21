@@ -58,7 +58,7 @@ counts a failed run's spend, and that adds no product.
 How it is built:
 
 * **The ledger is the registry's.** `spend_rollup` keeps one row per tenant and UTC month. It
-  gains `llm_usd`, `embedding_usd`, `input_tokens`, `output_tokens` and `unpriced_tokens` beside
+  gains `llm_usd`, `embedding_usd`, `clef_usd`, `input_tokens`, `output_tokens` and `unpriced_tokens` beside
   its `cost_usd` (their sum) and `runs`. `tenants` gains `monthly_ai_budget_usd`, default
   `DEFAULT_MONTHLY_AI_BUDGET_USD` (2.25). All of these are added in place, as ADR-0032's columns
   were (`workers/app/src/ai_budget.js`).
@@ -73,21 +73,27 @@ How it is built:
   non-numeric field is refused. The gateway can only add to the tenant's own month. It cannot set
   an allowance or read another tenant.
 * **Every call is metered as it is made.** In a hosted run (not on the operator's machine),
-  `build_deps` wraps the LLM client in `MeteredLLM` and the embedder in `MeteredEmbedder`
-  (`src/cyris/adapters/hosted_spend.py`). Each LLM response is priced at its model's rate in
-  `domain/models.py`. A Workers AI response is priced by its neurons. A model with no rate card
-  is charged at the dearest input and output rates that table holds
-  (`UNPRICED_USD_PER_MTOK`), and its tokens are also counted as `unpriced_tokens`, so the
-  operator sees which spend is a guess. Charging it nothing would give its tenant AI without
-  limit, since the allowance compares dollars. Refusing to run its AI was the other choice; it
-  was turned down because it costs the reader their issue's AI for a gap in a table the
-  operator closes with one rate card, where the dearest rate only spends the allowance sooner.
-  A response that was billed and then raised on, a Gemini model that spent its whole output
-  budget thinking or a blocked prompt, carries its usage on the error (`BilledError` in
-  `adapters/gemini_client.py`), and is counted too. Embedded texts are counted batch by batch, including
-  in a call that raised. Gemini reports no tokens, so they are estimated at one token per three
-  UTF-8 bytes. That is about right for Chinese and about a third high for English: a ceiling
-  should err high. They are priced at gemini-embedding-001's list price.
+  `build_deps` wraps the LLM client in `MeteredLLM`, the embedder in `MeteredEmbedder` and Clef
+  in `MeteredClef` (`src/cyris/adapters/hosted_spend.py`).
+  * Each LLM response is priced at its model's rate in `domain/models.py`. A Workers AI response
+    is priced by its neurons.
+  * A model with no rate card is charged at the dearest input and output rates that table holds
+    (`UNPRICED_USD_PER_MTOK`), and its tokens are also counted as `unpriced_tokens`, so the
+    operator sees which spend is a guess. Charging it nothing would give its tenant AI without
+    limit, since the allowance compares dollars. Refusing to run its AI was the other choice. It
+    was turned down because it costs the reader their issue's AI for a gap in a table that the
+    operator closes with one rate card, where the dearest rate only spends the allowance sooner.
+  * A response that was billed and then raised on is counted too: a Gemini model that spent its
+    whole output budget thinking, or a blocked prompt. The error carries the response's usage
+    (`BilledError` in `adapters/gemini_client.py`).
+  * A Clef question is priced at `clef-flash`'s rate per input token, from the tokens its answer
+    reports. When it reports none, or the call raised, the tokens are estimated from the bytes
+    it sent. A tenant whose `digest.preference_source` is `clef` spends Workers AI on every run,
+    and an unmetered call would never reach its month.
+  * Embedded texts are counted batch by batch, including in a call that raised. Gemini reports no
+    tokens, so they are estimated at one token per three UTF-8 bytes. That is about right for
+    Chinese and about a third high for English: a ceiling should err high. They are priced at
+    gemini-embedding-001's list price.
 * **The run is checked once, as it is wired.** `bootstrap.build_deps` asks the ledger before it
   wires anything. If the month is spent, it wires no LLM, embedder or Clef, so the run takes the
   path a missing client takes and makes the plain list. The `HtmlDigestWriter` it wires carries
@@ -155,7 +161,7 @@ How it is built:
   * `SpendGateway` answers only its own tenant's two routes.
   * The operator's list, month filter, budget route, cross-site refusal and report.
 * `tests/test_hosted_spend.py` checks a hosted run end to end over the fake gateways.
-  * Its LLM and embedding spend are charged once to its own tenant. A model with no rate card
+  * Its LLM, embedding and Clef spend are charged once to its own tenant. A model with no rate card
     is charged at the dearest one.
   * A run whose month is spent calls no LLM and no embedder. It still stores and publishes the
     plain list, and its page carries the allowance notice and not the degraded one. An allowance
