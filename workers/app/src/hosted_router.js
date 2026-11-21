@@ -1,5 +1,6 @@
 // The hosted Worker's doors. A tenant's site and the sign-in take a tenant session and never an
-// Access JWT; every other path, the operator's routes above all, takes the Access JWT alone, by
+// Access JWT; /api/vote takes a page's vote token and neither of the two (hosted_vote.js,
+// ADR-0039); every other path, the operator's routes above all, takes the Access JWT alone, by
 // router.js's own check (ADR-0015), of an identity `CYRIS_HOSTED_OPERATORS` names (ADR-0037), and
 // never reads a session. So no tenant session opens an
 // operator route, whatever Access covers, and a request with neither credential learns nothing,
@@ -28,10 +29,12 @@
 //   GET  /hosted/tenants/<tenant>/members                   the tenant's invite list
 //   GET  /t/<tenant>/...                                    the tenant's pages (hosted_pages.js), to its session
 //   /login, /login/confirm, /logout                         the sign-in (hosted_login.js)
+//   POST /api/vote   {url, vote}                            a reader's vote, by a vote token (hosted_vote.js)
 
 import { LOGIN_PATHS, handleLogin } from "./hosted_login.js";
 import { admitOperator, unsetOperators } from "./hosted_operators.js";
-import { PRIVATE_HEADERS, SITE_ROUTE, privateHeaders, siteHeaders } from "./hosted_pages.js";
+import { PRIVATE_HEADERS, SITE_ROUTE, VOTE_PATH, privateHeaders, siteHeaders } from "./hosted_pages.js";
+import { handleVote } from "./hosted_vote.js";
 import { clearedSessionCookie, crossSite, sessionToken, tokenHash } from "./hosted_session.js";
 import { MONTH } from "./ai_budget.js";
 import { RUN_PERIODS, accessRefusal, dayIn, refuseRunDate } from "./router.js";
@@ -108,11 +111,13 @@ function signInFirst(request, stale) {
 // one the registry bound it to, never one the request names.
 async function siteRequest(request, tenant, rest, deps) {
   const token = sessionToken(request);
-  const session = token ? await deps.session(await tokenHash(token)) : null;
+  const sessionHash = token ? await tokenHash(token) : null;
+  const session = token ? await deps.session(sessionHash) : null;
   if (!session) return signInFirst(request, token !== null);
   if (session.tenant_id !== tenant) return siteHeaders(json(NOT_FOUND, 404));
-  // A paused tenant's pages stay readable; only its runs stop.
-  return siteHeaders(await deps.page(request, tenant, rest));
+  // A paused tenant's pages stay readable; only its runs stop. The page carries a vote token for
+  // this session, made only if the page is one that is served.
+  return siteHeaders(await deps.page(request, tenant, rest, () => deps.voteToken(sessionHash)));
 }
 
 // The address in an operator route's JSON body, `{"email": ...}`: in the body, so it is in no URL
@@ -135,12 +140,15 @@ async function bodyEmail(request) {
 // or `{error}`, `query(tenant, request)`, which answers the request's `{sql, params}` from that
 // tenant's object as its run's gateway does, `inboundAddress(tenant)`, `rotateAddress(tenant)`
 // and `revokeAddress(tenant)`, the registry's answers, `addNewsletterSource(tenant, params)`,
-// which answers `{source}` or `{refused, status}`, `page(request, tenant, rest)`, which answers
-// under /t/<tenant> from that tenant's object, `invite(tenant, email)` and
+// which answers `{source}` or `{refused, status}`, `page(request, tenant, rest, voteToken)`, which
+// answers under /t/<tenant> from that tenant's object, `invite(tenant, email)` and
 // `revoke(tenant, email)`, which answer the registry's `{member}`, `{revoked}` or
 // `{refused, status}`, `members(tenant)`, and `signIn(email, {invitation})` (hosted_login.js's
-// createSignIn). For readers: `session(sessionHash)`, the registry's live session or null, and
-// `login`, what handleLogin takes.
+// createSignIn). For readers: `session(sessionHash)`, the registry's live session or null,
+// `voteToken(sessionHash)`, the token that session's pages vote with, `voteSession(token)`, the
+// live session a vote token names or null, `recordVote(tenant, {url, vote})`, which queues the
+// vote in that tenant's object and answers `{queued}` or `{refused, status}`, and `login`, what
+// handleLogin takes.
 export async function handleHostedRequest(request, env, deps) {
   // Every answer, a refusal or an operator's JSON as much as a page, is kept out of any index.
   return privateHeaders(await route(request, env, deps));
@@ -151,6 +159,9 @@ async function route(request, env, deps) {
   const site = SITE_ROUTE.exec(url.pathname);
   if (site) return siteRequest(request, site[1], site[2] ?? "", deps);
   if (LOGIN_PATHS.has(url.pathname)) return handleLogin(request, deps.login);
+  // The vote route takes a vote token, which a page served to a session carries; no Access JWT, no
+  // cookie, and no operator route is reached through it.
+  if (url.pathname === VOTE_PATH) return handleVote(request, deps);
 
   // Every other path is the operator's: the Access JWT, and only it, of an identity the operator
   // list names (hosted_operators.js). Access lets in whoever its application admits; a reader put

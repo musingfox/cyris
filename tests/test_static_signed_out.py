@@ -66,7 +66,20 @@ def test_settings_names_the_access_refusal_once():
     assert english["settings.access_not_set_up"].startswith(ACCESS_NOT_SET_UP)
 
 
-@pytest.mark.parametrize("path", [SETTINGS, LABELS, PROMOTE], ids=["settings", "labels", "promote"])
+@pytest.mark.parametrize("path", [SETTINGS, LABELS], ids=["settings", "labels"])
 def test_no_page_branches_on_a_401_no_worker_sends(path):
     """The app Worker sends no 401, and the promote Worker's refused bearer only passes through."""
     assert "status === 401" not in path.read_text()
+
+
+def test_the_vote_script_branches_on_a_401_only_for_the_hosted_workers_ended_session():
+    """The hosted Worker answers a vote token whose session ended with 401 and a code (ADR-0039).
+
+    The promote Worker's 401 still only passes through, so the script reads the code, never
+    the status alone: a refused promote bearer is not a sign-in the reader can mend.
+    """
+    source = PROMOTE.read_text()
+
+    assert source.count("status === 401") == 1
+    branch = source.split("status === 401", 1)[1].split("status === 403", 1)[0]
+    assert "body.code === 'vote_session_ended'" in branch

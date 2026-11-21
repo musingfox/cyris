@@ -5,6 +5,10 @@
     // Corrupt storage, or a browser blocking it, must not take the click handler down with it.
     let votes = {};
     try { votes = JSON.parse(localStorage.getItem(VOTES_KEY) || '{}'); } catch { votes = {}; }
+    // A hosted tenant's page is served with the reader's vote token in this <meta>, and its votes
+    // carry it in a header; a page on Pages or the local server has none, and sends none
+    // (ADR-0039). Read at each vote, not once, so a page rewritten after load is still read.
+    const voteToken = () => document.querySelector('meta[name="cyris-vote-token"]')?.content;
     // A vote is one hop through the app Worker to the promote Worker, which answers in well
     // under a second; past this the reader is told it did not land instead of waiting on.
     const VOTE_TIMEOUT_MS = 10000;
@@ -62,6 +66,11 @@
     async function failureOf(resp) {
         // Access answers a reader it does not admit with a redirect the page cannot follow.
         if (resp.type === 'opaqueredirect') return VOTE_FAILED.signedOut;
+        // The hosted Worker's answer to a vote token whose session has ended or never was.
+        if (resp.status === 401) {
+            const body = await resp.json().catch(() => ({}));
+            if (body.code === 'vote_session_ended') return VOTE_FAILED.signedOut;
+        }
         if (resp.status === 403) return VOTE_FAILED.accessNotSetUp;
         // The app Worker passes the promote Worker's own status through, a 503 included.
         if (resp.status === 503) {
@@ -80,7 +89,7 @@
             const results = await Promise.all(urls.map((u) => fetch('/api/vote', {
                 method: 'POST',
                 redirect: 'manual',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json', ...(voteToken() ? { 'X-Cyris-Vote': voteToken() } : {}) },
                 body: JSON.stringify({ url: u, vote: vote, digest_date: DIGEST_DATE }),
                 signal: timeoutSignal(VOTE_TIMEOUT_MS),
             })));

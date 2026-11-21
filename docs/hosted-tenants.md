@@ -143,7 +143,9 @@ dashboard now uses.
    not cover `/hosted` itself; nothing the operator calls is `/hosted` alone. Note the
    application's Application Audience (AUD) Tag *(label unverified)*. A path Access leaves
    uncovered is still refused by the Worker: any `/hosted/` request without a valid JWT answers
-   403, and so does every path that is neither `/hosted/`, `/t/` nor the sign-in.
+   403, and so does every path that is not `/hosted/`, `/t/`, the sign-in or `/api/vote`. The
+   vote route takes neither the JWT nor the session cookie, only the vote token a page served to
+   a signed-in reader carries, and reaches no page and no operator route (ADR-0039).
 2. In Zero Trust > Access > Service credentials *(label unverified)*, create a service token, or
    reuse the trial's. Note its Client ID and Client Secret. The secret is shown once.
 3. In the step-1 application, add a policy whose action is Service Auth *(label unverified)* and
@@ -656,9 +658,18 @@ a flood of three does: asking in the names of about 12 readers, four of each ten
 500-a-day ceiling in about 17 hours, and then every tenant's readers are held, the log line names
 `daily`, and only a re-invite mails a link (ADR-0033).
 
-The vote buttons and the Settings link stay hidden on a tenant's pages, because the hosted Worker
-has no `/api/vote` or `/settings` yet, and each page is served sandboxed, so its scripts run with
-no origin of their own (ADR-0033).
+The Settings link stays hidden on a tenant's pages, because the hosted Worker has no `/settings`
+yet. The vote buttons show on a page served to a signed-in reader, and a vote lands in that
+tenant's own `hosted_votes` table and no one else's, through a token the Worker put in the page
+(ADR-0039): a page is sandboxed, so its scripts have no cookie and no origin of their own
+(ADR-0033). The token ends 12 hours after the page view that made it, so a page left open longer
+shows the signed-out message at its next vote and a reload mends it. The vote is applied by the
+tenant's next run, not at once, and a reloaded page does not show a past vote (its scripts have no
+storage). To check a trial tenant, vote once as its reader on a digest page, then read the tenant's report
+as the operator (`GET /hosted/tenants/alpha/report` with the service token): its tables list
+`hosted_votes` with one row, and after the tenant's next run, which applies the vote and deletes
+the row, zero rows. *Unverified in a browser:* that the page's `fetch` passes the route's preflight and
+the buttons appear; look in the browser's console for a blocked request if they do not.
 
 ## 11. Tear down (when you are done)
 

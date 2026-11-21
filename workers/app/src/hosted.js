@@ -146,6 +146,9 @@ export default {
       members: (tenant) => registry().members(tenant),
       signIn,
       session: (sessionHash) => registry().session(sessionHash),
+      voteToken: (sessionHash) => registry().voteToken(sessionHash),
+      voteSession: (token) => registry().voteSession(token),
+      recordVote: (tenant, vote) => tenantDb(env, tenant).recordVote(vote),
       login: {
         signIn,
         waitUntil: (promise) => ctx.waitUntil(promise),

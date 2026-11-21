@@ -33,6 +33,7 @@ import {
   SIGN_IN_HOUR_MS,
   SIGN_IN_TENANT_CAP,
   SIGN_IN_TTL_MS,
+  VOTE_TOKEN_TTL_MS,
   isEmail,
   normalEmail,
 } from "./hosted_session.js";
@@ -69,9 +70,10 @@ export const REGISTRY_NAME = "cyris:registry";
 // tenant per address; `invites`, each single-use sign-in link, the operator's invitation and
 // every later one alike, keyed by its token's SHA-256 in `code` and never by the token;
 // `sessions`, keyed the same way; and `sign_in_asks`, each link a reader asked for at /login,
-// kept a day so the caps on asking can count it. `spend_rollup` is each tenant's AI spend per UTC
-// month, which its runs report through SpendGateway (hosted_spend.js), and
-// `tenants.monthly_ai_budget_usd` the allowance a run is checked against as it starts
+// kept a day so the caps on asking can count it. `vote_key` is the one key that signs a vote
+// token (ADR-0039), made on first use and never read outside this object. `spend_rollup` is each
+// tenant's AI spend per UTC month, which its runs report through SpendGateway (hosted_spend.js),
+// and `tenants.monthly_ai_budget_usd` the allowance a run is checked against as it starts
 // (ai_budget.js, ADR-0038).
 export const REGISTRY_SCHEMA = `
 CREATE TABLE IF NOT EXISTS tenants (
@@ -114,6 +116,10 @@ CREATE TABLE IF NOT EXISTS sign_in_asks (
   asked_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_sign_in_asks_asked ON sign_in_asks(asked_at);
+CREATE TABLE IF NOT EXISTS vote_key (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  key TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS inbound_addresses (
   address TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
@@ -174,6 +180,14 @@ const SESSION_SQL =
   "SELECT s.tenant_id, s.email, s.expires_at FROM sessions s " +
   "JOIN members m ON m.email = s.email AND m.tenant_id = s.tenant_id " +
   "JOIN tenants t ON t.id = s.tenant_id WHERE s.token_hash = ? AND s.expires_at > ?";
+
+// Whether two texts are equal, comparing every character of the longer, so a MAC's check takes the
+// same time wherever it first differs.
+function sameText(a, b) {
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < Math.max(a.length, b.length); i++) diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  return diff === 0;
+}
 
 // The registry, from any Worker-side code that holds the binding. Created with the tenant
 // objects' hint: only an object's first get() honours one, and that may be the operator's.
@@ -547,6 +561,49 @@ export class TenantRegistry extends DurableObject {
   session(sessionHash, { now = new Date() } = {}) {
     const [row] = this.ctx.storage.sql.exec(SESSION_SQL, sessionHash, stamp(now)).toArray();
     return row ? { ...row } : null;
+  }
+
+  // The vote token for the live session keyed by `sessionHash`: what the Worker puts in a tenant
+  // page it serves to that session, for the page's own votes (ADR-0039). The page is sandboxed
+  // and its requests carry no cookie, so a vote cannot use the session cookie; this is the
+  // session's own, narrower credential. It is the session's hash, the second it was made at, and
+  // an HMAC of both under the registry's `vote_key`, so it opens no page and no operator route,
+  // it ends `VOTE_TOKEN_TTL_MS` after the page view that made it, and a request that holds it
+  // still has to be a live session at the vote. Null when the session is not live.
+  async voteToken(sessionHash, { now = new Date() } = {}) {
+    if (!this.session(sessionHash, { now })) return null;
+    const issued = String(Math.floor(now.getTime() / 1000));
+    return `${sessionHash}.${issued}.${await this.#voteMac(sessionHash, issued)}`;
+  }
+
+  // The live session a vote token names, `{tenant_id, email, expires_at}`, or null for a token
+  // whose MAC is not this registry's, that is past its own lifetime, whose session has ended, or
+  // whose address was revoked: the caller cannot tell which. The tenant is the session's, never
+  // one the request names.
+  async voteSession(token, { now = new Date() } = {}) {
+    const [sessionHash, issued, mac, ...extra] = typeof token === "string" ? token.split(".") : [];
+    if (!sessionHash || !/^\d{1,12}$/.test(issued ?? "") || !mac || extra.length) return null;
+    const expected = await this.#voteMac(sessionHash, issued);
+    if (!sameText(mac, expected)) return null;
+    const age = now.getTime() - Number(issued) * 1000;
+    if (age < 0 || age >= VOTE_TOKEN_TTL_MS) return null;
+    return this.session(sessionHash, { now });
+  }
+
+  // HMAC-SHA-256, as hex, over the session hash and the token's issue second under `vote_key`,
+  // made here on first use. The key is made before any await, so two first calls cannot make two;
+  // INSERT OR IGNORE keeps the first.
+  async #voteMac(sessionHash, issued) {
+    const sql = this.ctx.storage.sql;
+    let [row] = sql.exec("SELECT key FROM vote_key WHERE id = 1").toArray();
+    if (!row) {
+      const fresh = [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, "0")).join("");
+      sql.exec("INSERT OR IGNORE INTO vote_key (id, key) VALUES (1, ?)", fresh);
+      [row] = sql.exec("SELECT key FROM vote_key WHERE id = 1").toArray();
+    }
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(row.key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+    const mac = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`vote:${sessionHash}.${issued}`));
+    return [...new Uint8Array(mac)].map((b) => b.toString(16).padStart(2, "0")).join("");
   }
 
   // Ends one session: the reader's sign-out.

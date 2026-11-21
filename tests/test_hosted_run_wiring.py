@@ -42,11 +42,13 @@ from cyris.adapters.hosted import (
     TaggedLines,
     skip_digest_notification,
 )
+from cyris.adapters.hosted_votes import sync_hosted_votes
 from cyris.adapters.output import publish
 from cyris.adapters.output.hosted_pages import HostedPages
 from cyris.adapters.run_alert import reader_alert_message
 from cyris.adapters.store import tenant_gateway
 from cyris.adapters.store.d1 import D1Client, apply_schema
+from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.adapters.store.tenant_gateway import GatewayD1Client, apply_hosted_schema
 from cyris.domain.models import Article, Lane
 from cyris.entrypoints.cli import app
@@ -307,7 +309,10 @@ def test_a_hosted_run_is_wired_to_its_own_site_and_to_no_queue_page_or_channel(h
     # The rss and newsletter Workers' URLs and token are set, and still the edges are the
     # tenant's own buffer and its own newsletter queue.
     assert [type(s) for s in deps.fetch_sources] == [TenantNewsletterSource, TenantRssSource]
-    assert deps.sync_promotions is None
+    # Its votes are its own table, drained through its gateway (ADR-0039); `promote-sync`, which
+    # holds no tenant's database, has none, and the vote Worker's queue is never pulled.
+    assert deps.sync_promotions is not None
+    assert deps.sync_promotions.func is sync_hosted_votes
     assert bootstrap.build_promotion_sync(cfg) is None
     # Every environment switch for Pages is on, and still the publisher is the tenant's site.
     assert deps.html_writer is not None
@@ -649,6 +654,52 @@ async def test_every_write_of_a_scored_run_is_one_a_durable_object_can_bind(host
     assert gateway.refused == []
     [row] = gateway.db.query("SELECT score FROM stored_articles").rows
     assert row["score"] == 80
+
+
+async def test_a_hosted_run_applies_the_votes_its_readers_queued_before_it_scores(
+    hosted_cfg,
+) -> None:
+    """The run's vote pull is the tenant's own queue, so its reader's vote is a human's stamp."""
+    cfg, gateway = hosted_cfg
+    voted = Article(
+        id=2,
+        title="Last week's story",
+        url="https://a.test/voted",
+        content="A story the reader voted on.",
+        published_at=datetime.now(UTC) - timedelta(days=3),
+        source_name="A",
+        source_lane=Lane.READ,
+    )
+    D1ArticleStore(gateway.db).save([voted])
+    gateway.db.query(
+        "INSERT INTO hosted_votes (url, vote, ts) VALUES (?, ?, ?)",
+        [voted.url, "down", "2026-11-21T06:00:00+00:00"],
+    )
+    fresh = Article(
+        id=1,
+        title="A model release",
+        url="https://a.test/model",
+        content="A lab released a model.",
+        published_at=datetime.now(UTC) - timedelta(hours=1),
+        source_name="A",
+        source_lane=Lane.READ,
+    )
+    scores = {"scores": [{"id": 0, "score": 80, "language": "en", "tags": ["ai"]}]}
+    deps = replace(
+        bootstrap.build_deps(cfg),
+        llm=FakeLLM([json.dumps(scores)]),
+        fetch_sources=[FakeSource([fresh])],
+    )
+
+    report = await run_digest(deps, RunOptions(period="evening"))
+
+    assert report.status == "ok"
+    assert gateway.refused == []
+    [row] = gateway.db.query(
+        "SELECT state, triaged_at FROM stored_articles WHERE url = ?", [voted.url]
+    ).rows
+    assert (row["state"], row["triaged_at"] is not None) == ("rejected", True)
+    assert gateway.db.query("SELECT count(*) AS n FROM hosted_votes").rows[0]["n"] == 0
 
 
 def test_a_hosted_tick_that_cannot_start_tells_the_operator_and_the_reader_no_error(

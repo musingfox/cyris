@@ -18,7 +18,7 @@ export const injectStyle = (response, html) =>
     })
     .transform(response);
 
-// `page(request, tenant, rest)` for `handleHostedRequest`. Each tenant's type size is read from
+// `page(request, tenant, rest, voteToken)` for `handleHostedRequest`. Each tenant's type size is read from
 // its own object and held in one memo per factory call and tenant, as index.js holds one for the
 // deployment (ADR-0013); hosted.js calls this once at module scope, so that is one per isolate.
 export function createSitePage(env) {
@@ -27,11 +27,12 @@ export function createSitePage(env) {
     if (!typeScales.has(tenant)) typeScales.set(tenant, createTypeScale({ env, read: tenantRows(env, tenant) }));
     return typeScales.get(tenant);
   };
-  return (request, tenant, rest) =>
+  return (request, tenant, rest, voteToken) =>
     serveTenantPage(request, {
       tenant,
       rest,
       db: tenantDb(env, tenant),
       deps: { typeScale: typeScaleOf(tenant), injectStyle },
+      voteToken,
     });
 }

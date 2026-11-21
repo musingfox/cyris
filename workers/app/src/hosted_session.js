@@ -34,6 +34,12 @@ export const SIGN_IN_HOUR_MS = 60 * 60 * 1000;
 export const SIGN_IN_DAY_MS = 24 * 60 * 60 * 1000;
 // How long a session lasts from the sign-in that made it; it is not extended by use.
 export const SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+// How long a page's vote token lasts from the page view that made it, within its session's own
+// lifetime (ADR-0039). The token sits in the page, where a script injected into it could read it
+// and send it away; this bounds how long a stolen token votes from somewhere else. Twelve hours
+// covers an issue read the day it arrives, since the default schedule runs twice a day, and a
+// reload makes a fresh one.
+export const VOTE_TOKEN_TTL_MS = 12 * 60 * 60 * 1000;
 
 // 32 random bytes, base64url without padding: 43 characters.
 const TOKEN = /^[A-Za-z0-9_-]{43}$/;

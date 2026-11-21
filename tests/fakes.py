@@ -204,7 +204,9 @@ class SqliteD1:
         from pathlib import Path
 
         schema = Path(__file__).parent.parent / "src/cyris/adapters/store/schema.sql"
-        self._conn = sqlite3.connect(":memory:")
+        # A run's vote pull is one `asyncio.to_thread` call; a D1 over REST has no thread to be
+        # bound to, so the stand-in has none either. Only one caller uses it at a time.
+        self._conn = sqlite3.connect(":memory:", check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         # `with_schema=False` is what a clean Cloudflare account hands the first
         # boot: a reachable database with no tables in it.
