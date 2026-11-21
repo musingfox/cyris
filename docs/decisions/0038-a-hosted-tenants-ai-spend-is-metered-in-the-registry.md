@@ -81,7 +81,10 @@ How it is built:
   operator sees which spend is a guess. Charging it nothing would give its tenant AI without
   limit, since the allowance compares dollars. Refusing to run its AI was the other choice; it
   was turned down because it costs the reader their issue's AI for a gap in a table the
-  operator closes with one rate card, where the dearest rate only spends the allowance sooner. Embedded texts are counted batch by batch, including
+  operator closes with one rate card, where the dearest rate only spends the allowance sooner.
+  A response that was billed and then raised on, a Gemini model that spent its whole output
+  budget thinking or a blocked prompt, carries its usage on the error (`BilledError` in
+  `adapters/gemini_client.py`), and is counted too. Embedded texts are counted batch by batch, including
   in a call that raised. Gemini reports no tokens, so they are estimated at one token per three
   UTF-8 bytes. That is about right for Chinese and about a third high for English: a ceiling
   should err high. They are priced at gemini-embedding-001's list price.
@@ -157,7 +160,8 @@ How it is built:
   * A run whose month is spent calls no LLM and no embedder. It still stores and publishes the
     plain list, and its page carries the allowance notice and not the degraded one. An allowance
     of 0 says AI is off, never that the month brings it back.
-  * A run that raises after its model calls still charges them.
+  * A run that raises after its model calls still charges them, and so does a Gemini or AI
+    Gateway response that was billed and then raised on.
   * A ledger that cannot be read lets the run spend and still charges it, and the operator gets
     one alert for the run, however many of its ledger calls failed.
   * Only a hosted run is metered.

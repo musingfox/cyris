@@ -128,7 +128,8 @@ class SpendMeter:
 
 
 class MeteredLLM:
-    """An `LLMClient` that counts each response on `meter` before handing it back."""
+    """An `LLMClient` that counts each response on `meter` before handing it back, and the
+    usage a raised error says was billed before raising it."""
 
     def __init__(self, inner: Any, meter: SpendMeter) -> None:
         self._inner = inner
@@ -136,7 +137,14 @@ class MeteredLLM:
         self.model = inner.model
 
     async def complete(self, prompt: str, **kwargs: Any) -> Any:
-        response = await self._inner.complete(prompt, **kwargs)
+        try:
+            response = await self._inner.complete(prompt, **kwargs)
+        except Exception as e:
+            # Billed, then raised: a thinking model that spent its whole output budget, or a
+            # blocked prompt (`BilledError` in adapters/gemini_client.py). Paid for all the same.
+            if (billed := getattr(e, "billed", None)) is not None:
+                self._meter.count_llm(billed)
+            raise
         self._meter.count_llm(response)
         return response
 

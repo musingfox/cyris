@@ -23,7 +23,9 @@ from test_tenant_gateway import FakeGateway
 
 from cyris import bootstrap
 from cyris.adapters import hosted_spend
+from cyris.adapters.ai_gateway_client import AIGatewayClient
 from cyris.adapters.embedding import _Usage
+from cyris.adapters.gemini_client import GeminiClient, OutputBudgetSpentError
 from cyris.adapters.hosted import OPERATOR_ORIGIN
 from cyris.adapters.hosted_spend import (
     EMBEDDING_BYTES_PER_TOKEN,
@@ -162,6 +164,55 @@ async def test_a_model_with_no_rate_card_is_charged_at_the_dearest_rates_and_nam
     assert unpriced.report()["unpriced_tokens"] == 1_100_000
     assert neurons.report()["llm_usd"] == pytest.approx(2 * WORKERS_AI_USD_PER_KNEURON)
     assert neurons.report()["unpriced_tokens"] == 0
+
+
+# A thinking model that spent its whole output budget: billed, then raised on (gemini_client.py).
+BUDGET_SPENT = {
+    "candidates": [{"content": {"role": "model"}, "finishReason": "MAX_TOKENS"}],
+    "usageMetadata": {"promptTokenCount": 40_000, "thoughtsTokenCount": 8_000},
+}
+# A blocked prompt: no candidate, its input billed.
+BLOCKED = {"promptFeedback": {"blockReason": "SAFETY"}, "usageMetadata": {"promptTokenCount": 900}}
+
+
+@pytest.mark.parametrize(
+    ("client", "url"),
+    [
+        (
+            lambda: GeminiClient(api_key="k", model="gemini-2.5-flash", max_retries=0),
+            "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+        ),
+        (
+            lambda: AIGatewayClient(
+                api_token="t", account_id="acct", model="google/gemini-2.5-flash", max_retries=0
+            ),
+            None,
+        ),
+    ],
+    ids=["gemini", "ai_gateway"],
+)
+async def test_a_response_billed_then_raised_on_is_still_charged(client, url) -> None:
+    meter = SpendMeter("gemini-2.5-flash")
+    llm = MeteredLLM(client(), meter)
+
+    async with respx.mock:
+        route = respx.post(url) if url else respx.post(host__regex=r".+")
+        route.mock(
+            side_effect=[httpx.Response(200, json=BUDGET_SPENT), httpx.Response(200, json=BLOCKED)]
+        )
+        with pytest.raises(OutputBudgetSpentError):
+            await llm.complete("p")
+        with pytest.raises(RuntimeError, match="no candidates"):
+            await llm.complete("p")
+
+    report = meter.report()
+    assert (report["input_tokens"], report["output_tokens"]) == (40_900, 8_000)
+    assert report["llm_calls"] == 2
+    assert report["llm_usd"] == pytest.approx(
+        UsageStats(
+            model="gemini-2.5-flash", input_tokens=40_900, output_tokens=8_000
+        ).estimated_cost
+    )
 
 
 async def test_gemini_embeddings_are_estimated_from_the_texts_bytes_and_workers_ai_by_neurons() -> (
