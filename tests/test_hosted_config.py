@@ -140,6 +140,18 @@ def test_the_backup_runs_from_the_hourly_tick_and_never_a_second_cron() -> None:
     assert "backupDue(at)" in _js("hosted.js")
 
 
+def test_the_b2_settings_are_set_by_the_runbook_and_never_handed_to_a_container() -> None:
+    [block] = re.findall(r"export const B2_SETTINGS = \{(.*?)\};", _js("hosted_backup.js"), re.S)
+    names = re.findall(r'"(CYRIS_HOSTED_B2_\w+)"', block)
+    [handed] = re.findall(r"const HOSTED_SECRETS = \[(.*?)\];", _js("hosted_container.js"), re.S)
+    script = (ROOT / "scripts/hosted.sh").read_text(encoding="utf-8")
+
+    assert len(names) == 4
+    for name in names:
+        assert name not in handed
+        assert f"put_secret {name} " in script
+
+
 def test_the_hosted_file_runs_the_same_image_on_the_same_runtime() -> None:
     default, hosted = _toml("wrangler.toml"), _toml("wrangler.hosted.toml")
     [container] = hosted["containers"]

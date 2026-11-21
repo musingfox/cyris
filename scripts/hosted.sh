@@ -6,8 +6,8 @@
 # that reaches Cloudflare through wrangler, and is never stored or read from the environment,
 # so neither an exported variable nor an old file can pick the account. deploy, secrets and
 # delete also print the account's name and do nothing until you type "yes". The secrets (the
-# Anthropic key, the operator's webhook, the Access service token's secret) are read without
-# echo each time, never
+# Anthropic key, the operator's webhook, the B2 key id and application key, the Access service
+# token's secret) are read without echo each time, never
 # written down, and reach wrangler and curl on stdin, never in argv, where `ps` would show them.
 # HOSTED_URL, which deploy prints, is the one value kept, in .env.hosted (gitignored, mode 600).
 set -euo pipefail
@@ -50,6 +50,13 @@ ask() {
     read -rp "$prompt: " value
   fi
   [[ -n "$value" ]] || { echo "$name is required" >&2; exit 1; }
+  printf -v "$name" '%s' "$value"
+}
+
+# ask_optional NAME PROMPT: as ask, but blank (or no input at all) leaves NAME empty.
+ask_optional() {
+  local name=$1 prompt=$2 value=
+  read -rp "$prompt: " value || true
   printf -v "$name" '%s' "$value"
 }
 
@@ -193,6 +200,19 @@ case "${1:-}" in
     ask OPERATOR_WEBHOOK "CYRIS_HOSTED_OPERATOR_WEBHOOK, the operator's Discord webhook URL" secret
     [[ "$OPERATOR_WEBHOOK" == https://* ]] || { echo "CYRIS_HOSTED_OPERATOR_WEBHOOK must be an https:// URL" >&2; exit 1; }
     ask MAIL_FROM "CYRIS_HOSTED_MAIL_FROM, the sign-in mail's sender, on a domain onboarded to Email Sending (cyris@yourdomain.com)"
+    # The daily backup's off-Cloudflare copy in Backblaze B2 (ADR-0041). Blank skips all four: the
+    # backup still writes R2, and the Worker alerts once a day that there is no B2 copy. The key id
+    # and the application key are the credential, so both are read without echo.
+    ask_optional B2_ENDPOINT "CYRIS_HOSTED_B2_ENDPOINT, the B2 bucket's S3 endpoint (https://s3.<region>.backblazeb2.com), blank for no B2 copy"
+    if [[ -n "$B2_ENDPOINT" ]]; then
+      [[ "$B2_ENDPOINT" =~ ^https://s3\.[a-z0-9-]+\.backblazeb2\.com$ ]] || {
+        echo "CYRIS_HOSTED_B2_ENDPOINT must be https://s3.<region>.backblazeb2.com" >&2
+        exit 1
+      }
+      ask B2_BUCKET "CYRIS_HOSTED_B2_BUCKET, the B2 bucket's name"
+      ask B2_KEY_ID "CYRIS_HOSTED_B2_KEY_ID, the keyID of an application key limited to that bucket" secret
+      ask B2_APPLICATION_KEY "CYRIS_HOSTED_B2_APPLICATION_KEY, that application key" secret
+    fi
     put_secret CYRIS_ACCESS_TEAM_DOMAIN "$TEAM_DOMAIN"
     put_secret CYRIS_ACCESS_AUD "$AUD"
     put_secret CYRIS_HOSTED_OPERATORS "$OPERATORS"
@@ -203,17 +223,32 @@ case "${1:-}" in
     # The host deploy kept, which every tenant's links point at (ADR-0029). Not a secret, but
     # `secret put` is how wrangler sets one value without editing wrangler.hosted.toml.
     put_secret CYRIS_STORE_HOSTED_DOMAIN "${HOSTED_URL#https://}"
+    if [[ -n "$B2_ENDPOINT" ]]; then
+      # The endpoint and bucket are not secrets; set the same way, so wrangler.hosted.toml names
+      # no deployment's bucket.
+      put_secret CYRIS_HOSTED_B2_ENDPOINT "$B2_ENDPOINT"
+      put_secret CYRIS_HOSTED_B2_BUCKET "$B2_BUCKET"
+      put_secret CYRIS_HOSTED_B2_KEY_ID "$B2_KEY_ID"
+      put_secret CYRIS_HOSTED_B2_APPLICATION_KEY "$B2_APPLICATION_KEY"
+    fi
     ;;
   containers)
     ask_account
     run_wrangler containers list
     ;;
   register)
+    # register [TENANT [STATUS]]: the seed's tenants, or only TENANT, with STATUS when named
+    # (a restored tenant registered paused is read and checked, and neither polled nor run).
+    one=${2:-} status=${3:-}
+    if [[ -n "$one" && ! "$one" =~ ^[a-z0-9-]{1,40}$ ]] || [[ -n "$status" && "$status" != active && "$status" != paused ]]; then
+      echo "usage: $0 register [TENANT [active|paused]]" >&2
+      exit 2
+    fi
     ask_access
     out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-register.XXXXXX")
     failed=()
-    for tenant in $TENANTS; do
-      call "$tenant" POST "/hosted/tenants/$tenant/register" "$out/$tenant.json" || failed+=("$tenant")
+    for tenant in ${one:-$TENANTS}; do
+      call "$tenant" POST "/hosted/tenants/$tenant/register${status:+?status=$status}" "$out/$tenant.json" || failed+=("$tenant")
     done
     finish ${failed[@]+"${failed[@]}"}
     ;;
@@ -360,6 +395,26 @@ case "${1:-}" in
     out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-budget.XXXXXX")
     call "$tenant" POST "/hosted/tenants/$tenant/budget?usd=$usd" "$out/$tenant.json" || finish "$tenant"
     ;;
+  backup)
+    # Today's daily backup now, as the tick runs it at its hour (ADR-0041): what it exported and
+    # which copies failed, each of which the operator's webhook was also told.
+    ask_access
+    out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-backup.XXXXXX")
+    call backup POST /hosted/backup "$out/backup.json" || finish backup
+    ;;
+  restore)
+    # restore DATE TENANT NEW_TENANT: TENANT's export of the UTC day DATE, from the backup's R2
+    # bucket, into NEW_TENANT, an id the registry does not hold and whose database holds no table
+    # (ADR-0041). Register NEW_TENANT afterwards to read or run it: register NEW_TENANT paused.
+    date=${2:-} tenant=${3:-} new=${4:-}
+    if [[ ! "$date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ || ! "$tenant" =~ ^[a-z0-9-]{1,40}$ || ! "$new" =~ ^[a-z0-9-]{1,40}$ ]]; then
+      echo "usage: $0 restore DATE TENANT NEW_TENANT (DATE is YYYY-MM-DD, UTC)" >&2
+      exit 2
+    fi
+    ask_access
+    out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-restore.XXXXXX")
+    call "$new" POST "/hosted/tenants/$new/restore?date=$date&from=$tenant" "$out/$new.json" || finish "$new"
+    ;;
   tail)
     ask_account
     run_wrangler tail
@@ -370,7 +425,7 @@ case "${1:-}" in
     run_wrangler delete
     ;;
   *)
-    echo "usage: $0 deploy|secrets|containers|register|schedule TENANT TIMES TIMEZONE [CAP]|seed|run [morning|evening]|poll|address [show|rotate|revoke]|newsletter-source TENANT NAME FROM [HOMEPAGE]|check|invite TENANT EMAIL|revoke TENANT EMAIL|members TENANT|spend [YYYY-MM]|budget TENANT USD|tail|delete" >&2
+    echo "usage: $0 deploy|secrets|containers|register [TENANT [STATUS]]|schedule TENANT TIMES TIMEZONE [CAP]|seed|run [morning|evening]|poll|address [show|rotate|revoke]|newsletter-source TENANT NAME FROM [HOMEPAGE]|check|invite TENANT EMAIL|revoke TENANT EMAIL|members TENANT|spend [YYYY-MM]|budget TENANT USD|backup|restore DATE TENANT NEW_TENANT|tail|delete" >&2
     exit 2
     ;;
 esac
