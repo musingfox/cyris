@@ -52,8 +52,26 @@ class CloudflareNewsletterSource:
 
     @staticmethod
     def _match_source(from_email: str, sources: dict[str, SourceConfig]) -> SourceConfig | None:
+        """The source whose `email_match` contains the sender's address, in any case.
+
+        Case carries no meaning in an address, so both sides are lower-cased. A missing or blank
+        From matches nothing: "" is a substring of every string, so the old `in` test filed
+        such mail under the first source with an `email_match`.
+
+        The test stays a substring one, not whole-address equality. The self-hosted /settings
+        and `sources push` accept any string for `email_match`, so it may hold several
+        addresses, `from:(a@x.test OR b@y.test)` or a display name; equality would match none
+        of them and the mail would be acked as an unknown sender. The cost: sender
+        `a@b.com` also matches `from:xa@b.com`. That is the same rule as the hosted class, whose
+        route writes exactly one address.
+        """
+        sender = (from_email or "").strip().lower()
+        if not sender:
+            return None
         for source in sources.values():
-            if source.email_match and from_email in source.email_match:
+            if not source.email_match:
+                continue
+            if sender in source.email_match.lower():
                 return source
         return None
 
@@ -63,14 +81,14 @@ class CloudflareNewsletterSource:
 
         Gmail's "Forward" button rewrites From to the user, leaving the original
         sender only in the body's forwarded header. Match a source whose
-        email_match address appears in the body. (Filter auto-forwards keep the
+        email_match address appears in the body, in any case. (Filter auto-forwards keep the
         original From and match directly, so this only fires on manual forwards.)
         """
-        body = f"{item.get('text', '')} {item.get('html', '')}"
+        body = f"{item.get('text', '')} {item.get('html', '')}".lower()
         for source in sources.values():
             if not source.email_match:
                 continue
-            addr = source.email_match.split(":", 1)[-1].strip()
+            addr = source.email_match.split(":", 1)[-1].strip().lower()
             if addr and addr in body:
                 return source
         return None

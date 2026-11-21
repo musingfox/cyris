@@ -104,6 +104,40 @@ def test_match_forwarded_no_body_sender_returns_none():
     assert src._match_forwarded(item, _source()) is None
 
 
+def test_match_source_ignores_case():
+    """Sender and email_match differing only in case still match."""
+    m = CloudflareNewsletterSource._match_source("List@BenedictEvans.com", _source())
+    assert m is not None and m.name == "Benedict Evans"
+
+
+@pytest.mark.parametrize("sender", ["", "  ", None])
+def test_match_source_empty_from_matches_nothing(sender):
+    """An empty or missing From is not filed under the first email_match source."""
+    assert CloudflareNewsletterSource._match_source(sender, _source()) is None
+
+
+def test_match_source_multi_address_email_match():
+    """Several addresses in one email_match each match, in any case."""
+    src = {"X": SourceConfig(name="X", lane=Lane.READ, email_match="from:(a@x.test OR b@y.test)")}
+    for sender in ("a@x.test", "B@Y.test", "A@X.TEST"):
+        m = CloudflareNewsletterSource._match_source(sender, src)
+        assert m is not None and m.name == "X"
+    assert CloudflareNewsletterSource._match_source("c@z.test", src) is None
+
+
+def test_match_source_accepts_a_bare_address():
+    """email_match without the from: prefix matches too."""
+    src = {"X": SourceConfig(name="X", lane=Lane.READ, email_match="A@B.com")}
+    assert CloudflareNewsletterSource._match_source("a@b.com", src) is not None
+
+
+def test_match_forwarded_ignores_case():
+    """The forwarded-header fallback matches the body address in any case."""
+    item = {"from": "me@gmail.com", "text": "From: BE <LIST@BenedictEvans.com>", "html": ""}
+    m = CloudflareNewsletterSource._match_forwarded(item, _source())
+    assert m is not None and m.name == "Benedict Evans"
+
+
 @pytest.mark.asyncio
 @respx.mock
 async def test_empty_queue_no_ack():
