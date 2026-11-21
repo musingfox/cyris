@@ -120,14 +120,26 @@ backs up, and a backup that throws is only logged, so the tick's failure is the 
 invocation reports. Because it
 runs after the tick, the polls have run and the runs are queued in the registry before any
 export starts. The registry's alarm starts those runs on its own, so they do not wait for the
-backup either. The exports run one at a time, the registry first and then every registered
-tenant, paused ones included, so one export is held in memory at a time. Each export is
+backup either. The exports run one at a time, every registered tenant, paused ones included, and
+the registry last, so one export is held in memory at a time. Each export is
 written to R2 and copied to B2 from the same bytes. One failed copy leaves the other, and a
 failure moves on to the next export. The cron's 15-minute limit
 (https://developers.cloudflare.com/workers/runtime-apis/handlers/scheduled/) bounds the whole
 backup. Each B2 upload gives up after `B2_PUT_TIMEOUT_MS`, 60 s, so one stalled upload cannot
 take that time from every tenant. A day's export is keyed by that UTC date. `POST /hosted/backup`
 runs the same backup on demand, for the restore drill.
+
+A backup that never runs, because its tick was skipped, or that the 15-minute limit cuts off,
+alerts nothing by itself. So the tick `BACKUP_CHECK_HOURS` (2) after `BACKUP_HOUR_UTC` asks R2
+for that day's `_registry` export, with one `head()`. The registry is exported last for this:
+its key is there only if the backup reached its end. If it is absent, or R2 cannot be asked,
+the operator gets one alert. Only one tick a day is that hour, so it is one alert a day at most.
+A day whose registry export failed on its own also gets it, after that failure's own alert. An
+R2 binding that is missing is not checked, since the backup alerts that itself. A tenant list
+that could not be read still exports the registry last, so that day is not flagged as missing;
+its own alert says the tenants could not be listed. The registry going last costs nothing in
+consistency: it is its own `blockConcurrencyWhile` dump either way, and a tenant registered
+during the backup is in the registry's export with no export of its own until the next day.
 
 ### Where the copies go
 
@@ -154,8 +166,9 @@ runs the same backup on demand, for the restore drill.
 Every failure goes through `alertOperator` (`hosted_alerts.js`,
 [ADR-0035](0035-a-hosted-runs-alerts-go-to-the-operator-through-the-hosted-worker.md)). The
 tenant (or `_registry`) is in front, and the headline is from `hosted_alerts.json`: an export
-that failed, an R2 write, a B2 copy, no B2 settings, no R2 binding, or a tenant list that could
-not be read. The body names the key and the error. An alert about every export at once names
+that failed, an R2 write, a B2 copy, no B2 settings, no R2 binding, a tenant list that could
+not be read, a backup with no registry export by the check's hour, or a check that could not
+ask R2. The body names the key and the error. An alert about every export at once names
 `every export` in the tenant's place. Each failure is one alert. Twenty tenants whose B2 copy
 fails on a revoked key are twenty alerts, the way twenty failed runs are.
 
@@ -210,8 +223,10 @@ path for the registry, and the way to reach a tenant's data if the account is go
 * `workers/app/test/hosted_backup.test.js`: the tick at its hour writes every tenant, paused
   included, and the registry to R2 and B2 under the same keys. No other hour backs up. The
   backup starts after every poll and queued run, and runs when the tick throws. Each failed copy
-  is alerted with its tenant and copy while the rest go on. Missing or wrong B2 settings still
-  write R2 and alert once. A stalled B2 upload is given up. The restore's refusals and its
+  is alerted with its tenant and copy while the rest go on. A backup that throws leaves the tick's
+  own error the invocation's. The check tick alerts once for a skipped backup, a backup with no
+  registry export, and an R2 that cannot be asked, and stays quiet after a full backup. Missing
+  or wrong B2 settings still write R2 and alert once. A stalled B2 upload is given up. The restore's refusals and its
   success are tested.
 * `workers/app/test/s3_sigv4.test.js`: the signer reproduces Amazon's two published S3 examples
   and botocore's B2 `PutObject`.

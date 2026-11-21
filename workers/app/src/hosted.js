@@ -19,7 +19,7 @@ import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json";
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json";
 import { accessKeys } from "./access_keys.js";
 import { HOSTED_DOMAIN } from "./hosted_container.js";
-import { backupAll, backupDue, restoreExport } from "./hosted_backup.js";
+import { backupAll, dailyBackup, restoreExport } from "./hosted_backup.js";
 import { createSignIn } from "./hosted_login.js";
 import SEED from "./hosted_seed.json";
 import { receiveInbound } from "./hosted_inbound.js";
@@ -217,9 +217,9 @@ const hosted = {
   },
 };
 
-// The handlers above, with the hourly tick followed, at BACKUP_HOUR_UTC, by the daily backup
-// (hosted_backup.js): after the tick, so no poll or queued run waits on it, and even when the
-// tick threw. A backup that throws is logged, so the tick's own failure is what the invocation
+// The handlers above, with the hourly tick followed by the daily backup or, later that day, its
+// check (hosted_backup.js): after the tick, so no poll or queued run waits on it, and even when
+// the tick threw. A backup that throws is logged, so the tick's own failure is what the invocation
 // reports.
 export default {
   ...hosted,
@@ -228,11 +228,9 @@ export default {
     try {
       await hosted.scheduled(controller, ctx);
     } finally {
-      if (backupDue(at)) {
-        await backupAll(env, { now: at }).catch((error) => {
-          console.log("hosted backup failed", { error: String(error?.message ?? error) });
-        });
-      }
+      await dailyBackup(env, { now: at }).catch((error) => {
+        console.log("hosted backup failed", { error: String(error?.message ?? error) });
+      });
     }
   },
 };

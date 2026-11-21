@@ -685,14 +685,14 @@ the buttons appear; look in the browser's console for a blocked request if they 
 ## 11. Back up every tenant daily, and drill a restore
 
 Once a day, in the hourly tick of 04:00 UTC (`BACKUP_HOUR_UTC`) and after that tick's polls and
-queued runs, the Worker exports the registry and every registered tenant, paused ones too. Each
-export goes to the R2 bucket `cyris-hosted-backup` and to the same key in a Backblaze B2 bucket,
+queued runs, the Worker exports every registered tenant, paused ones too, and then the registry.
+Each export goes to the R2 bucket `cyris-hosted-backup` and to the same key in a Backblaze B2 bucket,
 so a copy outlives the Cloudflare account itself
 ([ADR-0041](decisions/0041-the-hosted-databases-are-exported-daily-to-r2-and-b2.md)):
 
 ```
-<YYYY-MM-DD>/_registry.jsonl.gz
 <YYYY-MM-DD>/<tenant>.jsonl.gz
+<YYYY-MM-DD>/_registry.jsonl.gz
 ```
 
 Each file is a gzip of JSON lines, every table of that database with its rows, indexes, triggers
@@ -702,6 +702,14 @@ The next tenant's export goes on. With the B2 settings unset, or an endpoint tha
 R2 is still written and one alert a day says there is no off-Cloudflare copy. A tenant whose
 export is over 32 MiB compressed, roughly 100 MB of data, fails its export with an alert every
 day until the dump streams (ADR-0041).
+
+A backup that never ran, because its tick was skipped, or that was cut off by the cron's
+15-minute limit, sends none of those alerts. So the tick two hours later, at 06:00 UTC
+(`BACKUP_CHECK_HOURS`), looks for that day's `_registry` export in R2. The registry is exported
+last, so its key is there only if the backup reached its end. If it is missing, one alert,
+`every export` in front, says the backup is not confirmed. Run `scripts/hosted.sh backup`
+(11.3) to make that day's exports. The same alert follows a day whose registry export failed on
+its own, already alerted at 04:00.
 
 ### 11.1 Create the buckets and their retention (once)
 
@@ -757,7 +765,7 @@ scripts/hosted.sh backup
 ```
 
 This runs today's backup at once, as the 04:00 tick would (`POST /hosted/backup`). It answers
-`{date, exports, r2, b2, bytes, failed}`: `exports` counts the registry and every tenant, and
+`{date, exports, r2, b2, bytes, failed}`: `exports` counts every tenant and the registry, and
 `r2` and `b2` should equal it. `failed` names each failed copy, which the webhook was also told
 of. Check the R2 copy, and read it back into an ordinary SQLite file on your machine:
 

@@ -133,11 +133,15 @@ def test_the_backups_go_to_one_bucket_only_the_hosted_file_binds() -> None:
 
 def test_the_backup_runs_from_the_hourly_tick_and_never_a_second_cron() -> None:
     hosted = _toml("wrangler.hosted.toml")
-    [hour] = re.findall(r"^export const BACKUP_HOUR_UTC = (\d+);", _js("hosted_backup.js"), re.M)
+    backup = _js("hosted_backup.js")
+    [hour] = re.findall(r"^export const BACKUP_HOUR_UTC = (\d+);", backup, re.M)
+    [check] = re.findall(r"^export const BACKUP_CHECK_HOURS = (\d+);", backup, re.M)
 
     assert hosted["triggers"]["crons"] == ["0 * * * *"]
     assert 0 <= int(hour) <= 23
-    assert "backupDue(at)" in _js("hosted.js")
+    # The check falls on the backup's own UTC date, so it looks for that day's export.
+    assert int(check) > 0 and int(hour) + int(check) <= 23
+    assert "dailyBackup(env, { now: at })" in _js("hosted.js")
 
 
 def test_the_b2_settings_are_set_by_the_runbook_and_never_handed_to_a_container() -> None:

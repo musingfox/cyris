@@ -11,9 +11,11 @@ import { OPERATOR_WEBHOOK } from "../src/hosted_alerts.js";
 import {
   B2_PUT_TIMEOUT_MS,
   B2_SETTINGS,
+  BACKUP_CHECK_HOURS,
   BACKUP_HOUR_UTC,
   REGISTRY_EXPORT,
   backupAll,
+  checkBackup,
   restoreExport,
 } from "../src/hosted_backup.js";
 import { REGISTRY_NAME, tenantRegistry } from "../src/tenant_registry.js";
@@ -31,7 +33,7 @@ const BACKUP_TIME = new Date(`${DAY}T0${BACKUP_HOUR_UTC}:00:00Z`);
 const STAMP = "2026-11-21T00:00:00+00:00";
 
 // R2 as the binding answers: put() keeps a copy of the bytes and its options, get() an object
-// body or null. `refuse(key)` makes that put throw.
+// body or null, head() its metadata or null. `refuse(key)` makes that put throw.
 function r2({ refuse = () => false, log = [] } = {}) {
   const objects = new Map();
   return {
@@ -45,6 +47,9 @@ function r2({ refuse = () => false, log = [] } = {}) {
     async get(key) {
       const object = objects.get(key);
       return object ? { arrayBuffer: async () => object.bytes.slice().buffer } : null;
+    },
+    async head(key) {
+      return objects.has(key) ? { key, size: objects.get(key).bytes.byteLength } : null;
     },
   };
 }
@@ -138,7 +143,7 @@ describe("the hosted Worker's daily backup", () => {
 
     await worker.scheduled({ scheduledTime: BACKUP_TIME.getTime() });
 
-    const keys = [`${DAY}/_registry.jsonl.gz`, `${DAY}/alpha.jsonl.gz`, `${DAY}/paused.jsonl.gz`];
+    const keys = [`${DAY}/alpha.jsonl.gz`, `${DAY}/paused.jsonl.gz`, `${DAY}/_registry.jsonl.gz`];
     expect([...bound.BACKUP.objects.keys()]).toEqual(keys);
     expect(net.sent.b2.map((put) => put.url)).toEqual(keys.map((key) => `https://s3.us-west-004.backblazeb2.com/cyris-backup/${key}`));
     for (const put of net.sent.b2) {
@@ -206,7 +211,7 @@ describe("the hosted Worker's daily backup", () => {
     const tenants = registry.tenants.bind(registry);
     registry.tenants = (filter) => (filter?.status ? Promise.reject(new Error("registry overloaded")) : tenants(filter));
     await expect(worker.scheduled({ scheduledTime: BACKUP_TIME.getTime() })).rejects.toThrow("registry overloaded");
-    expect([...bound.BACKUP.objects.keys()]).toEqual([`${DAY}/_registry.jsonl.gz`, `${DAY}/alpha.jsonl.gz`, `${DAY}/bravo.jsonl.gz`]);
+    expect([...bound.BACKUP.objects.keys()]).toEqual([`${DAY}/alpha.jsonl.gz`, `${DAY}/bravo.jsonl.gz`, `${DAY}/_registry.jsonl.gz`]);
 
     // A backup that throws as well leaves the tick's failure the one the invocation reports.
     Object.defineProperty(env, "BACKUP", {
@@ -247,9 +252,9 @@ describe("the hosted Worker's daily backup", () => {
       { name: "bravo", copy: "export" },
       { name: "charlie", copy: "r2" },
     ]);
-    expect([...bound.BACKUP.objects.keys()]).toEqual([REGISTRY_EXPORT, "alpha", "delta"].map((name) => `${DAY}/${name}.jsonl.gz`));
+    expect([...bound.BACKUP.objects.keys()]).toEqual(["alpha", "delta", REGISTRY_EXPORT].map((name) => `${DAY}/${name}.jsonl.gz`));
     expect(net.sent.b2.filter((put) => put.key.startsWith(DAY)).map((put) => put.key)).toEqual(
-      [REGISTRY_EXPORT, "alpha", "charlie", "delta"].map((name) => `${DAY}/${name}.jsonl.gz`),
+      ["alpha", "charlie", "delta", REGISTRY_EXPORT].map((name) => `${DAY}/${name}.jsonl.gz`),
     );
   });
 
@@ -301,11 +306,85 @@ describe("the hosted Worker's daily backup", () => {
 
     expect(timeouts).toEqual([B2_PUT_TIMEOUT_MS, B2_PUT_TIMEOUT_MS]);
     expect(done.failed).toEqual([
-      { name: REGISTRY_EXPORT, copy: "b2" },
       { name: "alpha", copy: "b2" },
+      { name: REGISTRY_EXPORT, copy: "b2" },
     ]);
-    expect(net.sent.alerts[1]).toMatch(new RegExp(`^\\[alpha\\] ${WORDING.backup_b2_failed}\n[^]*The operation timed out`));
+    expect(net.sent.alerts[0]).toMatch(new RegExp(`^\\[alpha\\] ${WORDING.backup_b2_failed}\n[^]*The operation timed out`));
     expect(bound.BACKUP.objects.size).toBe(2);
+  });
+});
+
+describe("the later tick's check that the day's backup reached its end", () => {
+  let bound;
+  let net;
+  let logs;
+  const CHECK_TIME = new Date(`${DAY}T0${BACKUP_HOUR_UTC + BACKUP_CHECK_HOURS}:00:00Z`);
+  const tickAt = async (at) => {
+    vi.setSystemTime(at);
+    await worker.scheduled({ scheduledTime: at.getTime() });
+  };
+  const hours = (from, to) =>
+    Array.from({ length: to - from }, (_, i) => new Date(`${DAY}T${String(from + i).padStart(2, "0")}:00:00Z`));
+  const missing = `[${WORDING.backup_every_export}] ${WORDING.backup_missing}\n\`\`\`\nkey=${DAY}/_registry.jsonl.gz\n\`\`\``;
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    logs = [];
+    vi.spyOn(console, "log").mockImplementation((...args) => logs.push(args));
+    bound = bindings();
+    Object.assign(env, bound);
+    net = network();
+    vi.stubGlobal("fetch", net.fetch);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    for (const key of Object.keys(env)) delete env[key];
+  });
+
+  it("tells the operator once that day when the backup's tick never ran", async () => {
+    await tenant(bound, "alpha");
+
+    for (const at of [...hours(0, BACKUP_HOUR_UTC), ...hours(BACKUP_HOUR_UTC + 1, 24)]) await tickAt(at);
+
+    expect(net.sent.alerts).toEqual([missing]);
+    expect(bound.BACKUP.objects.size).toBe(0);
+  });
+
+  it("tells the operator when the backup stopped before its last export, the registry's", async () => {
+    await tenant(bound, "alpha");
+    const registry = bound.REGISTRY.getByName(REGISTRY_NAME);
+    registry.exportDump = async () => {
+      throw new Error("the invocation was cancelled");
+    };
+
+    await tickAt(BACKUP_TIME);
+    await tickAt(CHECK_TIME);
+
+    expect([...bound.BACKUP.objects.keys()]).toEqual([`${DAY}/alpha.jsonl.gz`]);
+    expect(net.sent.alerts).toEqual([expect.stringContaining(WORDING.backup_export_failed), missing]);
+  });
+
+  it("sends nothing when the backup reached its end", async () => {
+    await tenant(bound, "alpha");
+
+    for (const at of hours(0, 24)) await tickAt(at);
+
+    expect(net.sent.alerts).toEqual([]);
+    expect(logs).toContainEqual(["hosted backup check", { key: `${DAY}/_registry.jsonl.gz`, present: true }]);
+  });
+
+  it("tells the operator when R2 cannot be asked, and checks nothing without the binding", async () => {
+    bound.BACKUP.head = async () => {
+      throw new Error("R2 head failed: 503");
+    };
+
+    await tickAt(CHECK_TIME);
+    delete env.BACKUP;
+    await tickAt(CHECK_TIME);
+
+    expect(net.sent.alerts).toEqual([expect.stringMatching(new RegExp(`^\\[${WORDING.backup_every_export}\\] ${WORDING.backup_check_failed}\n[^]*R2 head failed: 503`))]);
+    expect(await checkBackup(env, { now: CHECK_TIME })).toEqual({ unbound: "no BACKUP binding" });
   });
 });
 

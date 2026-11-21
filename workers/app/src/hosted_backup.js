@@ -2,8 +2,9 @@
 // database and the operator's registry are dumped (sqlite_dump.js), written to the R2 bucket
 // BACKUP, and copied to Backblaze B2 through its S3-compatible API (s3_sigv4.js), so a copy
 // survives the Cloudflare account itself. A copy that fails is told to the operator through
-// alertOperator, naming the tenant and the copy; and the operator restores one export into a new,
-// empty tenant id (restoreExport). Durable Objects have point-in-time recovery but no export,
+// alertOperator, naming the tenant and the copy; a backup that did not run or finish is told by a
+// later tick (checkBackup); and the operator restores one export into a new, empty tenant id
+// (restoreExport). Durable Objects have point-in-time recovery but no export,
 // so this is the only copy of a tenant's data outside its object.
 // docs/decisions/0041-the-hosted-databases-are-exported-daily-to-r2-and-b2.md.
 
@@ -19,6 +20,12 @@ import { refuseTenantId, tenantRegistry } from "./tenant_registry.js";
 // rarely what its dump holds back, and an alert lands in East Asia's afternoon and the Americas'
 // evening, read the same day.
 export const BACKUP_HOUR_UTC = 4;
+
+// How many hours after BACKUP_HOUR_UTC a tick checks that the day's backup reached its end: past
+// the cron's 15-minute limit on the backup's own invocation, with a skipped hourly tick to spare,
+// and still the same UTC date, so one tick a day checks and one alert at most is sent.
+// https://developers.cloudflare.com/workers/runtime-apis/handlers/scheduled/
+export const BACKUP_CHECK_HOURS = 2;
 
 // The R2 binding of wrangler.hosted.toml the exports go to.
 export const BACKUP_BINDING = "BACKUP";
@@ -49,6 +56,7 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 export const backupKey = (date, name) => `${date}/${name}.${EXPORT_EXTENSION}`;
 export const backupDate = (now) => now.toISOString().slice(0, 10);
 export const backupDue = (now) => now.getUTCHours() === BACKUP_HOUR_UTC;
+export const backupCheckDue = (now) => now.getUTCHours() === BACKUP_HOUR_UTC + BACKUP_CHECK_HOURS;
 
 const message = (error) => String(error?.message ?? error);
 
@@ -77,8 +85,9 @@ async function putB2(settings, key, body, sha256) {
   await response.body?.cancel();
 }
 
-// Every export of the day `now` falls on, in UTC: the registry's, then each registered tenant's,
-// whatever its status, one at a time so one export is held at once. Each is written to R2 and
+// Every export of the day `now` falls on, in UTC: each registered tenant's, whatever its status,
+// then the registry's, one at a time so one export is held at once. The registry's is last, so its
+// key in R2 says the backup reached its end (checkBackup). Each is written to R2 and
 // copied to B2 from the same bytes, so a failed R2 write still leaves the B2 copy and the other
 // way round; any failure is alerted and the next export goes on. Never throws. Answers what it
 // did, and logs it as one line.
@@ -98,12 +107,13 @@ export async function backupAll(env, { now = new Date() } = {}) {
   if (b2.unset) await tell(WORDING.backup_every_export, "backup_b2_unset", b2.unset);
 
   const registry = tenantRegistry(env);
-  const exports = [{ name: REGISTRY_EXPORT, dump: () => registry.exportDump() }];
+  const exports = [];
   try {
     for (const row of await registry.tenants()) exports.push({ name: row.id, dump: () => tenantDb(env, row.id).exportDump() });
   } catch (error) {
     await fail(REGISTRY_EXPORT, "list", "backup_list_failed", message(error));
   }
+  exports.push({ name: REGISTRY_EXPORT, dump: () => registry.exportDump() });
 
   for (const { name, dump } of exports) {
     const key = backupKey(date, name);
@@ -140,6 +150,36 @@ export async function backupAll(env, { now = new Date() } = {}) {
   }
   console.log("hosted backup", { ...done, wall_ms: Date.now() - started });
   return done;
+}
+
+// Whether the backup of the day `now` falls on reached its end: its last export, the registry's,
+// is in R2. If not, because the backup's tick was skipped, its invocation was cut off, or that
+// export failed, the operator is told; so is a check that could not read R2. Without the R2
+// binding nothing is checked, as the backup alerts that itself. Never throws. Answers
+// `{key, present}`, or `{unbound}`.
+export async function checkBackup(env, { now = new Date() } = {}) {
+  const bucket = env[BACKUP_BINDING];
+  if (!bucket) return { unbound: `no ${BACKUP_BINDING} binding` };
+  const key = backupKey(backupDate(now), REGISTRY_EXPORT);
+  const tell = (kind, detail) => alertOperator(env, WORDING.backup_every_export, workerAlert(kind, detail));
+  let present;
+  try {
+    present = (await bucket.head(key)) !== null;
+  } catch (error) {
+    await tell("backup_check_failed", `key=${key}\n${message(error)}`);
+    return { key, present: false };
+  }
+  if (!present) await tell("backup_missing", `key=${key}`);
+  console.log("hosted backup check", { key, present });
+  return { key, present };
+}
+
+// What the tick of `now` does for the backup: at BACKUP_HOUR_UTC the backup, BACKUP_CHECK_HOURS
+// later its check, and nothing in any other hour.
+export async function dailyBackup(env, { now = new Date() } = {}) {
+  if (backupDue(now)) return backupAll(env, { now });
+  if (backupCheckDue(now)) return checkBackup(env, { now });
+  return null;
 }
 
 // Loads the R2 export of tenant `from` on `date` into tenant `into`, a new id whose object holds no
