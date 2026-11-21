@@ -7,6 +7,7 @@ against an answer: the server's own for the local edition, the Worker's for the 
 """
 
 import json
+import re
 import shutil
 import subprocess
 from datetime import UTC, datetime
@@ -437,6 +438,20 @@ class TestTheProbeSplit:
             "gated": True,
             "archive": True,
             "brand": True,
+        }
+
+    def test_the_hosted_answer_opens_votes_and_settings_and_nothing_gated(self, tmp_path):
+        """A tenant's page links its own settings page, and no interest page (ADR-0040)."""
+        vote = (ROOT / "workers" / "app" / "src" / "hosted_vote.js").read_text(encoding="utf-8")
+        probe = re.search(r"export const PROBE = (\{[^}]*\});", vote)[1]
+        answer = json.loads(re.sub(r"(\w+):", r'"\1":', probe))
+
+        assert _probe_opens(tmp_path, answer) == {
+            "vote": True,
+            "settings": True,
+            "gated": False,
+            "archive": False,
+            "brand": False,
         }
 
     def test_the_workers_answer_is_still_exactly_authorized_true(self):

@@ -38,6 +38,9 @@ INTEREST_MAP_HEIGHT = 360
 # set the rule in characters, so no CSS line clamp stands in for it (2026-11-17). A display
 # choice, graded A in docs/architecture.md §5.
 CARD_LINE_CHARS = 80
+# Where the Settings link of a page on a deployment's own host leads: the local server's and the
+# app Worker's `/settings`. A hosted tenant's pages name the tenant's own instead.
+SETTINGS_PATH = "/settings"
 # A copy of website/assets/favicon.svg, because the image ships `src/` only.
 FAVICON = Path(__file__).parent / "favicon.svg"
 TEMPLATES = Path(__file__).parent / "templates"
@@ -237,6 +240,7 @@ class HtmlDigestWriter:
         language: str = "",
         starts: Callable[[], Mapping[tuple[str, str], datetime]] | None = None,
         ai_pause: AiPause | None = None,
+        settings_path: str = SETTINGS_PATH,
     ):
         """Initialize writer with output directory.
 
@@ -255,11 +259,15 @@ class HtmlDigestWriter:
                 archive's rows by it
             ai_pause: A hosted run's spent AI allowance, whose issues say so; None
                 everywhere else
+            settings_path: Where every page's Settings link leads: `/settings` on a
+                deployment's own host, a hosted tenant's own settings page on the hosted
+                Worker (`hosted_pages.tenant_settings_path`, ADR-0040)
         """
         self.output_dir = Path(output_dir)
         self.language = language
         self.starts = starts
         self.ai_pause = ai_pause
+        self.settings_path = settings_path
 
     @property
     def env(self) -> Environment:
@@ -294,6 +302,7 @@ class HtmlDigestWriter:
         ai_paused = pause is not None and started is not None and started >= pause.since
 
         return template.render(
+            settings_path=self.settings_path,
             date=content.date,
             period=content.period,
             # The receipt the publish step's live check reads back (`publish._page_is_live`).
@@ -440,6 +449,7 @@ class HtmlDigestWriter:
                 rows.append(digest)
 
         return template.render(
+            settings_path=self.settings_path,
             digests=digests,
             latest=latest,
             card=card,
@@ -531,6 +541,7 @@ class HtmlDigestWriter:
             environment(language or self.language)
             .get_template("raw.html.j2")
             .render(
+                settings_path=self.settings_path,
                 date=date,
                 period=period,
                 started_at=started_at,
@@ -549,6 +560,7 @@ class HtmlDigestWriter:
         """
         positions = layout(graph, width=INTEREST_MAP_WIDTH, height=INTEREST_MAP_HEIGHT)
         return self.env.get_template("interest.html.j2").render(
+            settings_path=self.settings_path,
             graph=graph,
             positions=positions,
             width=INTEREST_MAP_WIDTH,

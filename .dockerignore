@@ -22,5 +22,6 @@ vault
 tests
 docs
 workers
+!workers/app/src/hosted_settings_policy.json
 *.md
 !README.md

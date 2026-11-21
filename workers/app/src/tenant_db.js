@@ -9,6 +9,8 @@
 
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
 import { dumpObject, restoreObject } from "./sqlite_dump.js";
+import { SETTING_UPSERT, SOURCE_UPSERT, stamp } from "./hosted_seed.js";
+import { SCHEDULE_KEY, TIMEZONE_KEY, WRITABLE } from "./hosted_settings_rules.js";
 import { pollTenantBuffer } from "./tenant_buffer.js";
 import { storeNewsletter } from "./tenant_inbound.js";
 import { queueVote } from "./tenant_votes.js";
@@ -48,6 +50,22 @@ export const tenantRows = (env, tenant) => async (sql, params, what) => {
 // `name` as an SQL identifier: in double quotes, each double quote in it doubled.
 export const quotedName = (name) => `"${String(name).replaceAll('"', '""')}"`;
 
+const hasTable = (sql, name) =>
+  sql.exec("SELECT 1 AS found FROM sqlite_master WHERE type = 'table' AND name = ?", name).toArray().length > 0;
+
+// A stored setting or config: JSON, as the container's stores write it; the text itself if not.
+const stored = (value) => {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+};
+
+// The schedule's copy in the tenant's own settings (hosted_seed.js `writeSchedule`), shown beside
+// the writable keys; the registry's is what the tick reads.
+const SCHEDULE_COPY = [SCHEDULE_KEY, TIMEZONE_KEY];
+
 export class TenantDb extends DurableObject {
   // `D1Queryable.query`'s shape: SQL and its bound values in, rows and rows changed out.
   // `changes` is the difference of two `total_changes()` readings, the rows-affected figure D1
@@ -61,9 +79,10 @@ export class TenantDb extends DurableObject {
   }
 
   // One poll of the tenant's RSS feeds into its own buffer (tenant_buffer.js), which the hourly
-  // tick asks for: the feed requests are this object's invocation's, not the tick's.
-  pollRss() {
-    return pollTenantBuffer(this.ctx.storage);
+  // tick asks for: the feed requests are this object's invocation's, not the tick's. `ownHosts`,
+  // the hosted Worker's names, are hosts no feed of the tenant's may be fetched from.
+  pollRss({ ownHosts = [] } = {}) {
+    return pollTenantBuffer(this.ctx.storage, { ownHosts });
   }
 
   // One newsletter the hosted Worker's email() handler took at this tenant's address, into its own
@@ -78,6 +97,68 @@ export class TenantDb extends DurableObject {
   // the object checks that the article is its own.
   recordVote(vote) {
     return queueVote(this.ctx.storage, vote);
+  }
+
+  // The tenant's own settings a reader may see on /t/<tenant>/settings: every writable key and the
+  // schedule's copy, as values; null for a tenant never seeded, which has no `settings` table.
+  settings() {
+    const sql = this.ctx.storage.sql;
+    if (!hasTable(sql, "settings")) return null;
+    const keys = [...WRITABLE, ...SCHEDULE_COPY];
+    const rows = sql.exec(`SELECT key, value FROM settings WHERE key IN (${keys.map(() => "?").join(", ")})`, ...keys);
+    return Object.fromEntries(rows.toArray().map((row) => [row.key, stored(row.value)]));
+  }
+
+  // Writes `rows`, [key, value] each, in one transaction, as the container's store writes a
+  // setting (JSON). The Worker checked each value; this refuses any key the policy does not let a
+  // tenant write, so no caller of the object can write the provider or a notify target through it.
+  saveSettings(rows, now = new Date()) {
+    const storage = this.ctx.storage;
+    if (!hasTable(storage.sql, "settings")) return { refused: "not_seeded", status: 409 };
+    const denied = rows.find(([key]) => !WRITABLE.includes(key));
+    if (denied) return { refused: "operator_key", key: denied[0], status: 400 };
+    storage.transactionSync(() => {
+      for (const [key, value] of rows) storage.sql.exec(SETTING_UPSERT, key, JSON.stringify(value), stamp(now));
+    });
+    return { saved: rows.map(([key]) => key) };
+  }
+
+  // The tenant's sources, RSS and newsletter, by name: what /t/<tenant>/settings lists; null for
+  // a tenant never seeded.
+  sources() {
+    const sql = this.ctx.storage.sql;
+    if (!hasTable(sql, "sources")) return null;
+    return sql
+      .exec("SELECT name, url, type, config FROM sources ORDER BY name")
+      .toArray()
+      .map(({ name, url, type, config }) => ({ name, url, type, lane: stored(config)?.lane ?? null }));
+  }
+
+  // Adds `row` ({name, url, type, config}) or rewrites the RSS source of its name, keeping what
+  // else that row's config held (its area, tags, language). The count and the write are one
+  // synchronous turn of this object, so two saves at once cannot both take the last place under
+  // `cap`: a new name past it is refused, a rewrite never is. A name a newsletter source holds is
+  // refused, as the operator's newsletter route refuses an RSS one's.
+  saveSource(row, cap) {
+    const storage = this.ctx.storage;
+    if (!hasTable(storage.sql, "sources")) return { refused: "not_seeded", status: 409 };
+    return storage.transactionSync(() => {
+      const held = storage.sql.exec("SELECT type, config FROM sources WHERE name = ?", row.name).toArray()[0];
+      if (held && held.type !== row.type) return { refused: "source_taken", status: 409 };
+      if (!held && storage.sql.exec("SELECT count(*) AS n FROM sources").one().n >= cap) {
+        return { refused: "source_cap", status: 409 };
+      }
+      const config = { ...(held ? stored(held.config) : {}), ...row.config };
+      storage.sql.exec(SOURCE_UPSERT, row.name, row.url, row.type, JSON.stringify(config));
+      return { source: { ...row, config } };
+    });
+  }
+
+  // Removes the source `name`, of either type; `{deleted}` is how many rows went, 0 or 1.
+  deleteSource(name) {
+    const storage = this.ctx.storage;
+    if (!hasTable(storage.sql, "sources")) return { refused: "not_seeded", status: 409 };
+    return { deleted: this.query("DELETE FROM sources WHERE name = ?", [name]).changes };
   }
 
   // Each of the tenant's tables with its row count, in name order. A table's name cannot be bound,

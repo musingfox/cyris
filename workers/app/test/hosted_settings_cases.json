@@ -1,0 +1,115 @@
+{
+  "_comment": "What a hosted tenant's settings save takes and refuses (workers/app/src/hosted_settings_rules.js, checkSettings), what its source save writes (rssSource), and which UI catalog its output language words /t/<tenant>/settings in (catalogTag). workers/app/test/hosted_settings.test.js holds the Worker to every case; tests/test_hosted_settings_policy.py holds each accepted value valid by the container's validate_setting and the policy's cap, each refused one invalid by them or not a tenant's key, each written source a fetchable SourceConfig, and each language's catalog the one i18n.resolve picks.",
+  "settings": {
+    "accepted": [
+      { "key": "digest.output_language", "value": "zh-Hant" },
+      { "key": "digest.output_language", "value": "ja" },
+      { "key": "digest.style_prompt", "value": "" },
+      { "key": "digest.style_prompt", "value": "Short, and skip the sports." },
+      { "key": "digest.type_scale", "value": 0.875 },
+      { "key": "digest.type_scale", "value": 1 },
+      { "key": "digest.type_scale", "value": 1.125 },
+      { "key": "digest.max_articles_per_digest", "value": 1 },
+      { "key": "digest.max_articles_per_digest", "value": 400 },
+      { "key": "general.digest_window_hours", "value": 1 },
+      { "key": "general.digest_window_hours", "value": 168 },
+      { "key": "digest.rank_by_preference", "value": true },
+      { "key": "digest.rank_by_preference", "value": false },
+      { "key": "digest.summarize_follow", "value": true },
+      { "key": "routing.score_threshold", "value": 0 },
+      { "key": "routing.score_threshold", "value": 100 }
+    ],
+    "refused": [
+      { "key": "llm_provider.provider", "value": "gemini", "reason": "operator_key" },
+      { "key": "llm_provider.model", "value": "claude-opus-5-5", "reason": "operator_key" },
+      { "key": "notify.discord_webhook_url", "value": "https://discord.com/api/webhooks/1/x", "reason": "operator_key" },
+      { "key": "notify.email_to", "value": "reader@example.com", "reason": "operator_key" },
+      { "key": "notify.email_from", "value": "digest@example.com", "reason": "operator_key" },
+      { "key": "vote_similarity.enabled", "value": true, "reason": "operator_key" },
+      { "key": "digest.preference_source", "value": "clef", "reason": "operator_key" },
+      { "key": "daily_run_cap", "value": 24, "reason": "operator_key" },
+      { "key": "monthly_ai_budget_usd", "value": 100, "reason": "operator_key" },
+      { "key": "digest.colour", "value": "red", "reason": "unknown_key" },
+      { "key": "max_sources", "value": 100, "reason": "unknown_key" },
+      { "key": "__proto__", "value": "x", "reason": "unknown_key" },
+      { "key": "constructor", "value": "x", "reason": "unknown_key" },
+      { "key": "hasOwnProperty", "value": "x", "reason": "unknown_key" },
+      { "key": "toString", "value": "x", "reason": "unknown_key" },
+      { "key": "valueOf", "value": "x", "reason": "unknown_key" },
+      { "key": "digest.output_language", "value": "  ", "reason": "blank" },
+      { "key": "digest.output_language", "value": 5, "reason": "text" },
+      { "key": "digest.style_prompt", "value": 5, "reason": "text" },
+      { "key": "digest.type_scale", "value": 2, "reason": "type_scale" },
+      { "key": "digest.type_scale", "value": "1", "reason": "type_scale" },
+      { "key": "digest.max_articles_per_digest", "value": 0, "reason": "whole_number" },
+      { "key": "digest.max_articles_per_digest", "value": 401, "reason": "whole_number" },
+      { "key": "digest.max_articles_per_digest", "value": 5.5, "reason": "whole_number" },
+      { "key": "general.digest_window_hours", "value": 0, "reason": "whole_number" },
+      { "key": "general.digest_window_hours", "value": 169, "reason": "whole_number" },
+      { "key": "routing.score_threshold", "value": -1, "reason": "whole_number" },
+      { "key": "routing.score_threshold", "value": 101, "reason": "whole_number" },
+      { "key": "digest.rank_by_preference", "value": null, "reason": "on_off" },
+      { "key": "digest.summarize_follow", "value": [true], "reason": "on_off" }
+    ]
+  },
+  "sources": {
+    "written": [
+      {
+        "body": { "name": " Example Feed ", "url": "https://Example.org/feed.xml", "lane": "read" },
+        "row": { "name": "Example Feed", "url": "https://example.org/feed.xml", "type": "rss", "config": { "lane": "read" } }
+      },
+      {
+        "body": { "name": "Plain", "url": "http://news.example.com:80/rss" },
+        "row": { "name": "Plain", "url": "http://news.example.com/rss", "type": "rss", "config": { "lane": "skim" } }
+      },
+      {
+        "body": { "name": "Port 443", "url": "https://blog.example.net:443/atom", "lane": "follow" },
+        "row": { "name": "Port 443", "url": "https://blog.example.net/atom", "type": "rss", "config": { "lane": "follow" } }
+      }
+    ],
+    "refused": [
+      { "body": { "url": "https://example.org/feed" }, "reason": "source_name" },
+      { "body": { "name": "Bad\u0007Name", "url": "https://example.org/feed" }, "reason": "source_name" },
+      { "body": { "name": "Lane", "url": "https://example.org/feed", "lane": "tier" }, "reason": "lane" },
+      { "body": { "name": "None" }, "reason": "url_invalid" },
+      { "body": { "name": "Junk", "url": "not a url" }, "reason": "url_invalid" },
+      { "body": { "name": "Ftp", "url": "ftp://example.org/feed" }, "reason": "url_scheme" },
+      { "body": { "name": "Script", "url": "javascript:alert(1)" }, "reason": "url_scheme" },
+      { "body": { "name": "File", "url": "file:///etc/passwd" }, "reason": "url_scheme" },
+      { "body": { "name": "Port", "url": "https://example.org:8443/feed" }, "reason": "url_port" },
+      { "body": { "name": "Port 22", "url": "http://example.org:22/feed" }, "reason": "url_port" },
+      { "body": { "name": "User", "url": "https://user:pass@example.org/feed" }, "reason": "url_userinfo" },
+      { "body": { "name": "User only", "url": "https://user@example.org/feed" }, "reason": "url_userinfo" },
+      { "body": { "name": "IPv4", "url": "http://169.254.169.254/latest/meta-data" }, "reason": "url_host" },
+      { "body": { "name": "IPv4 hex", "url": "http://0x7f.1/feed" }, "reason": "url_host" },
+      { "body": { "name": "IPv4 decimal", "url": "http://2130706433/feed" }, "reason": "url_host" },
+      { "body": { "name": "IPv6", "url": "http://[::1]/feed" }, "reason": "url_host" },
+      { "body": { "name": "Single label", "url": "http://intranet/feed" }, "reason": "url_host" },
+      { "body": { "name": "Localhost", "url": "http://localhost/feed" }, "reason": "url_local" },
+      { "body": { "name": "Localhost dot", "url": "http://localhost./feed" }, "reason": "url_local" },
+      { "body": { "name": "Sub localhost", "url": "http://app.localhost/feed" }, "reason": "url_local" },
+      { "body": { "name": "Local", "url": "http://printer.local/feed" }, "reason": "url_local" },
+      { "body": { "name": "Internal", "url": "https://metadata.google.internal/feed" }, "reason": "url_local" },
+      { "body": { "name": "Arpa", "url": "http://1.0.0.127.in-addr.arpa/feed" }, "reason": "url_local" },
+      { "body": { "name": "Own host", "url": "https://cyris-hosted.example.workers.dev/hosted/spend" }, "reason": "url_service" },
+      { "body": { "name": "Workers", "url": "https://other.workers.dev/feed" }, "reason": "url_service" },
+      { "body": { "name": "Workers apex", "url": "https://workers.dev/feed" }, "reason": "url_service" }
+    ]
+  },
+  "languages": [
+    { "tag": "en", "catalog": "en" },
+    { "tag": "en-GB", "catalog": "en" },
+    { "tag": "zh-Hant", "catalog": "zh-Hant" },
+    { "tag": "zh-TW", "catalog": "zh-Hant" },
+    { "tag": "zh-HK", "catalog": "zh-Hant" },
+    { "tag": "zh-Hant-TW", "catalog": "zh-Hant" },
+    { "tag": "zh-Hans", "catalog": "en" },
+    { "tag": "zh", "catalog": "en" },
+    { "tag": "ja", "catalog": "en" },
+    { "tag": "ko", "catalog": "en" },
+    { "tag": "fr", "catalog": "en" },
+    { "tag": "de", "catalog": "en" },
+    { "tag": "es", "catalog": "en" },
+    { "tag": "Traditional Chinese", "catalog": "en" }
+  ]
+}

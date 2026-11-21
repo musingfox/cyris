@@ -10,6 +10,7 @@ import pytest
 from css_rules import parse_style_block, receipt_fixtures, text_langs
 
 from cyris.adapters.output import html_digest
+from cyris.adapters.output.hosted_pages import tenant_settings_path
 from cyris.adapters.output.html_digest import PROJECT_URL, HtmlDigestWriter, citation_links
 from cyris.domain.models import (
     NO_LLM_MODEL,
@@ -1727,9 +1728,9 @@ def test_the_issue_bar_switch_is_never_gated(tmp_path):
 EVENING_START = datetime(2026, 4, 15, 20, 5, tzinfo=timezone(timedelta(hours=8)))
 
 
-def _issue_pages(tmp_path) -> dict[str, str]:
+def _issue_pages(tmp_path, **writer_args) -> dict[str, str]:
     """Archive, digest and raw for one 2026-04-15 evening issue."""
-    writer = HtmlDigestWriter(tmp_path)
+    writer = HtmlDigestWriter(tmp_path, **writer_args)
     content = DigestContent(
         date="2026-04-15",
         period="evening",
@@ -1789,6 +1790,16 @@ def test_the_site_bar_marks_the_archive_unless_told_otherwise(tmp_path):
     bar = HtmlDigestWriter(tmp_path).env.get_template("_site_bar.html.j2").render()
 
     assert bar == SITE_BAR_ON_THE_ARCHIVE
+
+
+def test_a_hosted_tenants_pages_link_its_own_settings_page(tmp_path):
+    """Under /t/<tenant>/, `/settings` is an operator route of the hosted Worker (ADR-0040)."""
+    pages = _issue_pages(tmp_path, settings_path=tenant_settings_path("alpha"))
+
+    for name, html in pages.items():
+        bar = _site_bar(html)
+        assert '<a class="label settings-link" href="/t/alpha/settings">Settings</a>' in bar, name
+        assert 'href="/settings"' not in html, name
 
 
 def test_the_site_bar_can_mark_settings_as_the_current_page(tmp_path):

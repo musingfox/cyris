@@ -24,6 +24,7 @@ import { createSignIn } from "./hosted_login.js";
 import SEED from "./hosted_seed.json";
 import { receiveInbound } from "./hosted_inbound.js";
 import { handleHostedRequest } from "./hosted_router.js";
+import { handleTenantSettings } from "./hosted_settings.js";
 import { createSitePage } from "./hosted_site.js";
 import { addNewsletterSource, seedTenant, tenantReport, writeSchedule } from "./hosted_seed.js";
 import { registrySchedule } from "./run_queue.js";
@@ -48,7 +49,7 @@ async function copySchedule(tenant) {
 // logged and answers its error.
 async function pollTenant(tenant, call = (what) => what) {
   try {
-    const polled = await call(tenantDb(env, tenant).pollRss());
+    const polled = await call(tenantDb(env, tenant).pollRss({ ownHosts: [env[HOSTED_DOMAIN]].filter(Boolean) }));
     console.log("rss poll", { tenant, ...pollMeasure(polled) });
     return { tenant, ...polled };
   } catch (error) {
@@ -65,6 +66,7 @@ const pollMeasure = (polled) => ({
   fresh: polled.fresh,
   written: polled.written,
   failed_feeds: polled.failures.length,
+  skipped_feeds: polled.skipped ?? 0,
 });
 
 // The tick's own measurement, one log line for the operator to read beside the invocation's CPU
@@ -142,6 +144,20 @@ const hosted = {
       revokeAddress: (tenant) => tenantRegistry(env).revokeInboundAddress(tenant),
       addNewsletterSource: (tenant, params) => addNewsletterSource({ db: tenantDb(env, tenant), params }),
       page: sitePage,
+      // The schedule a reader saves goes through the registry, as the operator's does, never as a
+      // settings row of the tenant's; it names no run cap, so the operator's is kept.
+      settings: (request, tenant, rest) =>
+        handleTenantSettings(request, {
+          rest,
+          db: tenantDb(env, tenant),
+          registryRow: () => registry().tenant(tenant),
+          setSchedule: async (schedule) => {
+            const answer = await registry().setSchedule(tenant, schedule);
+            if (!answer.refused) await copySchedule(tenant);
+            return answer;
+          },
+          ownHosts: [env[HOSTED_DOMAIN]].filter(Boolean),
+        }),
       invite: (tenant, email) => registry().invite(tenant, email),
       revoke: (tenant, email) => registry().revoke(tenant, email),
       members: (tenant) => registry().members(tenant),

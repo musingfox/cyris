@@ -5,10 +5,10 @@
 
 import { latestPage, sha256Hex } from "./hosted_pages.js";
 
-const SETTING_UPSERT =
+export const SETTING_UPSERT =
   "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) " +
   "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at";
-const SOURCE_UPSERT =
+export const SOURCE_UPSERT =
   "INSERT INTO sources (name, url, type, config) VALUES (?, ?, ?, ?) " +
   "ON CONFLICT(name) DO UPDATE SET url = excluded.url, type = excluded.type, config = excluded.config";
 
@@ -30,7 +30,7 @@ export function seedSources(catalog, seed, tenant) {
 }
 
 // The time a row is written at, as the container's stores write it (seconds, UTC offset).
-const stamp = (now) => `${now.toISOString().slice(0, 19)}+00:00`;
+export const stamp = (now) => `${now.toISOString().slice(0, 19)}+00:00`;
 
 // Writes the schema and the hosted tables (hosted_schema.sql: the tenant's pages), then the
 // settings and the sources, into a tenant's database, and says what it wrote. Every write is an
@@ -83,7 +83,7 @@ export async function writeSchedule({ db, schedule, now = new Date() }) {
 
 // The lanes a source may take (`Lane` in src/cyris/domain/models.py), and a newsletter's when the
 // operator names none: read, so its issues are scored and summarized like a feed's articles.
-const LANES = ["skim", "read", "follow"];
+export const LANES = ["skim", "read", "follow"];
 const NEWSLETTER_LANE = "read";
 const SENDER = /^[^\s@<>"(),;:]+@[^\s@<>"(),;:]+\.[^\s@<>"(),;:]+$/;
 const NAME = /^[^\u0000-\u001f\u007f]{1,80}$/;

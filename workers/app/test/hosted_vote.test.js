@@ -224,7 +224,7 @@ describe("a vote", () => {
 
     const open = await probe({ "X-Cyris-Vote": token });
     expect(open.status).toBe(200);
-    expect(await open.json()).toEqual({ authorized: true, settings: false });
+    expect(await open.json()).toEqual({ authorized: true, settings: false, settings_link: true });
     expect(open.headers.get("Access-Control-Allow-Origin")).toBe("*");
     // The cookie alone, a made-up token and another site each learn nothing.
     expect((await call("/api/vote", { session, headers: { Origin: "null" } })).status).toBe(401);

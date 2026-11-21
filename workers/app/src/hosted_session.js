@@ -91,3 +91,11 @@ export function crossSite(request) {
   if (origin !== null && origin !== new URL(request.url).origin) return true;
   return ["cross-site", "same-site"].includes(request.headers.get("Sec-Fetch-Site"));
 }
+
+// Whether a browser sent this request from this origin's own page: an `Origin` that is this one,
+// and nothing that says another site sent it. Stricter than `!crossSite`, which lets a request
+// with no `Origin` through for curl: a tenant's settings change only from its settings page, so
+// no `Origin`, and the sandboxed pages' `null`, are refused too (ADR-0040).
+export function sameOrigin(request) {
+  return request.headers.get("Origin") === new URL(request.url).origin && !crossSite(request);
+}

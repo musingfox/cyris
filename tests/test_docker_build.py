@@ -20,6 +20,7 @@ EXPECTED_COPY_OPERANDS = {
     "docker/crontab",
     "docker/entrypoint.sh",
     "sources.example.yaml",
+    "workers/app/src/hosted_settings_policy.json",
 }
 
 

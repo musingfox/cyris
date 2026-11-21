@@ -340,7 +340,8 @@ each on one line `[<tenant>] <headline>` and then its detail in a code block:
 
 Not posted: a tenant whose schedule the tick cannot read, which gets no run; an alert your
 webhook refused, a `429` included, which leaves an `operator alert not sent` line; and a dry run.
-The tenant's own channels, if its settings name any, get the run's own alerts without the error.
+No tenant's own channel gets an alert: a tenant's run pins its notify targets blank, whatever its
+settings rows name (ADR-0040), until a card gives tenants mail.
 Allow about five minutes. To watch the Worker side of it:
 
 ```bash
@@ -617,8 +618,8 @@ require a pass, so measure it once:
    Information*, in a docs commit. Then resume alpha with `?status=active`.
 
 The handler logs the verdicts and does not act on them yet. Nothing a tenant can see shows its
-address, and Gmail's confirmation reaches a tenant only through you. Both wait for the tenant
-settings card.
+address, and Gmail's confirmation reaches a tenant only through you. Both wait for a later
+card: the tenant's settings page (step 10) adds RSS sources only.
 
 ## 10. Invite a reader and check the sign-in
 
@@ -669,8 +670,7 @@ a flood of three does: asking in the names of about 12 readers, four of each ten
 500-a-day ceiling in about 17 hours, and then every tenant's readers are held, the log line names
 `daily`, and only a re-invite mails a link (ADR-0033).
 
-The Settings link stays hidden on a tenant's pages, because the hosted Worker has no `/settings`
-yet. The vote buttons show on a page served to a signed-in reader, and a vote lands in that
+The vote buttons show on a page served to a signed-in reader, and a vote lands in that
 tenant's own `hosted_votes` table and no one else's, through a token the Worker put in the page
 (ADR-0039): a page is sandboxed, so its scripts have no cookie and no origin of their own
 (ADR-0033). The token ends 12 hours after the page view that made it, so a page left open longer
@@ -681,6 +681,31 @@ as the operator (`GET /hosted/tenants/alpha/report` with the service token): its
 `hosted_votes` with one row, and after the tenant's next run, which applies the vote and deletes
 the row, zero rows. *Unverified in a browser:* that the page's `fetch` passes the route's preflight and
 the buttons appear; look in the browser's console for a blocked request if they do not.
+
+### The reader's settings page
+
+A signed-in reader's pages show a Settings link to `HOSTED_URL/t/<tenant>/settings`, a page the
+Worker renders itself; no container starts for it (ADR-0040). There the reader changes the
+tenant's output language, style, type size, articles per run (at most 400), window, vote order,
+follow summaries, Top story score and publish hours, and adds or removes RSS feeds, 30 sources
+at most with newsletters counted. The model, the notify targets, the run cap and the AI allowance
+stay yours: the page refuses them, and the run pins the model and blanks the notify targets
+whatever the tenant's rows say. A save applies from the tenant's next run, and the hours from the
+next tick, since they go to the registry as your schedule route's do; a save names no run cap, so
+yours is kept.
+
+To check it on a trial tenant, sign in as alpha's reader, open Settings, change Articles per run
+and add one feed. Then read alpha's report as the operator: its `sources` list the new feed, and
+`POST /hosted/tenants/alpha/query` with `{"sql": "SELECT value FROM settings WHERE key =
+'digest.max_articles_per_digest'"}` answers the new value. A feed whose host is an IP literal
+(in any spelling the URL parser reads as an address), `localhost`, a `.localhost`, `.local`,
+`.internal` or `.arpa` name, this Worker's host or any `workers.dev` name is refused at the save,
+and a feed that redirects to one fails its poll with `refused` in the `feed failed` line. Nothing
+looks a name up in DNS, so a public name that resolves to a private address is not refused: the
+gap [ADR-0040](decisions/0040-a-hosted-tenant-edits-its-settings-on-the-hosted-worker.md) records
+under its consequences. *Unverified in a browser:* that the page's save carries the `Origin` the
+routes require; a save refused with "saved only from this digest's own settings page" means it did
+not.
 
 ## 11. Back up every tenant daily, and drill a restore
 
