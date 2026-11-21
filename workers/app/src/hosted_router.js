@@ -29,7 +29,7 @@
 
 import { LOGIN_PATHS, handleLogin } from "./hosted_login.js";
 import { admitOperator, unsetOperators } from "./hosted_operators.js";
-import { PRIVATE_HEADERS, SITE_ROUTE, siteHeaders } from "./hosted_pages.js";
+import { PRIVATE_HEADERS, SITE_ROUTE, privateHeaders, siteHeaders } from "./hosted_pages.js";
 import { clearedSessionCookie, crossSite, sessionToken, tokenHash } from "./hosted_session.js";
 import { RUN_PERIODS, accessRefusal, dayIn, refuseRunDate } from "./router.js";
 import { ACTIVE } from "./tenant_status.js";
@@ -135,6 +135,11 @@ async function bodyEmail(request) {
 // createSignIn). For readers: `session(sessionHash)`, the registry's live session or null, and
 // `login`, what handleLogin takes.
 export async function handleHostedRequest(request, env, deps) {
+  // Every answer, a refusal or an operator's JSON as much as a page, is kept out of any index.
+  return privateHeaders(await route(request, env, deps));
+}
+
+async function route(request, env, deps) {
   const url = new URL(request.url);
   const site = SITE_ROUTE.exec(url.pathname);
   if (site) return siteRequest(request, site[1], site[2] ?? "", deps);

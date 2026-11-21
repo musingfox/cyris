@@ -47,12 +47,21 @@ export const SITE_POLICY = [
   "frame-ancestors 'none'",
 ].join("; ");
 
-// Behind a sign-in: never indexed, and a link out names no page of the site.
+// Behind a sign-in: never indexed, and a link out names no page of the site. Every answer of the
+// hosted Worker carries them (`privateHeaders`), so a path a misconfiguration ever leaves open is
+// still kept out of a search index.
 export const PRIVATE_HEADERS = {
   "X-Robots-Tag": "noindex, nofollow",
   "Referrer-Policy": "no-referrer",
   "X-Content-Type-Options": "nosniff",
 };
+
+// `response` with the private headers set, and the rest of it as it was.
+export function privateHeaders(response) {
+  const headers = new Headers(response.headers);
+  for (const [name, value] of Object.entries(PRIVATE_HEADERS)) headers.set(name, value);
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
 
 // `response` with the site's policy and the private headers set. An answer that names no caching
 // of its own, a refusal or a redirect, is kept by no cache at all.

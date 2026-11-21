@@ -1510,7 +1510,11 @@ from the tenant's own `hosted_pages` (§4) and sized with the tenant's own type 
 default Worker sizes its pages. A request with no live session is sent to `/login` before any
 tenant is looked up, and a session gets one fixed 404 for every path of any tenant but its own,
 registered or not. Every `/t/` response is sandboxed by its Content Security Policy, so a page's
-scripts run with no origin, and carries `nosniff`, `noindex` and `no-referrer`. A reader signs in
+scripts run with no origin, and carries `nosniff`, `noindex` and `no-referrer`; every other
+answer of the Worker, the operator's JSON and every refusal included, carries the same three
+(`privateHeaders` in `workers/app/src/hosted_pages.js`), so a path a misconfiguration leaves open
+is still kept out of a search index. A page's `Content-Type` is the Worker's, by its path's
+extension, never the type its row stores (§4). A reader signs in
 at `/login`: an address on the operator's list (the registry's `members`, §4) is mailed a
 single-use link through the `MAIL` Email Service binding from `CYRIS_HOSTED_MAIL_FROM` (§5), its
 token in the link's fragment; `/login/confirm` turns the token into the `__Host-reader_session`

@@ -953,6 +953,28 @@ describe("the hosted Worker's operator routes", () => {
     }
   });
 
+  it("mark every answer noindex and no-referrer, a refusal, a miss and an operator's JSON alike", async () => {
+    const answers = [
+      await handleHostedRequest(await operator("GET", "/hosted/tenants/alpha/report"), ENV, hostedDeps()),
+      await handleHostedRequest(await operator("POST", "/hosted/tenants/alpha/seed"), ENV, hostedDeps()),
+      await handleHostedRequest(await operator("GET", "/hosted/tenants/alpha/seed"), ENV, hostedDeps()),
+      await handleHostedRequest(await operator("GET", "/hosted/tenants/charlie/report"), ENV, hostedDeps()),
+      await handleHostedRequest(await operator("GET", "/hosted/tenants/alpha/report", { signedIn: false }), ENV, hostedDeps()),
+      await handleHostedRequest(await operator("GET", "/"), ENV, hostedDeps()),
+      await handleHostedRequest(await operator("GET", "/t/alpha/", { signedIn: false }), ENV, hostedDeps()),
+    ];
+
+    expect(answers.map((response) => response.status)).toEqual([200, 200, 405, 404, 403, 404, 302]);
+    for (const response of answers) {
+      expect(response.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
+      expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+      expect(response.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    }
+    // The answer is otherwise as the route made it.
+    expect(answers[0].headers.get("Content-Type")).toBe("application/json");
+    expect(await answers[0].json()).toEqual({ reported: true });
+  });
+
   it("seed, report and queue a run for a named tenant, dated today in its zone when no date is named", async () => {
     const deps = hostedDeps();
 
