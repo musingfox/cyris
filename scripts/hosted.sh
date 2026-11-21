@@ -210,7 +210,7 @@ case "${1:-}" in
         exit 1
       }
       ask B2_BUCKET "CYRIS_HOSTED_B2_BUCKET, the B2 bucket's name"
-      ask B2_KEY_ID "CYRIS_HOSTED_B2_KEY_ID, the keyID of an application key limited to that bucket" secret
+      ask B2_KEY_ID "CYRIS_HOSTED_B2_KEY_ID, the keyID of a writeFiles-only application key limited to that bucket" secret
       ask B2_APPLICATION_KEY "CYRIS_HOSTED_B2_APPLICATION_KEY, that application key" secret
     fi
     put_secret CYRIS_ACCESS_TEAM_DOMAIN "$TEAM_DOMAIN"

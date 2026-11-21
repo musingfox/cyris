@@ -153,6 +153,16 @@ registry's export with no export of its own until the next day.
   `CYRIS_HOSTED_B2_APPLICATION_KEY`. B2's S3-compatible API takes only SigV4. An application
   key and its id are the S3 secret and access key id, and the master key is refused, so the key
   is one made for this bucket.
+* That key has `writeFiles` only. The Worker makes one signed `PutObject` per export, never a
+  multipart upload (an export is at most 32 MiB, far under B2's single-upload limit), a
+  listing (`listFiles`) or a read (`readFiles`); B2 maps `PutObject` and the multipart calls to
+  `writeFiles`. The registry's export holds the vote key and the hashes of live sessions and
+  sign-in links, and the Worker's secrets are one more place a key can leak from. A write-only
+  key that leaks cannot read an export back or delete one. It can still upload under an
+  existing name, which hides the older version, and the lifecycle rule deletes a hidden version
+  a day later; B2 Object Lock would close that, and is not set up here. The operator reads B2 through the web UI under their own sign-in. B2 asks a
+  bucket-limited key for `listAllBucketNames` for SDKs' sake only; the Worker uses no SDK, and
+  the runbook adds it only if B2 refuses the PUT without it, never `readFiles`.
 * `workers/app/src/s3_sigv4.js` signs the request with `crypto.subtle`. Its payload hash is the
   body's own SHA-256, not `UNSIGNED-PAYLOAD`. The body is in memory anyway, and a body changed on
   the way is refused. It is tested against Amazon's two published S3 worked examples and a
@@ -207,6 +217,18 @@ path for the registry, and the way to reach a tenant's data if the account is go
   exports with a key held outside both providers is a later decision.
 * Bad, because `PRAGMA defer_foreign_keys` and async `transaction()` were verified on Node's
   SQLite, not on workerd. The coordinator's live drill is their first run on Cloudflare.
+* Bad, because the restore's checks are not atomic with its load. The registry is asked
+  whether the new id is free before the tenant's object is filled, so a `register` of that id,
+  or a second restore into it, made in between is not refused, and whether the object's own
+  empty check holds against two loads at once was not established on workerd. The operator
+  runs one restore at a time, so this is left open.
+* Bad, because the alerts are not rate-limited or grouped. A failure common to every tenant,
+  such as a revoked B2 key, is one alert per tenant every day, against Discord's webhook rate
+  limit, and a dropped alert is only a log line (ADR-0035).
+* Bad, because an export is held several times over while it is written: as gzip chunks and
+  their joined copy inside the object, as the RPC answer in the Worker, and in the R2 and B2
+  requests made from it. At 32 MiB that is a large share of a 128 MB isolate. It was not
+  measured on workerd, and a streamed export would lower it.
 * Neutral, because each day's backup is a full copy, not an increment. At a few MB per tenant a
   day, the lifecycle rules keep the cost within R2's and B2's free tiers for a beta
   (`docs/hosting-and-cost.md`).

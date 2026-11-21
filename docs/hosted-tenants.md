@@ -739,11 +739,22 @@ B2. In the Backblaze web UI (*labels unverified*):
    backup makes a new version of the same name; the old version is hidden at once and deleted a
    day later too
    ([lifecycle rules](https://www.backblaze.com/docs/cloud-storage-lifecycle-rules)).
-3. Under Application Keys, add a key with **Read and Write** access to that bucket only. The
-   master key does not work with the S3-compatible API
-   ([S3 app keys](https://www.backblaze.com/docs/cloud-storage-s3-compatible-app-keys)). Its
-   `keyID` is `CYRIS_HOSTED_B2_KEY_ID`, and its `applicationKey`, shown once, is
-   `CYRIS_HOSTED_B2_APPLICATION_KEY`.
+3. Add an application key limited to that bucket with the one capability `writeFiles`. The
+   Worker only uploads: one signed `PutObject` per export, never a multipart upload (an export
+   is at most 32 MiB), a listing or a read. B2 maps `PutObject`, and the multipart calls too, to
+   `writeFiles`, and listing to `listFiles`
+   ([S3 app keys](https://www.backblaze.com/docs/cloud-storage-s3-compatible-app-keys)). Every
+   read is yours, through the web UI under your own sign-in (11.3), never through this key. The
+   registry's export holds the vote key and the hashes of live sessions, so a key that leaks from
+   the Worker's secrets must not be able to read it back or delete it. The web UI's
+   **Write Only** option is the one to pick (*its exact capabilities are not documented; check
+   the key's capability list after creating it*); the B2 command line names it exactly, e.g.
+   `b2 key create --bucket cyris-hosted-backup cyris-hosted-worker writeFiles` (*syntax
+   unverified; `b2 key create --help`*). B2 asks a bucket-limited key for `listAllBucketNames`
+   only for SDKs' sake, and the Worker uses none. If the 11.3 backup's B2 copy is refused with
+   403 anyway, add `listAllBucketNames`, never `readFiles`. The master key does not work with the
+   S3-compatible API. The key's `keyID` is `CYRIS_HOSTED_B2_KEY_ID`, and its `applicationKey`,
+   shown once, is `CYRIS_HOSTED_B2_APPLICATION_KEY`.
 
 ### 11.2 Set the B2 settings
 
