@@ -172,12 +172,15 @@ async def test_malformed_row_is_skipped_not_fatal():
 async def test_a_buffered_row_whose_url_is_no_http_address_is_skipped():
     """The buffer takes none now; a row it took before still in the window is no article."""
     rows = [{**ROW, "url": url} for url in ("javascript:alert(1)", "data:text/html,x", "/a/b")]
-    respx.get(f"{WORKER}/articles").mock(return_value=httpx.Response(200, json=[*rows, ROW]))
+    route = respx.get(f"{WORKER}/articles").mock(
+        return_value=httpx.Response(200, json=[*rows, ROW])
+    )
 
     articles = await CloudflareRssSource(WORKER, "tok").fetch_articles(
         after=AFTER, before=BEFORE, sources={}
     )
 
+    assert route.call_count == 1
     assert [a.url for a in articles] == ["https://a.test/1"]
 
 
