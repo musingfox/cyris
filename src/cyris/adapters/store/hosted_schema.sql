@@ -50,3 +50,17 @@ CREATE TABLE IF NOT EXISTS newsletters (
     received_at TEXT NOT NULL,
     held_at TEXT
 );
+
+-- The tenant's vote queue: each vote a signed-in reader cast on one of the tenant's own articles
+-- (workers/app/src/hosted_vote.js), which a hosted run applies at its start and deletes
+-- (`sync_hosted_votes`), as `promote-sync` does for the promote Worker's KV queue. `vote` is "up"
+-- or "down"; `ts` is the Worker's clock, never the page's. `url` is not unique: a reader who
+-- changes their mind queues both votes, and the run applies them in order. A row here is a human
+-- action and the only thing a hosted run stamps `triaged_at` from.
+-- docs/decisions/0039-a-hosted-vote-is-queued-by-the-worker-and-applied-by-the-run.md
+CREATE TABLE IF NOT EXISTS hosted_votes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL,
+    vote TEXT NOT NULL,
+    ts TEXT NOT NULL
+);

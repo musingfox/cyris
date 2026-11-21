@@ -14,6 +14,7 @@ from cyris.adapters import process_usage
 from cyris.adapters.ai_gateway_client import AIGatewayClient
 from cyris.adapters.anthropic_client import AnthropicClient
 from cyris.adapters.gemini_client import GeminiClient
+from cyris.adapters.hosted_votes import sync_hosted_votes
 from cyris.adapters.notify import send_discord, send_discord_alert
 from cyris.adapters.openai_client import OpenAIClient
 from cyris.adapters.output.usage_log import append_usage_d1
@@ -454,17 +455,26 @@ def build_promotion_sync(
     cfg: Config,
     store: ArticleRepository | None = None,
     topics: TopicRepository | None = None,
+    d1: Any | None = None,
 ) -> Callable[[], SyncResult] | None:
     """The vote pull bound to `store`, or None when no vote Worker is configured.
+
+    A hosted tenant's pull is its own database's `hosted_votes` queue, read through `d1`
+    (ADR-0039); with no `d1`, as in `promote-sync`, it has none.
 
     Reads no runtime setting, so `promote-sync` can call it on an empty D1. With
     no `store` it builds one, and only once a Worker is configured: a SQLite store
     creates its file.
     """
     promote = cfg.app.promote
-    # The vote Worker's queue is one deployment's: a hosted tenant draining it would
-    # acknowledge another reader's votes it cannot match (ADR-0028).
-    if cfg.app.store.is_hosted or not (promote.worker_url and promote.token):
+    if cfg.app.store.is_hosted:
+        # The vote Worker's queue is one deployment's: a hosted tenant draining it would
+        # acknowledge another reader's votes it cannot match (ADR-0028). Its votes are its own
+        # table, which the hosted Worker fills from a signed-in reader's session (ADR-0039).
+        if d1 is None or store is None:
+            return None
+        return partial(sync_hosted_votes, d1, store, topics)
+    if not (promote.worker_url and promote.token):
         return None
     store = store if store is not None else build_store(cfg)
     topics = topics if topics is not None else build_topic_store(cfg)
@@ -642,7 +652,7 @@ def build_deps(
         site_filenames = lambda: [p.lstrip("/") for p in manifest.load()]  # noqa: E731
 
     topic_store = build_topic_store(cfg, d1)
-    sync = None if dry_run else build_promotion_sync(cfg, store, topic_store)
+    sync = None if dry_run else build_promotion_sync(cfg, store, topic_store, d1)
 
     lengthen_articles = None
     if fetch_pages:

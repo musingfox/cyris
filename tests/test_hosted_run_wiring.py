@@ -42,6 +42,7 @@ from cyris.adapters.hosted import (
     TaggedLines,
     skip_digest_notification,
 )
+from cyris.adapters.hosted_votes import sync_hosted_votes
 from cyris.adapters.output import publish
 from cyris.adapters.output.hosted_pages import HostedPages
 from cyris.adapters.run_alert import reader_alert_message
@@ -303,7 +304,10 @@ def test_a_hosted_run_is_wired_to_its_own_site_and_to_no_queue_page_or_channel(h
     # The rss and newsletter Workers' URLs and token are set, and still the edges are the
     # tenant's own buffer and its own newsletter queue.
     assert [type(s) for s in deps.fetch_sources] == [TenantNewsletterSource, TenantRssSource]
-    assert deps.sync_promotions is None
+    # Its votes are its own table, drained through its gateway (ADR-0039); `promote-sync`, which
+    # holds no tenant's database, has none, and the vote Worker's queue is never pulled.
+    assert deps.sync_promotions is not None
+    assert deps.sync_promotions.func is sync_hosted_votes
     assert bootstrap.build_promotion_sync(cfg) is None
     # Every environment switch for Pages is on, and still the publisher is the tenant's site.
     assert deps.html_writer is not None

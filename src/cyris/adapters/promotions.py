@@ -146,13 +146,12 @@ def unrecorded(votes: list[TopicVote], recorded: list[TopicVote]) -> list[TopicV
     return [v for v in votes if not any(same_click(v, r) for r in recorded)]
 
 
-def sync_promotions(
-    worker_url: str,
-    token: str,
+def apply_promotions(
+    promotions: list[PromotedArticle],
     store: ArticleRepository,
     topics: TopicRepository | None = None,
 ) -> SyncResult:
-    """Pull votes, apply them to the store, then ACK.
+    """Write pulled votes to the store: the one write rule, whichever queue they came from.
 
     Votes carry the only human-labelled signal in the pipeline, so every
     voted article gets a ``triaged_at`` stamp that tells it apart from the
@@ -163,23 +162,15 @@ def sync_promotions(
     topic, at the click's time (`topic_votes`); a URL no topic holds, from an issue
     published before topics or from the raw page, is stamped and nothing more.
 
-    Promotions whose URL is no longer in the store are logged and ACKed
-    anyway. ACK happens only after the store is updated, so a failure here
-    leaves promotions queued for the next run. A failed topic-vote write is not
-    such a failure: the stamp is the vote's record, and holding the ACK would
-    re-stamp the same URLs every run, making old votes look newest. It is logged
-    and named in the result, and the topic votes of that sync are lost.
+    Promotions whose URL is no longer in the store are logged and left to the
+    caller to acknowledge anyway. A failed topic-vote write is not a failure the
+    caller should hold its acknowledgement for: the stamp is the vote's record, and
+    holding it would re-stamp the same URLs every run, making old votes look newest.
+    It is logged and named in the result, and the topic votes of that sync are lost.
 
     Returns:
         The votes applied, and why their topic votes were not written.
-
-    Raises:
-        httpx.HTTPError: If the Worker is unreachable.
     """
-    promotions = pull_promotions(worker_url, token)
-    if not promotions:
-        return SyncResult(0)
-
     urls = [p.url for p in promotions]
     vote_by_url = {p.url: p.vote for p in promotions}
     found = store.get_by_urls(urls)
@@ -204,6 +195,31 @@ def sync_promotions(
             logger.error("Topic votes not written, the votes are stamped and acked: %s", e)
             failed = f"topic store failed: {type(e).__name__}: {e}"
 
-    ack_promotions(worker_url, token, urls)
     logger.info("Synced %d vote(s) (%d down)", len(urls), len(rejected))
     return SyncResult(len(urls), failed)
+
+
+def sync_promotions(
+    worker_url: str,
+    token: str,
+    store: ArticleRepository,
+    topics: TopicRepository | None = None,
+) -> SyncResult:
+    """Pull votes from the promote Worker, apply them to the store (`apply_promotions`), then ACK.
+
+    ACK happens only after the store is updated, so a failure here leaves promotions
+    queued for the next run.
+
+    Returns:
+        The votes applied, and why their topic votes were not written.
+
+    Raises:
+        httpx.HTTPError: If the Worker is unreachable.
+    """
+    promotions = pull_promotions(worker_url, token)
+    if not promotions:
+        return SyncResult(0)
+
+    result = apply_promotions(promotions, store, topics)
+    ack_promotions(worker_url, token, [p.url for p in promotions])
+    return result
