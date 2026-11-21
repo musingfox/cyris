@@ -18,10 +18,15 @@ export const SITE_ROUTE = /^\/t\/([^/]+)(\/.*)?$/;
 // One file of the flat site, as the run stored it: no directories, no dot segments.
 const PAGE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-// The types a tenant's site is served as, whatever its `hosted_pages` row says: the two
-// `HostedPages` writes (src/cyris/adapters/output/hosted_pages.py). A row of any other type is a
-// page the run never wrote, so it is answered as missing.
-const SERVED_TYPES = ["text/html", "image/svg+xml"];
+// The type each page is served as, by the extension of the path the Worker itself chose to read,
+// as `CONTENT_TYPES` in src/cyris/adapters/output/hosted_pages.py writes them. The row's own
+// `content_type` is never read: the run container can write any row of its own database, so a
+// type taken from there could turn a page into whatever it named. A path of any other extension
+// is a page the run never writes, and is answered as missing.
+export const SERVED_TYPES = {
+  ".html": "text/html; charset=utf-8",
+  ".svg": "image/svg+xml",
+};
 
 // Every response under /t/, and the operator's copy of a tenant's page, carries these
 // (ADR-0033). The sandbox gives the page an opaque origin: its scripts still run, but as no
@@ -59,19 +64,20 @@ export function siteHeaders(response) {
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
-const served = (contentType) => SERVED_TYPES.includes(String(contentType).split(";")[0].trim().toLowerCase());
+// The type `path` is served as, or undefined for a path the site never serves.
+const servedType = (path) => SERVED_TYPES[/\.[^./]*$/.exec(String(path))?.[0] ?? ""];
 
-const PAGE_SQL = "SELECT body, content_type FROM hosted_pages WHERE path = ?";
+const PAGE_SQL = "SELECT path, body FROM hosted_pages WHERE path = ?";
 
 // The latest issue is the one the archive leads with: the most recently saved issue in
 // `digests` (D1DigestStore.issues) whose digest page the site holds. An issue whose pages failed
 // to store is skipped, so the reader gets the newest page there is.
 const LATEST_SQL =
-  "SELECT p.path, p.body, p.content_type FROM digests d " +
+  "SELECT p.path, p.body FROM digests d " +
   "JOIN hosted_pages p ON p.path = '/' || d.date || '-' || d.period || '.html' " +
   "ORDER BY d.saved_at DESC, d.rowid DESC LIMIT 1";
 
-// The page /t/<tenant>/ serves, as its row: path, body and content_type; undefined for none.
+// The page /t/<tenant>/ serves, as its row: path and body; undefined for none.
 export const latestPage = async (db) => (await db.query(LATEST_SQL, [])).rows[0];
 
 // A page's SHA-256 as hex, over its UTF-8 bytes: what the runbook's check compares the page it
@@ -124,12 +130,13 @@ export async function serveTenantPage(request, { tenant, rest, db, deps }) {
       return json({ error: `could not read ${tenant}'s pages; try again` }, 503);
     }
   }
-  if (!row || !served(row.content_type)) {
+  const contentType = row && servedType(row.path);
+  if (!contentType) {
     return json({ error: paths === null ? `${tenant} has no issue yet` : `${tenant} has no page ${name}` }, 404);
   }
 
   const headers = {
-    "Content-Type": row.content_type,
+    "Content-Type": contentType,
     // Behind a sign-in, so no shared cache may keep it; no validators, so the type size
     // (ADR-0013) never meets a browser revalidating an older size.
     "Cache-Control": "private, no-cache",
