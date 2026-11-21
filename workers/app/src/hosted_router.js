@@ -156,7 +156,8 @@ async function bodyEmail(request) {
 // `revoke(tenant, email)`, which answer the registry's `{member}`, `{revoked}` or
 // `{refused, status}`, `members(tenant)`, and `signIn(email, {invitation})` (hosted_login.js's
 // createSignIn); `restore(tenant, {date, from})`, which answers what hosted_backup.js's
-// restoreExport does, and `backup()`, today's backup's summary. For readers: `session(sessionHash)`, the registry's live session or null,
+// restoreExport does, and `backup()`, today's backup's summary. For readers:
+// `session(sessionHash)`, the registry's live session or null,
 // `settings(request, tenant, rest)`, which answers the tenant's settings page and routes
 // (hosted_settings.js `handleTenantSettings`),
 // `voteToken(sessionHash)`, the token that session's pages vote with, `voteSession(token)`, the
