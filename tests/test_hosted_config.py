@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 
 import pytest
 
+from cyris.adapters.fetch.newsletter_worker_source import UNMATCHED_HOLD_DAYS
 from cyris.adapters.hosted import OPERATOR_ORIGIN, OPERATOR_TIMEOUT_SECONDS
 from cyris.adapters.output.hosted_pages import SETTINGS_PAGE, SITE_PATH, tenant_settings_path
 from cyris.adapters.store.source_store import source_from_row
@@ -446,3 +447,19 @@ def test_the_seeded_sources_are_catalog_feeds_no_two_tenants_share() -> None:
             assert source_from_row(row).fetchable, name
     first, second = sources.values()
     assert set(first) & set(second) == set()
+
+
+# The privacy policy (workers/app/src/hosted_legal.js) states two retention periods set outside the
+# Worker's code, from hosted_legal.json: each must be the one in force.
+LEGAL = json.loads((SRC / "hosted_legal.json").read_text("utf-8"))
+
+
+def test_the_privacy_policys_backup_retention_is_the_runbooks_lifecycle_rule() -> None:
+    runbook = (ROOT / "docs/hosted-tenants.md").read_text("utf-8")
+    rule = r"r2 bucket lifecycle add cyris-hosted-backup \S+ --expire-days (\d+)"
+
+    assert re.findall(rule, runbook) == [str(LEGAL["backup_days"])]
+
+
+def test_the_privacy_policys_newsletter_hold_is_the_runs() -> None:
+    assert LEGAL["newsletter_hold_days"] == UNMATCHED_HOLD_DAYS

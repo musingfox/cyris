@@ -1,0 +1,188 @@
+import { afterEach, beforeEach, describe, it, expect } from "vitest";
+import { createHash } from "node:crypto";
+import { env } from "cloudflare:workers";
+import EN from "../../../src/cyris/locales/en.json" with { type: "json" };
+import ZH_HANT from "../../../src/cyris/locales/zh-Hant.json" with { type: "json" };
+import LEGAL from "../src/hosted_legal.json" with { type: "json" };
+import POLICY from "../src/hosted_settings_policy.json" with { type: "json" };
+import worker from "../src/hosted.js";
+import { PRIVATE_HEADERS } from "../src/hosted_pages.js";
+import { SESSION_COOKIE, SESSION_TTL_MS } from "../src/hosted_session.js";
+import { namespace, registryNamespace } from "./sql_storage.js";
+
+// The hosted Worker's entry, hosted.js, over a real registry: the pages must answer before any
+// sign-in, so no session, Access JWT or mail binding is given.
+const DOMAIN = "cyris-hosted.example.workers.dev";
+const ORIGIN = `https://${DOMAIN}`;
+const PAGES = { "/privacy": "privacy.", "/terms": "terms." };
+
+let bound;
+
+beforeEach(() => {
+  bound = { REGISTRY: registryNamespace(), TENANT_DB: namespace() };
+  Object.assign(env, bound, { CYRIS_STORE_HOSTED_DOMAIN: DOMAIN });
+});
+
+afterEach(() => {
+  for (const key of Object.keys(env)) delete env[key];
+});
+
+const call = (path, { method = "GET", headers = {} } = {}) =>
+  worker.fetch(new Request(`${ORIGIN}${path}`, { method, headers }), env, { waitUntil: () => {} });
+
+const escape = (text) =>
+  String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+// The text between a message's placeholders, as the page escapes it: what a page that shows the
+// message must contain, whatever the placeholders were given.
+const fragments = (message) =>
+  message
+    .split(/\{\$\w+\}/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map(escape);
+
+// One language's block of a page: its <article lang>.
+const block = (html, tag) => new RegExp(`<article class="doc" id="${tag}" lang="${tag}">(.*?)</article>`, "s").exec(html)?.[1];
+
+describe("the privacy policy and terms", () => {
+  it.each(Object.keys(PAGES))("answer GET %s with HTML to a request with no session", async (path) => {
+    const response = await call(path);
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+    expect(response.headers.get("Set-Cookie")).toBeNull();
+    expect(await response.text()).toMatch(/^<!doctype html><html lang="en">/);
+  });
+
+  it.each(Object.keys(PAGES))("answer %s to a stale session as to none, reading no session", async (path) => {
+    const response = await call(path, { headers: { Cookie: `${SESSION_COOKIE}=${"x".repeat(43)}` } });
+
+    expect(response.status).toBe(200);
+    // A /t/ request with this cookie would clear it; the legal pages never look at it.
+    expect(response.headers.get("Set-Cookie")).toBeNull();
+  });
+
+  it.each(Object.keys(PAGES))("carry %s the sign-in pages' private headers, uncached", async (path) => {
+    const [page, signIn] = [await call(path), await call("/login")];
+
+    for (const [name, value] of Object.entries(PRIVATE_HEADERS)) {
+      expect(page.headers.get(name)).toBe(value);
+      expect(page.headers.get(name)).toBe(signIn.headers.get(name));
+    }
+    expect(page.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  it.each(Object.keys(PAGES))("serve %s under a policy that runs no script and allows only its own style", async (path) => {
+    const response = await call(path);
+    const html = await response.text();
+    const policy = response.headers.get("Content-Security-Policy");
+    const style = /<style>(.*?)<\/style>/s.exec(html)[1];
+    const hash = createHash("sha256").update(style).digest("base64");
+
+    expect(policy.split("; ")).toEqual([
+      "default-src 'none'",
+      `style-src 'sha256-${hash}'`,
+      "form-action 'none'",
+      "base-uri 'none'",
+      "frame-ancestors 'none'",
+    ]);
+    expect(html).not.toMatch(/<script|<link|<img|<form|\sstyle="/);
+    expect(html).not.toMatch(/https?:\/\//);
+  });
+
+  it.each(Object.keys(PAGES))("answer HEAD %s with the page's headers and no body", async (path) => {
+    const response = await call(path, { method: "HEAD" });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Security-Policy")).toMatch(/^default-src 'none'/);
+    expect(await response.text()).toBe("");
+  });
+
+  it.each(["POST", "PUT", "DELETE", "PATCH"])("refuse %s on both pages", async (method) => {
+    for (const path of Object.keys(PAGES)) {
+      const response = await call(path, { method });
+
+      expect(response.status).toBe(405);
+      expect(response.headers.get("Allow")).toBe("GET, HEAD");
+      expect(response.headers.get("X-Robots-Tag")).toBe(PRIVATE_HEADERS["X-Robots-Tag"]);
+    }
+  });
+});
+
+describe("the two languages of a legal page", () => {
+  it.each(Object.entries(PAGES))("show %s in Traditional Chinese first, then in English", async (path, prefix) => {
+    const html = await (await call(path)).text();
+    const [chinese, english] = [block(html, "zh-Hant"), block(html, "en")];
+    // The description is the head's, in the page's English chrome (below); every other key is a block's.
+    const keys = Object.keys(EN).filter((key) => key.startsWith(prefix) && key !== `${prefix}description`);
+
+    expect(keys.length).toBeGreaterThan(5);
+    expect(html.indexOf('lang="zh-Hant">')).toBeLessThan(html.indexOf('<article class="doc" id="en"'));
+    for (const key of keys) {
+      expect(ZH_HANT[key]?.source, key).toBe(EN[key]);
+      for (const part of fragments(ZH_HANT[key].text)) expect(chinese, key).toContain(part);
+      for (const part of fragments(EN[key])) expect(english, key).toContain(part);
+    }
+  });
+
+  it.each(Object.keys(PAGES))("say on %s, in both languages, that the Chinese text prevails", async (path) => {
+    const html = await (await call(path)).text();
+    const notice = /<div class="notice">(.*?)<\/div>/s.exec(html)[1];
+
+    expect(notice).toContain(`<p lang="zh-Hant">${escape(ZH_HANT["legal.prevails"].text)}</p>`);
+    expect(notice).toContain(`<p lang="en">${escape(EN["legal.prevails"])}</p>`);
+    expect(html.indexOf(notice)).toBeLessThan(html.indexOf("<article"));
+  });
+
+  it.each(Object.entries(PAGES))("title %s with the authoritative heading, its translation beside it", async (path, prefix) => {
+    const html = await (await call(path)).text();
+    const [original, translation] = [ZH_HANT[`${prefix}title`].text, EN[`${prefix}title`]];
+
+    expect(html).toContain(`<h1 class="display" lang="zh-Hant">${original}</h1>`);
+    expect(html).toContain(`<p class="heading" lang="en">${translation}</p>`);
+    expect(html).toContain(`<title>${original} · ${translation}</title>`);
+    expect(html).toContain(`<meta name="description" content="${escape(EN[`${prefix}description`])}">`);
+  });
+});
+
+describe("what the privacy policy states", () => {
+  it("names the session cookie and its lifetime as the Worker sets them", async () => {
+    const html = await (await call("/privacy")).text();
+    const days = SESSION_TTL_MS / (24 * 60 * 60 * 1000);
+
+    for (const tag of ["zh-Hant", "en"]) {
+      expect(block(html, tag)).toContain(SESSION_COOKIE);
+      expect(block(html, tag)).toMatch(new RegExp(`\\b${days} (天|days)`));
+    }
+  });
+
+  it("names the model the hosted runs are pinned to, and the backup's retention", async () => {
+    const english = block(await (await call("/privacy")).text(), "en");
+
+    expect(english).toContain(`the model ${POLICY.model}.`);
+    expect(english).toContain(`deleted ${LEGAL.backup_days} days after it was made`);
+    expect(english).not.toMatch(/backblaze|\bB2\b/i);
+  });
+
+  it.each(Object.keys(PAGES))("link every contact address on %s as mail, in both languages", async (path) => {
+    const html = await (await call(path)).text();
+
+    for (const tag of ["zh-Hant", "en"]) {
+      for (const address of Object.values(LEGAL.contacts)) {
+        expect(block(html, tag)).toContain(`<a href="mailto:${address}">${address}</a>`);
+      }
+    }
+  });
+});
+
+describe("the way to the legal pages", () => {
+  it.each(Object.keys(PAGES))("leads from %s to the other page and to the sign-in", async (path) => {
+    const html = await (await call(path)).text();
+
+    expect(html).toContain(`<a class="label" href="${path}" aria-current="page">`);
+    for (const other of [...Object.keys(PAGES), "/login"].filter((href) => href !== path)) {
+      expect(html).toContain(`<a class="label" href="${other}">`);
+    }
+  });
+});

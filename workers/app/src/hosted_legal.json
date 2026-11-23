@@ -1,0 +1,11 @@
+{
+  "_comment": "What the hosted Worker's privacy policy and terms (hosted_legal.js, /privacy and /terms) name that is not a catalog sentence: the date the text last changed, the operator's contact addresses (product owner, 2026-11-24), and two retention periods set outside the Worker's own code. `backup_days` is the R2 bucket's lifecycle rule, which docs/hosted-tenants.md §11.1 creates by hand, and `newsletter_hold_days` is UNMATCHED_HOLD_DAYS in src/cyris/adapters/fetch/newsletter_worker_source.py; tests/test_hosted_config.py holds both equal to their sources. Change `updated` with any change to the pages' text.",
+  "updated": "2026-11-24",
+  "contacts": {
+    "privacy": "privacy@readcyris.com",
+    "support": "support@readcyris.com",
+    "security": "security@readcyris.com"
+  },
+  "backup_days": 30,
+  "newsletter_hold_days": 8
+}

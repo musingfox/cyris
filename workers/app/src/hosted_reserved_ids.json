@@ -1,5 +1,5 @@
 {
-  "_comment": "Tenant ids the registry refuses to register (tenant_registry.js). A tenant id is a path segment under /t/ today and may become a host label or a top-level path later, so it may not take a name the hosted Worker answers itself (login, logout, hosted, t), one the default Worker answers that a tenant page links to absolutely (api, static, settings, onboarding, labels, interest, run), Cloudflare's own path (cdn-cgi), or a host label an operator would want for itself (www, mail, admin, app, operator). docs/decisions/0033-hosted-readers-sign-in-with-a-mailed-link.md.",
+  "_comment": "Tenant ids the registry refuses to register (tenant_registry.js). A tenant id is a path segment under /t/ today and may become a host label or a top-level path later, so it may not take a name the hosted Worker answers itself (login, logout, hosted, t, privacy, terms), one the default Worker answers that a tenant page links to absolutely (api, static, settings, onboarding, labels, interest, run), Cloudflare's own path (cdn-cgi), or a host label an operator would want for itself (www, mail, admin, app, operator). docs/decisions/0033-hosted-readers-sign-in-with-a-mailed-link.md.",
   "reserved": [
     "admin",
     "api",
@@ -13,10 +13,12 @@
     "mail",
     "onboarding",
     "operator",
+    "privacy",
     "run",
     "settings",
     "static",
     "t",
+    "terms",
     "www"
   ]
 }

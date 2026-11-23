@@ -47,8 +47,9 @@ const raise = (error) => {
   throw error;
 };
 
-// `t` for one catalog: a key's message formatted in that catalog's locale.
-function translator(tag) {
+// `t` for one catalog: a key's message formatted in that catalog's locale. The legal pages
+// (hosted_legal.js) word from both catalogs through it too.
+export function translator(tag) {
   return (key, values = {}) => {
     if (!(key in EN)) throw new Error(`${key} is not in en.json`);
     const [locale, source] = key in CATALOGS[tag] ? [tag, CATALOGS[tag][key]] : ["en", EN[key]];
