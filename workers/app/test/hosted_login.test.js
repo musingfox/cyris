@@ -240,6 +240,24 @@ describe("signing in to a hosted tenant", () => {
     expect(lines.join("\n")).not.toContain(session);
   });
 
+  // Under the response's `Referrer-Policy: no-referrer` a browser posts a form with `Origin: null`
+  // (Fetch, "append a request `Origin` header"), which crossSite refuses: the page must declare a
+  // policy of its own that sends this origin to itself, and still nothing elsewhere.
+  it("lets each of its forms post this Origin, and still sends no referrer to another site", async () => {
+    const pages = [
+      await call("/login"),
+      await call("/login/confirm"),
+      await call("/logout"),
+    ];
+
+    for (const served of pages) {
+      const html = await served.text();
+      expect(html).toContain("<form");
+      expect(html).toContain('<meta name="referrer" content="same-origin">');
+      expect(served.headers.get("Referrer-Policy")).toBe("no-referrer");
+    }
+  });
+
   it("asks for a press before it spends the link, and keeps the token out of every URL it serves", async () => {
     const opened = await call("/login/confirm");
     const html = await opened.text();

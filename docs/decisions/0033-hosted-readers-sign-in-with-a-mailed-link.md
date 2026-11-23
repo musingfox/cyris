@@ -156,7 +156,9 @@ How it works:
   `image/svg+xml`, the two types the run writes, never a type the row names. Every hosted
   response there also carries `X-Content-Type-Options: nosniff`, `X-Robots-Tag: noindex,
   nofollow` and `Referrer-Policy: no-referrer`. The sign-in pages are served `no-store`, with a
-  policy that allows their one script by its hash.
+  policy that allows their one script by its hash, and each declares `<meta name="referrer"
+  content="same-origin">`: under the header's `no-referrer` a browser posts a form with `Origin:
+  null`, which the cross-site check refuses.
 * **The operator reads a page under `/hosted/`.** `GET /hosted/tenants/<tenant>/page` answers
   the page `/t/<tenant>/` serves, behind Access and sandboxed the same way. The runbook's check
   reads it with the service token. The operator holds no tenant session.

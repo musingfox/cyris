@@ -130,9 +130,14 @@ async function pagePolicy() {
   ].join("; ");
 }
 
+// Every response is `Referrer-Policy: no-referrer` (PRIVATE_HEADERS), under which a browser posts
+// a form with `Origin: null` (Fetch, "append a request `Origin` header") and crossSite refuses it.
+// `same-origin` sends this origin to this site and still no referrer anywhere else; a form has no
+// `referrerpolicy` attribute, so the page declares it for itself.
 async function page(title, body, { status = 200, script = "", cookie } = {}) {
   const html =
     `<!doctype html><html lang="${LANGUAGE}"><head><meta charset="utf-8">` +
+    '<meta name="referrer" content="same-origin">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
     `<title>${escape(title)}</title><style>${STYLE}</style></head>` +
     `<body><main><h1>${escape(title)}</h1>${body}</main>${script && `<script>${script}</script>`}</body></html>`;
