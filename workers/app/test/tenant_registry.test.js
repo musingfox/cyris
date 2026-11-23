@@ -16,7 +16,7 @@ import {
 } from "../src/hosted_session.js";
 import { REGISTRY_NAME, REGISTRY_SCHEMA, TenantRegistry, tenantRegistry } from "../src/tenant_registry.js";
 import { TENANT_STATUSES } from "../src/tenant_status.js";
-import { DEFAULT_DAILY_RUN_CAP } from "../src/run_queue.js";
+import { DEFAULT_DAILY_RUN_CAP, DEFAULT_MAX_DIGEST_TIMES } from "../src/run_queue.js";
 import { SCHEMA_SQL, alarmStorage, drainAlarms, namespace, registryNamespace, registryObject, sqlStorage } from "./sql_storage.js";
 
 const AT = new Date("2026-11-18T06:00:00Z");
@@ -285,15 +285,16 @@ describe("the registry's schema on a registry an earlier version created", () =>
       "updated_at",
       "timezone",
       "daily_run_cap",
+      "max_digest_times",
       "monthly_ai_budget_usd",
     ]);
-    expect(registry.tenants().map(({ id, status, daily_run_cap }) => [id, status, daily_run_cap])).toEqual([
-      ["alpha", "active", DEFAULT_DAILY_RUN_CAP],
-      ["bravo", "paused", DEFAULT_DAILY_RUN_CAP],
+    expect(registry.tenants().map(({ id, status, daily_run_cap, max_digest_times }) => [id, status, daily_run_cap, max_digest_times])).toEqual([
+      ["alpha", "active", DEFAULT_DAILY_RUN_CAP, DEFAULT_MAX_DIGEST_TIMES],
+      ["bravo", "paused", DEFAULT_DAILY_RUN_CAP, DEFAULT_MAX_DIGEST_TIMES],
     ]);
 
     // Each card's writes work on it: the schedule, an invite and its link, a newsletter address.
-    expect(registry.setSchedule("alpha", { times: ["07:00", "19:00"], timeZone: "Asia/Taipei" }).refused).toBeUndefined();
+    expect(registry.setSchedule("alpha", { times: ["07:00", "19:00"], timeZone: "Asia/Taipei", maxDigestTimes: 2 }).refused).toBeUndefined();
     expect(registry.invite("alpha", "ana@example.com", { now: AT }).member).toMatchObject({ tenant_id: "alpha" });
     expect(registry.issueSignIn("ana@example.com", "h-ana", { now: AT })).toMatchObject({ tenant: "alpha" });
     expect(registry.rotateInboundAddress("alpha", { now: AT, address: "a".repeat(26) })).toMatchObject({ revoked: 0 });
@@ -338,6 +339,7 @@ describe("the operator's registry", () => {
         digest_times: null,
         timezone: null,
         daily_run_cap: DEFAULT_DAILY_RUN_CAP,
+        max_digest_times: DEFAULT_MAX_DIGEST_TIMES,
         // Unset: the default is DEFAULT_MONTHLY_AI_BUDGET_USD's alone (ai_budget.js).
         monthly_ai_budget_usd: null,
         created_at: STAMP,
@@ -469,7 +471,7 @@ describe("the hosted Worker's hourly tick", () => {
     await registry.register("bravo", { status: "paused" });
     await registry.register("delta");
     for (const tenant of ["alpha", "bravo", "delta"]) {
-      await registry.setSchedule(tenant, { times: ["08:00", "20:00"], timeZone: "UTC" });
+      await registry.setSchedule(tenant, { times: ["08:00", "20:00"], timeZone: "UTC", maxDigestTimes: 2 });
     }
     // charlie has a database with a due schedule, but the registry never heard of it.
     for (const tenant of ["alpha", "bravo", "charlie", "delta"]) scheduled(bound.TENANT_DB, tenant);
@@ -501,7 +503,7 @@ describe("the hosted Worker's hourly tick", () => {
 
   it("starts no active tenant off its digest hours", async () => {
     await tenantRegistry(env).register("alpha");
-    await tenantRegistry(env).setSchedule("alpha", { times: ["08:00", "20:00"], timeZone: "UTC" });
+    await tenantRegistry(env).setSchedule("alpha", { times: ["08:00", "20:00"], timeZone: "UTC", maxDigestTimes: 2 });
     scheduled(bound.TENANT_DB, "alpha");
     vi.setSystemTime(new Date("2026-11-18T13:00:00Z"));
 
@@ -575,15 +577,17 @@ describe("the hosted Worker's operator routes, over the registry", () => {
     expect(registered.status).toBe(200);
     expect(await registered.json()).toMatchObject({ id: "alpha", status: "active" });
 
-    const seeded = await operator("POST", "/hosted/tenants/alpha/seed");
-    expect(seeded.status).toBe(200);
-    expect((await seeded.json()).tenant).toBe("alpha");
-
     const unscheduled = await operator("POST", "/hosted/tenants/alpha/run?period=morning");
     expect(unscheduled.status).toBe(409);
     expect((await unscheduled.json()).error).toContain("has no schedule in the registry");
 
-    const schedule = await operator("POST", "/hosted/tenants/alpha/schedule?times=07:00,19:00&timezone=asia/taipei");
+    // The seed gives a tenant with no schedule its own one hour, in UTC (hosted_seed.js `spreadHour`).
+    const seeded = await operator("POST", "/hosted/tenants/alpha/seed");
+    expect(seeded.status).toBe(200);
+    expect(await seeded.json()).toMatchObject({ tenant: "alpha", schedule: { times: ["08:00"], timeZone: "UTC" } });
+    expect(await tenantRegistry(env).tenant("alpha")).toMatchObject({ digest_times: '["08:00"]', timezone: "UTC", max_digest_times: 1 });
+
+    const schedule = await operator("POST", "/hosted/tenants/alpha/schedule?max_digest_times=2&times=07:00,19:00&timezone=asia/taipei");
     expect(schedule.status).toBe(200);
     expect(await schedule.json()).toMatchObject({
       tenant: { id: "alpha", digest_times: '["07:00","19:00"]', timezone: "Asia/Taipei" },
@@ -597,6 +601,11 @@ describe("the hosted Worker's operator routes, over the registry", () => {
       { key: "general.digest_schedule", value: '["07:00","19:00"]' },
       { key: "general.timezone", value: '"Asia/Taipei"' },
     ]);
+    // Seeding again keeps the schedule the operator set, in the registry and in its copy.
+    expect(await (await operator("POST", "/hosted/tenants/alpha/seed")).json()).toMatchObject({
+      schedule: { times: ["07:00", "19:00"], timeZone: "Asia/Taipei" },
+    });
+    expect(await tenantRegistry(env).tenant("alpha")).toMatchObject({ digest_times: '["07:00","19:00"]', timezone: "Asia/Taipei" });
 
     const ran = await operator("POST", "/hosted/tenants/alpha/run?period=morning");
     expect(ran.status).toBe(202);
@@ -621,21 +630,26 @@ describe("the hosted Worker's operator routes, over the registry", () => {
 
     for (const query of [
       "?timezone=UTC",
-      "?times=08:00&timezone=UTC",
+      // Two times for a tenant allowed one, three for any, and a maximum past two.
+      "?times=08:00,20:00&timezone=UTC",
+      "?max_digest_times=2&times=08:00,12:00,20:00&timezone=UTC",
+      "?max_digest_times=3&times=08:00&timezone=UTC",
+      "?max_digest_times=0&times=08:00&timezone=UTC",
+      "?times=08:30&timezone=UTC",
       "?times=08:30,20:00&timezone=UTC",
       "?times=08:00,20:00",
-      "?times=08:00,20:00&timezone=Mars/Olympus",
+      "?max_digest_times=2&times=08:00,20:00&timezone=Mars/Olympus",
       // An offset the runtime takes and the container's zoneinfo does not.
-      "?times=08:00,20:00&timezone=%2B08:00",
-      "?times=08:00,20:00&timezone=-05:00",
-      "?times=08:00,20:00&timezone=UTC&daily_run_cap=0",
-      "?times=08:00,20:00&timezone=UTC&daily_run_cap=2.5",
+      "?max_digest_times=2&times=08:00,20:00&timezone=%2B08:00",
+      "?max_digest_times=2&times=08:00,20:00&timezone=-05:00",
+      "?max_digest_times=2&times=08:00,20:00&timezone=UTC&daily_run_cap=0",
+      "?max_digest_times=2&times=08:00,20:00&timezone=UTC&daily_run_cap=2.5",
     ]) {
       const response = await operator("POST", `/hosted/tenants/alpha/schedule${query}`);
       expect(response.status, query).toBe(400);
     }
     expect(await tenantRegistry(env).tenant("alpha")).toMatchObject({ digest_times: null, timezone: null });
-    expect((await operator("POST", "/hosted/tenants/charlie/schedule?times=08:00,20:00&timezone=UTC")).status).toBe(404);
+    expect((await operator("POST", "/hosted/tenants/charlie/schedule?max_digest_times=2&times=08:00,20:00&timezone=UTC")).status).toBe(404);
   });
 
   it("poll an active tenant's feeds into its buffer on request, and refuse a paused one", async () => {
@@ -684,7 +698,7 @@ describe("the hosted Worker's operator routes, over the registry", () => {
   it("leave a paused tenant paused on a bare register, and resume it only when told", async () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     expect((await operator("POST", "/hosted/tenants/alpha/register?status=paused")).status).toBe(200);
-    await operator("POST", "/hosted/tenants/alpha/schedule?times=08:00,20:00&timezone=UTC");
+    await operator("POST", "/hosted/tenants/alpha/schedule?max_digest_times=2&times=08:00,20:00&timezone=UTC");
 
     const again = await operator("POST", "/hosted/tenants/alpha/register");
 

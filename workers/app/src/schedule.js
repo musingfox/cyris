@@ -14,9 +14,20 @@ const ACCOUNTS_API = "https://api.cloudflare.com/client/v4/accounts";
 const SCHEDULE_KEY = "general.digest_schedule";
 const TIMEZONE_KEY = "general.timezone";
 
-// `validate_schedule`: exactly two distinct whole hours, earliest first; null otherwise.
-export function digestHours(times) {
-  if (!Array.isArray(times) || times.length !== 2) return null;
+// The issues of a day, in the order their hours fall: `Period` in schedule.py.
+export const PERIODS = ["morning", "evening"];
+
+// How many digest times a schedule may hold, by edition, as `SELF_HOSTED_TIMES` and
+// `HOSTED_TIMES` in schedule.py. A self-hosted deployment publishes both periods every day; a
+// hosted tenant publishes one, or two when its registry row allows them (`max_digest_times`,
+// run_queue.js), and its single issue is the morning's. Never more times than PERIODS.
+export const SELF_HOSTED_TIMES = Object.freeze([2]);
+export const HOSTED_TIMES = Object.freeze([1, 2]);
+
+// `validate_schedule`: as many distinct whole hours as `counts` allows, earliest first; null
+// otherwise.
+export function digestHours(times, counts = SELF_HOSTED_TIMES) {
+  if (!Array.isArray(times) || !counts.includes(times.length)) return null;
   const hours = [];
   for (const time of times) {
     const parts = String(time).split(":");
@@ -26,21 +37,21 @@ export function digestHours(times) {
     if (!(hour >= 0 && hour <= 23) || minute !== 0) return null;
     hours.push(hour);
   }
-  if (hours[0] === hours[1]) return null;
+  if (new Set(hours).size !== hours.length) return null;
   return hours.sort((a, b) => a - b);
 }
 
-// "morning" for the earlier hour, "evening" for the later, null for any other hour
-// or a schedule no tick can honour. Throws RangeError on an unknown time zone.
-export function duePeriod(now, times, timeZone) {
-  const hours = digestHours(times);
+// "morning" for the earliest hour, "evening" for the later, null for any other hour or a
+// schedule no tick can honour; a schedule of one hour has only a morning. Throws RangeError on
+// an unknown time zone.
+export function duePeriod(now, times, timeZone, counts = SELF_HOSTED_TIMES) {
+  const hours = digestHours(times, counts);
   if (!hours) return null;
   const hour = Number(
     new Intl.DateTimeFormat("en-GB", { timeZone, hour: "2-digit", hourCycle: "h23" }).format(now)
   );
-  if (hour === hours[0]) return "morning";
-  if (hour === hours[1]) return "evening";
-  return null;
+  const index = hours.indexOf(hour);
+  return index === -1 ? null : PERIODS[index];
 }
 
 // The rows one D1 query answers over REST, or null when there is no D1 to ask or it
@@ -148,10 +159,10 @@ function wallClock(instant, timeZone) {
 // once in every hour of that window, so the first step that lands in a digest
 // hour finds the latest one. `since` is the hour's start as digest_runs stores
 // `finished_at`; `date` is the hour's own, which past midnight is not `now`'s.
-function missedDigestHour(now, times, timeZone) {
+function missedDigestHour(now, times, timeZone, counts) {
   for (let back = 1; back < CATCH_UP_HOURS; back++) {
     const probe = new Date(now.getTime() - back * HOUR_MS);
-    const period = duePeriod(probe, times, timeZone);
+    const period = duePeriod(probe, times, timeZone, counts);
     if (!period) continue;
     const { date, intoHourMs } = wallClock(probe, timeZone);
     const start = new Date(probe.getTime() - intoHourMs);
@@ -176,7 +187,8 @@ function missedDigestHour(now, times, timeZone) {
 // The hosted Worker also hands in `schedule`, `{ times, timeZone }` from its registry,
 // which is then not read from `settings`, and `nameDue`, which answers a digest hour
 // as `{ period, date, origin: "tick" }`: its run waits in a queue and may start after
-// the hour, when `--if-due` would find nothing due (ADR-0032).
+// the hour, when `--if-due` would find nothing due (ADR-0032), and `counts`, HOSTED_TIMES,
+// since a tenant's schedule may hold one hour (ADR-0042).
 export async function planTick({
   env,
   fetchImpl,
@@ -186,15 +198,16 @@ export async function planTick({
   unreadable = {},
   schedule: given = null,
   nameDue = false,
+  counts = SELF_HOSTED_TIMES,
 }) {
   const at = now();
   const schedule = given ?? (await readSchedule({ read }));
   if (!schedule) return unreadable;
   let missed;
   try {
-    const due = duePeriod(at, schedule.times, schedule.timeZone);
+    const due = duePeriod(at, schedule.times, schedule.timeZone, counts);
     if (due !== null) return nameDue ? { period: due, date: wallClock(at, schedule.timeZone).date, origin: "tick" } : {};
-    missed = missedDigestHour(at, schedule.times, schedule.timeZone);
+    missed = missedDigestHour(at, schedule.times, schedule.timeZone, counts);
   } catch {
     console.warn("schedule read failed: unknown time zone");
     return unreadable;

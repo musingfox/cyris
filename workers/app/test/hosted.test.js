@@ -7,11 +7,15 @@ import { ALERT_TIMEOUT_MS, OPERATOR_WEBHOOK, OPS_HOST } from "../src/hosted_aler
 import { SPEND_HOST } from "../src/hosted_spend.js";
 import { REPORTED, RUN, START_RETRY, TOLD, TenantContainer, hostedContainerEnv } from "../src/hosted_container.js";
 import { handleHostedRequest } from "../src/hosted_router.js";
-import { seedSettings, seedTenant, tenantReport } from "../src/hosted_seed.js";
+import { backupHours } from "../src/hosted_backup.js";
+import { seedSchedule, seedSettings, seedTenant, spreadHour, tenantReport } from "../src/hosted_seed.js";
 import { DISPATCH_EVERY_MS, MAX_START_ATTEMPTS, RUN_LEASE_MS } from "../src/run_queue.js";
 import { DB_HOST } from "../src/tenant_db.js";
 import { REGISTRY_NAME, tenantRegistry } from "../src/tenant_registry.js";
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, drainAlarms, namespace, registryNamespace } from "./sql_storage.js";
+
+// The schedule the seed writes a tenant the registry has none for: one hour, in UTC.
+const SEEDED_SCHEDULE = { times: ["08:00"], timeZone: "UTC" };
 
 // Everything the default Worker forwards (index.js `SECRETS` and `DEPLOYMENT`), set.
 const EVERY_BINDING = {
@@ -207,7 +211,7 @@ describe("a hosted tenant's run container", () => {
     const { object, container, ctx, env } = await runObject("alpha");
     env.TENANT_RUN = { getByName: () => object };
     const registry = env.REGISTRY.getByName(REGISTRY_NAME);
-    await registry.setSchedule("alpha", { times: ["08:00", "20:00"], timeZone: "UTC" });
+    await registry.setSchedule("alpha", { times: ["08:00", "20:00"], timeZone: "UTC", maxDigestTimes: 2 });
     const stops = [];
     container.monitor = () => new Promise((resolve, reject) => stops.push({ resolve, reject }));
 
@@ -397,7 +401,7 @@ async function queuedRun(tenant = "alpha") {
   const made = await runObject(tenant, { ...EVERY_BINDING, [OPERATOR_WEBHOOK]: HOOK });
   made.env.TENANT_RUN = { getByName: () => made.object };
   const registry = made.env.REGISTRY.getByName(REGISTRY_NAME);
-  await registry.setSchedule(tenant, { times: ["08:00", "20:00"], timeZone: "UTC" });
+  await registry.setSchedule(tenant, { times: ["08:00", "20:00"], timeZone: "UTC", maxDigestTimes: 2 });
   return { ...made, registry, posted };
 }
 
@@ -702,10 +706,28 @@ describe("the seed and the report", () => {
       startingValues: STARTING_VALUES,
       seed: SEED,
       catalog: FEED_CATALOG,
+      schedule: SEEDED_SCHEDULE,
       now: AT,
     });
     return { db, answer, TENANT_DB };
   };
+
+  it("gives each tenant one digest hour of its own, never the backup's, the same one every time", () => {
+    const hours = Array.from({ length: 24 }, (_, hour) => hour).filter((hour) => !backupHours().includes(hour));
+    expect(backupHours()).toEqual([4, 5, 6]);
+    const ids = Array.from({ length: 200 }, (_, i) => `tenant-${i}`);
+    const given = ids.map((id) => spreadHour(id, hours));
+
+    expect(given.every((hour) => hours.includes(hour))).toBe(true);
+    expect(ids.map((id) => spreadHour(id, hours))).toEqual(given);
+    // Spread over every hour a run may start in, none taking a crowd.
+    const perHour = hours.map((hour) => given.filter((g) => g === hour).length);
+    expect(Math.min(...perHour)).toBeGreaterThan(0);
+    expect(Math.max(...perHour)).toBeLessThan(3 * (ids.length / hours.length));
+    // The runbook's two tenants are not due together, and each is one hour in UTC.
+    expect(seedSchedule(SEED, "alpha", hours)).toEqual({ times: ["08:00"], timeZone: "UTC" });
+    expect(seedSchedule(SEED, "bravo", hours)).toEqual({ times: ["00:00"], timeZone: "UTC" });
+  });
 
   it("writes the schema, every starting value under the seed's own, and the tenant's feeds", async () => {
     const { db, answer } = await seeded("alpha");
@@ -716,7 +738,7 @@ describe("the seed and the report", () => {
         [JSON.parse(row.value), row.updated_at],
       ]),
     );
-    const expected = seedSettings(STARTING_VALUES, SEED);
+    const expected = seedSettings(STARTING_VALUES, SEED, SEEDED_SCHEDULE);
     expect(Object.keys(settings).sort()).toEqual(Object.keys(expected).sort());
     for (const [key, value] of Object.entries(expected)) {
       expect(settings[key]).toEqual([value, "2026-11-18T06:00:00+00:00"]);

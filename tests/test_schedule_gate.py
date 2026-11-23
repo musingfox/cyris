@@ -7,7 +7,14 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from cyris.service_layer.schedule import PERIOD_ORDER, due_period, validate_schedule
+from cyris.service_layer.schedule import (
+    HOSTED_TIMES,
+    PERIOD_ORDER,
+    SELF_HOSTED_TIMES,
+    due_period,
+    schedule_counts,
+    validate_schedule,
+)
 
 pytestmark = pytest.mark.unit
 
@@ -65,4 +72,25 @@ SHARED_CASES = Path(__file__).parent.parent / "workers/app/test/schedule_cases.j
 def test_due_period_agrees_with_the_app_workers_cron_check(case):
     """workers/app/src/schedule.js answers the same cases before it wakes the container."""
     now = datetime.fromisoformat(case["at"]).astimezone(ZoneInfo(case["timezone"]))
-    assert due_period(now, case["schedule"]) == case["due"]
+    counts = schedule_counts(hosted=case.get("edition") == "hosted")
+    assert due_period(now, case["schedule"], counts) == case["due"]
+
+
+def test_a_hosted_schedule_is_one_hour_whose_issue_is_the_morning():
+    """A hosted tenant's one daily issue is stored as `morning` (ADR-0042)."""
+    assert validate_schedule(["13:00"], HOSTED_TIMES) == ["13:00"]
+    assert due_period(_at(13), ["13:00"], HOSTED_TIMES) == "morning"
+    assert due_period(_at(14), ["13:00"], HOSTED_TIMES) is None
+
+
+def test_a_hosted_schedule_takes_two_hours_and_never_three():
+    assert validate_schedule(["20:00", "8:00"], HOSTED_TIMES) == ["08:00", "20:00"]
+    for times in ([], ["08:00", "12:00", "20:00"], ["08:00", "08:00"], ["08:30"]):
+        with pytest.raises(ValueError):
+            validate_schedule(times, HOSTED_TIMES)
+
+
+def test_a_self_hosted_schedule_is_still_exactly_two_hours():
+    assert schedule_counts(hosted=False) == SELF_HOSTED_TIMES == {2}
+    with pytest.raises(ValueError, match="exactly two times"):
+        validate_schedule(["08:00"])

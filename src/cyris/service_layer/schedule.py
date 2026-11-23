@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import datetime, timedelta
-from typing import Literal, get_args
+from typing import Literal, cast, get_args
 
 Period = Literal["morning", "evening"]
 
@@ -21,11 +21,26 @@ Period = Literal["morning", "evening"]
 # the earlier hour. The archive sorts a day's issues by it.
 PERIOD_ORDER: tuple[str, ...] = get_args(Period)
 
+# How many digest times a schedule may hold, by edition, as `SELF_HOSTED_TIMES` and
+# `HOSTED_TIMES` in workers/app/src/schedule.js. A self-hosted deployment publishes both
+# periods every day. A hosted tenant publishes one, its morning, or two when the hosted
+# Worker's registry allows them; the registry holds that maximum, so a run takes either
+# (ADR-0042). Never more times than periods.
+SELF_HOSTED_TIMES: frozenset[int] = frozenset({2})
+HOSTED_TIMES: frozenset[int] = frozenset({1, 2})
 
-def validate_schedule(times: list[str]) -> list[str]:
-    """Exactly two distinct whole hours, earliest first. Raises ValueError."""
-    if len(times) != 2:
-        raise ValueError("the digest schedule is exactly two times: a morning and an evening")
+
+def schedule_counts(*, hosted: bool) -> frozenset[int]:
+    """How many digest times the edition's schedule may hold."""
+    return HOSTED_TIMES if hosted else SELF_HOSTED_TIMES
+
+
+def validate_schedule(times: list[str], counts: frozenset[int] = SELF_HOSTED_TIMES) -> list[str]:
+    """As many distinct whole hours as `counts` allows, earliest first. Raises ValueError."""
+    if len(times) not in counts:
+        if counts == SELF_HOSTED_TIMES:
+            raise ValueError("the digest schedule is exactly two times: a morning and an evening")
+        raise ValueError("a hosted digest schedule is one time, or two: a morning and an evening")
     hours = []
     for t in times:
         try:
@@ -35,23 +50,26 @@ def validate_schedule(times: list[str]) -> list[str]:
         if not 0 <= hour <= 23 or minute != 0:
             raise ValueError(f"{t!r} must be a whole hour — the schedule tick is hourly")
         hours.append(hour)
-    if hours[0] == hours[1]:
+    if len(set(hours)) != len(hours):
         raise ValueError("the two digest times must be different hours")
     return [f"{h:02d}:00" for h in sorted(hours)]
 
 
-def due_period(now: datetime, times: list[str]) -> Period | None:
-    """Which digest `now` is due for, or None. `now` must already be local."""
+def due_period(
+    now: datetime, times: list[str], counts: frozenset[int] = SELF_HOSTED_TIMES
+) -> Period | None:
+    """Which digest `now` is due for, or None. `now` must already be local.
+
+    The earliest hour is the morning's, so a schedule of one hour has only a morning.
+    """
     try:
-        earlier, later = validate_schedule(times)
+        hours = validate_schedule(times, counts)
     except ValueError:
         return None
     current = f"{now.hour:02d}:00"
-    if current == earlier:
-        return "morning"
-    if current == later:
-        return "evening"
-    return None
+    if current not in hours:
+        return None
+    return cast(Period, PERIOD_ORDER[hours.index(current)])
 
 
 def first_issue_key(now: datetime, times: list[str]) -> tuple[str, Period]:

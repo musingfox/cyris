@@ -14,6 +14,9 @@ import { tenantRegistry } from "../src/tenant_registry.js";
 import { FakeHTMLRewriter } from "./html_rewriter.js";
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace, registryNamespace } from "./sql_storage.js";
 
+// The schedule the seed writes a tenant the registry has none for: one hour, in UTC.
+const SEEDED_SCHEDULE = { times: ["08:00"], timeZone: "UTC" };
+
 // The hosted Worker's entry itself, over the real registry and tenant databases, as
 // hosted_login.test.js builds it; only the Email Service binding, the Access certs and workerd's
 // HTMLRewriter are stand-ins.
@@ -43,6 +46,7 @@ async function seedWithArticle(tenant, articleUrl) {
     startingValues: STARTING_VALUES,
     seed: SEED,
     catalog: FEED_CATALOG,
+    schedule: SEEDED_SCHEDULE,
   });
   await db.query("INSERT INTO digests (date, period, content, raw_page, saved_at) VALUES (?, ?, ?, ?, ?)", [
     "2026-11-21",

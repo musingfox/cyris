@@ -10,6 +10,7 @@ import worker from "../src/hosted.js";
 import { RUN_INACTIVITY_TIMEOUT_MS } from "../src/hosted_container.js";
 import {
   DEFAULT_DAILY_RUN_CAP,
+  DEFAULT_MAX_DIGEST_TIMES,
   DISPATCH_EVERY_MS,
   checkSchedule,
   MAX_START_ATTEMPTS,
@@ -61,7 +62,7 @@ async function tick(bound) {
 // own schedule, 08:00 and 20:00 UTC, which the tick must not read.
 async function tenant(bound, id, times, timeZone, { dailyRunCap } = {}) {
   await tenantRegistry(env).register(id);
-  const answer = await tenantRegistry(env).setSchedule(id, { times, timeZone, dailyRunCap });
+  const answer = await tenantRegistry(env).setSchedule(id, { times, timeZone, dailyRunCap, maxDigestTimes: times.length });
   expect(answer.refused).toBeUndefined();
   const db = bound.TENANT_DB.getByName(id);
   db.query(SCHEMA_SQL);
@@ -161,6 +162,59 @@ describe("the hosted run queue", () => {
     expect(bound.starts.filter((start) => /T(08|20):/.test(start.at))).toEqual([]);
   });
 
+  it("wakes a tenant of one digest hour once a day at it, and makes its issue the morning's", async () => {
+    at("2026-11-17T23:30:00Z");
+    // 21:00 in Taipei is 13:00 UTC: the day's one issue is still the morning's (ADR-0042).
+    await tenant(bound, "alpha", ["21:00"], "Asia/Taipei");
+    expect(await tenantRegistry(env).tenant("alpha")).toMatchObject({ digest_times: '["21:00"]', max_digest_times: 1 });
+
+    const day = Date.parse("2026-11-18T00:00:00Z");
+    for (let hour = 0; hour < 24; hour++) {
+      vi.setSystemTime(day + hour * HOUR);
+      await tick(bound);
+      vi.setSystemTime(day + hour * HOUR + 5 * MINUTE);
+      if (held(bound, "alpha")) await finish(bound, "alpha");
+    }
+
+    expect(bound.starts).toEqual([{ tenant: "alpha", period: "morning", date: "2026-11-18", at: "2026-11-18T13:00:00+00:00" }]);
+    expect(digestRuns(bound, "alpha").map((row) => [row.period, row.finished_at])).toEqual([["morning", "2026-11-18T13:05:00+00:00"]]);
+  });
+
+  it("catches up a tenant's one digest hour as the morning's, once it has missed it", async () => {
+    use(bindings({ refuse: (id, attempt) => (attempt === 1 ? new Error("container crashed") : null) }));
+    at("2026-11-18T07:00:00Z");
+    await tenant(bound, "alpha", ["08:00"], "UTC");
+    at("2026-11-18T08:00:00Z");
+    await tick(bound);
+    at("2026-11-18T09:00:00Z");
+    await tick(bound);
+
+    expect(bound.starts.map((start) => [start.period, start.date, start.at])).toEqual([
+      ["morning", "2026-11-18", "2026-11-18T08:00:00+00:00"],
+      ["morning", "2026-11-18", "2026-11-18T09:00:00+00:00"],
+    ]);
+    expect(runsOf(bound, "alpha").map((run) => [run.origin, run.state])).toEqual([
+      ["catch-up", "running"],
+      ["tick", "failed"],
+    ]);
+  });
+
+  it("ticks a row scheduled at two hours before the maximum existed on its first hour only", async () => {
+    at("2026-11-18T07:00:00Z");
+    await tenant(bound, "alpha", ["08:00", "20:00"], "UTC");
+    // As a registry from before the column gets it: two times, and the default maximum of one.
+    registryOf(bound).ctx.storage.sql.exec("UPDATE tenants SET max_digest_times = 1 WHERE id = 'alpha'");
+
+    for (const hour of ["08", "20"]) {
+      at(`2026-11-18T${hour}:00:00Z`);
+      await tick(bound);
+      at(`2026-11-18T${hour}:05:00Z`);
+      if (held(bound, "alpha")) await finish(bound, "alpha");
+    }
+
+    expect(bound.starts.map((start) => [start.period, start.at])).toEqual([["morning", "2026-11-18T08:00:00+00:00"]]);
+  });
+
   it("runs two tenants due in one hour both, each to its own digest_runs row, when one start finds no instance", async () => {
     at("2026-11-18T07:00:00Z");
     await tenant(bound, "alpha", ["08:00", "20:00"], "UTC");
@@ -245,10 +299,10 @@ describe("the hosted run queue", () => {
   });
 
   it("starts a run that waited past its hour for a slot with the issue it was queued for", async () => {
-    // Twelve tenants due at 08:00 and two slots: at 15 minutes a run, the last two start at 09:15.
+    // Six slots' worth of tenants due at 08:00: at 15 minutes a run, the last RUN_SLOTS start at 09:15.
     at("2026-11-18T07:00:00Z");
-    const ids = Array.from({ length: 12 }, (_, i) => `t${String(i + 1).padStart(2, "0")}`);
-    for (const id of ids) await tenant(bound, id, ["08:00", "20:00"], "UTC");
+    const ids = Array.from({ length: 6 * RUN_SLOTS }, (_, i) => `t${String(i + 1).padStart(2, "0")}`);
+    for (const id of ids) await tenant(bound, id, ["08:00"], "UTC");
     const day = Date.parse("2026-11-18T08:00:00Z");
     for (let quarter = 0; quarter < 6; quarter++) {
       vi.setSystemTime(day + quarter * 15 * MINUTE);
@@ -258,13 +312,13 @@ describe("the hosted run queue", () => {
       if (quarter % 4 === 0) await tick(bound);
     }
 
-    expect(RUN_SLOTS).toBe(2);
-    expect(bound.starts).toHaveLength(12);
-    expect(bound.starts.slice(-2).map((start) => [start.period, start.date, start.at])).toEqual([
-      ["morning", "2026-11-18", "2026-11-18T09:15:00+00:00"],
-      ["morning", "2026-11-18", "2026-11-18T09:15:00+00:00"],
-    ]);
-    expect(logs.filter(([line]) => line === "run not queued")).toHaveLength(4);
+    expect(RUN_SLOTS).toBe(4);
+    expect(bound.starts).toHaveLength(ids.length);
+    expect(bound.starts.slice(-RUN_SLOTS).map((start) => [start.period, start.date, start.at])).toEqual(
+      Array(RUN_SLOTS).fill(["morning", "2026-11-18", "2026-11-18T09:15:00+00:00"]),
+    );
+    // The 09:00 tick's catch-up of the runs still live then, those starting at 09:00 and at 09:15.
+    expect(logs.filter(([line]) => line === "run not queued")).toHaveLength(2 * RUN_SLOTS);
     for (const id of ids) expect(runsOf(bound, id).map((run) => run.origin)).toEqual(["tick"]);
   });
 
@@ -292,11 +346,16 @@ describe("the hosted run queue", () => {
 
   it("gives a free slot to the tenant that started a run least recently, whoever was queued first", async () => {
     at("2026-11-18T07:00:00Z");
-    for (const id of ["alpha", "bravo", "charlie"]) await tenant(bound, id, ["08:00", "20:00"], "UTC");
+    // One tenant more than the slots.
+    const ids = ["alpha", "bravo", "charlie", "delta", "echo"];
+    expect(ids).toHaveLength(RUN_SLOTS + 1);
+    for (const id of ids) await tenant(bound, id, ["08:00"], "UTC");
     const sql = registryOf(bound).ctx.storage.sql;
-    // Yesterday alpha started last, bravo before it; charlie has never run.
+    // Yesterday alpha started last, and bravo, delta and echo before it; charlie has never run.
     for (const [id, started] of [
       ["bravo", "2026-11-17T20:00:00+00:00"],
+      ["delta", "2026-11-17T20:05:00+00:00"],
+      ["echo", "2026-11-17T20:08:00+00:00"],
       ["alpha", "2026-11-17T20:10:00+00:00"],
     ]) {
       sql.exec(
@@ -309,15 +368,15 @@ describe("the hosted run queue", () => {
       );
     }
 
-    for (const id of ["alpha", "bravo", "charlie"]) {
+    for (const id of ids) {
       await tenantRegistry(env).queueRun(id, { period: "morning", date: "2026-11-18", origin: "operator" });
     }
     await drainAlarms(registryOf(bound));
 
-    expect(bound.starts.map((start) => start.tenant)).toEqual(["charlie", "bravo"]);
+    expect(bound.starts.map((start) => start.tenant)).toEqual(["charlie", "bravo", "delta", "echo"]);
     at("2026-11-18T07:06:00Z");
     await finish(bound, "bravo");
-    expect(bound.starts.map((start) => start.tenant)).toEqual(["charlie", "bravo", "alpha"]);
+    expect(bound.starts.map((start) => start.tenant)).toEqual(["charlie", "bravo", "delta", "echo", "alpha"]);
   });
 
   it("holds each tenant to the registry's daily cap of runs, which the tenant's own database cannot raise", async () => {
@@ -350,32 +409,37 @@ describe("the hosted run queue", () => {
     // A day after the first run started, the cap has room again.
     at("2026-11-19T07:05:00Z");
     expect((await queue("morning", "2026-11-19")).queued).toBeDefined();
-    expect(DEFAULT_DAILY_RUN_CAP).toBe(2 * CATCH_UP_HOURS);
+    // One digest time a day by default, tried by its tick and its catch-ups.
+    expect(DEFAULT_MAX_DIGEST_TIMES).toBe(1);
+    expect(DEFAULT_DAILY_RUN_CAP).toBe(DEFAULT_MAX_DIGEST_TIMES * CATCH_UP_HOURS);
   });
 
   it("frees the slots of runs no stop was reported for at their lease's end, and queues them behind the rest", async () => {
     at("2026-11-18T07:00:00Z");
-    for (const id of ["alpha", "bravo", "charlie"]) await tenant(bound, id, ["08:00", "20:00"], "UTC");
+    // One tenant more than the slots: echo waits.
+    const ids = ["alpha", "bravo", "charlie", "delta", "echo"];
+    expect(ids).toHaveLength(RUN_SLOTS + 1);
+    for (const id of ids) await tenant(bound, id, ["08:00"], "UTC");
     at("2026-11-18T08:00:00Z");
     await tick(bound);
-    expect(bound.starts.map((start) => start.tenant)).toEqual(["alpha", "bravo"]);
+    expect(bound.starts.map((start) => start.tenant)).toEqual(["alpha", "bravo", "charlie", "delta"]);
 
-    // Neither container is heard from. The alarm comes due a minute on, while charlie waits, and
-    // the leases are not over yet; it comes due at their end, and charlie, never run, goes first.
+    // No container is heard from. The alarm comes due a minute on, while echo waits, and the
+    // leases are not over yet; it comes due at their end, and echo, never run, goes first.
     for (let minute = 1; minute < RUN_LEASE_MS / MINUTE; minute++) {
       vi.setSystemTime(Date.parse("2026-11-18T08:00:00Z") + minute * MINUTE);
       await drainAlarms(registryOf(bound));
     }
-    expect(bound.starts).toHaveLength(2);
+    expect(bound.starts).toHaveLength(RUN_SLOTS);
     vi.setSystemTime(Date.parse("2026-11-18T08:00:00Z") + RUN_LEASE_MS + 1_000);
     await drainAlarms(registryOf(bound));
 
-    expect(bound.starts.map((start) => start.tenant)).toEqual(["alpha", "bravo", "charlie", "alpha"]);
+    expect(bound.starts.map((start) => start.tenant)).toEqual([...ids.slice(0, RUN_SLOTS), "echo", "alpha", "bravo", "charlie"]);
     expect(runsOf(bound, "alpha").map((run) => [run.state, run.attempts, run.outcome])).toEqual([
       ["running", 2, null],
       ["lost", 1, "no stop reported within 20 minutes; queued again"],
     ]);
-    expect(runsOf(bound, "bravo").map((run) => run.state)).toEqual(["queued", "lost"]);
+    expect(runsOf(bound, "delta").map((run) => run.state)).toEqual(["queued", "lost"]);
     // The lease outlasts the container's own inactivity timeout, so a lost run's container is gone.
     expect(RUN_LEASE_MS).toBeGreaterThan(RUN_INACTIVITY_TIMEOUT_MS);
   });
@@ -497,7 +561,7 @@ describe("the hosted run queue", () => {
 describe("the registry's schedule check", () => {
   for (const { zone, stored } of ZONES.cases) {
     it(`${stored ? "stores" : "refuses"} the time zone ${JSON.stringify(zone)}${stored && stored !== zone ? ` as ${stored}` : ""}`, () => {
-      const checked = checkSchedule({ times: ["08:00", "20:00"], timeZone: zone });
+      const checked = checkSchedule({ times: ["08:00", "20:00"], timeZone: zone, maxDigestTimes: 2 });
 
       if (stored) expect(checked.schedule.timeZone).toBe(stored);
       else expect(checked.refused).toBe(`not an IANA time zone name, as Asia/Taipei: ${zone}`);
@@ -507,14 +571,43 @@ describe("the registry's schedule check", () => {
   it("keeps a tenant's cap when it is scheduled again with none named", () => {
     const registry = new TenantRegistry({ storage: alarmStorage() }, {});
     registry.register("alpha");
-    registry.setSchedule("alpha", { times: ["08:00", "20:00"], timeZone: "UTC", dailyRunCap: 2 });
+    registry.setSchedule("alpha", { times: ["08:00", "20:00"], timeZone: "UTC", maxDigestTimes: 2, dailyRunCap: 2 });
 
-    const { tenant } = registry.setSchedule("alpha", { times: ["09:00", "21:00"], timeZone: "UTC" });
+    const { tenant } = registry.setSchedule("alpha", { times: ["09:00", "21:00"], timeZone: "UTC", maxDigestTimes: 2 });
 
     expect(tenant).toMatchObject({ digest_times: '["09:00","21:00"]', daily_run_cap: 2 });
-    expect(registry.setSchedule("alpha", { times: ["09:00", "21:00"], timeZone: "UTC", dailyRunCap: "4" }).tenant.daily_run_cap).toBe(4);
+    expect(registry.setSchedule("alpha", { times: ["09:00", "21:00"], timeZone: "UTC", maxDigestTimes: 2, dailyRunCap: "4" }).tenant.daily_run_cap).toBe(4);
     registry.register("bravo");
-    expect(registry.setSchedule("bravo", { times: ["09:00", "21:00"], timeZone: "UTC" }).tenant.daily_run_cap).toBe(DEFAULT_DAILY_RUN_CAP);
+    expect(registry.setSchedule("bravo", { times: ["09:00", "21:00"], timeZone: "UTC", maxDigestTimes: 2 }).tenant.daily_run_cap).toBe(DEFAULT_DAILY_RUN_CAP);
+  });
+
+  it("takes one whole hour, and two only for a tenant whose maximum is two", () => {
+    const registry = new TenantRegistry({ storage: alarmStorage() }, {});
+    registry.register("alpha");
+
+    expect(registry.setSchedule("alpha", { times: ["13:00"], timeZone: "UTC" }).tenant).toMatchObject({
+      digest_times: '["13:00"]',
+      max_digest_times: DEFAULT_MAX_DIGEST_TIMES,
+    });
+    // Two times for a tenant allowed one are refused, and nothing is written.
+    expect(registry.setSchedule("alpha", { times: ["08:00", "20:00"], timeZone: "UTC" }).refused).toBe(
+      "this tenant may have 1 digest time a day: 08:00,20:00",
+    );
+    expect(registry.tenant("alpha").digest_times).toBe('["13:00"]');
+    // The operator allows two; scheduled again with none named, the tenant keeps its maximum.
+    expect(registry.setSchedule("alpha", { times: ["08:00", "20:00"], timeZone: "UTC", maxDigestTimes: "2" }).tenant.max_digest_times).toBe(2);
+    expect(registry.setSchedule("alpha", { times: ["07:00", "19:00"], timeZone: "UTC" }).tenant).toMatchObject({
+      digest_times: '["07:00","19:00"]',
+      max_digest_times: 2,
+    });
+    // Lowering it to one with two times named is refused; with one time it is taken.
+    expect(registry.setSchedule("alpha", { times: ["07:00", "19:00"], timeZone: "UTC", maxDigestTimes: 1 }).refused).toBeDefined();
+    expect(registry.setSchedule("alpha", { times: ["07:00"], timeZone: "UTC", maxDigestTimes: 1 }).tenant.max_digest_times).toBe(1);
+    // Never more than two times, nor a maximum past two.
+    expect(checkSchedule({ times: ["07:00", "12:00", "19:00"], timeZone: "UTC", maxDigestTimes: 2 }).refused).toMatch(/^digest times are one whole hour/);
+    for (const most of [0, 3, 1.5, "x"]) {
+      expect(checkSchedule({ times: ["07:00"], timeZone: "UTC", maxDigestTimes: most }).refused).toMatch(/most digest times a day/);
+    }
   });
 });
 
@@ -528,7 +621,11 @@ describe("the registry's schedule columns", () => {
 
     const registry = new TenantRegistry({ storage: alarmStorage(sql) }, {});
 
-    expect(registry.tenant("alpha")).toMatchObject({ timezone: null, daily_run_cap: DEFAULT_DAILY_RUN_CAP });
+    expect(registry.tenant("alpha")).toMatchObject({
+      timezone: null,
+      daily_run_cap: DEFAULT_DAILY_RUN_CAP,
+      max_digest_times: DEFAULT_MAX_DIGEST_TIMES,
+    });
     // A second start finds them and adds nothing.
     expect(() => new TenantRegistry({ storage: alarmStorage(sql) }, {})).not.toThrow();
     expect(REGISTRY_SCHEMA).toContain("CREATE TABLE IF NOT EXISTS runs");

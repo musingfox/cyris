@@ -358,10 +358,11 @@ def _seed() -> dict:
     return json.loads((SRC / "hosted_seed.json").read_text(encoding="utf-8"))
 
 
-def _seeded_settings() -> dict:
-    """What the seed writes: the starting values with the seed's own laid over them."""
+def _seeded_settings(hour: int) -> dict:
+    """What the seed writes: the starting values with the seed's own laid over them, then the one
+    digest hour it gives the tenant (hosted_seed.js `seedSchedule`), here `hour`."""
     starting = json.loads((ROOT / "src/cyris/settings_starting_values.json").read_text("utf-8"))
-    return {**starting, **_seed()["settings"]}
+    return {**starting, **_seed()["settings"], "general.digest_schedule": [f"{hour:02d}:00"]}
 
 
 def _tenant_vars(variables: dict, tenants: list[str]) -> list[str]:
@@ -416,14 +417,22 @@ def test_the_seed_names_the_two_tenants_the_runbook_registers() -> None:
     assert all(TENANT_ID.fullmatch(t) for t in tenants)
 
 
-def test_the_seeded_settings_are_every_required_key_each_valid() -> None:
-    settings = _seeded_settings()
+@pytest.mark.parametrize("hour", range(24))
+def test_the_seeded_settings_are_every_required_key_each_valid(hour: int) -> None:
+    """Whatever hour the seed spreads a tenant to, a hosted run loads what it wrote (ADR-0042)."""
+    settings = _seeded_settings(hour)
 
     assert set(REQUIRED_KEYS) - set(settings) == set()
     for key, value in settings.items():
-        validate_setting(key, value)
+        validate_setting(key, value, hosted=True)
     assert settings["llm_provider.provider"] == "anthropic"
     assert settings["llm_provider.model"] == "claude-haiku-5-5"
+
+
+def test_the_seed_file_names_no_digest_hour_every_tenant_would_share() -> None:
+    """The seed spreads each tenant to an hour of its own, so its file names none."""
+    assert "general.digest_schedule" not in _seed()["settings"]
+    assert _seed()["settings"]["general.timezone"] == "UTC"
 
 
 def test_the_seeded_sources_are_catalog_feeds_no_two_tenants_share() -> None:

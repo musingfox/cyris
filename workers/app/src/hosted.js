@@ -19,16 +19,16 @@ import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json";
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json";
 import { accessKeys } from "./access_keys.js";
 import { HOSTED_DOMAIN } from "./hosted_container.js";
-import { backupAll, dailyBackup, restoreExport } from "./hosted_backup.js";
+import { backupAll, backupHours, dailyBackup, restoreExport } from "./hosted_backup.js";
 import { createSignIn } from "./hosted_login.js";
 import SEED from "./hosted_seed.json";
 import { receiveInbound } from "./hosted_inbound.js";
 import { handleHostedRequest } from "./hosted_router.js";
 import { handleTenantSettings } from "./hosted_settings.js";
 import { createSitePage } from "./hosted_site.js";
-import { addNewsletterSource, seedTenant, tenantReport, writeSchedule } from "./hosted_seed.js";
+import { addNewsletterSource, seedSchedule, seedTenant, tenantReport, writeSchedule } from "./hosted_seed.js";
 import { registrySchedule } from "./run_queue.js";
-import { planTick } from "./schedule.js";
+import { HOSTED_TIMES, planTick } from "./schedule.js";
 import { answerQuery, tenantDb, tenantRows } from "./tenant_db.js";
 import { tenantRegistry } from "./tenant_registry.js";
 import { ACTIVE } from "./tenant_status.js";
@@ -38,6 +38,9 @@ export { TenantContainer } from "./hosted_container.js";
 export { SpendGateway } from "./hosted_spend.js";
 export { TenantDb, TenantDbGateway } from "./tenant_db.js";
 export { TenantRegistry } from "./tenant_registry.js";
+
+// The UTC hours a seeded tenant's default digest hour is spread over: all but the backup's.
+const HOURS_A_RUN_MAY_START = Array.from({ length: 24 }, (_, hour) => hour).filter((hour) => !backupHours().includes(hour));
 
 // The registry's schedule copied into the tenant's own settings (hosted_seed.js), when it has one.
 async function copySchedule(tenant) {
@@ -110,8 +113,13 @@ const hosted = {
       accessKeys: accessKeys(env.CYRIS_ACCESS_TEAM_DOMAIN),
       register: (tenant, status) => tenantRegistry(env).register(tenant, { status }),
       tenant: (tenant) => tenantRegistry(env).tenant(tenant),
-      // The seed writes the stub's schedule, and then the registry's over it when it has one.
+      // The seed writes the registry's schedule when it has one. A tenant it has none for is
+      // given the seed's (`seedSchedule`: one hour spread by its id, in UTC), in the registry and
+      // then its copy, so a tenant seeded is ticked from then on without all of them sharing an
+      // hour (ADR-0042); the operator's schedule route replaces it.
       seed: async (tenant) => {
+        const held = registrySchedule(await registry().tenant(tenant));
+        const schedule = held ?? seedSchedule(SEED, tenant, HOURS_A_RUN_MAY_START);
         const seeded = await seedTenant({
           db: tenantDb(env, tenant),
           tenant,
@@ -120,9 +128,14 @@ const hosted = {
           startingValues: STARTING_VALUES,
           seed: SEED,
           catalog: FEED_CATALOG,
+          schedule,
         });
+        if (!held) {
+          const answer = await registry().setSchedule(tenant, schedule);
+          if (answer.refused) return { ...seeded, refused: answer.refused };
+        }
         await copySchedule(tenant);
-        return seeded;
+        return { ...seeded, schedule: registrySchedule(await registry().tenant(tenant)) };
       },
       schedule: async (tenant, schedule) => {
         const answer = await tenantRegistry(env).setSchedule(tenant, schedule);
@@ -215,7 +228,14 @@ const hosted = {
           return;
         }
         const read = tenantRows(env, tenant);
-        const plan = await planTick({ env, schedule, nameDue: true, read: (...args) => call(read(...args)), unreadable: null });
+        const plan = await planTick({
+          env,
+          schedule,
+          nameDue: true,
+          counts: HOSTED_TIMES,
+          read: (...args) => call(read(...args)),
+          unreadable: null,
+        });
         if (!plan) return;
         const { period, date, origin = "catch-up" } = plan;
         if (origin === "catch-up") console.log("catching up a digest hour with no ok run", { tenant, period, date });

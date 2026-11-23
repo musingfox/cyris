@@ -253,16 +253,18 @@ case "${1:-}" in
     finish ${failed[@]+"${failed[@]}"}
     ;;
   schedule)
-    # schedule TENANT TIMES TIMEZONE [DAILY_RUN_CAP]: the registry's schedule for one tenant,
-    # which is what the hourly tick wakes it by (ADR-0032), e.g. alpha 07:00,19:00 Asia/Taipei.
-    tenant=${2:-} times=${3:-} zone=${4:-} cap=${5:-}
+    # schedule TENANT TIMES TIMEZONE [DAILY_RUN_CAP [MAX_DIGEST_TIMES]]: the registry's schedule
+    # for one tenant, which is what the hourly tick wakes it by (ADR-0032), e.g. alpha 07:00
+    # Asia/Taipei. One time a day unless the tenant may have two (ADR-0042): then name both
+    # times, a cap and the maximum, e.g. alpha 07:00,19:00 Asia/Taipei 6 2.
+    tenant=${2:-} times=${3:-} zone=${4:-} cap=${5:-} most=${6:-}
     [[ -n "$tenant" && -n "$times" && -n "$zone" ]] || {
-      echo "usage: $0 schedule TENANT HH:00,HH:00 TIMEZONE [DAILY_RUN_CAP]" >&2
+      echo "usage: $0 schedule TENANT HH:00[,HH:00] TIMEZONE [DAILY_RUN_CAP [MAX_DIGEST_TIMES]]" >&2
       exit 2
     }
     # Encoded, so a zone such as Etc/GMT+8 keeps its "+".
     query=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.urlencode([tuple(a.split("=", 1)) for a in sys.argv[1:] if not a.endswith("=")]))' \
-      "times=$times" "timezone=$zone" "daily_run_cap=$cap")
+      "times=$times" "timezone=$zone" "daily_run_cap=$cap" "max_digest_times=$most")
     ask_access
     out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-schedule.XXXXXX")
     call "$tenant" POST "/hosted/tenants/$tenant/schedule?$query" "$out/$tenant.json" || finish "$tenant"
@@ -425,7 +427,7 @@ case "${1:-}" in
     run_wrangler delete
     ;;
   *)
-    echo "usage: $0 deploy|secrets|containers|register [TENANT [STATUS]]|schedule TENANT TIMES TIMEZONE [CAP]|seed|run [morning|evening]|poll|address [show|rotate|revoke]|newsletter-source TENANT NAME FROM [HOMEPAGE]|check|invite TENANT EMAIL|revoke TENANT EMAIL|members TENANT|spend [YYYY-MM]|budget TENANT USD|backup|restore DATE TENANT NEW_TENANT|tail|delete" >&2
+    echo "usage: $0 deploy|secrets|containers|register [TENANT [STATUS]]|schedule TENANT TIMES TIMEZONE [CAP [MOST]]|seed|run [morning|evening]|poll|address [show|rotate|revoke]|newsletter-source TENANT NAME FROM [HOMEPAGE]|check|invite TENANT EMAIL|revoke TENANT EMAIL|members TENANT|spend [YYYY-MM]|budget TENANT USD|backup|restore DATE TENANT NEW_TENANT|tail|delete" >&2
     exit 2
     ;;
 esac

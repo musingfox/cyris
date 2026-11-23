@@ -15,5 +15,15 @@
   {"at": "2026-08-27T00:00:00Z", "timezone": "Asia/Taipei", "schedule": ["08:30", "20:00"], "due": null},
   {"at": "2026-08-27T00:00:00Z", "timezone": "Asia/Taipei", "schedule": ["08:00", "08:00"], "due": null},
   {"at": "2026-08-27T00:00:00Z", "timezone": "Asia/Taipei", "schedule": ["8", "20"], "due": null},
-  {"at": "2026-08-27T00:00:00Z", "timezone": "Asia/Taipei", "schedule": ["8:00", "20:00"], "due": "morning"}
+  {"at": "2026-08-27T00:00:00Z", "timezone": "Asia/Taipei", "schedule": ["8:00", "20:00"], "due": "morning"},
+  {"at": "2026-08-27T00:00:00Z", "timezone": "Asia/Taipei", "schedule": ["08:00"], "edition": "hosted", "due": "morning"},
+  {"at": "2026-08-27T05:00:00Z", "timezone": "Asia/Taipei", "schedule": ["13:00"], "edition": "hosted", "due": "morning"},
+  {"at": "2026-08-27T13:00:00Z", "timezone": "Asia/Taipei", "schedule": ["21:00"], "edition": "hosted", "due": "morning"},
+  {"at": "2026-08-27T01:00:00Z", "timezone": "Asia/Taipei", "schedule": ["08:00"], "edition": "hosted", "due": null},
+  {"at": "2026-08-27T12:00:00Z", "timezone": "Asia/Taipei", "schedule": ["08:00", "20:00"], "edition": "hosted", "due": "evening"},
+  {"at": "2026-08-27T00:00:00Z", "timezone": "Asia/Taipei", "schedule": ["20:00", "08:00"], "edition": "hosted", "due": "morning"},
+  {"at": "2026-08-27T00:00:00Z", "timezone": "Asia/Taipei", "schedule": [], "edition": "hosted", "due": null},
+  {"at": "2026-08-27T00:00:00Z", "timezone": "Asia/Taipei", "schedule": ["08:00", "12:00", "20:00"], "edition": "hosted", "due": null},
+  {"at": "2026-08-27T00:00:00Z", "timezone": "Asia/Taipei", "schedule": ["08:30"], "edition": "hosted", "due": null},
+  {"at": "2026-08-27T00:00:00Z", "timezone": "Asia/Taipei", "schedule": ["08:00", "08:00"], "edition": "hosted", "due": null}
 ]

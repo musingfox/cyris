@@ -12,6 +12,9 @@ import { LOCATION_HINT } from "../src/tenant_db.js";
 import { typeScaleStyle } from "../src/type_scale.js";
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace } from "./sql_storage.js";
 
+// The schedule the seed writes a tenant the registry has none for: one hour, in UTC.
+const SEEDED_SCHEDULE = { times: ["08:00"], timeZone: "UTC" };
+
 const TEAM = "team.example";
 const AUD = "AUD-HOSTED";
 const { privateKey, publicKey } = await generateKeyPair("RS256");
@@ -83,6 +86,7 @@ const seed = (TENANT_DB, tenant) =>
     startingValues: STARTING_VALUES,
     seed: SEED,
     catalog: FEED_CATALOG,
+    schedule: SEEDED_SCHEDULE,
   });
 
 // As index.js's HTMLRewriter does it: the style at the end of <head>.

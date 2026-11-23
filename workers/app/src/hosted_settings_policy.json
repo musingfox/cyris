@@ -10,7 +10,7 @@
     "digest.summarize_follow",
     "routing.score_threshold"
   ],
-  "operator_keys": ["daily_run_cap", "monthly_ai_budget_usd"],
+  "operator_keys": ["daily_run_cap", "max_digest_times", "monthly_ai_budget_usd"],
   "provider": "anthropic",
   "model": "claude-haiku-5-5",
   "blank_settings": ["notify.discord_webhook_url", "notify.email_from", "notify.email_to"],

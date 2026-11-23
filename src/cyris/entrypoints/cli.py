@@ -239,7 +239,7 @@ def _alert_could_not_start(
     from cyris.i18n import ENGLISH
     from cyris.service_layer.alerts import RunAlert
     from cyris.service_layer.run_digest import failure_alert_text, send_alert
-    from cyris.service_layer.schedule import due_period
+    from cyris.service_layer.schedule import due_period, schedule_counts
     from cyris.utils.timezone import now_in_timezone
 
     alert = None
@@ -247,7 +247,8 @@ def _alert_could_not_start(
         if scheduled and cfg is not None:
             tz = cfg.app.general.timezone
             now = now_in_timezone(tz)
-            due = due_period(now, cfg.app.general.digest_schedule)
+            counts = schedule_counts(hosted=cfg.app.store.is_hosted)
+            due = due_period(now, cfg.app.general.digest_schedule, counts)
             if due is not None:
                 # A `digest` table missing any of its settings is None, and the alert is in English.
                 digest = cfg.app.digest
@@ -397,7 +398,7 @@ def run(
 
     from cyris.adapters.store.d1 import D1Error
     from cyris.bootstrap import load_effective_config
-    from cyris.service_layer.schedule import due_period
+    from cyris.service_layer.schedule import due_period, schedule_counts
     from cyris.utils.timezone import now_in_timezone
 
     cfg = None
@@ -438,7 +439,8 @@ def run(
         # `cyris triage-ui` or the compose crontab, is hourly and unconditional. Not
         # due is a normal outcome.
         now = now_in_timezone(cfg.app.general.timezone)
-        due = due_period(now, cfg.app.general.digest_schedule)
+        counts = schedule_counts(hosted=cfg.app.store.is_hosted)
+        due = due_period(now, cfg.app.general.digest_schedule, counts)
         if due is None:
             message = f"Not a digest hour ({', '.join(cfg.app.general.digest_schedule)})."
             if output is not None:

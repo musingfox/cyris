@@ -6,7 +6,7 @@
 //
 //   GET  /t/<tenant>/settings              the page
 //   GET  /t/<tenant>/api/settings          the writable settings, the schedule and the caps
-//   POST /t/<tenant>/api/settings          {key: value, ...}: writable keys and the schedule's two
+//   POST /t/<tenant>/api/settings          {key: value, ...}: writable keys and the schedule's parts
 //   GET  /t/<tenant>/api/sources           the sources, RSS and newsletter
 //   POST /t/<tenant>/api/sources           {name, url, lane}: one RSS source added or rewritten
 //   POST /t/<tenant>/api/sources/delete    {name}: one source removed
@@ -24,8 +24,8 @@ import { LANES } from "./hosted_seed.js";
 import { POLICY, catalogTag, checkSettings, rssSource, SCHEDULE_KEY, TIMEZONE_KEY } from "./hosted_settings_rules.js";
 import { boundedText } from "./hosted_vote.js";
 import { sameOrigin } from "./hosted_session.js";
-import { checkSchedule, registrySchedule } from "./run_queue.js";
-import { digestHours } from "./schedule.js";
+import { DEFAULT_MAX_DIGEST_TIMES, checkSchedule, registrySchedule } from "./run_queue.js";
+import { HOSTED_TIMES, PERIODS, digestHours } from "./schedule.js";
 
 export const SETTINGS_PAGE = "/settings";
 const SETTINGS_API = "/api/settings";
@@ -78,6 +78,7 @@ const REFUSALS = {
   blank: (t, v) => t("hosted_settings.refused_blank", v),
   type_scale: (t, v) => t("hosted_settings.refused_type_scale", v),
   schedule: (t, v) => t("hosted_settings.refused_schedule", v),
+  schedule_one: (t, v) => t("hosted_settings.refused_schedule_one", v),
   time_zone: (t, v) => t("hosted_settings.refused_time_zone", v),
   source_name: (t, v) => t("hosted_settings.refused_source_name", v),
   lane: (t, v) => t("hosted_settings.refused_lane", v),
@@ -152,13 +153,15 @@ export async function handleTenantSettings(request, { rest, db, registryRow, set
   // form's, and that one sends its own Origin; a request with none, or `null`, is not this page's.
   if (post && !sameOrigin(request)) return refused(t, { reason: "cross_origin" });
 
-  if (rest === SETTINGS_PAGE) return page(tag, t, stored, await db.sources(), registrySchedule(await registryRow()));
+  if (rest === SETTINGS_PAGE) return page(tag, t, stored, await db.sources(), await registryRow());
   if (stored === null) return refused(t, { reason: "not_seeded" });
 
   if (rest === SETTINGS_API && !post) {
+    const row = await registryRow();
     return json({
       settings: Object.fromEntries(Object.entries(stored).filter(([key]) => key !== SCHEDULE_KEY && key !== TIMEZONE_KEY)),
-      schedule: registrySchedule(await registryRow()),
+      schedule: registrySchedule(row),
+      max_digest_times: row?.max_digest_times ?? DEFAULT_MAX_DIGEST_TIMES,
       max_articles_per_digest: POLICY.max_articles_per_digest,
       max_sources: POLICY.max_sources,
     });
@@ -196,11 +199,14 @@ async function saveSettings(t, body, { db, registryRow, setSchedule }) {
   let schedule = null;
   let previous = null;
   if (checked.schedule) {
-    previous = registrySchedule(await registryRow());
+    const row = await registryRow();
+    previous = registrySchedule(row);
     const current = previous ?? {};
     schedule = { times: checked.schedule.times ?? current.times, timeZone: checked.schedule.timeZone ?? current.timeZone };
-    if (!digestHours(schedule.times)) return refused(t, { reason: "schedule" });
-    if (checkSchedule(schedule).refused) return refused(t, { reason: "time_zone", zone: String(schedule.timeZone) });
+    if (!digestHours(schedule.times, HOSTED_TIMES)) return refused(t, { reason: "schedule" });
+    const check = checkSchedule(schedule, row?.max_digest_times ?? DEFAULT_MAX_DIGEST_TIMES);
+    if (check.tooMany) return refused(t, { reason: "schedule_one" });
+    if (check.refused) return refused(t, { reason: "time_zone", zone: String(schedule.timeZone) });
     const answer = await setSchedule(schedule);
     if (answer.refused) return refused(t, { reason: "time_zone", zone: String(schedule.timeZone) });
   }
@@ -225,12 +231,16 @@ async function saveSettings(t, body, { db, registryRow, setSchedule }) {
 }
 
 // The page's one script: each form posts its fields as JSON to its own action, a route of this
-// tenant's (relative, so the script names no tenant), and shows the answer. Allowed by its hash.
+// tenant's (relative, so the script names no tenant), and shows the answer. A field that holds
+// `data-was`, the schedule's hours and zone, is sent only when the reader changed it, so a save of
+// another setting leaves the registry's schedule as it is; an hour select left empty is no digest.
+// Allowed by its hash.
 // The page is served `Referrer-Policy: no-referrer` (hosted_pages.js), under which a browser sends
 // a POST's Origin as `null` (Fetch, "append a request `Origin` header") and the save would be
 // refused cross-origin; each fetch names `same-origin`, which sends this origin to this origin
 // and nothing elsewhere.
 const SCRIPT = `
+const changed = (field) => !("was" in field.dataset) || field.value !== field.dataset.was;
 const read = (field) => {
   if (field.dataset.kind === "number") return field.value.trim() === "" ? null : Number(field.value);
   if (field.dataset.kind === "boolean") return field.value === "true";
@@ -240,9 +250,10 @@ for (const form of document.querySelectorAll("form[data-status]")) {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const body = {};
-    for (const field of form.querySelectorAll("[data-key]")) body[field.dataset.key] = read(field);
-    const hours = [...form.querySelectorAll("[data-hour]")].map((hour) => hour.value.padStart(2, "0") + ":00");
-    if (hours.length) body["general.digest_schedule"] = hours;
+    for (const field of form.querySelectorAll("[data-key]")) if (changed(field)) body[field.dataset.key] = read(field);
+    const selects = [...form.querySelectorAll("[data-hour]")];
+    const hours = selects.filter((hour) => hour.value !== "").map((hour) => hour.value.padStart(2, "0") + ":00");
+    if (selects.some(changed)) body["general.digest_schedule"] = hours;
     let answer = {};
     let ok = false;
     try {
@@ -362,16 +373,36 @@ const typeScaleSelect = (t, value) => (id) =>
   option("1.125", t("settings_option.type_scale_larger"), value === 1.125) +
   "</select>";
 
-function hourSelect(label, which, hour) {
+// One hour's select; its period names it, so the script sends the hours in the page's order. With
+// `none`, the label of the choice of no hour, it is first in the select and the one selected when
+// the registry holds no hour for this period. Otherwise a missing hour shows 00:00, as the browser
+// does, and `data-was` says so.
+function hourSelect(label, which, hour, none = null) {
   const hours = Array.from({ length: 24 }, (_, h) => option(String(h), `${String(h).padStart(2, "0")}:00`, h === hour));
+  const was = hour ?? (none === null ? 0 : "");
+  if (none !== null) hours.unshift(option("", none, hour === undefined));
   return (
     `<label class="small">${escape(label)} ` +
-    `<select class="select narrow" data-hour="${which}">${hours.join("")}</select></label>`
+    `<select class="select narrow" data-hour="${which}" data-was="${was}">${hours.join("")}</select></label>`
   );
 }
 
-function settingsForm(t, values, schedule) {
-  const hours = digestHours(schedule?.times) ?? [];
+// The hours a tenant may choose: one, its morning's, labelled as the day's only issue, or two when
+// the operator allows them (`max_digest_times`, ADR-0042), morning and evening; the evening select
+// offers no second digest, selected while the registry holds one hour.
+function hourSelects(t, hours, most) {
+  if (most < 2) return hourSelect(t("settings_option.schedule_daily"), PERIODS[0], hours[0]);
+  const [morning, evening] = PERIODS;
+  return (
+    hourSelect(t("settings_option.schedule_morning"), morning, hours[0]) +
+    hourSelect(t("settings_option.schedule_evening"), evening, hours[1], t("settings_option.schedule_none"))
+  );
+}
+
+function settingsForm(t, values, row) {
+  const schedule = registrySchedule(row);
+  const hours = digestHours(schedule?.times, HOSTED_TIMES) ?? [];
+  const most = row?.max_digest_times ?? DEFAULT_MAX_DIGEST_TIMES;
   const status = "settings-result";
   return (
     `<form class="panel" action="api/settings" method="post" data-status="${status}" data-failed="${escape(t("hosted_settings.failed"))}" novalidate>` +
@@ -384,8 +415,8 @@ function settingsForm(t, values, schedule) {
     field(t, "general.digest_window_hours", t("settings_help.general.digest_window_hours"), numberInput("general.digest_window_hours", values["general.digest_window_hours"], 1, 168)) +
     field(t, "digest.max_articles_per_digest", t("settings_help.digest.max_articles_per_digest"), numberInput("digest.max_articles_per_digest", values["digest.max_articles_per_digest"], 1, POLICY.max_articles_per_digest)) +
     field(t, "routing.score_threshold", t("settings_help.routing.score_threshold"), numberInput("routing.score_threshold", values["routing.score_threshold"], 0, 100)) +
-    field(t, SCHEDULE_KEY, "", () => `<div class="hours">${hourSelect(t("settings_option.schedule_morning"), "morning", hours[0])}${hourSelect(t("settings_option.schedule_evening"), "evening", hours[1])}</div>`) +
-    field(t, TIMEZONE_KEY, t("settings_help.general.timezone"), (id) => `<input class="input narrow" id="${id}" data-key="${TIMEZONE_KEY}" type="text" autocomplete="off" value="${escape(schedule?.timeZone ?? "")}">`) +
+    field(t, SCHEDULE_KEY, "", () => `<div class="hours">${hourSelects(t, hours, most)}</div>`) +
+    field(t, TIMEZONE_KEY, t("settings_help.general.timezone"), (id) => `<input class="input narrow" id="${id}" data-key="${TIMEZONE_KEY}" type="text" autocomplete="off" data-was="${escape(schedule?.timeZone ?? "")}" value="${escape(schedule?.timeZone ?? "")}">`) +
     `<p class="small">${escape(t("hosted_settings.operator_note"))}</p>` +
     `<div class="actions-line"><button class="btn primary" type="submit">${escape(t("settings.save"))}</button>` +
     `<div class="notice" id="${status}" role="status" hidden></div></div></form>`
@@ -424,12 +455,12 @@ function sourcesPanel(t, sources) {
   );
 }
 
-async function page(tag, t, stored, sources, schedule) {
+async function page(tag, t, stored, sources, row) {
   const title = t("site.settings");
   const body =
     stored === null || sources === null
       ? `<div class="notice err">${escape(t("hosted_settings.refused_not_seeded"))}</div>`
-      : settingsForm(t, stored, schedule) + sourcesPanel(t, sources);
+      : settingsForm(t, stored, row) + sourcesPanel(t, sources);
   const html =
     `<!doctype html><html lang="${tag}"><head><meta charset="utf-8">` +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +

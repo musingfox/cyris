@@ -23,6 +23,9 @@ import { tenantRegistry } from "../src/tenant_registry.js";
 import { FakeHTMLRewriter } from "./html_rewriter.js";
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace, registryNamespace } from "./sql_storage.js";
 
+// The schedule the seed writes a tenant the registry has none for: one hour, in UTC.
+const SEEDED_SCHEDULE = { times: ["08:00"], timeZone: "UTC" };
+
 // The hosted Worker's entry itself, hosted.js, over the real registry and tenant databases; only
 // the Email Service binding, the Access certs and the runtime's waitUntil are stand-ins.
 const DOMAIN = "cyris-hosted.example.workers.dev";
@@ -108,6 +111,7 @@ beforeEach(async () => {
         startingValues: STARTING_VALUES,
         seed: SEED,
         catalog: FEED_CATALOG,
+        schedule: SEEDED_SCHEDULE,
       });
     }
     await publish(db, tenant, slug, savedAt);
@@ -540,7 +544,7 @@ describe("the operator's routes and a tenant session", () => {
 
     for (const [method, path, body] of [
       ["POST", "/hosted/tenants/bravo/query", query],
-      ["POST", "/hosted/tenants/alpha/schedule?times=07:00,19:00&timezone=UTC"],
+      ["POST", "/hosted/tenants/alpha/schedule?max_digest_times=2&times=07:00,19:00&timezone=UTC"],
       ["GET", "/hosted/tenants/alpha/address"],
       ["POST", "/hosted/tenants/alpha/rotate-address"],
       ["POST", "/hosted/tenants/alpha/revoke-address"],
@@ -659,7 +663,7 @@ describe("the operator's routes and a tenant session", () => {
         "/hosted/tenants/alpha/invite",
         "/hosted/tenants/alpha/revoke",
         "/hosted/tenants/alpha/query",
-        "/hosted/tenants/alpha/schedule?times=07:00,19:00&timezone=UTC",
+        "/hosted/tenants/alpha/schedule?max_digest_times=2&times=07:00,19:00&timezone=UTC",
         "/hosted/tenants/alpha/rotate-address",
         "/hosted/tenants/alpha/revoke-address",
         "/hosted/tenants/alpha/newsletter-source?name=Letter&from=letter@news.example",
@@ -684,7 +688,7 @@ describe("the operator's routes and a tenant session", () => {
     const read = { sql: "SELECT count(*) AS n FROM digests", params: [] };
     expect((await call("/hosted/tenants/alpha/query", { method: "POST", operator: true, body: read })).status).toBe(200);
     const here = { Origin: ORIGIN, "Sec-Fetch-Site": "same-origin" };
-    const schedule = "/hosted/tenants/alpha/schedule?times=07:00,19:00&timezone=UTC";
+    const schedule = "/hosted/tenants/alpha/schedule?max_digest_times=2&times=07:00,19:00&timezone=UTC";
     expect((await call(schedule, { method: "POST", operator: true, headers: here })).status).toBe(200);
     expect((await call("/hosted/tenants/alpha/rotate-address", { method: "POST", operator: true })).status).toBe(200);
     expect((await call("/hosted/tenants/alpha/register?status=paused", { method: "POST", operator: true })).status).toBe(200);

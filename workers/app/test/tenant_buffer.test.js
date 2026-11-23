@@ -121,7 +121,7 @@ describe("the hosted tick polls each tenant's feeds into its own buffer", () => 
   // Registered, and scheduled at 08:00 and 20:00 UTC unless `scheduled` is false.
   const register = async (tenant, status, { scheduled = true } = {}) => {
     await tenantRegistry(env).register(tenant, { status });
-    if (scheduled) await tenantRegistry(env).setSchedule(tenant, { times: ["08:00", "20:00"], timeZone: "UTC" });
+    if (scheduled) await tenantRegistry(env).setSchedule(tenant, { times: ["08:00", "20:00"], timeZone: "UTC", maxDigestTimes: 2 });
   };
   const serve = (feeds) => {
     const server = feedServer(feeds);
