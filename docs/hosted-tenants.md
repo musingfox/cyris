@@ -711,6 +711,18 @@ The pages also make promises that only you keep; nothing in the code does it for
   one to complete, correct or stop within 30 (`answer_days`). Either may be extended once by as
   many days again, by mailing the reader the reason. A deletion is done within `deletion_days`
   (30) and is never extended.
+- **Deletion without a request.** When you end a reader's access, delete their data as below
+  within `deletion_days` (30). Do the same for a reader who has not signed in for
+  `inactive_months` (12), after mailing them a reminder `inactive_reminder_days` (30) before the
+  months are up. One sign-in starts the count again. The registry does not keep a last sign-in
+  time: a session row lasts 14 days, and a spent link's row goes at the next ask after its 15 minutes. So until a
+  card records it, run `scripts/hosted.sh members TENANT` at least every 14 days and note the date
+  for each address with a live session. The latest noted date is that reader's last sign-in, at
+  most 14 days earlier than the real one, which the 30 days absorb.
+- **The beta ends with notice.** Mail every reader at least `end_notice_days` (30) days before
+  the beta ends, and send a copy to each reader who asks until it ends. Only an urgent case, such
+  as a security incident or a legal requirement, may stop it at once, and then you mail the
+  readers afterwards.
 - **No other provider without notice.** Before you set a B2 secret or a second model provider's,
   change the policy and mail the readers as above: the policy names only Cloudflare, Anthropic and
   Discord.
