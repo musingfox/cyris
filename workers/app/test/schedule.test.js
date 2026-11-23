@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import cases from "./schedule_cases.json" with { type: "json" };
-import { CATCH_UP_HOURS, duePeriod, planTick, readTimeZone } from "../src/schedule.js";
+import { CATCH_UP_HOURS, HOSTED_TIMES, SELF_HOSTED_TIMES, duePeriod, planTick, readTimeZone } from "../src/schedule.js";
 
 const ENV = { CLOUDFLARE_ACCOUNT_ID: "acct-1", CYRIS_STORE_DATABASE_ID: "db-1", CLOUDFLARE_API_TOKEN: "tok" };
 
@@ -30,12 +30,20 @@ const SCHEDULE = { "general.digest_schedule": ["08:00", "20:00"], "general.timez
 
 afterEach(() => vi.restoreAllMocks());
 
+// A case's edition is self-hosted unless it names "hosted", whose schedule may be one hour.
+const editionTimes = (edition) => (edition === "hosted" ? HOSTED_TIMES : SELF_HOSTED_TIMES);
+
 describe("duePeriod agrees with service_layer/schedule.py's due_period", () => {
   for (const c of cases) {
-    it(`${c.at} in ${c.timezone}, schedule ${JSON.stringify(c.schedule)} → ${c.due}`, () => {
-      expect(duePeriod(new Date(c.at), c.schedule, c.timezone)).toBe(c.due);
+    it(`${c.at} in ${c.timezone}, ${c.edition ?? "self-hosted"} schedule ${JSON.stringify(c.schedule)} → ${c.due}`, () => {
+      expect(duePeriod(new Date(c.at), c.schedule, c.timezone, editionTimes(c.edition))).toBe(c.due);
     });
   }
+
+  it("leaves a self-hosted schedule of one hour never due, as before", () => {
+    expect(duePeriod(TAIPEI_8AM, ["08:00"], "Asia/Taipei")).toBeNull();
+    expect(duePeriod(TAIPEI_8AM, ["08:00"], "Asia/Taipei", HOSTED_TIMES)).toBe("morning");
+  });
 });
 
 // D1's REST answer to the tick's `digest_runs` read: the rows of `table` with the

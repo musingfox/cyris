@@ -31,7 +31,7 @@ from pydantic import (
 
 from cyris.domain.areas import Area
 from cyris.domain.models import SourceConfig, TrackedTopic
-from cyris.service_layer.schedule import validate_schedule
+from cyris.service_layer.schedule import schedule_counts, validate_schedule
 
 
 def _load_dotenv(env_path: Path | None = None) -> frozenset[str]:
@@ -173,8 +173,14 @@ def _not_blank(text: str) -> str:
     return text
 
 
+def _edition_schedule(times: list[str], info: ValidationInfo) -> list[str]:
+    # A hosted tenant's schedule may be one hour, as the hosted Worker's registry allows it
+    # (ADR-0042); a self-hosted one is always two. The edition is the validation's context.
+    return validate_schedule(times, schedule_counts(hosted=bool((info.context or {}).get("hosted"))))
+
+
 Timezone = Annotated[str, AfterValidator(_known_timezone)]
-DigestSchedule = Annotated[list[str], AfterValidator(validate_schedule)]
+DigestSchedule = Annotated[list[str], AfterValidator(_edition_schedule)]
 NonBlank = Annotated[str, AfterValidator(_not_blank)]
 
 
@@ -667,14 +673,17 @@ def _setting_adapter(key: str) -> TypeAdapter:
     return TypeAdapter(Annotated[(info.annotation, *info.metadata)])
 
 
-def validate_setting(key: str, value: Any) -> Any:
-    """The value a grade-D key would hold, or a ValueError saying why it cannot."""
+def validate_setting(key: str, value: Any, *, hosted: bool = False) -> Any:
+    """The value a grade-D key would hold, or a ValueError saying why it cannot.
+
+    `hosted` holds it to a hosted tenant's rule where the editions differ: the schedule.
+    """
     if key not in GRADE_D_KEYS:
         raise ValueError(f"not a settings key: {key}")
     if value is None:
         raise ValueError("a value is required")
     try:
-        return _setting_adapter(key).validate_python(value)
+        return _setting_adapter(key).validate_python(value, context={"hosted": hosted})
     except ValidationError as e:
         reasons = [err["msg"].removeprefix("Value error, ") for err in e.errors()]
         raise ValueError("; ".join(reasons)) from None
@@ -911,10 +920,11 @@ def resolve_config(raw: RawConfig, d1_settings: dict[str, Any]) -> Config:
     The file's grade-D keys are ignored. A row in `d1_settings` that fails its rule
     counts as missing, because the store is fixed through /settings, which has to start.
     """
-    settings_values, missing_settings = _stored_settings(d1_settings)
+    hosted = names_a_hosted_tenant()
+    settings_values, missing_settings = _stored_settings(d1_settings, hosted=hosted)
     app_config = AppConfig.model_validate(
         _with_settings(raw.toml, settings_values, missing_settings),
-        context={"config_dir": raw.config_dir},
+        context={"config_dir": raw.config_dir, "hosted": hosted},
     )
     return Config(
         app=app_config,
@@ -927,7 +937,20 @@ def resolve_config(raw: RawConfig, d1_settings: dict[str, Any]) -> Config:
     )
 
 
-def _stored_settings(stored: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+def names_a_hosted_tenant() -> bool:
+    """This process's store is a hosted tenant's: its run container's, or the operator's way in.
+
+    Read from the environment alone, as `StoreConfig` reads the tenant id: no file may name one.
+    """
+    return bool(
+        os.environ.get(HOSTED_B_GRADE_ENV_VARS["store.tenant_id"])
+        or os.environ.get(OPERATOR_TENANT_ENV_VAR)
+    )
+
+
+def _stored_settings(
+    stored: dict[str, Any], *, hosted: bool = False
+) -> tuple[dict[str, Any], list[str]]:
     """The grade-D rows that pass their rule, and the keys without one that does."""
     values: dict[str, Any] = {}
     missing: list[str] = []
@@ -937,7 +960,7 @@ def _stored_settings(stored: dict[str, Any]) -> tuple[dict[str, Any], list[str]]
                 missing.append(key)
             continue
         try:
-            values[key] = validate_setting(key, stored[key])
+            values[key] = validate_setting(key, stored[key], hosted=hosted)
         except ValueError as e:
             logger.warning("Ignoring D1 setting %s: %s", key, e)
             missing.append(key)
