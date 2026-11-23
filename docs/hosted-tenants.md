@@ -684,6 +684,9 @@ Then check each of these, and keep the result:
    Note whether it shows the request's `Cookie` header. Cloudflare's documentation does not
    say, and ADR-0033 needs the answer: if the header is shown in full, the session token is in
    the logs.
+7. In a private window, with no session, `HOSTED_URL/privacy` and `HOSTED_URL/terms` open: the
+   privacy policy and terms, the Traditional Chinese text first and the English after it. The
+   sign-in page links both, and the invitation ends with both links on `HOSTED_URL`.
 
 `scripts/hosted.sh members alpha` lists alpha's addresses, each with its live session count.
 `scripts/hosted.sh revoke alpha reader@example.net` takes an address off the list. Its sessions
@@ -710,6 +713,60 @@ as the operator (`GET /hosted/tenants/alpha/report` with the service token): its
 `hosted_votes` with one row, and after the tenant's next run, which applies the vote and deletes
 the row, zero rows. *Unverified in a browser:* that the page's `fetch` passes the route's preflight and
 the buttons appear; look in the browser's console for a blocked request if they do not.
+
+### The privacy policy and terms
+
+`/privacy` and `/terms` are the Worker's own pages, read by anyone before signing in
+(`workers/app/src/hosted_legal.js`). The Traditional Chinese text is the authoritative one, and the
+English a translation. What they say is what this deployment does: what it keeps of a reader, that it
+is kept on Cloudflare, that Anthropic receives the articles' text for the summaries, that a failed run's
+alert reaches your Discord webhook, that you may look at a tenant only for support, an incident or
+abuse, and that an export lives 30 days in R2. So a change to any of those changes the pages: the
+wording is in the UI catalogs (`privacy.*`, `terms.*`, `legal.*`, each with its zh-Hant entry), and the
+contacts, the date, the retention periods and your deadlines are in `workers/app/src/hosted_legal.json`.
+Change its `updated` with the text.
+
+The pages also make promises that only you keep; nothing in the code does it for you:
+
+- **One reader to a tenant.** Invite one address to each tenant. The registry would take a second
+  one, but the policy says each digest has one reader.
+- **A tenant id is not the reader.** The policy says what stays after a deletion is kept under the
+  digest's id and holds no email address, so never name a tenant after its reader's name or address.
+- **A change is mailed first.** Before a change to either page takes effect, mail it to every
+  reader at least `notice_days` (7) days ahead, then publish it with a new `updated`.
+- **An incident is mailed.** Once you learn that a reader's data was stolen, altered,
+  damaged, lost or leaked, mail that reader at the address they sign in with.
+- **Requests are answered in time.** A request to see or copy data is answered within 15 days and
+  one to complete, correct or stop within 30 (`answer_days`). Either may be extended once by as
+  many days again, by mailing the reader the reason. A deletion is done within `deletion_days`
+  (30) and is never extended.
+- **Deletion without a request.** When you end a reader's access, delete their data as below
+  within `deletion_days` (30). Do the same for a reader who has not signed in for
+  `inactive_months` (12), after mailing them a reminder `inactive_reminder_days` (30) before the
+  months are up. One sign-in starts the count again. The registry does not keep a last sign-in
+  time: a session row lasts 14 days, and a spent link's row goes at the next ask after its 15 minutes. So until a
+  card records it, run `scripts/hosted.sh members TENANT` at least every 14 days and note the date
+  for each address with a live session. The latest noted date is that reader's last sign-in, at
+  most 14 days earlier than the real one, which the 30 days absorb.
+- **The beta ends with notice.** Mail every reader at least `end_notice_days` (30) days before
+  the beta ends, and send a copy to each reader who asks until it ends. Only an urgent case, such
+  as a security incident or a legal requirement, may stop it at once, and then you mail the
+  readers afterwards.
+- **No other provider without notice.** Before you set a B2 secret or a second model provider's,
+  change the policy and mail the readers as above: the policy names only Cloudflare, Anthropic and
+  Discord.
+
+A reader asks for a copy or a deletion at the privacy address, since there is no account page yet.
+Answer only a request mailed from the address the reader signs in with. For a copy, read the
+tenant's latest export as 11.3 does and send the file. For a deletion, within 30 days:
+`scripts/hosted.sh revoke TENANT EMAIL` takes the address off the list, which ends its sessions and
+deletes its sign-in links and asks. Then empty the tenant's own database: nothing deletes a tenant
+yet (11.4), so do it through `POST /hosted/tenants/<tenant>/query` (step 8, *Reading or changing
+one tenant from the CLI*). Revoke its newsletter address (`POST /hosted/tenants/<tenant>/revoke-address`,
+as `scripts/hosted.sh address revoke` sends it), and pause the tenant so no tick polls it again. The
+registry keeps the tenant's row, its `runs` and its AI spend under its id, which the policy lists as
+what remains. The deleted rows leave the backups as each day's export expires: 30 days after upload
+by 11.1's rule, and R2 removes an expired object typically within 24 hours, so about 31 days.
 
 ### The reader's settings page
 
@@ -769,7 +826,9 @@ its own, already alerted at 04:00.
 ### 11.1 Create the buckets and their retention (once)
 
 Retention is not in code. Each bucket deletes old exports by a rule of its own. 30 days is
-assumed below; choose your own.
+assumed below, and the privacy policy tells readers that period (`backup_days` in
+`workers/app/src/hosted_legal.json`, which `tests/test_hosted_config.py` holds to the R2 command
+below): a different period changes both, and the policy's date.
 
 R2. Create the bucket (step 1) and give it a rule that deletes every object 30 days after upload
 ([object lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)):

@@ -116,6 +116,20 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .page.wide { max-width: 1240px; }
 .page.narrow { max-width: var(--measure); }
 .page-head { display: grid; gap: var(--s-4); margin-bottom: var(--s-12); }
+/* §6 document: a plain text page, the authoritative language first, each block tagged with its lang. */
+.section-marker { display: flex; align-items: center; gap: var(--s-3); }
+.section-marker::before { content: ""; width: 24px; height: 1px; background: var(--accent); }
+.versions { display: flex; flex-wrap: wrap; gap: var(--s-5); }
+.versions a { text-decoration: none; }
+.versions a:hover { color: var(--text); }
+.doc { max-width: var(--measure); font-size: calc(18px * var(--type-scale)); line-height: 1.65; color: var(--text-dim); }
+.doc + .doc { margin-top: var(--s-16); padding-top: var(--s-12); border-top: 1px solid var(--border); }
+.doc > * + * { margin-top: var(--s-6); }
+.doc section > * + * { margin-top: var(--s-3); }
+.doc .heading { color: var(--text); }
+.doc ul { padding-left: var(--s-6); display: grid; gap: var(--s-3); }
+.doc a { color: var(--text); overflow-wrap: anywhere; }
+.doc a:hover { color: var(--accent); }
 
 /* ---- issue bar ---- */
 .issue-bar { border-bottom: 1px solid var(--border); background: var(--bg-elev); }
@@ -622,7 +636,7 @@ table.src td.areas-pos-cell { width: 1%; }
 
 <div class="proto-strip">
   <span>PROTOTYPE · sample data ·</span>
-  <a href="#system">system</a><a href="#archive">archive</a><a href="#interest">interest</a><a href="#digest">digest</a><a href="#raw">raw</a><a href="#settings/model">settings</a><a href="#onboarding/opening">onboarding opening</a><a href="#onboarding">onboarding</a><a href="#onboarding/feeds">onboarding feeds</a><a href="#onboarding/votes">onboarding votes</a><a href="#onboarding/first-issue">onboarding first issue</a>
+  <a href="#system">system</a><a href="#archive">archive</a><a href="#interest">interest</a><a href="#digest">digest</a><a href="#raw">raw</a><a href="#settings/model">settings</a><a href="#onboarding/opening">onboarding opening</a><a href="#onboarding">onboarding</a><a href="#onboarding/feeds">onboarding feeds</a><a href="#onboarding/votes">onboarding votes</a><a href="#onboarding/first-issue">onboarding first issue</a><a href="#document">document</a>
   <label><input type="checkbox" id="authorized" checked> signed in (shows Settings, votes, List/Triage; off shows Sign in)</label>
 </div>
 
@@ -894,6 +908,31 @@ table.src td.areas-pos-cell { width: 1%; }
       <p class="small" id="t-hint">Swipe left for down, right for up; with the card focused, ← and → do the same. Tap the card to open the article in a new tab.</p>
     </div>
     <div class="footer">// <a href="https://cyris.musingfox.com/">cyris</a></div>
+  </main>
+</section>
+
+<!-- ============ DOCUMENT (the hosted Worker's /privacy and /terms) ============ -->
+<section data-view="document" hidden>
+  <main class="page">
+    <div class="page-head">
+      <h1 class="display" lang="zh-Hant">隱私權政策</h1>
+      <p class="heading" lang="en">Privacy policy</p>
+      <p class="small"><span lang="zh-Hant">最後更新：2026-11-24</span> · <span lang="en">Last updated 2026-11-24</span></p>
+      <div class="notice"><p lang="zh-Hant">本文件以繁體中文版為正式版本，英文版為譯文；兩者內容有出入時，以中文版為準。</p><p lang="en">The Traditional Chinese text is the authoritative version. The English text is a translation; where the two differ, the Chinese text prevails.</p></div>
+      <nav class="versions" aria-label="Language versions"><a class="label" href="#document" lang="zh-Hant">繁體中文 (Traditional Chinese)</a><a class="label" href="#document" lang="en">English</a></nav>
+    </div>
+    <article class="doc" lang="zh-Hant">
+      <p class="label section-marker" lang="en">繁體中文 (Traditional Chinese)</p>
+      <h2 class="heading">隱私權政策</h2>
+      <p>範例段落：正文使用 body 角色，寬度停在 --measure。</p>
+      <section><h2 class="heading">我們保存的資料</h2><ul><li>範例清單項目。</li><li>另一個項目，含一個 <a href="#document">連結</a>。</li></ul></section>
+    </article>
+    <article class="doc" lang="en">
+      <p class="label section-marker">English</p>
+      <h2 class="heading">Privacy policy</h2>
+      <p>A sample paragraph: the text is the body role, and stops at --measure.</p>
+      <section><h2 class="heading">What we keep</h2><ul><li>A sample list item.</li><li>Another, with a <a href="#document">link</a>.</li></ul></section>
+    </article>
   </main>
 </section>
 

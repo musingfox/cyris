@@ -13,7 +13,7 @@ page added later.
 
 - **This document is the spec.** `docs/design/prototype.html` is its reference implementation; open it
   directly in a browser. `#system` is the overview of tokens and components, and `#archive`, `#digest`,
-  `#raw` (with the triage view), `#settings/model` and `#onboarding` are the pages. When the two disagree, this document
+  `#raw` (with the triage view), `#settings/model`, `#onboarding` and `#document` are the pages. When the two disagree, this document
   wins, and the prototype is fixed in the same change.
 - **Every §8 step has landed.** Where a component still differs from the spec, restyle it to the spec
   when you touch it, and do not write another copy of the old style.
@@ -862,6 +862,29 @@ tag on this map.' instead, and only with no active suppression at all does it sa
 
 - **Empty:** with no voted article that carries a tag, one sentence in the small role, 'No voted article carries a
   tag yet.', its command `cyris run` in the data role. No box, no accent and no SVG, as the archive's empty state (archive).
+
+### document
+
+A page that is only text to read: the hosted Worker's privacy policy and terms (`/privacy`, `/terms`,
+`workers/app/src/hosted_legal.js`), which anyone may read before signing in. It is a reading surface on the
+archive's width (`.page`, 960px), and loads nothing but itself: no script, no web font (the font stacks fall
+back to the system's), no image.
+
+- **Site bar:** the brand links to `/login`; on the right, `Privacy` · `Terms` · `Sign in`, the current page
+  marked as §4 *site bar* marks it.
+- **Page head:** the display title in the authoritative language, then the title's translation in the
+  heading role, a small line with the date the text last changed in both languages, a notice (§4) saying in
+  both that the authoritative text prevails, and one link per language version in the label role, which jumps
+  to that block.
+- **Blocks:** one `<article class="doc">` per language, the authoritative one first, each carrying its own
+  `lang` (§1 principle 7) while the page's `<html lang>` stays `en`. Each opens with a section marker (§4)
+  naming its language and the title in the heading role, then the text in the body role, stopped at
+  `--measure`, with section titles in the heading role in `--text` and lists indented `--s-6`. A second block
+  starts after `--s-16`, a 1px `--border` and `--s-12`. Inline links are `--text`, underlined, and turn
+  `--accent` on hover; each contact address is a `mailto:` link.
+- Both languages are on the one page because the reader is not signed in, so there is no tenant language to
+  follow, and the authoritative text must be in view wherever its translation is (owner, 2026-11-24). The
+  prototype's `#document` shows it with sample text.
 
 ### email
 

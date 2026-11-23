@@ -739,7 +739,7 @@ describe("a tenant's site, as served", () => {
 });
 
 describe("the sign-in mail", () => {
-  it("carries the token in the link's fragment, on the hosted domain", () => {
+  it("carries the token in the link's fragment, on the hosted domain, and the legal pages' links", () => {
     const mail = signInMail({ to: "ana@example.com", domain: DOMAIN, token: "T".repeat(43) });
 
     expect(mail.text.split("\n\n")).toEqual([
@@ -747,7 +747,20 @@ describe("the sign-in mail", () => {
       `https://${DOMAIN}/login/confirm#${"T".repeat(43)}`,
       "The link works once, within 15 minutes. If you did not ask for it, you can ignore this mail.",
       `To sign in again later, ask for a new link at https://${DOMAIN}/login`,
+      `Privacy policy: https://${DOMAIN}/privacy\nTerms of service: https://${DOMAIN}/terms`,
     ]);
+  });
+
+  it("carries the legal pages' links in the operator's invitation too, each answering 200", async () => {
+    const invited = await call("/hosted/tenants/alpha/invite", { method: "POST", operator: true, body: { email: "cy@example.com" } });
+    const mail = bound.MAIL.sent.at(-1);
+
+    expect(invited.status).toBe(200);
+    expect(mail.to).toBe("cy@example.com");
+    for (const path of ["/privacy", "/terms"]) {
+      expect(mail.text).toContain(`https://${DOMAIN}${path}`);
+      expect((await call(path)).status).toBe(200);
+    }
   });
 
   it("is not sent, and says why, when the Worker lacks the binding, the sender or the domain", async () => {

@@ -113,9 +113,11 @@ def test_the_seed_names_the_policys_model() -> None:
     )
 
 
-def test_the_pages_tokens_are_the_specs() -> None:
+# The Worker's own pages, each with its tokens in one `const STYLE`.
+@pytest.mark.parametrize("page", ["hosted_settings.js", "hosted_legal.js"])
+def test_the_pages_tokens_are_the_specs(page) -> None:
     declared = dict(re.findall(r"(--[\w-]+):\s*([^;}\n]+?)\s*;", TOKENS.read_text("utf-8")))
-    source = (WORKER / "hosted_settings.js").read_text("utf-8")
+    source = (WORKER / page).read_text("utf-8")
     root = source.split("const STYLE = `", 1)[1].split("}", 1)[0]
     used = {name: value.strip() for name, value in re.findall(r"(--[\w-]+):([^;}]+)", root)}
 

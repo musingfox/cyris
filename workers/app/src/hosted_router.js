@@ -1,6 +1,7 @@
 // The hosted Worker's doors. A tenant's site and the sign-in take a tenant session and never an
 // Access JWT; /api/vote takes a page's vote token and neither of the two (hosted_vote.js,
-// ADR-0039); every other path, the operator's routes above all, takes the Access JWT alone, by
+// ADR-0039); /privacy and /terms take no credential (hosted_legal.js); every other path, the
+// operator's routes above all, takes the Access JWT alone, by
 // router.js's own check (ADR-0015), of an identity `CYRIS_HOSTED_OPERATORS` names (ADR-0037), and
 // never reads a session. So no tenant session opens an
 // operator route, whatever Access covers, and a request with neither credential learns nothing,
@@ -33,8 +34,10 @@
 //   /t/<tenant>/settings, /t/<tenant>/api/{settings,sources,sources/delete}
 //                                                           its settings and sources (hosted_settings.js), to its session
 //   /login, /login/confirm, /logout                         the sign-in (hosted_login.js)
+//   GET  /privacy, /terms                                   the privacy policy and terms, to anyone (hosted_legal.js)
 //   POST /api/vote   {url, vote}                            a reader's vote, by a vote token (hosted_vote.js)
 
+import { LEGAL_PATHS, handleLegal } from "./hosted_legal.js";
 import { LOGIN_PATHS, handleLogin } from "./hosted_login.js";
 import { admitOperator, unsetOperators } from "./hosted_operators.js";
 import { PRIVATE_HEADERS, SITE_ROUTE, VOTE_PATH, privateHeaders, siteHeaders } from "./hosted_pages.js";
@@ -174,6 +177,8 @@ async function route(request, env, deps) {
   const site = SITE_ROUTE.exec(url.pathname);
   if (site) return siteRequest(request, site[1], site[2] ?? "", deps);
   if (LOGIN_PATHS.has(url.pathname)) return handleLogin(request, deps.login);
+  // The privacy policy and terms take no credential at all: a reader reads them before signing in.
+  if (LEGAL_PATHS.has(url.pathname)) return handleLegal(request);
   // The vote route takes a vote token, which a page served to a session carries; no Access JWT, no
   // cookie, and no operator route is reached through it.
   if (url.pathname === VOTE_PATH) return handleVote(request, deps);
