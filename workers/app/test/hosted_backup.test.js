@@ -188,7 +188,7 @@ describe("the hosted Worker's daily backup", () => {
     await tenant(bound, "alpha");
     await tenant(bound, "bravo");
     for (const id of ["alpha", "bravo"]) {
-      await tenantRegistry(env).setSchedule(id, { times: [`0${BACKUP_HOUR_UTC}:00`, "16:00"], timeZone: "UTC" });
+      await tenantRegistry(env).setSchedule(id, { times: [`0${BACKUP_HOUR_UTC}:00`, "16:00"], timeZone: "UTC", maxDigestTimes: 2 });
     }
     const registry = bound.REGISTRY.getByName(REGISTRY_NAME);
     const queuedAtFirstPut = [];

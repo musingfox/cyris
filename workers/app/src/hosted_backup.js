@@ -16,8 +16,8 @@ import { TENANT, tenantDb } from "./tenant_db.js";
 import { refuseTenantId, tenantRegistry } from "./tenant_registry.js";
 
 // The UTC hour of the tick that backs up: one a day, so one export per UTC date, each under that
-// date. Away from the seed's digest hours (08:00 and 20:00 UTC), so a run writing to a tenant is
-// rarely what its dump holds back, and an alert lands in East Asia's afternoon and the Americas'
+// date. Away from every default digest hour the seed gives (hosted_seed.js `spreadHour`), so a
+// run writing to a tenant is rarely what its dump holds back, and an alert lands in East Asia's afternoon and the Americas'
 // evening, read the same day.
 export const BACKUP_HOUR_UTC = 4;
 
@@ -56,6 +56,11 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 export const backupKey = (date, name) => `${date}/${name}.${EXPORT_EXTENSION}`;
 export const backupDate = (now) => now.toISOString().slice(0, 10);
 export const backupDue = (now) => now.getUTCHours() === BACKUP_HOUR_UTC;
+
+// Every UTC hour from the backup's tick to its check's, which the seed's default digest hours keep
+// clear of (hosted_seed.js `spreadHour`).
+export const backupHours = () =>
+  Array.from({ length: BACKUP_CHECK_HOURS + 1 }, (_, i) => BACKUP_HOUR_UTC + i);
 export const backupCheckDue = (now) => now.getUTCHours() === BACKUP_HOUR_UTC + BACKUP_CHECK_HOURS;
 
 const message = (error) => String(error?.message ?? error);

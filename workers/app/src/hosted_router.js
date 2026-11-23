@@ -11,8 +11,8 @@
 //   GET  /hosted/spend[?month=YYYY-MM]                      every tenant's AI spend in a UTC month
 //   POST /hosted/backup                                     today's backup, now (hosted_backup.js)
 //   POST /hosted/tenants/<tenant>/register[?status=S]       register a tenant, or set its status
-//   POST /hosted/tenants/<tenant>/schedule?times=T&timezone=Z[&daily_run_cap=N]
-//                                                           the tenant's digest hours and run cap
+//   POST /hosted/tenants/<tenant>/schedule?times=T&timezone=Z[&daily_run_cap=N][&max_digest_times=M]
+//                                                           the tenant's digest hours, run cap and most hours
 //   POST /hosted/tenants/<tenant>/seed                      the schema, settings and sources
 //   POST /hosted/tenants/<tenant>/run?period=P[&date=D]     queue one run of the tenant's digest
 //   POST /hosted/tenants/<tenant>/poll                      one poll of the tenant's RSS buffer
@@ -144,7 +144,7 @@ async function bodyEmail(request) {
 
 // `deps`: accessKeys, as router.js takes them; and per tenant, `register(tenant, status)`,
 // which answers `{tenant}` or `{refused}`, `tenant(tenant)`, its registry row or null,
-// `schedule(tenant, { times, timeZone, dailyRunCap })`, which answers `{tenant, settings}` or
+// `schedule(tenant, { times, timeZone, dailyRunCap, maxDigestTimes })`, which answers `{tenant, settings}` or
 // `{refused}`, `setBudget(tenant, usd)`, which answers `{tenant}` or `{refused}`, `spend(month)`,
 // every tenant's month (tenant_registry.js `spend`), `seed(tenant)`, `report(tenant)`, `queueRun(tenant, { period, date, origin })`,
 // which answers `{queued}` or `{refused, code}`, `poll(tenant)`, which answers what the poll did
@@ -244,6 +244,7 @@ async function route(request, env, deps) {
       times: times === null ? null : times.split(","),
       timeZone: url.searchParams.get("timezone") ?? undefined,
       dailyRunCap: url.searchParams.get("daily_run_cap") ?? undefined,
+      maxDigestTimes: url.searchParams.get("max_digest_times") ?? undefined,
     });
     return answer.refused ? json({ error: answer.refused }, 400) : json(answer);
   }

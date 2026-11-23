@@ -17,6 +17,9 @@ import { tenantRegistry } from "../src/tenant_registry.js";
 import CASES from "./hosted_settings_cases.json" with { type: "json" };
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace, registryNamespace, tenantDb } from "./sql_storage.js";
 
+// The schedule the seed writes a tenant the registry has none for: one hour, in UTC.
+const SEEDED_SCHEDULE = { times: ["08:00"], timeZone: "UTC" };
+
 const DOMAIN = "cyris-hosted.example.workers.dev";
 const ORIGIN = `https://${DOMAIN}`;
 const AT = new Date("2026-11-22T06:00:00Z");
@@ -45,12 +48,13 @@ describe("a tenant's settings save", () => {
     expect(answer).toEqual({ refused: { reason: "operator_key", key: "llm_provider.provider" } });
   });
 
-  it("takes the schedule apart from the rows, and refuses hours that are not two whole ones", () => {
+  it("takes the schedule apart from the rows, and refuses hours that are not one or two whole ones", () => {
     expect(checkSettings({ "general.digest_schedule": ["07:00", "19:00"], "general.timezone": "Asia/Taipei" })).toEqual({
       rows: [],
       schedule: { times: ["07:00", "19:00"], timeZone: "Asia/Taipei" },
     });
-    for (const times of [["07:00"], ["07:00", "07:00"], ["07:30", "19:00"], "07:00,19:00"]) {
+    expect(checkSettings({ "general.digest_schedule": ["07:00"] })).toEqual({ rows: [], schedule: { times: ["07:00"] } });
+    for (const times of [[], ["07:00", "12:00", "19:00"], ["07:00", "07:00"], ["07:30", "19:00"], "07:00,19:00"]) {
       expect(checkSettings({ "general.digest_schedule": times }).refused.reason).toBe("schedule");
     }
   });
@@ -110,6 +114,7 @@ async function seeded(tenant = "alpha") {
     startingValues: STARTING_VALUES,
     seed: SEED,
     catalog: FEED_CATALOG,
+    schedule: SEEDED_SCHEDULE,
   });
   return db;
 }
@@ -233,8 +238,9 @@ beforeEach(async () => {
       startingValues: STARTING_VALUES,
       seed: SEED,
       catalog: FEED_CATALOG,
+      schedule: SEEDED_SCHEDULE,
     });
-    await registry.setSchedule(tenant, { times: ["08:00", "20:00"], timeZone: "UTC", dailyRunCap: 3 });
+    await registry.setSchedule(tenant, { times: ["08:00", "20:00"], timeZone: "UTC", maxDigestTimes: 2, dailyRunCap: 3 });
   }
   await registry.invite("alpha", "ana@example.com");
   await registry.invite("bravo", "bea@example.com");
@@ -308,6 +314,23 @@ describe("GET /t/<tenant>/settings", () => {
     expect(html).not.toContain(EN["settings_field.llm_provider.provider"]);
     expect(html).not.toContain(EN["settings_field.notify.discord_webhook_url"]);
     expect(served.headers.get("X-Robots-Tag")).toBe("noindex, nofollow");
+  });
+
+  it("offers one publish hour to a tenant allowed one, and two to a tenant allowed two", async () => {
+    // alpha allowed one, at 09:00 in UTC; bravo, as set up, allowed two.
+    await tenantRegistry(env).setSchedule("alpha", { times: ["09:00"], timeZone: "UTC", maxDigestTimes: 1 });
+    const hourSelects = async (email, tenant) => {
+      const html = await (await call(`/t/${tenant}/settings`, { session: await signIn(email) })).text();
+      return [...html.matchAll(/<label class="small">([^<]*) <select class="select narrow" data-hour="(\w+)">([\s\S]*?)<\/select>/g)].map(
+        ([, label, period, options]) => [label, period, /<option value="(\d+)" selected>/.exec(options)?.[1]],
+      );
+    };
+
+    expect(await hourSelects("ana@example.com", "alpha")).toEqual([[EN["settings_option.schedule_daily"], "morning", "9"]]);
+    expect(await hourSelects("bea@example.com", "bravo")).toEqual([
+      [EN["settings_option.schedule_morning"], "morning", "8"],
+      [EN["settings_option.schedule_evening"], "evening", "20"],
+    ]);
   });
 
   it("saves with a fetch that sends this Origin, though the page itself is no-referrer", async () => {
@@ -455,6 +478,24 @@ describe("POST /t/<tenant>/api/settings", () => {
     expect(JSON.parse((await tenantRegistry(env).tenant("bravo")).digest_times)).toEqual(["08:00", "20:00"]);
   });
 
+  it("takes one publish hour, and refuses two from a tenant allowed one, writing nothing", async () => {
+    await tenantRegistry(env).setSchedule("alpha", { times: ["09:00"], timeZone: "UTC", maxDigestTimes: 1 });
+    const session = await signIn("ana@example.com");
+
+    const two = await save(session, "/t/alpha/api/settings", { "general.digest_schedule": ["06:00", "18:00"], "digest.style_prompt": "Short." });
+    const kept = await tenantRegistry(env).tenant("alpha");
+    const one = await save(session, "/t/alpha/api/settings", { "general.digest_schedule": ["06:00"] });
+
+    expect(two.status).toBe(400);
+    expect(await two.json()).toMatchObject({ reason: "schedule_one", error: EN["hosted_settings.refused_schedule_one"] });
+    expect(kept).toMatchObject({ digest_times: '["09:00"]', max_digest_times: 1 });
+    expect(one.status).toBe(200);
+    expect(await tenantRegistry(env).tenant("alpha")).toMatchObject({ digest_times: '["06:00"]', max_digest_times: 1 });
+    expect(await settingsOf("alpha")).toMatchObject({ "general.digest_schedule": ["06:00"], "digest.style_prompt": "" });
+    // A reader cannot raise its own maximum.
+    expect((await (await save(session, "/t/alpha/api/settings", { max_digest_times: 2 })).json()).reason).toBe("operator_key");
+  });
+
   it("keeps the zone a save of the hours alone does not name, and refuses a zone the registry would not", async () => {
     const session = await signIn("ana@example.com");
 
@@ -500,7 +541,7 @@ describe("a save that writes settings rows and the schedule", () => {
   const post = (deps) =>
     handleTenantSettings(
       new Request(`${ORIGIN}/t/alpha/api/settings`, { method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json" }, body: JSON.stringify(body) }),
-      { rest: "/api/settings", registryRow: () => ({ digest_times: JSON.stringify(SCHEDULE.times), timezone: SCHEDULE.timeZone }), ...deps },
+      { rest: "/api/settings", registryRow: () => ({ digest_times: JSON.stringify(SCHEDULE.times), timezone: SCHEDULE.timeZone, max_digest_times: 2 }), ...deps },
     );
 
   it("writes no row when the registry refuses the schedule", async () => {

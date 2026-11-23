@@ -20,10 +20,11 @@
 //   tenant's run object, or the run's own alert, tells the operator of that (hosted_container.js).
 //
 // The schedule a tenant is ticked on is the registry's too (`digest_times` and `timezone`),
-// checked here before it is written. No workerd-only imports: vitest runs this under Node.
+// checked here before it is written, and so is how many digest times it may hold
+// (`max_digest_times`, ADR-0042). No workerd-only imports: vitest runs this under Node.
 
 import { NO_INSTANCE } from "./container.js";
-import { CATCH_UP_HOURS, digestHours } from "./schedule.js";
+import { CATCH_UP_HOURS, HOSTED_TIMES, digestHours } from "./schedule.js";
 import { LOCATION_HINT } from "./tenant_db.js";
 import { ACTIVE } from "./tenant_status.js";
 
@@ -32,10 +33,18 @@ import { ACTIVE } from "./tenant_status.js";
 // them would only wait for one. Raise both together as the beta grows.
 export const RUN_SLOTS = 2;
 
-// A tenant's cap when the operator names none: two digest hours, each started by its tick and by
-// up to CATCH_UP_HOURS - 1 catch-ups, so a day of failed runs still fits and only runs something
-// else starts (the operator's, or a tenant rewriting its own digest_runs) can reach it.
-export const DEFAULT_DAILY_RUN_CAP = 2 * CATCH_UP_HOURS;
+// How many digest times a tenant may have a day when the operator names no maximum: one, the
+// closed beta's, whose single issue is the morning's (ADR-0042). A later tier may be allowed two,
+// and no tenant more: HOSTED_TIMES is the most there can be.
+export const DEFAULT_MAX_DIGEST_TIMES = 1;
+export const MAX_DIGEST_TIMES = Math.max(...HOSTED_TIMES);
+
+// A tenant's cap when the operator names none: its digest hours, DEFAULT_MAX_DIGEST_TIMES, each
+// started by its tick and by up to CATCH_UP_HOURS - 1 catch-ups, so a day of failed runs still
+// fits and only runs something else starts (the operator's, or a tenant rewriting its own
+// digest_runs) can reach it. A tenant allowed two times needs twice this, which the operator
+// names with its maximum (docs/hosted-tenants.md).
+export const DEFAULT_DAILY_RUN_CAP = DEFAULT_MAX_DIGEST_TIMES * CATCH_UP_HOURS;
 // One run an hour, the tick's own cadence: a cap above it is a typo, not a plan.
 export const MAX_DAILY_RUN_CAP = 24;
 
@@ -100,14 +109,19 @@ const one = (cursor) => rows(cursor)[0] ?? null;
 // databases' hint: only an object's first get() honours one.
 export const tenantRun = (env, tenant) => env.TENANT_RUN.getByName(tenant, { locationHint: LOCATION_HINT });
 
-// The registry row's schedule, `{ times, timeZone }`, or null when it has none to tick on.
+// The registry row's schedule, `{ times, timeZone }`, or null when it has none to tick on. Its
+// times are at most the row's `max_digest_times`, the earliest kept: a row scheduled before the
+// maximum existed may hold two, and a tenant allowed one runs the first of them, its morning.
 export function registrySchedule(row) {
   if (!row?.digest_times || !row.timezone) return null;
+  let times;
   try {
-    return { times: JSON.parse(row.digest_times), timeZone: row.timezone };
+    times = JSON.parse(row.digest_times);
   } catch {
     return null;
   }
+  const most = row.max_digest_times ?? DEFAULT_MAX_DIGEST_TIMES;
+  return { times: Array.isArray(times) ? times.slice(0, most) : times, timeZone: row.timezone };
 }
 
 // An IANA zone's name: an area and its locations, or one word such as UTC, each part starting
@@ -134,21 +148,39 @@ function storedZone(timeZone) {
   return CAPITALISED.test(timeZone) ? timeZone : null;
 }
 
-// The schedule the operator names, as the registry stores it, or `{refused}`: two distinct whole
-// hours as `validate_schedule` takes them, an IANA zone both the runtime and the container read
-// (`storedZone`), and a whole cap in 1..MAX_DAILY_RUN_CAP. No cap named is `dailyRunCap: null`,
-// which `setSchedule` reads as the tenant's own cap, kept.
-export function checkSchedule({ times, timeZone, dailyRunCap }) {
-  const hours = digestHours(times);
-  if (!hours) return { refused: `digest times are two distinct whole hours, as 08:00,20:00: ${times}` };
+// A whole number in 1..most named, null for none named, or undefined for one that is not.
+function wholeOrNone(value, most) {
+  if (value === undefined || value === null) return null;
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 1 && number <= most ? number : undefined;
+}
+
+// The schedule the operator or the tenant names, as the registry stores it, or `{refused}`: one
+// whole hour, or two distinct ones, as `validate_schedule` takes a hosted tenant's (HOSTED_TIMES),
+// and no more of them than the tenant's maximum; an IANA zone both the runtime and the container
+// read (`storedZone`); a whole cap in 1..MAX_DAILY_RUN_CAP; and a whole maximum in
+// 1..MAX_DIGEST_TIMES. The maximum is the one named, else `held`, the tenant's own. No cap or
+// maximum named is null, which `setSchedule` reads as the tenant's own, kept. A refusal of too
+// many times has `tooMany`, the maximum, so the tenant's page can say why in its own words.
+export function checkSchedule({ times, timeZone, dailyRunCap, maxDigestTimes }, held = DEFAULT_MAX_DIGEST_TIMES) {
+  const most = wholeOrNone(maxDigestTimes, MAX_DIGEST_TIMES);
+  if (most === undefined) {
+    return { refused: `a tenant's most digest times a day is a whole number from 1 to ${MAX_DIGEST_TIMES}: ${maxDigestTimes}` };
+  }
+  const allowed = most ?? held;
+  const hours = digestHours(times, HOSTED_TIMES);
+  if (!hours) return { refused: `digest times are one whole hour, as 08:00, or two distinct ones, as 08:00,20:00: ${times}` };
+  if (hours.length > allowed) {
+    return { refused: `this tenant may have ${allowed} digest time${allowed === 1 ? "" : "s"} a day: ${times}`, tooMany: allowed };
+  }
   const zone = storedZone(timeZone);
   if (!zone) return { refused: `not an IANA time zone name, as Asia/Taipei: ${timeZone}` };
-  const cap = dailyRunCap === undefined || dailyRunCap === null ? null : Number(dailyRunCap);
-  if (cap !== null && (!Number.isInteger(cap) || cap < 1 || cap > MAX_DAILY_RUN_CAP)) {
+  const cap = wholeOrNone(dailyRunCap, MAX_DAILY_RUN_CAP);
+  if (cap === undefined) {
     return { refused: `a daily run cap is a whole number from 1 to ${MAX_DAILY_RUN_CAP}: ${dailyRunCap}` };
   }
   const digestTimes = hours.map((hour) => `${String(hour).padStart(2, "0")}:00`);
-  return { schedule: { digestTimes, timeZone: zone, dailyRunCap: cap } };
+  return { schedule: { digestTimes, timeZone: zone, dailyRunCap: cap, maxDigestTimes: most } };
 }
 
 // Queues one run of `tenant`'s (its registry row) issue `{ period, date }`, asked for by `origin`,

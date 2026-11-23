@@ -473,10 +473,10 @@ def test_a_run_the_registry_queued_is_not_a_failure(repo: Path) -> None:
 def test_schedule_sets_one_tenants_schedule_encoded_with_the_token_on_stdin(repo: Path) -> None:
     (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
 
-    refused, calls = _run(repo, ["schedule", "alpha", "07:00,19:00"], [])
+    refused, calls = _run(repo, ["schedule", "alpha", "07:00"], [])
     done, calls = _run(
         repo,
-        ["schedule", "alpha", "07:00,19:00", "Etc/GMT+8", "4"],
+        ["schedule", "alpha", "07:00", "Etc/GMT+8", "4"],
         ["client-id.access", "client-SECRET"],
     )
 
@@ -484,12 +484,29 @@ def test_schedule_sets_one_tenants_schedule_encoded_with_the_token_on_stdin(repo
     assert done.returncode == 0, done.stderr
     [curl] = [c for c in calls if c["cmd"] == "curl"]
     assert curl["args"][-1] == (
-        f"{URL}/hosted/tenants/alpha/schedule"
-        "?times=07%3A00%2C19%3A00&timezone=Etc%2FGMT%2B8&daily_run_cap=4"
+        f"{URL}/hosted/tenants/alpha/schedule?times=07%3A00&timezone=Etc%2FGMT%2B8&daily_run_cap=4"
     )
     assert curl["args"][curl["args"].index("-X") + 1] == "POST"
     assert "CF-Access-Client-Secret: client-SECRET" in curl["stdin"]
     assert "client-SECRET" not in " ".join(curl["args"])
+
+
+def test_schedule_names_two_times_only_with_the_maximum_that_allows_them(repo: Path) -> None:
+    """One time a day unless the operator allows two (ADR-0042): the maximum rides beside them."""
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, calls = _run(
+        repo,
+        ["schedule", "alpha", "07:00,19:00", "Asia/Taipei", "6", "2"],
+        ["client-id.access", "client-SECRET"],
+    )
+
+    assert done.returncode == 0, done.stderr
+    [curl] = [c for c in calls if c["cmd"] == "curl"]
+    assert curl["args"][-1] == (
+        f"{URL}/hosted/tenants/alpha/schedule"
+        "?times=07%3A00%2C19%3A00&timezone=Asia%2FTaipei&daily_run_cap=6&max_digest_times=2"
+    )
 
 
 def test_spend_lists_every_tenants_month_and_budget_sets_one_allowance(repo: Path) -> None:
@@ -731,7 +748,7 @@ def test_every_cards_subcommand_is_in_one_script_and_check_judges_the_full_repor
     refused = {
         tuple(args): (_run(repo, args, []), says)
         for args, says in (
-            (["schedule", "alpha"], "schedule TENANT HH:00,HH:00 TIMEZONE"),
+            (["schedule", "alpha"], "schedule TENANT HH:00[,HH:00] TIMEZONE"),
             (["newsletter-source", "alpha", "Letter"], "newsletter-source takes TENANT NAME FROM"),
             (["address", "no-such-verb"], "address takes show, rotate or revoke"),
             (["invite", "alpha"], "invite TENANT EMAIL"),
@@ -749,7 +766,7 @@ def test_every_cards_subcommand_is_in_one_script_and_check_judges_the_full_repor
         "secrets",
         "containers",
         "register [TENANT [STATUS]]",
-        "schedule TENANT TIMES TIMEZONE [CAP]",
+        "schedule TENANT TIMES TIMEZONE [CAP [MOST]]",
         "seed",
         "run [morning|evening]",
         "poll",

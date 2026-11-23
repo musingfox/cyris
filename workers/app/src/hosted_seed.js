@@ -12,8 +12,40 @@ export const SOURCE_UPSERT =
   "INSERT INTO sources (name, url, type, config) VALUES (?, ?, ?, ?) " +
   "ON CONFLICT(name) DO UPDATE SET url = excluded.url, type = excluded.type, config = excluded.config";
 
-// The settings the seed writes: every starting value, then the seed's own over them.
-export const seedSettings = (startingValues, seed) => ({ ...startingValues, ...seed.settings });
+export const SCHEDULE_KEY = "general.digest_schedule";
+export const TIMEZONE_KEY = "general.timezone";
+
+// The settings the seed writes: every starting value, then the seed's own over them, then
+// `schedule`, the tenant's `{ times, timeZone }` (`seedSchedule`, or the registry's).
+export const seedSettings = (startingValues, seed, schedule) => ({
+  ...startingValues,
+  ...seed.settings,
+  [SCHEDULE_KEY]: schedule.times,
+  [TIMEZONE_KEY]: schedule.timeZone,
+});
+
+// A new tenant's digest hour, so that tenants seeded together are not all due in one hour and
+// queued behind each other (ADR-0042). The rule: the 32-bit FNV-1a hash of the tenant id, taken
+// modulo the count of `hours`, picks one of them. `hours` are the UTC hours a run may start in,
+// every hour but those from the daily backup's to its check's (`backupHours` in hosted_backup.js),
+// so no default run writes a tenant while its dump is taken or checked. The same id always gets
+// the same hour; different ids land on the hours about evenly.
+export function spreadHour(tenant, hours) {
+  let hash = 0x811c9dc5;
+  for (const char of new TextEncoder().encode(tenant)) {
+    hash ^= char;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hours[hash % hours.length];
+}
+
+// The schedule the seed gives a tenant the registry holds none for: its one spread hour, in the
+// seed's own zone, UTC, the zone `hours` are counted in. A hosted tenant's single issue is the
+// morning's whatever hour that is.
+export function seedSchedule(seed, tenant, hours) {
+  const hour = spreadHour(tenant, hours);
+  return { times: [`${String(hour).padStart(2, "0")}:00`], timeZone: seed.settings[TIMEZONE_KEY] };
+}
 
 // The sources the seed writes for `tenant`: each catalog feed it names, without the catalog's
 // own `topics`, as the onboarding wizard writes a pick through POST /api/sources.
@@ -33,7 +65,8 @@ export function seedSources(catalog, seed, tenant) {
 export const stamp = (now) => `${now.toISOString().slice(0, 19)}+00:00`;
 
 // Writes the schema and the hosted tables (hosted_schema.sql: the tenant's pages), then the
-// settings and the sources, into a tenant's database, and says what it wrote. Every write is an
+// settings, with `schedule`'s hours and zone, and the sources, into a tenant's database, and says
+// what it wrote. Every write is an
 // upsert, so seeding again puts these values back and leaves any other row alone. The
 // container's first run applies the schema's versioned steps.
 export async function seedTenant({
@@ -44,9 +77,10 @@ export async function seedTenant({
   startingValues,
   seed,
   catalog,
+  schedule,
   now = new Date(),
 }) {
-  const settings = seedSettings(startingValues, seed);
+  const settings = seedSettings(startingValues, seed, schedule);
   const sources = seedSources(catalog, seed, tenant);
   await db.query(schemaSql, []);
   await db.query(hostedSchemaSql, []);
@@ -72,8 +106,8 @@ export async function seedTenant({
 // settings table, its seed writes the copy.
 export async function writeSchedule({ db, schedule, now = new Date() }) {
   try {
-    await db.query(SETTING_UPSERT, ["general.digest_schedule", JSON.stringify(schedule.times), stamp(now)]);
-    await db.query(SETTING_UPSERT, ["general.timezone", JSON.stringify(schedule.timeZone), stamp(now)]);
+    await db.query(SETTING_UPSERT, [SCHEDULE_KEY, JSON.stringify(schedule.times), stamp(now)]);
+    await db.query(SETTING_UPSERT, [TIMEZONE_KEY, JSON.stringify(schedule.timeZone), stamp(now)]);
     return true;
   } catch (error) {
     console.warn("schedule copy not written:", String(error?.message ?? error));

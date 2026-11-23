@@ -41,6 +41,7 @@ import {
 import { randomAddress } from "./inbound_address.js";
 import {
   DEFAULT_DAILY_RUN_CAP,
+  DEFAULT_MAX_DIGEST_TIMES,
   LOST,
   RUNS_SCHEMA,
   checkSchedule,
@@ -62,9 +63,10 @@ export const REGISTRY_NAME = "cyris:registry";
 
 // The registry's own tables: not schema.sql, which is a tenant's. `tenants` is the tenant list,
 // and a tenant's schedule is the registry's, never its own database's, which its run container
-// can rewrite (ADR-0032): `digest_times`, its two digest hours as a JSON list, and `timezone`,
-// the zone they are hours of; neither is set until the operator's schedule route sets both.
-// `daily_run_cap` is the most runs it may start in 24 hours. The run queue's `runs`
+// can rewrite (ADR-0032): `digest_times`, its digest hours as a JSON list, and `timezone`,
+// the zone they are hours of; neither is set until the operator's schedule route or the seed
+// sets both. `max_digest_times` is how many digest hours it may have, one unless the operator
+// allows two (ADR-0042), and `daily_run_cap` the most runs it may start in 24 hours. The run queue's `runs`
 // (run_queue.js) holds every hosted run. `inbound_addresses.address` is a newsletter address's
 // random local part (inbound_address.js); a revoked address is deleted, so a row is an address
 // that takes mail. The sign-in (ADR-0033) has four: `members`, the operator's invite list, one
@@ -83,6 +85,7 @@ CREATE TABLE IF NOT EXISTS tenants (
   digest_times TEXT,
   timezone TEXT,
   daily_run_cap INTEGER NOT NULL DEFAULT ${DEFAULT_DAILY_RUN_CAP},
+  max_digest_times INTEGER NOT NULL DEFAULT ${DEFAULT_MAX_DIGEST_TIMES},
   monthly_ai_budget_usd ${MONTHLY_AI_BUDGET_COLUMN},
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -136,19 +139,22 @@ ${RUNS_SCHEMA}`;
 const ADDED_COLUMNS = [
   ["tenants", "timezone", "TEXT"],
   ["tenants", "daily_run_cap", `INTEGER NOT NULL DEFAULT ${DEFAULT_DAILY_RUN_CAP}`],
+  ["tenants", "max_digest_times", `INTEGER NOT NULL DEFAULT ${DEFAULT_MAX_DIGEST_TIMES}`],
   ...SPEND_COLUMNS,
 ];
 
 const TENANT_COLUMNS =
-  "id, status, digest_times, timezone, daily_run_cap, monthly_ai_budget_usd, created_at, updated_at";
+  "id, status, digest_times, timezone, daily_run_cap, max_digest_times, monthly_ai_budget_usd, created_at, updated_at";
 const TENANT_INSERT = "INSERT INTO tenants (id, status, created_at, updated_at) VALUES (?, ?, ?, ?)";
 // A status named sets it; none named adds an absent tenant as active and leaves a present one alone.
 const TENANT_UPSERT =
   `${TENANT_INSERT} ON CONFLICT(id) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at`;
 const TENANT_ADD = `${TENANT_INSERT} ON CONFLICT(id) DO NOTHING`;
-// A cap of null keeps the tenant's own: re-scheduling its hours never resets its spend limit.
+// A cap or a maximum of null keeps the tenant's own: re-scheduling its hours never resets its
+// spend limit or the digest times it is allowed.
 const TENANT_SCHEDULE =
-  "UPDATE tenants SET digest_times = ?, timezone = ?, daily_run_cap = COALESCE(?, daily_run_cap), updated_at = ? WHERE id = ?";
+  "UPDATE tenants SET digest_times = ?, timezone = ?, daily_run_cap = COALESCE(?, daily_run_cap), " +
+  "max_digest_times = COALESCE(?, max_digest_times), updated_at = ? WHERE id = ?";
 // Whether a run's issue was made since it started, for a run whose lease ran out (expireLeases).
 const MADE_SINCE =
   "SELECT 1 AS made FROM digest_runs WHERE period = ? AND status = 'ok' AND dry_run = 0 AND finished_at >= ? LIMIT 1";
@@ -244,15 +250,25 @@ export class TenantRegistry extends DurableObject {
     return { tenant: this.tenant(id) };
   }
 
-  // Sets a registered tenant's schedule, `{ times, timeZone, dailyRunCap }`, checked by
-  // `checkSchedule`, and answers `{tenant}`, its row, or `{refused}`, writing nothing. With no
-  // `dailyRunCap` the tenant keeps the cap it has.
+  // Sets a registered tenant's schedule, `{ times, timeZone, dailyRunCap, maxDigestTimes }`,
+  // checked by `checkSchedule` against the maximum named or else the tenant's own, and answers
+  // `{tenant}`, its row, or `{refused}`, writing nothing. With no `dailyRunCap` or
+  // `maxDigestTimes` the tenant keeps the one it has.
   setSchedule(id, schedule, { now = new Date() } = {}) {
-    if (!this.tenant(id)) return { refused: `${id} is not a registered tenant` };
-    const checked = checkSchedule(schedule);
+    const row = this.tenant(id);
+    if (!row) return { refused: `${id} is not a registered tenant` };
+    const checked = checkSchedule(schedule, row.max_digest_times);
     if (checked.refused) return checked;
-    const { digestTimes, timeZone, dailyRunCap } = checked.schedule;
-    this.ctx.storage.sql.exec(TENANT_SCHEDULE, JSON.stringify(digestTimes), timeZone, dailyRunCap, stamp(now), id);
+    const { digestTimes, timeZone, dailyRunCap, maxDigestTimes } = checked.schedule;
+    this.ctx.storage.sql.exec(
+      TENANT_SCHEDULE,
+      JSON.stringify(digestTimes),
+      timeZone,
+      dailyRunCap,
+      maxDigestTimes,
+      stamp(now),
+      id,
+    );
     return { tenant: this.tenant(id) };
   }
 

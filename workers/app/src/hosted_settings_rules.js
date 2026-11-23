@@ -10,13 +10,10 @@
 
 import FIELDS from "../../../src/cyris/settings_fields.json";
 import POLICY from "./hosted_settings_policy.json";
-import { LANES } from "./hosted_seed.js";
-import { digestHours } from "./schedule.js";
+import { LANES, SCHEDULE_KEY, TIMEZONE_KEY } from "./hosted_seed.js";
+import { HOSTED_TIMES, digestHours } from "./schedule.js";
 
-export { POLICY };
-
-export const SCHEDULE_KEY = "general.digest_schedule";
-export const TIMEZONE_KEY = "general.timezone";
+export { POLICY, SCHEDULE_KEY, TIMEZONE_KEY };
 
 // A refusal: the catalog key's tail (`hosted_settings.refused_<reason>`) and what it names.
 const refuse = (reason, values = {}) => ({ refused: { reason, ...values } });
@@ -71,7 +68,7 @@ export function checkSettings(body) {
     if (wrong) return { refused: { ...wrong, key } };
     rows.push([key, value]);
   }
-  if (schedule?.times !== undefined && !digestHours(schedule.times)) return refuse("schedule");
+  if (schedule?.times !== undefined && !digestHours(schedule.times, HOSTED_TIMES)) return refuse("schedule");
   return { rows, schedule };
 }
 
