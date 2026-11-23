@@ -102,6 +102,9 @@ function privacyBody(t) {
       paragraph(
         t("privacy.retention", {
           deletion,
+          months: String(LEGAL.inactive_months),
+          reminder: String(LEGAL.inactive_reminder_days),
+          end: String(LEGAL.end_notice_days),
           days: String(LEGAL.backup_days),
           hours: String(LEGAL.backup_removal_hours),
           most: String(BACKUP_MOST_DAYS),

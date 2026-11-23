@@ -187,6 +187,22 @@ describe("what the privacy policy states", () => {
     expect(chinese).toContain(`最長 ${LEGAL.log_days} 天`);
   });
 
+  it("deletes on a request, on the end of access, and after a reminded spell without a sign-in", async () => {
+    const html = await (await call("/privacy")).text();
+    const [chinese, english] = [block(html, "zh-Hant"), block(html, "en")];
+    const { deletion_days: days, inactive_months: months, inactive_reminder_days: reminder } = LEGAL;
+
+    expect(english).toContain(
+      `We delete it within ${days} days after you ask us to (see “Your rights”), after we end your access, ` +
+        `or after you have gone ${months} months without signing in.`,
+    );
+    expect(english).toContain(`${reminder} days before those ${months} months are up, we write to the address you sign in with`);
+    expect(english).toContain("signing in once starts the count again");
+    expect(chinese).toContain(`連續 ${months} 個月沒有登入時，我們會在其後 ${days} 天內刪除`);
+    expect(chinese).toContain(`屆滿前 ${reminder} 天`);
+    expect(english).toContain(`If the beta is to end, we tell you at least ${LEGAL.end_notice_days} days before`);
+  });
+
   it("names what a deletion leaves behind", async () => {
     const english = block(await (await call("/privacy")).text(), "en");
 
