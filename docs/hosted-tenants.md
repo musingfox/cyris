@@ -655,6 +655,9 @@ Then check each of these, and keep the result:
    Note whether it shows the request's `Cookie` header. Cloudflare's documentation does not
    say, and ADR-0033 needs the answer: if the header is shown in full, the session token is in
    the logs.
+7. In a private window, with no session, `HOSTED_URL/privacy` and `HOSTED_URL/terms` open: the
+   privacy policy and terms, the Traditional Chinese text first and the English after it. The
+   sign-in page links both, and the invitation ends with both links on `HOSTED_URL`.
 
 `scripts/hosted.sh members alpha` lists alpha's addresses, each with its live session count.
 `scripts/hosted.sh revoke alpha reader@example.net` takes an address off the list. Its sessions
@@ -681,6 +684,26 @@ as the operator (`GET /hosted/tenants/alpha/report` with the service token): its
 `hosted_votes` with one row, and after the tenant's next run, which applies the vote and deletes
 the row, zero rows. *Unverified in a browser:* that the page's `fetch` passes the route's preflight and
 the buttons appear; look in the browser's console for a blocked request if they do not.
+
+### The privacy policy and terms
+
+`/privacy` and `/terms` are the Worker's own pages, read by anyone before signing in
+(`workers/app/src/hosted_legal.js`). The Traditional Chinese text is the authoritative one, and the
+English a translation. What they say is what this deployment does: what it keeps of a reader, that it
+is kept on Cloudflare, that Anthropic receives the articles' text for the summaries, that a failed run's
+alert reaches your Discord webhook, that you may look at a tenant only for support, an incident or
+abuse, and that an export lives 30 days in R2. So a change to any of those changes the pages: the
+wording is in the UI catalogs (`privacy.*`, `terms.*`, `legal.*`, each with its zh-Hant entry), and the
+contacts, the date and the retention periods are in `workers/app/src/hosted_legal.json`. Change its
+`updated` with the text.
+
+A reader asks for a copy or a deletion at the privacy address, since there is no account page yet.
+For a copy, read the tenant's latest export as 11.3 does and send the file. For a deletion,
+`scripts/hosted.sh revoke TENANT EMAIL` takes the address off the list, which ends its sessions and
+deletes its sign-in links and asks. If it was the tenant's only reader, also empty the tenant's own
+database: nothing deletes a tenant yet (11.4), so do it through `POST /hosted/tenants/<tenant>/query`
+(step 8, *Reading or changing one tenant from the CLI*), and pause the tenant so no tick polls it
+again. The deleted rows leave the backups as each day's export expires, within the 30 days of 11.1.
 
 ### The reader's settings page
 
@@ -739,7 +762,9 @@ its own, already alerted at 04:00.
 ### 11.1 Create the buckets and their retention (once)
 
 Retention is not in code. Each bucket deletes old exports by a rule of its own. 30 days is
-assumed below; choose your own.
+assumed below, and the privacy policy tells readers that period (`backup_days` in
+`workers/app/src/hosted_legal.json`, which `tests/test_hosted_config.py` holds to the R2 command
+below): a different period changes both, and the policy's date.
 
 R2. Create the bucket (step 1) and give it a rule that deletes every object 30 days after upload
 ([object lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)):
