@@ -192,14 +192,14 @@ describe("what the privacy policy states", () => {
     const [chinese, english] = [block(html, "zh-Hant"), block(html, "en")];
     const { deletion_days: days, inactive_months: months, inactive_reminder_days: reminder } = LEGAL;
 
-    expect(english).toContain(
-      `We delete it within ${days} days after you ask us to (see “Your rights”), after we end your access, ` +
-        `or after you have gone ${months} months without signing in.`,
-    );
-    expect(english).toContain(`${reminder} days before those ${months} months are up, we write to the address you sign in with`);
+    expect(english).toContain(`We delete it within ${days} days after you ask us to (see “Your rights”) or after we end your access.`);
+    expect(english).toContain(`once you have gone ${months} months without signing in: ${reminder} days before that`);
     expect(english).toContain("signing in once starts the count again");
-    expect(chinese).toContain(`連續 ${months} 個月沒有登入時，我們會在其後 ${days} 天內刪除`);
-    expect(chinese).toContain(`屆滿前 ${reminder} 天`);
+    // Until the registry records a last sign-in, the months cannot start from one (hosted-member-last-sign-in).
+    expect(english).toContain("The service does not yet record the date you last signed in");
+    expect(chinese).toContain(`我們終止您的使用權限時，我們會在其後 ${days} 天內刪除`);
+    expect(chinese).toContain(`您連續 ${months} 個月沒有登入時，我們也會刪除：屆滿前 ${reminder} 天`);
+    expect(chinese).toContain("本服務目前還不記錄您最後一次登入的日期");
     expect(english).toContain(`If the beta is to end, we tell you at least ${LEGAL.end_notice_days} days before`);
   });
 
@@ -222,11 +222,12 @@ describe("what the privacy policy states", () => {
     expect(chinese).toContain(`會在 ${change} 天內答覆`);
   });
 
-  it("promises a mail to the reader once a security incident is established", async () => {
+  it("promises a mail to the reader once it learns of a security incident", async () => {
     const html = await (await call("/privacy")).text();
 
-    expect(block(html, "en")).toContain("we will tell you so, as the law requires, by writing to the address you sign in with");
-    expect(block(html, "zh-Hant")).toContain("會依法寄信到您登入用的電子郵件地址通知您");
+    // 個資法第 12 條 runs from 知悉 (learning of it), not from an investigation's end.
+    expect(block(html, "en")).toContain("When we learn that your personal data has been stolen");
+    expect(block(html, "zh-Hant")).toContain("我們知悉您的個人資料被竊取");
   });
 
   it.each(Object.keys(PAGES))("link every contact address on %s as mail, in both languages", async (path) => {
@@ -276,6 +277,13 @@ describe("changes and disputes", () => {
     expect(chinese).toContain(`本測試版本身的結束，我們會在至少 ${days} 天前寄信`);
     expect(chinese).toContain("並在事後寄信通知您");
     expect(html).not.toMatch(/without notice|不需事先通知/);
+  });
+
+  it("mails a reader whose access it ends, who may still ask for a copy", async () => {
+    const html = await (await call("/terms")).text();
+
+    expect(block(html, "en")).toContain("When we do, we write to tell you, and until your data is deleted you can still ask for a copy of it.");
+    expect(block(html, "zh-Hant")).toContain("終止時我們會寄信通知您，資料刪除之前，您仍可要求取得複本。");
   });
 
   it("names no court of its own in the terms", async () => {

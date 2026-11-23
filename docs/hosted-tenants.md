@@ -705,7 +705,7 @@ The pages also make promises that only you keep; nothing in the code does it for
   digest's id and holds no email address, so never name a tenant after its reader's name or address.
 - **A change is mailed first.** Before a change to either page takes effect, mail it to every
   reader at least `notice_days` (7) days ahead, then publish it with a new `updated`.
-- **An incident is mailed.** Once you have established that a reader's data was stolen, altered,
+- **An incident is mailed.** Once you learn that a reader's data was stolen, altered,
   damaged, lost or leaked, mail that reader at the address they sign in with.
 - **Requests are answered in time.** A request to see or copy data is answered within 15 days and
   one to complete, correct or stop within 30 (`answer_days`). Either may be extended once by as
