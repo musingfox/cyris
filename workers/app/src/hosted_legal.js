@@ -129,7 +129,7 @@ function termsBody(t) {
     section(
       t("terms.availability_heading"),
       paragraph(t("terms.availability")) +
-        paragraph(t("terms.end")) +
+        paragraph(t("terms.end", { days: String(LEGAL.end_notice_days) })) +
         paragraph(t("terms.leave", { privacy: LEGAL.contacts.privacy })),
     ) +
     section(t("terms.use_heading"), paragraph(t("terms.use")) + paragraph(t("terms.content"))) +

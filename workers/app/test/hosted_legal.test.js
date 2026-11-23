@@ -249,6 +249,19 @@ describe("changes and disputes", () => {
     expect(block(html, "zh-Hant")).toContain(`生效至少 ${days} 天前`);
   });
 
+  it("ends the beta only after a mailed notice, unless an urgent case stops it", async () => {
+    const html = await (await call("/terms")).text();
+    const [chinese, english] = [block(html, "zh-Hant"), block(html, "en")];
+    const days = LEGAL.end_notice_days;
+
+    expect(english).toContain(`We end the beta itself only after writing to the address you sign in with at least ${days} days before`);
+    expect(english).toContain("Only an urgent case, such as a security incident or a requirement of the law");
+    expect(english).toContain("we then write to you afterwards");
+    expect(chinese).toContain(`本測試版本身的結束，我們會在至少 ${days} 天前寄信`);
+    expect(chinese).toContain("並在事後寄信通知您");
+    expect(html).not.toMatch(/without notice|不需事先通知/);
+  });
+
   it("names no court of its own in the terms", async () => {
     const html = await (await call("/terms")).text();
 

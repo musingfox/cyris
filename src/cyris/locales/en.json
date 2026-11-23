@@ -682,7 +682,7 @@
   "terms.changes": "We may change these terms; the date above says when they last changed. We will write to the address you sign in with at least {$days} days before any change takes effect. If you do not agree, you can stop using the service and ask us to delete your data; if you keep using it after the change takes effect, you accept the new terms.",
   "terms.content": "The articles and newsletters in your digest belong to their publishers. The service fetches them only to make your digest, which is for you to read, not to republish.",
   "terms.description": "The terms of the Cyris hosted beta.",
-  "terms.end": "We may change, suspend or end the beta, or your access to it, at any time and without notice. While the service runs, you can ask for a copy of your data, as the privacy policy says.",
+  "terms.end": "We may change the beta at any time, and we may end your access to it at any time. We end the beta itself only after writing to the address you sign in with at least {$days} days before; until it ends, you can ask for a copy of your data, as the privacy policy says. Only an urgent case, such as a security incident or a requirement of the law, may make us suspend or end the beta at once, and we then write to you afterwards.",
   "terms.forum": "If a dispute arises from these terms or the service, write to {$support} first and we will try to settle it with you. If it goes to court, the court is the one the laws of the Republic of China (Taiwan) name.",
   "terms.intro": "These terms govern your use of the Cyris hosted service, run by an individual under the name Cyris (“we”). By signing in, you accept them.",
   "terms.law": "These terms are governed by the laws of the Republic of China (Taiwan).",
