@@ -299,10 +299,10 @@ describe("the hosted run queue", () => {
   });
 
   it("starts a run that waited past its hour for a slot with the issue it was queued for", async () => {
-    // Twelve tenants due at 08:00 and two slots: at 15 minutes a run, the last two start at 09:15.
+    // Six slots' worth of tenants due at 08:00: at 15 minutes a run, the last RUN_SLOTS start at 09:15.
     at("2026-11-18T07:00:00Z");
-    const ids = Array.from({ length: 12 }, (_, i) => `t${String(i + 1).padStart(2, "0")}`);
-    for (const id of ids) await tenant(bound, id, ["08:00", "20:00"], "UTC");
+    const ids = Array.from({ length: 6 * RUN_SLOTS }, (_, i) => `t${String(i + 1).padStart(2, "0")}`);
+    for (const id of ids) await tenant(bound, id, ["08:00"], "UTC");
     const day = Date.parse("2026-11-18T08:00:00Z");
     for (let quarter = 0; quarter < 6; quarter++) {
       vi.setSystemTime(day + quarter * 15 * MINUTE);
@@ -312,13 +312,13 @@ describe("the hosted run queue", () => {
       if (quarter % 4 === 0) await tick(bound);
     }
 
-    expect(RUN_SLOTS).toBe(2);
-    expect(bound.starts).toHaveLength(12);
-    expect(bound.starts.slice(-2).map((start) => [start.period, start.date, start.at])).toEqual([
-      ["morning", "2026-11-18", "2026-11-18T09:15:00+00:00"],
-      ["morning", "2026-11-18", "2026-11-18T09:15:00+00:00"],
-    ]);
-    expect(logs.filter(([line]) => line === "run not queued")).toHaveLength(4);
+    expect(RUN_SLOTS).toBe(4);
+    expect(bound.starts).toHaveLength(ids.length);
+    expect(bound.starts.slice(-RUN_SLOTS).map((start) => [start.period, start.date, start.at])).toEqual(
+      Array(RUN_SLOTS).fill(["morning", "2026-11-18", "2026-11-18T09:15:00+00:00"]),
+    );
+    // The 09:00 tick's catch-up of the runs still live then, those starting at 09:00 and at 09:15.
+    expect(logs.filter(([line]) => line === "run not queued")).toHaveLength(2 * RUN_SLOTS);
     for (const id of ids) expect(runsOf(bound, id).map((run) => run.origin)).toEqual(["tick"]);
   });
 
@@ -346,11 +346,16 @@ describe("the hosted run queue", () => {
 
   it("gives a free slot to the tenant that started a run least recently, whoever was queued first", async () => {
     at("2026-11-18T07:00:00Z");
-    for (const id of ["alpha", "bravo", "charlie"]) await tenant(bound, id, ["08:00", "20:00"], "UTC");
+    // One tenant more than the slots.
+    const ids = ["alpha", "bravo", "charlie", "delta", "echo"];
+    expect(ids).toHaveLength(RUN_SLOTS + 1);
+    for (const id of ids) await tenant(bound, id, ["08:00"], "UTC");
     const sql = registryOf(bound).ctx.storage.sql;
-    // Yesterday alpha started last, bravo before it; charlie has never run.
+    // Yesterday alpha started last, and bravo, delta and echo before it; charlie has never run.
     for (const [id, started] of [
       ["bravo", "2026-11-17T20:00:00+00:00"],
+      ["delta", "2026-11-17T20:05:00+00:00"],
+      ["echo", "2026-11-17T20:08:00+00:00"],
       ["alpha", "2026-11-17T20:10:00+00:00"],
     ]) {
       sql.exec(
@@ -363,15 +368,15 @@ describe("the hosted run queue", () => {
       );
     }
 
-    for (const id of ["alpha", "bravo", "charlie"]) {
+    for (const id of ids) {
       await tenantRegistry(env).queueRun(id, { period: "morning", date: "2026-11-18", origin: "operator" });
     }
     await drainAlarms(registryOf(bound));
 
-    expect(bound.starts.map((start) => start.tenant)).toEqual(["charlie", "bravo"]);
+    expect(bound.starts.map((start) => start.tenant)).toEqual(["charlie", "bravo", "delta", "echo"]);
     at("2026-11-18T07:06:00Z");
     await finish(bound, "bravo");
-    expect(bound.starts.map((start) => start.tenant)).toEqual(["charlie", "bravo", "alpha"]);
+    expect(bound.starts.map((start) => start.tenant)).toEqual(["charlie", "bravo", "delta", "echo", "alpha"]);
   });
 
   it("holds each tenant to the registry's daily cap of runs, which the tenant's own database cannot raise", async () => {
@@ -411,27 +416,30 @@ describe("the hosted run queue", () => {
 
   it("frees the slots of runs no stop was reported for at their lease's end, and queues them behind the rest", async () => {
     at("2026-11-18T07:00:00Z");
-    for (const id of ["alpha", "bravo", "charlie"]) await tenant(bound, id, ["08:00", "20:00"], "UTC");
+    // One tenant more than the slots: echo waits.
+    const ids = ["alpha", "bravo", "charlie", "delta", "echo"];
+    expect(ids).toHaveLength(RUN_SLOTS + 1);
+    for (const id of ids) await tenant(bound, id, ["08:00"], "UTC");
     at("2026-11-18T08:00:00Z");
     await tick(bound);
-    expect(bound.starts.map((start) => start.tenant)).toEqual(["alpha", "bravo"]);
+    expect(bound.starts.map((start) => start.tenant)).toEqual(["alpha", "bravo", "charlie", "delta"]);
 
-    // Neither container is heard from. The alarm comes due a minute on, while charlie waits, and
-    // the leases are not over yet; it comes due at their end, and charlie, never run, goes first.
+    // No container is heard from. The alarm comes due a minute on, while echo waits, and the
+    // leases are not over yet; it comes due at their end, and echo, never run, goes first.
     for (let minute = 1; minute < RUN_LEASE_MS / MINUTE; minute++) {
       vi.setSystemTime(Date.parse("2026-11-18T08:00:00Z") + minute * MINUTE);
       await drainAlarms(registryOf(bound));
     }
-    expect(bound.starts).toHaveLength(2);
+    expect(bound.starts).toHaveLength(RUN_SLOTS);
     vi.setSystemTime(Date.parse("2026-11-18T08:00:00Z") + RUN_LEASE_MS + 1_000);
     await drainAlarms(registryOf(bound));
 
-    expect(bound.starts.map((start) => start.tenant)).toEqual(["alpha", "bravo", "charlie", "alpha"]);
+    expect(bound.starts.map((start) => start.tenant)).toEqual([...ids.slice(0, RUN_SLOTS), "echo", "alpha", "bravo", "charlie"]);
     expect(runsOf(bound, "alpha").map((run) => [run.state, run.attempts, run.outcome])).toEqual([
       ["running", 2, null],
       ["lost", 1, "no stop reported within 20 minutes; queued again"],
     ]);
-    expect(runsOf(bound, "bravo").map((run) => run.state)).toEqual(["queued", "lost"]);
+    expect(runsOf(bound, "delta").map((run) => run.state)).toEqual(["queued", "lost"]);
     // The lease outlasts the container's own inactivity timeout, so a lost run's container is gone.
     expect(RUN_LEASE_MS).toBeGreaterThan(RUN_INACTIVITY_TIMEOUT_MS);
   });

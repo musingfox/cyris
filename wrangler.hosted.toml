@@ -42,7 +42,8 @@ image = "./Dockerfile"
 # starts no more than this (`RUN_SLOTS` in workers/app/src/run_queue.js, which
 # tests/test_hosted_config.py holds equal) and the rest wait their turn, so
 # raising it for a larger beta is this line and that constant together (ADR-0032).
-max_instances = 2
+# Four for a beta of about ten tenants at spread hours (ADR-0042).
+max_instances = 4
 instance_type = "basic"
 
 # One region, the one every tenant database is hinted to (`LOCATION_HINT` in

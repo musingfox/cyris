@@ -30,8 +30,9 @@ import { ACTIVE } from "./tenant_status.js";
 
 // As many runs at once as the container application has instances, `max_instances` in
 // wrangler.hosted.toml, which tests/test_hosted_config.py holds equal to this: a start beyond
-// them would only wait for one. Raise both together as the beta grows.
-export const RUN_SLOTS = 2;
+// them would only wait for one. Raise both together as the beta grows. Four, for a beta of about
+// ten tenants each due at its own hour (ADR-0042): a crowd of four in one hour starts at once.
+export const RUN_SLOTS = 4;
 
 // How many digest times a tenant may have a day when the operator names no maximum: one, the
 // closed beta's, whose single issue is the morning's (ADR-0042). A later tier may be allowed two,
