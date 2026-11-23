@@ -694,16 +694,38 @@ is kept on Cloudflare, that Anthropic receives the articles' text for the summar
 alert reaches your Discord webhook, that you may look at a tenant only for support, an incident or
 abuse, and that an export lives 30 days in R2. So a change to any of those changes the pages: the
 wording is in the UI catalogs (`privacy.*`, `terms.*`, `legal.*`, each with its zh-Hant entry), and the
-contacts, the date and the retention periods are in `workers/app/src/hosted_legal.json`. Change its
-`updated` with the text.
+contacts, the date, the retention periods and your deadlines are in `workers/app/src/hosted_legal.json`.
+Change its `updated` with the text.
+
+The pages also make promises that only you keep; nothing in the code does it for you:
+
+- **One reader to a tenant.** Invite one address to each tenant. The registry would take a second
+  one, but the policy says each digest has one reader.
+- **A tenant id is not the reader.** The policy says what stays after a deletion is kept under the
+  digest's id and holds no email address, so never name a tenant after its reader's name or address.
+- **A change is mailed first.** Before a change to either page takes effect, mail it to every
+  reader at least `notice_days` (7) days ahead, then publish it with a new `updated`.
+- **An incident is mailed.** Once you have established that a reader's data was stolen, altered,
+  damaged, lost or leaked, mail that reader at the address they sign in with.
+- **Requests are answered in time.** A request to see or copy data is answered within 15 days and
+  one to complete, correct or stop within 30 (`answer_days`). Either may be extended once by as
+  many days again, by mailing the reader the reason. A deletion is done within `deletion_days`
+  (30) and is never extended.
+- **No other provider without notice.** Before you set a B2 secret or a second model provider's,
+  change the policy and mail the readers as above: the policy names only Cloudflare, Anthropic and
+  Discord.
 
 A reader asks for a copy or a deletion at the privacy address, since there is no account page yet.
-For a copy, read the tenant's latest export as 11.3 does and send the file. For a deletion,
+Answer only a request mailed from the address the reader signs in with. For a copy, read the
+tenant's latest export as 11.3 does and send the file. For a deletion, within 30 days:
 `scripts/hosted.sh revoke TENANT EMAIL` takes the address off the list, which ends its sessions and
-deletes its sign-in links and asks. If it was the tenant's only reader, also empty the tenant's own
-database: nothing deletes a tenant yet (11.4), so do it through `POST /hosted/tenants/<tenant>/query`
-(step 8, *Reading or changing one tenant from the CLI*), and pause the tenant so no tick polls it
-again. The deleted rows leave the backups as each day's export expires, within the 30 days of 11.1.
+deletes its sign-in links and asks. Then empty the tenant's own database: nothing deletes a tenant
+yet (11.4), so do it through `POST /hosted/tenants/<tenant>/query` (step 8, *Reading or changing
+one tenant from the CLI*). Revoke its newsletter address (`POST /hosted/tenants/<tenant>/revoke-address`,
+as `scripts/hosted.sh address revoke` sends it), and pause the tenant so no tick polls it again. The
+registry keeps the tenant's row, its `runs` and its AI spend under its id, which the policy lists as
+what remains. The deleted rows leave the backups as each day's export expires: 30 days after upload
+by 11.1's rule, and R2 removes an expired object typically within 24 hours, so about 31 days.
 
 ### The reader's settings page
 
