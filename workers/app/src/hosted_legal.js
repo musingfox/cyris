@@ -117,7 +117,7 @@ function privacyBody(t) {
       paragraph(t("privacy.rights", { privacy: LEGAL.contacts.privacy, ...answer, deletion })) +
         paragraph(t("privacy.deletion", { days: deletion })),
     ) +
-    paragraph(t("privacy.changes")) +
+    paragraph(t("privacy.changes", { days: String(LEGAL.notice_days) })) +
     contacts(t)
   );
 }
@@ -125,12 +125,22 @@ function privacyBody(t) {
 function termsBody(t) {
   return (
     paragraph(t("terms.intro")) +
-    section(t("terms.beta_heading"), paragraph(t("terms.beta"))) +
-    section(t("terms.availability_heading"), paragraph(t("terms.availability")) + paragraph(t("terms.end"))) +
+    section(t("terms.beta_heading"), paragraph(t("terms.beta")) + paragraph(t("terms.age"))) +
+    section(
+      t("terms.availability_heading"),
+      paragraph(t("terms.availability")) +
+        paragraph(t("terms.end")) +
+        paragraph(t("terms.leave", { privacy: LEGAL.contacts.privacy })),
+    ) +
     section(t("terms.use_heading"), paragraph(t("terms.use")) + paragraph(t("terms.content"))) +
     section(t("terms.liability_heading"), paragraph(t("terms.liability"))) +
-    section(t("terms.law_heading"), paragraph(t("terms.law"))) +
-    paragraph(t("terms.changes")) +
+    section(
+      t("terms.law_heading"),
+      paragraph(t("terms.law")) +
+        paragraph(t("terms.forum", { support: LEGAL.contacts.support })) +
+        paragraph(t("terms.severability")),
+    ) +
+    paragraph(t("terms.changes", { days: String(LEGAL.notice_days) })) +
     contacts(t)
   );
 }

@@ -240,6 +240,23 @@ describe("one reader to a digest", () => {
   });
 });
 
+describe("changes and disputes", () => {
+  it.each(Object.entries(PAGES))("mails the reader before a change to %s takes effect", async (path) => {
+    const html = await (await call(path)).text();
+    const days = LEGAL.notice_days;
+
+    expect(block(html, "en")).toMatch(new RegExp(`write to the address you sign in with at least ${days} days before`));
+    expect(block(html, "zh-Hant")).toContain(`生效至少 ${days} 天前`);
+  });
+
+  it("names no court of its own in the terms", async () => {
+    const html = await (await call("/terms")).text();
+
+    expect(html).toContain("the court is the one the laws of the Republic of China (Taiwan) name");
+    expect(html).not.toMatch(/District Court|地方法院/);
+  });
+});
+
 describe("the way to the legal pages", () => {
   it.each(["/login", "/login/confirm", "/logout"])("is on the sign-in page %s", async (path) => {
     const html = await (await call(path)).text();
