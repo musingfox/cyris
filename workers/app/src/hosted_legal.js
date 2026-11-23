@@ -138,7 +138,7 @@ const PAGES = {
 const STYLE = `
 :root{--bg:#07070a;--bg-elev:#0d0d12;--surface:#11111a;--border:#1f1f2e;--border-strong:#2a2a40;
 --text:#ebebf2;--text-dim:#8a8aa0;--accent:#c6ff3d;--accent-tint:rgba(198, 255, 61, 0.07);
---s-1:4px;--s-2:8px;--s-3:12px;--s-4:16px;--s-5:20px;--s-6:24px;--s-8:32px;--s-12:48px;--s-16:64px;
+--s-1:4px;--s-2:8px;--s-3:12px;--s-4:16px;--s-5:20px;--s-6:24px;--s-8:32px;--s-12:48px;--s-16:64px;--s-20:80px;
 --font-sans:'Geist', system-ui, -apple-system, sans-serif;--font-mono:'Geist Mono', ui-monospace, monospace;
 --type-scale:1;--t-fast:150ms ease-out;--bar-h:60px;--measure:640px}
 *{margin:0;padding:0;box-sizing:border-box}
@@ -156,7 +156,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans)}
 .brand,.site-nav a{position:relative}
 .brand::after,.site-nav a::after{content:"";position:absolute;inset:min(0px, calc((100% - 44px) / 2))}
 .label{font-family:var(--font-mono);font-weight:500;font-size:calc(12px * var(--type-scale));text-transform:uppercase;letter-spacing:.1em;color:var(--text-dim)}
-.container{max-width:960px;margin:0 auto;padding:var(--s-12) var(--s-4) var(--s-16)}
+.page{max-width:960px;margin:0 auto;padding:var(--s-12) var(--s-4) var(--s-20)}
 .page-head{display:grid;gap:var(--s-4);margin-bottom:var(--s-12)}
 .display{font-weight:500;font-size:calc(clamp(46px, 7vw, 84px) * var(--type-scale));line-height:1;letter-spacing:-.02em;text-wrap:balance}
 .heading{font-weight:600;font-size:calc(24px * var(--type-scale));letter-spacing:-.015em;line-height:1.3;color:var(--text)}
@@ -177,7 +177,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font-sans)}
 .doc a{color:var(--text);overflow-wrap:anywhere;transition:color var(--t-fast)}
 .doc a:hover{color:var(--accent)}
 :focus-visible{outline:1px solid var(--accent);outline-offset:2px}
-@media (max-width:720px){.site-nav{gap:var(--s-3)}.brand-name{display:none}.site-nav .label{letter-spacing:.08em}.doc dl{grid-template-columns:1fr}}
+@media (max-width:720px){.site-nav{gap:var(--s-3)}.brand-name{display:none}.page{padding-top:var(--s-8)}.site-nav .label{letter-spacing:.08em}.doc dl{grid-template-columns:1fr}}
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{transition:none !important;animation:none !important}}
 `;
 
@@ -233,7 +233,7 @@ function render(path) {
     nav(TERMS_PATH, words.terms) +
     nav("/login", words.signIn) +
     "</nav></div></header>" +
-    '<main class="container"><div class="page-head">' +
+    '<main class="page"><div class="page-head">' +
     `<h1 class="display" lang="${AUTHORITATIVE}">${escape(page.title(original))}</h1>` +
     `<p class="heading" lang="${TRANSLATION}">${escape(page.title(translation))}</p>` +
     `<p class="small"><span lang="${AUTHORITATIVE}">${escape(originalHead.updated)}</span> · ` +
