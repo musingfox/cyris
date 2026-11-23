@@ -176,7 +176,8 @@ def _not_blank(text: str) -> str:
 def _edition_schedule(times: list[str], info: ValidationInfo) -> list[str]:
     # A hosted tenant's schedule may be one hour, as the hosted Worker's registry allows it
     # (ADR-0042); a self-hosted one is always two. The edition is the validation's context.
-    return validate_schedule(times, schedule_counts(hosted=bool((info.context or {}).get("hosted"))))
+    hosted = bool((info.context or {}).get("hosted"))
+    return validate_schedule(times, schedule_counts(hosted=hosted))
 
 
 Timezone = Annotated[str, AfterValidator(_known_timezone)]
