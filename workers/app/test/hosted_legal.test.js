@@ -177,6 +177,13 @@ describe("what the privacy policy states", () => {
 });
 
 describe("the way to the legal pages", () => {
+  it.each(["/login", "/login/confirm", "/logout"])("is on the sign-in page %s", async (path) => {
+    const html = await (await call(path)).text();
+
+    expect(html).toContain('<a href="/privacy">');
+    expect(html).toContain('<a href="/terms">');
+  });
+
   it.each(Object.keys(PAGES))("leads from %s to the other page and to the sign-in", async (path) => {
     const html = await (await call(path)).text();
 

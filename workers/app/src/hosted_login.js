@@ -16,6 +16,7 @@
 
 import EN from "../../../src/cyris/locales/en.json";
 import { MessageFormat } from "../../../src/cyris/entrypoints/static/vendor/messageformat.js";
+import { PRIVACY_PATH, TERMS_PATH } from "./hosted_legal.js";
 import { PRIVATE_HEADERS } from "./hosted_pages.js";
 import {
   SIGN_IN_TTL_MS,
@@ -51,13 +52,18 @@ const escape = (text) =>
 
 const MINUTES = String(SIGN_IN_TTL_MS / 60_000);
 
-// The mail's link and its words: the token in the fragment, and the form to ask again.
+// The mail's link and its words: the token in the fragment, the form to ask again, and the
+// privacy policy and terms (hosted_legal.js), each an absolute URL on the hosted domain.
 export function signInMail({ to, domain, token }) {
   const lines = [
     t("sign_in.mail_open"),
     `https://${domain}/login/confirm#${token}`,
     t("sign_in.mail_once", { minutes: MINUTES }),
     t("sign_in.mail_later", { login: `https://${domain}/login` }),
+    [
+      t("sign_in.mail_privacy", { url: `https://${domain}${PRIVACY_PATH}` }),
+      t("sign_in.mail_terms", { url: `https://${domain}${TERMS_PATH}` }),
+    ].join("\n"),
   ];
   return { to, subject: t("sign_in.mail_subject"), text: lines.join("\n\n") };
 }
@@ -103,7 +109,7 @@ const STYLE =
   "label{display:block;font-size:13px;color:var(--text-dim);margin-bottom:8px}" +
   "input{width:100%;padding:10px 12px;margin-bottom:16px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:var(--r-control);font:inherit}" +
   "button{padding:10px 16px;background:var(--accent);color:var(--bg);border:0;border-radius:var(--r-control);font:inherit;font-weight:600;cursor:pointer}" +
-  "a{color:var(--accent)}";
+  "a{color:var(--accent)}.legal{margin:24px 0 0;font-size:13px}";
 
 // Moves the link's token from the fragment into the form, then drops the fragment from the
 // address bar and the history, so a later visit or a shared screen does not carry it.
@@ -130,6 +136,11 @@ async function pagePolicy() {
   ].join("; ");
 }
 
+// Every sign-in page links the privacy policy and terms, which a reader may read before signing in.
+const legalLinks = () =>
+  `<p class="legal"><a href="${PRIVACY_PATH}">${escape(t("sign_in.privacy"))}</a> · ` +
+  `<a href="${TERMS_PATH}">${escape(t("sign_in.terms"))}</a></p>`;
+
 // Every response is `Referrer-Policy: no-referrer` (PRIVATE_HEADERS), under which a browser posts
 // a form with `Origin: null` (Fetch, "append a request `Origin` header") and crossSite refuses it.
 // `same-origin` sends this origin to this site and still no referrer anywhere else; a form has no
@@ -140,7 +151,7 @@ async function page(title, body, { status = 200, script = "", cookie } = {}) {
     '<meta name="referrer" content="same-origin">' +
     '<meta name="viewport" content="width=device-width, initial-scale=1">' +
     `<title>${escape(title)}</title><style>${STYLE}</style></head>` +
-    `<body><main><h1>${escape(title)}</h1>${body}</main>${script && `<script>${script}</script>`}</body></html>`;
+    `<body><main><h1>${escape(title)}</h1>${body}${legalLinks()}</main>${script && `<script>${script}</script>`}</body></html>`;
   const headers = new Headers({
     "Content-Type": "text/html; charset=utf-8",
     "Cache-Control": "no-store",
