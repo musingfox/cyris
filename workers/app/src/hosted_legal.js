@@ -70,6 +70,7 @@ const contacts = (t) =>
 function privacyBody(t) {
   const sessionDays = String(SESSION_TTL_MS / DAY_MS);
   const deletion = String(LEGAL.deletion_days);
+  const answer = { see: String(LEGAL.answer_days.see), change: String(LEGAL.answer_days.change) };
   return (
     paragraph(t("privacy.intro")) +
     section(
@@ -84,7 +85,7 @@ function privacyBody(t) {
       ]),
     ) +
     section(t("privacy.where_heading"), paragraph(t("privacy.where"))) +
-    section(t("privacy.use_heading"), paragraph(t("privacy.use"))) +
+    section(t("privacy.use_heading"), paragraph(t("privacy.use")) + paragraph(t("privacy.required"))) +
     section(
       t("privacy.recipients_heading"),
       list([
@@ -108,10 +109,13 @@ function privacyBody(t) {
       ),
     ) +
     section(
+      t("privacy.safeguards_heading"),
+      paragraph(t("privacy.safeguards")) + paragraph(t("privacy.security", { security: LEGAL.contacts.security })),
+    ) +
+    section(
       t("privacy.rights_heading"),
-      paragraph(t("privacy.rights", { privacy: LEGAL.contacts.privacy })) +
-        paragraph(t("privacy.deletion", { days: deletion })) +
-        paragraph(t("privacy.security", { security: LEGAL.contacts.security })),
+      paragraph(t("privacy.rights", { privacy: LEGAL.contacts.privacy, ...answer, deletion })) +
+        paragraph(t("privacy.deletion", { days: deletion })),
     ) +
     paragraph(t("privacy.changes")) +
     contacts(t)

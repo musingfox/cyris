@@ -195,6 +195,24 @@ describe("what the privacy policy states", () => {
     }
   });
 
+  it("answers a request within the periods of the Act's Article 13", async () => {
+    const html = await (await call("/privacy")).text();
+    const [chinese, english] = [block(html, "zh-Hant"), block(html, "en")];
+    const { see, change } = LEGAL.answer_days;
+
+    expect(english).toContain(`within ${see} days, and a request to complete, correct or stop within ${change} days`);
+    expect(english).toContain(`at most ${see} and ${change} more days`);
+    expect(chinese).toContain(`會在 ${see} 天內答覆`);
+    expect(chinese).toContain(`會在 ${change} 天內答覆`);
+  });
+
+  it("promises a mail to the reader once a security incident is established", async () => {
+    const html = await (await call("/privacy")).text();
+
+    expect(block(html, "en")).toContain("we will tell you so, as the law requires, by writing to the address you sign in with");
+    expect(block(html, "zh-Hant")).toContain("會依法寄信到您登入用的電子郵件地址通知您");
+  });
+
   it.each(Object.keys(PAGES))("link every contact address on %s as mail, in both languages", async (path) => {
     const html = await (await call(path)).text();
 
