@@ -16,7 +16,9 @@ Why each tenant's RSS is polled hourly by this Worker into a buffer in the tenan
 and what that costs against Cloudflare's limits, is
 [ADR-0031](decisions/0031-a-hosted-tenants-rss-is-polled-by-the-hosted-worker.md).
 Why each tenant's schedule and run cap live in the registry, and why every run waits in a queue
-there, is [ADR-0032](decisions/0032-hosted-runs-wait-in-a-queue-the-registry-holds.md).
+there, is [ADR-0032](decisions/0032-hosted-runs-wait-in-a-queue-the-registry-holds.md). Why a
+tenant makes one digest a day unless you allow it two, and why the seed spreads tenants over the
+hours, is [ADR-0042](decisions/0042-a-hosted-tenant-makes-one-digest-a-day-unless-allowed-two.md).
 Why a failed run is reported to you, the operator, on a Discord webhook of your own, and why the
 reader is never shown its error, is
 [ADR-0035](decisions/0035-a-hosted-runs-alerts-go-to-the-operator-through-the-hosted-worker.md).
@@ -215,9 +217,12 @@ A first deploy can take several minutes before an instance can start. Wait until
 ```bash
 scripts/hosted.sh register
 scripts/hosted.sh seed
-scripts/hosted.sh schedule alpha 08:00,20:00 UTC
-scripts/hosted.sh schedule bravo 09:00,21:00 UTC
+scripts/hosted.sh schedule alpha 08:00 UTC
+scripts/hosted.sh schedule bravo 09:00 UTC
 ```
+
+The two `schedule` lines are optional: the seed already gives each tenant an hour of its own.
+Run them to choose the hours yourself.
 
 `register` runs `POST /hosted/tenants/<tenant>/register` for `alpha`, then `bravo`. Each answer is
 the tenant's row in the registry. A tenant registered for the first time is `"active"`. One
@@ -231,13 +236,20 @@ then `bravo`. Each seed writes three things into the tenant's own database:
 
 - `schema.sql`, then `hosted_schema.sql`, which adds the tenant's `hosted_pages` table and its
   RSS buffer, `articles`;
-- every required setting: provider `anthropic`, model `claude-haiku-5-5`, digests at 08:00 and
-  20:00 UTC, language `en`, and no notification target;
+- every required setting: provider `anthropic`, model `claude-haiku-5-5`, one digest a day in
+  UTC, language `en`, and no notification target;
 - four RSS feeds from the onboarding catalog. No feed is shared between the two tenants
   (`workers/app/src/hosted_seed.json`).
 
-Each answer names the tenant, how many settings it wrote, its sources and how many tables it
-has. Seeding again writes the same rows back and leaves other rows alone.
+For a tenant the registry holds no schedule for, the seed also sets one in the registry: one
+digest hour in UTC, taken from a hash of the tenant id over every hour but 04:00 to 06:00, the
+backup's and its check's (`spreadHour` in `workers/app/src/hosted_seed.js`). Each tenant always
+gets the same hour, and tenants seeded together get different hours most of the time: `alpha`
+gets 08:00 and `bravo` 00:00. The tick starts that tenant's runs from then on. A tenant that has
+a schedule keeps it, and the seed writes that schedule into its settings instead.
+
+Each answer names the tenant, how many settings it wrote, its sources, how many tables it has and
+its `schedule`. Seeding again writes the same rows back and leaves other rows alone.
 
 To stop a tenant's runs without deleting anything, register it again as paused. The script has
 no subcommand for it; send `POST /hosted/tenants/<tenant>/register?status=paused` with the
@@ -246,25 +258,41 @@ registered tenant's status. The tick skips a paused tenant,
 and its run route answers 409. Its other routes still answer, and it still takes mail at its
 newsletter address (step 9).
 
-`schedule TENANT TIMES TIMEZONE [DAILY_RUN_CAP]` runs
+`schedule TENANT TIMES TIMEZONE [DAILY_RUN_CAP [MAX_DIGEST_TIMES]]` runs
 `POST /hosted/tenants/<tenant>/schedule?times=...&timezone=...` for one tenant. It sets the hours
-the hourly tick wakes that tenant at, the zone they are hours of, and, when you name one, its
-daily run cap. The registry holds all three, and the tick reads them nowhere else: the schedule
-the seed wrote into the tenant's own database is not what wakes it. `TIMES` is two whole hours,
-such as `07:00,19:00`. `TIMEZONE` is an IANA zone name such as `Asia/Taipei`, never an offset
+the hourly tick wakes that tenant at, the zone they are hours of, and, when you name them, its
+daily run cap and how many digest hours it may have. The registry holds all four, and the tick
+reads them nowhere else: the schedule copied into the tenant's own database is not what wakes it.
+`TIMES` is one whole hour, such as `07:00`. Its digest is stored as the morning issue, whatever
+the hour. Two hours, such as `07:00,19:00`, a morning and an evening issue, are taken only from a
+tenant whose maximum is 2. `TIMEZONE` is an IANA zone name such as `Asia/Taipei`, never an offset
 such as `+08:00`, which the container cannot read and the route refuses. The cap is the most runs
-the tenant may start in any 24 hours, from 1 to 24. A new tenant's cap is 6, and scheduling a
-tenant again without naming one keeps the cap it has. The answer is the tenant's registry row,
+the tenant may start in any 24 hours, from 1 to 24. A new tenant's cap is 3: one hour, its tick
+and two catch-ups. The maximum is 1 or 2, and a new tenant's is 1. To allow a tenant two digests
+a day, name both hours, a cap of 6 and the maximum together:
+
+```bash
+scripts/hosted.sh schedule alpha 07:00,19:00 Asia/Taipei 6 2
+```
+
+Scheduling a tenant again without naming a cap or a maximum keeps the ones it has. Two hours for
+a tenant whose maximum is 1 are refused, and so is a maximum of 1 named with two hours. The answer is the tenant's registry row,
 and `"settings": true` once the route has copied the hours and the zone into the tenant's own
 settings. `false` means the copy could not be written, and the Worker logs why
 (`schedule copy not written`). For a tenant not yet seeded that is expected: its seed writes the
 copy instead. A schedule the registry does not take answers 400 with the reason. Until a
-tenant has a schedule, the tick polls its feeds and queues no run, and its run route answers
-409. Give each tenant different hours to see each one woken at its own.
+tenant has a schedule, from the seed or this route, the tick polls its feeds and queues no run,
+and its run route answers 409. Give each tenant different hours to see each one woken at its own.
 
 On a deployment whose tenants were registered before the registry held schedules, run `schedule`
 for each tenant after you deploy. Until you do, the tick polls its feeds and queues none of its
 runs.
+
+On a deployment whose tenants were scheduled at two hours before the registry held a maximum,
+each tenant gets a maximum of 1 when you deploy. The tick then runs only the earlier of its two
+hours, as the morning issue, and its cap stays the one it had (6 unless you set another). Run
+`schedule` with one hour to make the registry match, or with both hours, `6` and `2` to keep
+two digests a day.
 
 ## 6. Poll each tenant's feeds, and measure a tick
 
@@ -308,7 +336,7 @@ scripts/hosted.sh run morning
 
 This runs `POST /hosted/tenants/<tenant>/run?period=morning` for each tenant. Each answer is
 HTTP 202 with `{"queued": ...}`, the run's row in the registry's queue, dated today in the
-tenant's zone. The registry starts the queued runs, at most `max_instances` (2) at once and one
+tenant's zone. The registry starts the queued runs, at most `max_instances` (4) at once and one
 per tenant. Each tenant's container starts with two gateways registered before `start()`, one to
 that tenant's database and one that carries its alerts to your webhook. A start that gets no
 container instance waits in the queue and is started again, up to four times; after that, the run
@@ -394,11 +422,12 @@ your webhook's alert and in that tenant's Workers Logs. A run the registry recor
 has its reason in `runs`. A `lost` row is a run whose container never reported its stop within
 20 minutes; the row above it is the same issue, queued again.
 
-The hourly tick also queues each active tenant's run at the hours step 5 scheduled. A check
-after one of those hours counts two runs, and each is still that tenant's own. To see each tenant
-woken at its own hours, run `check` after both tenants' hours have passed. In each report, every
+The hourly tick also queues each active tenant's run at the hour step 5 scheduled. A check
+after that hour counts two runs, this step's and the tick's, and each is still that tenant's own.
+To see each tenant woken at its own hour, run `check` after both tenants' hours have passed. In each report, every
 `digest_runs` row's `finished_at` falls a few minutes after one of that tenant's hours, and its
-`runs` row for the hour has `origin` `tick` and state `done`.
+`runs` row for the hour has `origin` `tick` and state `done`. A tenant with one hour has one such
+row a day, of period `morning`.
 
 ### Reading the pages in a browser
 
@@ -687,12 +716,13 @@ the buttons appear; look in the browser's console for a blocked request if they 
 A signed-in reader's pages show a Settings link to `HOSTED_URL/t/<tenant>/settings`, a page the
 Worker renders itself; no container starts for it (ADR-0040). There the reader changes the
 tenant's output language, style, type size, articles per run (at most 400), window, vote order,
-follow summaries, Top story score and publish hours, and adds or removes RSS feeds, 30 sources
-at most with newsletters counted. The model, the notify targets, the run cap and the AI allowance
-stay yours: the page refuses them, and the run pins the model and blanks the notify targets
+follow summaries, Top story score and publish hour, and adds or removes RSS feeds, 30 sources
+at most with newsletters counted. The page offers one publish hour, and two only to a tenant you
+allowed two. The model, the notify targets, the run cap, the number of digest hours and the AI
+allowance stay yours: the page refuses them, and the run pins the model and blanks the notify targets
 whatever the tenant's rows say. A save applies from the tenant's next run, and the hours from the
-next tick, since they go to the registry as your schedule route's do; a save names no run cap, so
-yours is kept.
+next tick, since they go to the registry as your schedule route's do; a save names no run cap or
+maximum, so yours are kept.
 
 To check it on a trial tenant, sign in as alpha's reader, open Settings, change Articles per run
 and add one feed. Then read alpha's report as the operator: its `sources` list the new feed, and
@@ -846,7 +876,8 @@ with them. Its export is the record of what to re-enter. Read it with `backup_to
 `tenants`, `members` and `inbound_addresses` tables:
 
 - `register` each tenant with its status;
-- `schedule` each one with its `digest_times`, `timezone` and `daily_run_cap`, and `budget`
+- `schedule` each one with its `digest_times`, `timezone`, `daily_run_cap` and
+  `max_digest_times`, and `budget`
   each `monthly_ai_budget_usd` that is set;
 - `invite` each member again, which mails each reader a new link.
 

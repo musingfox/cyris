@@ -6,6 +6,13 @@ decision-makers: ""
 
 # Hosted runs wait in a queue the registry holds, on the registry's schedule
 
+> Superseded in part by [ADR-0042](0042-a-hosted-tenant-makes-one-digest-a-day-unless-allowed-two.md)
+> (2026-11-24). A tenant's `digest_times` is one whole hour, its morning issue, or two when its
+> new `tenants.max_digest_times` allows them; the default daily cap is 3 (`1 × CATCH_UP_HOURS`),
+> not 6; `max_instances` and `RUN_SLOTS` are 4, not 2; and the seed gives a tenant with no
+> schedule one hour of its own, so the schedule route is no longer a step before the tick runs it.
+> The rest of this ADR still stands.
+
 ## Context and Problem Statement
 
 The hosted Worker `cyris-hosted` runs every tenant's digest from one container application,
@@ -59,7 +66,8 @@ instances fairly, and hold a cap that no container can reach. It needs no new bi
 How it is built (`workers/app/src/run_queue.js`, `tenant_registry.js`):
 
 * **The schedule is the registry's.** `tenants.digest_times`, two whole hours as
-  `validate_schedule` takes them, and a new `tenants.timezone` are set only by the operator's
+  `validate_schedule` takes them (one hour since ADR-0042, two when the tenant is allowed them),
+  and a new `tenants.timezone` are set only by the operator's
   `POST /hosted/tenants/<tenant>/schedule?times=&timezone=[&daily_run_cap=]`. The registry
   checks them. The zone must be an IANA name, an area and its locations or one word such as UTC,
   that the runtime knows. It is stored as given, or in the runtime's casing when only the case
@@ -120,7 +128,8 @@ How it is built (`workers/app/src/run_queue.js`, `tenant_registry.js`):
 * **Each tenant has a cap in the registry.** A new column, `tenants.daily_run_cap`, is the most
   runs a tenant may start in any 24 hours. Its live runs count against it too. A run past the cap
   is refused, and the run route answers 429. The default is 6, `2 × CATCH_UP_HOURS`. That is two
-  digest hours, each tried by its tick and its catch-ups, so a day of failures still fits. Only
+  digest hours, each tried by its tick and its catch-ups, so a day of failures still fits. (Since
+  ADR-0042 it is 3, one digest hour's.) Only
   something else, such as the operator or a tenant rewriting its own `digest_runs` to ask for
   catch-ups, can reach it. The operator's schedule route sets another cap, from 1 to 24.
   Scheduling a tenant again without naming a cap keeps the one it has.
@@ -128,8 +137,8 @@ How it is built (`workers/app/src/run_queue.js`, `tenant_registry.js`):
   table. Both new columns are additive and have a default, so the registry checks its own
   `tenants` columns on start and adds any that are missing. A version table waits for the first
   change that is not additive.
-* `max_instances` stays 2. Raising it for a larger beta is a choice about money and the beta's
-  size. It takes one line of `wrangler.hosted.toml` and `RUN_SLOTS`. Throughput is about two runs
+* `max_instances` stays 2 (4 since ADR-0042). Raising it for a larger beta is a choice about
+  money and the beta's size. It takes one line of `wrangler.hosted.toml` and `RUN_SLOTS`. Throughput is about two runs
   every six minutes, so twenty tenants due in one hour all start within it.
 
 ### Consequences
