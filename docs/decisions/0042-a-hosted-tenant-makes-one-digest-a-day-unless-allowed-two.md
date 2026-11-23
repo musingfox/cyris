@@ -126,7 +126,10 @@ How it is built:
 * `workers/app/test/tenant_registry.test.js`: the seed route gives an unscheduled tenant its hour
   in the registry and keeps an operator's schedule.
 * `workers/app/test/hosted_settings.test.js`: the page offers one hour select at the default
-  maximum and two at 2, and a reader's two hours are refused at the default, writing nothing.
+  maximum and two at 2, and a reader's two hours are refused at the default, writing nothing. A
+  tenant allowed two who holds one hour sees "no second digest" selected, the page's script sends
+  one hour for it, and a save of another setting sends no schedule, so the registry's hours stay
+  as they are.
 * `tests/test_hosted_config.py`: the seed file names no hour, every hour the seed can give is a
   valid hosted schedule, and `RUN_SLOTS` equals `max_instances`.
 * `tests/test_hosted_script.py`: `scripts/hosted.sh schedule` sends one hour, and two hours with

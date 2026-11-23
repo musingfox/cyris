@@ -609,6 +609,7 @@
   "settings_option.schedule_daily": "Daily",
   "settings_option.schedule_evening": "Evening",
   "settings_option.schedule_morning": "Morning",
+  "settings_option.schedule_none": "No second digest",
   "settings_option.type_scale_default": "Default",
   "settings_option.type_scale_larger": "Larger",
   "settings_option.type_scale_smaller": "Smaller",

@@ -231,12 +231,16 @@ async function saveSettings(t, body, { db, registryRow, setSchedule }) {
 }
 
 // The page's one script: each form posts its fields as JSON to its own action, a route of this
-// tenant's (relative, so the script names no tenant), and shows the answer. Allowed by its hash.
+// tenant's (relative, so the script names no tenant), and shows the answer. A field that holds
+// `data-was`, the schedule's hours and zone, is sent only when the reader changed it, so a save of
+// another setting leaves the registry's schedule as it is; an hour select left empty is no digest.
+// Allowed by its hash.
 // The page is served `Referrer-Policy: no-referrer` (hosted_pages.js), under which a browser sends
 // a POST's Origin as `null` (Fetch, "append a request `Origin` header") and the save would be
 // refused cross-origin; each fetch names `same-origin`, which sends this origin to this origin
 // and nothing elsewhere.
 const SCRIPT = `
+const changed = (field) => !("was" in field.dataset) || field.value !== field.dataset.was;
 const read = (field) => {
   if (field.dataset.kind === "number") return field.value.trim() === "" ? null : Number(field.value);
   if (field.dataset.kind === "boolean") return field.value === "true";
@@ -246,9 +250,10 @@ for (const form of document.querySelectorAll("form[data-status]")) {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const body = {};
-    for (const field of form.querySelectorAll("[data-key]")) body[field.dataset.key] = read(field);
-    const hours = [...form.querySelectorAll("[data-hour]")].map((hour) => hour.value.padStart(2, "0") + ":00");
-    if (hours.length) body["general.digest_schedule"] = hours;
+    for (const field of form.querySelectorAll("[data-key]")) if (changed(field)) body[field.dataset.key] = read(field);
+    const selects = [...form.querySelectorAll("[data-hour]")];
+    const hours = selects.filter((hour) => hour.value !== "").map((hour) => hour.value.padStart(2, "0") + ":00");
+    if (selects.some(changed)) body["general.digest_schedule"] = hours;
     let answer = {};
     let ok = false;
     try {
@@ -368,23 +373,29 @@ const typeScaleSelect = (t, value) => (id) =>
   option("1.125", t("settings_option.type_scale_larger"), value === 1.125) +
   "</select>";
 
-// One hour's select; its period names it, so the script sends the hours in the page's order.
-function hourSelect(label, which, hour) {
+// One hour's select; its period names it, so the script sends the hours in the page's order. With
+// `none`, the label of the choice of no hour, it is first in the select and the one selected when
+// the registry holds no hour for this period. Otherwise a missing hour shows 00:00, as the browser
+// does, and `data-was` says so.
+function hourSelect(label, which, hour, none = null) {
   const hours = Array.from({ length: 24 }, (_, h) => option(String(h), `${String(h).padStart(2, "0")}:00`, h === hour));
+  const was = hour ?? (none === null ? 0 : "");
+  if (none !== null) hours.unshift(option("", none, hour === undefined));
   return (
     `<label class="small">${escape(label)} ` +
-    `<select class="select narrow" data-hour="${which}">${hours.join("")}</select></label>`
+    `<select class="select narrow" data-hour="${which}" data-was="${was}">${hours.join("")}</select></label>`
   );
 }
 
 // The hours a tenant may choose: one, its morning's, labelled as the day's only issue, or two when
-// the operator allows them (`max_digest_times`, ADR-0042), morning and evening.
+// the operator allows them (`max_digest_times`, ADR-0042), morning and evening; the evening select
+// offers no second digest, selected while the registry holds one hour.
 function hourSelects(t, hours, most) {
   if (most < 2) return hourSelect(t("settings_option.schedule_daily"), PERIODS[0], hours[0]);
   const [morning, evening] = PERIODS;
   return (
     hourSelect(t("settings_option.schedule_morning"), morning, hours[0]) +
-    hourSelect(t("settings_option.schedule_evening"), evening, hours[1])
+    hourSelect(t("settings_option.schedule_evening"), evening, hours[1], t("settings_option.schedule_none"))
   );
 }
 
@@ -405,7 +416,7 @@ function settingsForm(t, values, row) {
     field(t, "digest.max_articles_per_digest", t("settings_help.digest.max_articles_per_digest"), numberInput("digest.max_articles_per_digest", values["digest.max_articles_per_digest"], 1, POLICY.max_articles_per_digest)) +
     field(t, "routing.score_threshold", t("settings_help.routing.score_threshold"), numberInput("routing.score_threshold", values["routing.score_threshold"], 0, 100)) +
     field(t, SCHEDULE_KEY, "", () => `<div class="hours">${hourSelects(t, hours, most)}</div>`) +
-    field(t, TIMEZONE_KEY, t("settings_help.general.timezone"), (id) => `<input class="input narrow" id="${id}" data-key="${TIMEZONE_KEY}" type="text" autocomplete="off" value="${escape(schedule?.timeZone ?? "")}">`) +
+    field(t, TIMEZONE_KEY, t("settings_help.general.timezone"), (id) => `<input class="input narrow" id="${id}" data-key="${TIMEZONE_KEY}" type="text" autocomplete="off" data-was="${escape(schedule?.timeZone ?? "")}" value="${escape(schedule?.timeZone ?? "")}">`) +
     `<p class="small">${escape(t("hosted_settings.operator_note"))}</p>` +
     `<div class="actions-line"><button class="btn primary" type="submit">${escape(t("settings.save"))}</button>` +
     `<div class="notice" id="${status}" role="status" hidden></div></div></form>`

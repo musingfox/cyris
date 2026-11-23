@@ -13,7 +13,7 @@ import { seedTenant } from "../src/hosted_seed.js";
 import { CATALOGS, REFUSAL_REASONS, handleTenantSettings } from "../src/hosted_settings.js";
 import { WRITABLE, catalogTag, checkSettings, rssSource, urlRefusal } from "../src/hosted_settings_rules.js";
 import { SESSION_COOKIE } from "../src/hosted_session.js";
-import { tenantRegistry } from "../src/tenant_registry.js";
+import { REGISTRY_NAME, tenantRegistry } from "../src/tenant_registry.js";
 import CASES from "./hosted_settings_cases.json" with { type: "json" };
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace, registryNamespace, tenantDb } from "./sql_storage.js";
 
@@ -283,6 +283,42 @@ async function signIn(email) {
   return new RegExp(`^${SESSION_COOKIE}=([^;]*)`).exec(confirmed.headers.get("Set-Cookie"))[1];
 }
 
+// The page's script run on its served HTML, as a browser would: the digest form's fields read from
+// their markup (a select's selected option, else its first), `edits` applied by `data-key`, or by
+// `hour.<period>` for an hour select, then the form submitted. Answers the JSON body it would POST.
+async function pageSubmit(html, edits = {}) {
+  const script = /<script>([\s\S]*?)<\/script>/.exec(html)[1];
+  const markup = /<form class="panel" action="api\/settings"[\s\S]*?<\/form>/.exec(html)[0];
+  const camel = (name) => name.replace(/-(\w)/g, (_, c) => c.toUpperCase());
+  const fields = [...markup.matchAll(/<(select|input|textarea)\b([^>]*)>(?:([\s\S]*?)<\/\1>)?/g)].map(([, tag, attrs, inner = ""]) => {
+    const dataset = Object.fromEntries([...attrs.matchAll(/data-([\w-]+)="([^"]*)"/g)].map(([, name, value]) => [camel(name), value]));
+    const options = [...inner.matchAll(/<option value="([^"]*)"( selected)?>/g)];
+    const unescape = (text) => text.replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+    const value =
+      tag === "select" ? (options.find((o) => o[2]) ?? options[0])[1] : tag === "textarea" ? unescape(inner) : unescape(/ value="([^"]*)"/.exec(attrs)?.[1] ?? "");
+    return { dataset, value };
+  });
+  for (const field of fields) {
+    const key = field.dataset.hour ? `hour.${field.dataset.hour}` : field.dataset.key;
+    if (key in edits) field.value = edits[key];
+  }
+  const form = {
+    action: `${ORIGIN}/t/x/api/settings`,
+    dataset: { status: "settings-result", failed: "failed" },
+    addEventListener: (type, handler) => (form.submit = handler),
+    querySelectorAll: (selector) => fields.filter((field) => (selector === "[data-key]" ? field.dataset.key : field.dataset.hour)),
+  };
+  let body;
+  const fetched = async (url, init) => ((body = JSON.parse(init.body)), { ok: true, json: async () => ({}) });
+  const document = {
+    querySelectorAll: () => [form],
+    getElementById: () => ({}),
+  };
+  new Function("document", "fetch", "location", script)(document, fetched, {});
+  await form.submit({ preventDefault() {} });
+  return body;
+}
+
 // A save from the settings page itself: a same-origin fetch, which carries the page's Origin.
 const save = (session, path, body, headers = { Origin: ORIGIN }) => call(path, { method: "POST", session, headers, body });
 
@@ -321,7 +357,7 @@ describe("GET /t/<tenant>/settings", () => {
     await tenantRegistry(env).setSchedule("alpha", { times: ["09:00"], timeZone: "UTC", maxDigestTimes: 1 });
     const hourSelects = async (email, tenant) => {
       const html = await (await call(`/t/${tenant}/settings`, { session: await signIn(email) })).text();
-      return [...html.matchAll(/<label class="small">([^<]*) <select class="select narrow" data-hour="(\w+)">([\s\S]*?)<\/select>/g)].map(
+      return [...html.matchAll(/<label class="small">([^<]*) <select class="select narrow" data-hour="(\w+)"[^>]*>([\s\S]*?)<\/select>/g)].map(
         ([, label, period, options]) => [label, period, /<option value="(\d+)" selected>/.exec(options)?.[1]],
       );
     };
@@ -331,6 +367,82 @@ describe("GET /t/<tenant>/settings", () => {
       [EN["settings_option.schedule_morning"], "morning", "8"],
       [EN["settings_option.schedule_evening"], "evening", "20"],
     ]);
+  });
+
+  it("gives a tenant allowed two an explicit no-second-digest choice, selected when it holds one hour", async () => {
+    const registry = tenantRegistry(env);
+    const eveningSelect = async () => {
+      const html = await (await call("/t/bravo/settings", { session: await signIn("bea@example.com") })).text();
+      return /data-hour="evening"[^>]*>([\s\S]*?)<\/select>/.exec(html)[1];
+    };
+
+    await registry.setSchedule("bravo", { times: ["00:00"], timeZone: "UTC", maxDigestTimes: 2, dailyRunCap: 6 });
+    const one = await eveningSelect();
+    await registry.setSchedule("bravo", { times: ["08:00", "20:00"], timeZone: "UTC", maxDigestTimes: 2 });
+    const two = await eveningSelect();
+
+    expect(one).toContain(`<option value="" selected>${EN["settings_option.schedule_none"]}</option>`);
+    expect([...one.matchAll(/ selected>/g)]).toHaveLength(1);
+    expect(two).toContain(`<option value="">${EN["settings_option.schedule_none"]}</option>`);
+    expect(two).toContain('<option value="20" selected>');
+    expect(ZH_HANT["settings_option.schedule_none"]).toMatchObject({ source: EN["settings_option.schedule_none"] });
+  });
+
+  it("sends one hour from the page of a tenant allowed two who holds one, and two once a second is chosen", async () => {
+    await tenantRegistry(env).setSchedule("bravo", { times: ["06:00"], timeZone: "UTC", maxDigestTimes: 2, dailyRunCap: 6 });
+    const html = await (await call("/t/bravo/settings", { session: await signIn("bea@example.com") })).text();
+
+    const moved = await pageSubmit(html, { "hour.morning": "7" });
+    const added = await pageSubmit(html, { "hour.evening": "18" });
+
+    expect(moved["general.digest_schedule"]).toEqual(["07:00"]);
+    expect(added["general.digest_schedule"]).toEqual(["06:00", "18:00"]);
+  });
+
+  it("sends the second hour of a tenant holding two, and one once it is set to none", async () => {
+    const html = await (await call("/t/bravo/settings", { session: await signIn("bea@example.com") })).text();
+
+    const kept = await pageSubmit(html, { "hour.morning": "7" });
+    const dropped = await pageSubmit(html, { "hour.evening": "" });
+
+    expect(kept["general.digest_schedule"]).toEqual(["07:00", "20:00"]);
+    expect(dropped["general.digest_schedule"]).toEqual(["08:00"]);
+  });
+
+  it("keeps one hour select for a tenant allowed one", async () => {
+    await tenantRegistry(env).setSchedule("alpha", { times: ["09:00"], timeZone: "UTC", maxDigestTimes: 1 });
+    const html = await (await call("/t/alpha/settings", { session: await signIn("ana@example.com") })).text();
+
+    expect(html.match(/data-hour="/g)).toHaveLength(1);
+    expect(html).not.toContain(EN["settings_option.schedule_none"]);
+    expect((await pageSubmit(html, { "hour.morning": "10" }))["general.digest_schedule"]).toEqual(["10:00"]);
+  });
+
+  it("keeps the registry's schedule through a save of an unrelated setting, one hour at 00:00 included", async () => {
+    const registry = tenantRegistry(env);
+    await registry.setSchedule("bravo", { times: ["00:00"], timeZone: "UTC", maxDigestTimes: 2, dailyRunCap: 6 });
+    const session = await signIn("bea@example.com");
+    const html = await (await call("/t/bravo/settings", { session })).text();
+
+    const sent = await pageSubmit(html, { "digest.style_prompt": "Short." });
+    const answer = await save(session, "/t/bravo/api/settings", sent);
+
+    expect(answer.status).toBe(200);
+    expect(await registry.tenant("bravo")).toMatchObject({ digest_times: '["00:00"]', timezone: "UTC", max_digest_times: 2 });
+    expect(JSON.parse((await registry.tenant("bravo")).digest_times)).toEqual(["00:00"]);
+    expect((await settingsOf("bravo"))["digest.style_prompt"]).toBe("Short.");
+  });
+
+  it("does not drop the evening of a tenant allowed one that the registry still holds as two", async () => {
+    // A row from before the column: two hours, the default maximum of one (ADR-0042).
+    bound.REGISTRY.getByName(REGISTRY_NAME).ctx.storage.sql.exec("UPDATE tenants SET max_digest_times = 1 WHERE id = 'alpha'");
+    const session = await signIn("ana@example.com");
+    const html = await (await call("/t/alpha/settings", { session })).text();
+
+    const answer = await save(session, "/t/alpha/api/settings", await pageSubmit(html, { "digest.style_prompt": "Short." }));
+
+    expect(answer.status).toBe(200);
+    expect((await tenantRegistry(env).tenant("alpha")).digest_times).toBe('["08:00","20:00"]');
   });
 
   it("saves with a fetch that sends this Origin, though the page itself is no-referrer", async () => {
