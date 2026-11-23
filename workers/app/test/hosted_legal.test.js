@@ -161,8 +161,38 @@ describe("what the privacy policy states", () => {
     const english = block(await (await call("/privacy")).text(), "en");
 
     expect(english).toContain(`the model ${POLICY.model}.`);
-    expect(english).toContain(`deleted ${LEGAL.backup_days} days after it was made`);
+    expect(english).toContain(`set to expire ${LEGAL.backup_days} days after it is uploaded`);
     expect(english).not.toMatch(/backblaze|\bB2\b/i);
+  });
+
+  it("gives a deleted row's longest stay in the backups as the export's lifetime and R2's removal", async () => {
+    const html = await (await call("/privacy")).text();
+    // R2 removes an expired object typically within 24 hours, so "within 30 days" was a day short.
+    const most = LEGAL.backup_days + Math.ceil(LEGAL.backup_removal_hours / 24);
+
+    expect(most).toBeGreaterThan(LEGAL.backup_days);
+    expect(block(html, "en")).toContain(`within ${LEGAL.backup_removal_hours} hours of that`);
+    expect(block(html, "en")).toContain(`for up to about ${most} days`);
+    expect(block(html, "zh-Hant")).toContain(`保留約 ${most} 天`);
+    expect(html).not.toMatch(/leaves the backups within|從備份中消失/);
+  });
+
+  it("states how long a deletion takes, and how long Cloudflare keeps the logs", async () => {
+    const html = await (await call("/privacy")).text();
+    const [chinese, english] = [block(html, "zh-Hant"), block(html, "en")];
+
+    expect(english).toContain(`we finish within ${LEGAL.deletion_days} days of your request`);
+    expect(chinese).toContain(`收到請求後 ${LEGAL.deletion_days} 天內完成`);
+    expect(english).toContain(`for up to ${LEGAL.log_days} days`);
+    expect(chinese).toContain(`最長 ${LEGAL.log_days} 天`);
+  });
+
+  it("names what a deletion leaves behind", async () => {
+    const english = block(await (await call("/privacy")).text(), "en");
+
+    for (const left of ["the daily backups", "Cloudflare's logs", "what Anthropic received", "the run records, AI spend and schedule"]) {
+      expect(english).toContain(escape(left));
+    }
   });
 
   it.each(Object.keys(PAGES))("link every contact address on %s as mail, in both languages", async (path) => {
@@ -173,6 +203,22 @@ describe("what the privacy policy states", () => {
         expect(block(html, tag)).toContain(`<a href="mailto:${address}">${address}</a>`);
       }
     }
+  });
+});
+
+describe("one reader to a digest", () => {
+  it.each(Object.keys(PAGES))("is all %s assumes: no shared digest, no deletion only for a sole reader", async (path) => {
+    const html = await (await call(path)).text();
+
+    expect(html).not.toMatch(/more than one (invited )?reader|only reader|several readers|which reader/i);
+    expect(html).not.toMatch(/不只一位|唯一的讀者|多位讀者|哪一位讀者/);
+  });
+
+  it("says so on the privacy policy, in both languages", async () => {
+    const html = await (await call("/privacy")).text();
+
+    expect(block(html, "en")).toContain("Each digest has one reader.");
+    expect(block(html, "zh-Hant")).toContain("每份精選摘要只有一位讀者。");
   });
 });
 

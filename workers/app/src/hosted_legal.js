@@ -32,6 +32,9 @@ const TRANSLATION = "en";
 const CHROME = "en";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+// The longest a deleted row stays in the backups: an export's lifetime, and the time R2 may take
+// to remove it once expired, in whole days.
+const BACKUP_MOST_DAYS = LEGAL.backup_days + Math.ceil(LEGAL.backup_removal_hours / 24);
 
 const escape = (text) =>
   String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -66,6 +69,7 @@ const contacts = (t) =>
 
 function privacyBody(t) {
   const sessionDays = String(SESSION_TTL_MS / DAY_MS);
+  const deletion = String(LEGAL.deletion_days);
   return (
     paragraph(t("privacy.intro")) +
     section(
@@ -76,7 +80,7 @@ function privacyBody(t) {
         t("privacy.kept_digest"),
         t("privacy.kept_newsletters", { days: String(LEGAL.newsletter_hold_days) }),
         t("privacy.kept_spend"),
-        t("privacy.kept_logs"),
+        t("privacy.kept_logs", { days: String(LEGAL.log_days) }),
       ]),
     ) +
     section(t("privacy.where_heading"), paragraph(t("privacy.where"))) +
@@ -92,11 +96,21 @@ function privacyBody(t) {
     ) +
     section(t("privacy.cookies_heading"), paragraph(t("privacy.cookies", { cookie: SESSION_COOKIE, days: sessionDays }))) +
     section(t("privacy.operator_heading"), paragraph(t("privacy.operator"))) +
-    section(t("privacy.retention_heading"), paragraph(t("privacy.retention", { days: String(LEGAL.backup_days) }))) +
+    section(
+      t("privacy.retention_heading"),
+      paragraph(
+        t("privacy.retention", {
+          deletion,
+          days: String(LEGAL.backup_days),
+          hours: String(LEGAL.backup_removal_hours),
+          most: String(BACKUP_MOST_DAYS),
+        }),
+      ),
+    ) +
     section(
       t("privacy.rights_heading"),
       paragraph(t("privacy.rights", { privacy: LEGAL.contacts.privacy })) +
-        paragraph(t("privacy.deletion")) +
+        paragraph(t("privacy.deletion", { days: deletion })) +
         paragraph(t("privacy.security", { security: LEGAL.contacts.security })),
     ) +
     paragraph(t("privacy.changes")) +
