@@ -3,7 +3,8 @@
 `workers/app/test/shared_settings_cases.json` is the one list both suites read: vitest runs it
 against the hosted Worker (`workers/app/test/hosted_shared_settings.test.js`), and this runs it
 against TriageServer, as `cyris triage-ui` starts it and with the hosted edition's locks, so the
-same request gets the same answer from both. Its `sources` cases are the Sources tab's, over a
+same request gets the same answer from both, or the answer a case names for a self-hosted server
+where the editions' own limits differ. Its `sources` cases are the Sources tab's, over a
 `sources` table, `feed_health` and `stored_articles` the case sets; a case only a hosted tenant is
 held to says `hosted` in its `editions` and is not run here. Its pins are held to the run's own
 `pin_tenant_settings`, which the Worker's copy shows. Each request goes through the route the app
@@ -83,6 +84,7 @@ async def test_a_server_the_cli_starts_answers_the_self_hosted_edition() -> None
 
     edition = CASES["editions"]["self_hosted"]
     assert data["locked"] == edition["locked"]
+    assert data["limits"] == edition["limits"]
 
 
 def test_the_hosted_edition_locks_only_settings_for_one_of_the_two_reasons() -> None:
@@ -98,6 +100,26 @@ async def test_a_server_given_the_hosted_locks_answers_them() -> None:
     _, data = await _call(server, "GET", "/api/settings")
 
     assert data["locked"] == CASES["editions"]["hosted"]["locked"]
+    # Its limits are its own, whatever it locks.
+    assert data["limits"] == CASES["editions"]["self_hosted"]["limits"]
+
+
+async def _holds_to(server: TriageServer, settings: FakeSettings, path: str, case: dict) -> None:
+    """`case`'s request to `path` gets its answer here, or the one it names for this edition."""
+    expected = case.get("self_hosted", case)
+    status, answer = await _call(server, "POST", path, case["body"])
+
+    assert status == expected["status"], answer
+    if "refuses" in expected:
+        assert answer["ok"] is False and answer["field"] == expected["refuses"], answer
+    else:
+        assert answer == expected["answer"]
+    if status != 200:
+        assert settings.calls == []
+        return
+    _, data = await _call(server, "GET", "/api/settings")
+    reads_back = expected.get("reads_back", {})
+    assert {key: data["values"][key] for key in reads_back} == reads_back
 
 
 @pytest.mark.parametrize("case", CASES["writes"], ids=lambda case: case["name"])
@@ -105,14 +127,24 @@ async def test_a_values_write_gets_the_answer_the_hosted_worker_gives(case) -> N
     settings = FakeSettings()
     server = TriageServer(settings=settings, values=STORED, locked=HOSTED_LOCKS)
 
-    status, answer = await _call(server, "POST", "/api/settings/values", case["body"])
+    await _holds_to(server, settings, "/api/settings/values", case)
 
-    assert (status, answer) == (case["status"], case["answer"])
-    if case["status"] != 200:
-        assert settings.calls == []
-        return
-    _, data = await _call(server, "GET", "/api/settings")
-    assert {key: data["values"][key] for key in case["reads_back"]} == case["reads_back"]
+
+@pytest.mark.parametrize("case", CASES["schedules"], ids=lambda case: case["name"])
+async def test_a_schedule_write_gets_the_answer_the_hosted_worker_gives(case) -> None:
+    settings = FakeSettings()
+    server = TriageServer(settings=settings, values=STORED, locked=HOSTED_LOCKS)
+
+    await _holds_to(server, settings, "/api/settings/schedule", case)
+
+
+@pytest.mark.parametrize("case", CASES["route_locks"], ids=lambda case: case["name"])
+async def test_a_route_refuses_only_a_change_to_a_locked_key(case) -> None:
+    settings = FakeSettings()
+    values = {**STORED, **case["stored"]}
+    server = TriageServer(settings=settings, values=values, locked=case["locked"])
+
+    await _holds_to(server, settings, case["path"], case)
 
 
 @pytest.mark.parametrize("case", CASES["pins"], ids=lambda case: case["name"])

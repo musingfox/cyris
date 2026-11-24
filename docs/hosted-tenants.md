@@ -802,10 +802,12 @@ not.
 `/settings`, the same page and script, rendered into the committed
 `workers/app/src/shared_settings.build.json` that step 1 deploys, with the keys the hosted policy
 keeps from a tenant locked ([ADR-0043](decisions/0043-one-settings-page-an-edition-locks-a-key.md)).
-It is the edition-parity plan's first milestone, and a stub: nothing links it, the page above stays
-the one the digest pages link, and of the keys a tenant writes only the output language saves here.
-Every other control is disabled with the line `Set by the service's operator.`, and Sources
-and Tracking are empty and read-only. Its site bar shows the brand alone.
+It is a stub of the edition-parity plan: nothing links it, and the page above stays the one the
+digest pages link. It saves what that page saves, the eight keys and the schedule's hours and zone,
+which go to the registry as that page's do; every other control is disabled with the line `Set by
+the service's operator.`, and a second publish hour, for a tenant allowed one, with `Not included in
+your plan.` ([ADR-0047](decisions/0047-a-route-refuses-a-change-to-a-locked-key.md)). Sources lists,
+adds and deletes the tenant's RSS sources under that page's rules; Tracking is empty and read-only. Its site bar shows the brand alone.
 
 To check it on a trial tenant, after a deploy that built the page:
 
@@ -813,19 +815,23 @@ To check it on a trial tenant, after a deploy that built the page:
    on Model, in the language of alpha's output language.
 2. Under Provider, `anthropic` is the one choice, selected and disabled; Model reads
    `claude-haiku-5-5` and is disabled. Each has the line `Set by the service's operator.` under its
-   name, and Save stays disabled.
-3. Open Digest. Output language is the one control not disabled. Choose another language, such as
-   `繁體中文 (Traditional Chinese)`, and press Save: the notice names the saved value and says it is
-   effective next run.
-4. Reload. The page is now worded in that language and the select shows it.
+   name, no line promises a call to the provider, and Save stays disabled. `anthropic` reads `key
+   ready` only if `ANTHROPIC_API_KEY` is set on the Worker (`scripts/hosted.sh secrets`).
+3. Open Digest. Morning is a select of whole hours showing alpha's publish hour; for a tenant allowed
+   one, Evening is disabled with `Not included in your plan.`. Choose another morning hour and
+   another output language, such as `繁體中文 (Traditional Chinese)`, and press Save: the notice
+   names the hour, effective next tick, and the saved value, effective next run.
+4. Reload. The page is now worded in that language, and the selects show what was saved.
 5. As the operator, read it back: `POST /hosted/tenants/alpha/query` with `{"sql": "SELECT value
-   FROM settings WHERE key = 'digest.output_language'"}` answers `"zh-Hant"`.
-6. Set the language back on either page, and open `HOSTED_URL/t/alpha/settings`: the hosted page is
-   unchanged.
+   FROM settings WHERE key = 'digest.output_language'"}` answers `"zh-Hant"`, and the same query for
+   `general.digest_schedule` answers the new hour, the registry's schedule copied into the tenant.
+6. Open Pipeline: Articles per run refuses a value past 400.
+7. Set the language and the hour back on either page, and open `HOSTED_URL/t/alpha/settings`: the
+   hosted page is unchanged.
 
-A save refused with a 403 and `Access is not set up for this deployment` means the browser sent the
-save without this Worker's `Origin`; the browser's console names any script or style the page's
-policy refused.
+A save refused with `This save was refused: it did not come from this settings page.` means the
+browser sent the save without this Worker's `Origin`; the browser's console names any script or
+style the page's policy refused.
 
 ## 11. Back up every tenant daily, and drill a restore
 

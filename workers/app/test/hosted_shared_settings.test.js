@@ -3,22 +3,24 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { env } from "cloudflare:workers";
 import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json" with { type: "json" };
-import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json" with { type: "json" };
-import SEED from "../src/hosted_seed.json" with { type: "json" };
-import BUILT from "../src/shared_settings.build.json" with { type: "json" };
 import EN from "../../../src/cyris/locales/en.json" with { type: "json" };
 import ZH_HANT from "../../../src/cyris/locales/zh-Hant.json" with { type: "json" };
+import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json" with { type: "json" };
+import SEED from "../src/hosted_seed.json" with { type: "json" };
+import POLICY from "../src/hosted_settings_policy.json" with { type: "json" };
+import BUILT from "../src/shared_settings.build.json" with { type: "json" };
 import RULES from "../../../src/cyris/feed_health_rules.json" with { type: "json" };
 import worker from "../src/hosted.js";
 import { seedTenant } from "../src/hosted_seed.js";
 import { QUIET_DAYS, UNHEALTHY_FAILURE_STREAK, findings } from "../src/hosted_feed_health.js";
-import { hostedValues, isSharedPath, sharedPagePolicy } from "../src/hosted_shared_settings.js";
-import POLICY from "../src/hosted_settings_policy.json" with { type: "json" };
+import { refusalText, translator } from "../src/hosted_settings.js";
+import { checkSettings } from "../src/hosted_settings_rules.js";
+import { handleSharedSettings, hostedValues, isSharedPath, sharedPagePolicy } from "../src/hosted_shared_settings.js";
 import { SESSION_COOKIE } from "../src/hosted_session.js";
 import { tenantRegistry } from "../src/tenant_registry.js";
 import CASES from "./shared_settings_cases.json" with { type: "json" };
-import SOURCE_RULES from "./hosted_settings_cases.json" with { type: "json" };
-import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace, registryNamespace } from "./sql_storage.js";
+import RULE_CASES from "./hosted_settings_cases.json" with { type: "json" };
+import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace, registryNamespace, tenantDb } from "./sql_storage.js";
 
 // The shared settings page on the hosted Worker (ADR-0043): built from settings.html.j2, served
 // to a session under its own policy, and answering the contract TriageServer answers, from the
@@ -96,6 +98,8 @@ async function signIn(email = "ana@example.com") {
 
 // A save from the page itself: a same-origin fetch, which carries the page's Origin.
 const save = (session, body, headers = { Origin: ORIGIN }) => call("/api/settings/values", { method: "POST", session, headers, body });
+const saveHours = (session, body, headers = { Origin: ORIGIN }) => call("/api/settings/schedule", { method: "POST", session, headers, body });
+const settingsOf = (tenant) => bound.TENANT_DB.getByName(tenant).settings();
 const rowsOf = async (tenant) =>
   (await bound.TENANT_DB.getByName(tenant).query("SELECT key, value FROM settings ORDER BY key")).rows;
 const sha256 = (text) => `sha256-${createHash("sha256").update(text, "utf8").digest("base64")}`;
@@ -228,13 +232,44 @@ describe("GET /api/settings on the hosted Worker", () => {
     expect(data.writable).toBe(true);
   });
 
-  it("locks every key but the open one, each for its reason", async () => {
+  it("locks every key no tenant writes, for the operator, and opens the policy's and the schedule", async () => {
     const session = await signIn();
 
     const data = await (await call("/api/settings", { session })).json();
 
     expect(data.locked).toEqual(CASES.editions.hosted.locked);
+    for (const key of [...POLICY.writable_settings, "general.digest_schedule", "general.timezone"]) expect(data.locked).not.toHaveProperty(key);
     expect(data.missing.filter((key) => !(key in data.locked))).toEqual([]);
+  });
+
+  it("names the tenant's limits: the registry's most digest times, and the policy's article cap", async () => {
+    const session = await signIn();
+
+    const one = await (await call("/api/settings", { session })).json();
+    await tenantRegistry(env).setSchedule("alpha", { times: ["07:00"], timeZone: "Asia/Taipei", maxDigestTimes: 2 });
+    const two = await (await call("/api/settings", { session })).json();
+
+    expect(one.limits).toEqual(CASES.editions.hosted.limits);
+    expect(two.limits).toEqual({ ...CASES.editions.hosted.limits, digest_times_max: 2 });
+  });
+
+  it("names a provider's key ready only when the operator set every variable its run is handed", async () => {
+    const session = await signIn();
+    const embedder = STARTING_VALUES["vote_similarity.provider"];
+    const [llmVariable] = BUILT.key_env.providers[POLICY.provider];
+    const embedderVariables = BUILT.key_env.embedding_providers[embedder];
+
+    const unset = await (await call("/api/settings", { session })).json();
+    Object.assign(env, { [llmVariable]: "sk-operator", [embedderVariables[0]]: "cf-operator" });
+    const partly = await (await call("/api/settings", { session })).json();
+    for (const variable of embedderVariables) env[variable] = "set";
+    const set = await (await call("/api/settings", { session })).json();
+
+    expect(unset.providers).toEqual([{ name: POLICY.provider, env_var: llmVariable, default_model: POLICY.model, configured: false }]);
+    expect(unset.embedding_providers.map(({ env_var: name, configured }) => [name, configured])).toEqual([[embedderVariables[0], false]]);
+    expect(partly.providers[0].configured).toBe(true);
+    expect(partly.embedding_providers[0].configured).toBe(embedderVariables.length === 1);
+    expect(set.embedding_providers[0].configured).toBe(true);
   });
 
   it("shows the provider and model the run is pinned to, and the registry's schedule", async () => {
@@ -299,21 +334,149 @@ describe("GET /api/settings on the hosted Worker", () => {
   });
 });
 
+// The registry's row of `tenant`, as a save could change it.
+const registryOf = async (tenant) => {
+  const { digest_times: times, timezone, daily_run_cap: cap, max_digest_times: most } = await tenantRegistry(env).tenant(tenant);
+  return { times, timezone, cap, most };
+};
+
+// One case of the shared file against the hosted Worker: its status and answer, or the field a
+// refusal names; nothing written when refused, and what it saved read back.
+async function holdsTo(session, response, { status, answer, refuses, reads_back: readsBack = {} }, before) {
+  const got = await response.json();
+  expect(response.status, JSON.stringify(got)).toBe(status);
+  if (refuses) expect(got).toMatchObject({ ok: false, field: refuses });
+  else expect(got).toEqual(answer);
+  if (status !== 200) {
+    expect(await rowsOf("alpha")).toEqual(before.rows);
+    expect(await registryOf("alpha")).toEqual(before.registry);
+    return;
+  }
+  const { values } = await (await call("/api/settings", { session })).json();
+  expect(Object.fromEntries(Object.keys(readsBack).map((key) => [key, values[key]]))).toEqual(readsBack);
+}
+
+const stateOf = async (tenant) => ({ rows: await rowsOf(tenant), registry: await registryOf(tenant) });
+
 describe("POST /api/settings/values on the hosted Worker", () => {
-  it.each(CASES.writes)("gives TriageServer's answer: $name", async ({ body, status, answer, reads_back: readsBack }) => {
+  it.each(CASES.writes)("gives TriageServer's answer: $name", async (written) => {
     const session = await signIn();
-    const before = await rowsOf("alpha");
+    const before = await stateOf("alpha");
 
-    const response = await save(session, body);
+    await holdsTo(session, await save(session, written.body), written, before);
+  });
 
-    expect(response.status).toBe(status);
-    expect(await response.json()).toEqual(answer);
-    if (status !== 200) {
+  it.each(RULE_CASES.settings.accepted)("takes $key = $value, as the hosted page does", async ({ key, value }) => {
+    const session = await signIn();
+
+    const response = await save(session, { values: { [key]: value } });
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).values).toEqual({ [key]: value });
+  });
+
+  it.each(RULE_CASES.settings.refused.filter(({ key }) => POLICY.writable_settings.includes(key)))(
+    "refuses $key = $value, as the hosted page does, in its words",
+    async ({ key, value, reason }) => {
+      const session = await signIn();
+      const before = await rowsOf("alpha");
+      const refusal = checkSettings({ [key]: value }).refused;
+
+      const response = await save(session, { values: { [key]: value } });
+
+      expect(refusal.reason).toBe(reason);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ ok: false, field: key, error: refusalText(translator("en"), refusal) });
       expect(await rowsOf("alpha")).toEqual(before);
-      return;
+    },
+  );
+
+  it("takes JSON's own types only: a number or a switch in a string is refused", async () => {
+    const session = await signIn();
+
+    for (const [key, value] of [["digest.max_articles_per_digest", "5"], ["digest.rank_by_preference", "true"]]) {
+      const response = await save(session, { values: { [key]: value } });
+      expect(response.status).toBe(400);
+      expect((await response.json()).field).toBe(key);
     }
-    const { values } = await (await call("/api/settings", { session })).json();
-    expect(Object.fromEntries(Object.keys(readsBack).map((key) => [key, values[key]]))).toEqual(readsBack);
+  });
+
+  it("refuses an article cap above the policy's, naming the field and its bounds", async () => {
+    const session = await signIn();
+
+    const response = await save(session, { values: { "digest.max_articles_per_digest": POLICY.max_articles_per_digest + 1 } });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toBe(`${EN["settings_field.digest.max_articles_per_digest"]} is a whole number from 1 to ${POLICY.max_articles_per_digest}.`);
+  });
+
+  it.each(["__proto__", "constructor", "hasOwnProperty", "toString", "valueOf", "max_digest_times", "daily_run_cap", "monthly_ai_budget_usd"])(
+    "refuses %s as no setting, writing nothing",
+    async (key) => {
+      const session = await signIn();
+      const before = await stateOf("alpha");
+
+      const response = await save(session, { values: { "digest.style_prompt": "x", [key]: 2 } });
+
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ ok: false, error: `'${key}' is not a setting` });
+      expect(await stateOf("alpha")).toEqual(before);
+    },
+  );
+
+  it("refuses a body that names no values, or not as an object", async () => {
+    const session = await signIn();
+
+    for (const body of [{}, { values: null }, { values: [] }, { values: "x" }, { values: 5 }, { values: {} }]) {
+      const response = await save(session, body);
+      expect(response.status).toBe(400);
+      expect(await response.json()).toEqual({ ok: false, error: EN["settings_api.values_empty"] });
+    }
+  });
+
+  it("words a refusal in the tenant's own catalog", async () => {
+    const session = await signIn();
+    await save(session, { values: { "digest.output_language": "zh-Hant" } });
+
+    const response = await save(session, { values: { "llm_provider.provider": "gemini" } });
+
+    const label = ZH_HANT["settings_field.llm_provider.provider"].text;
+    const reason = ZH_HANT["lock_reason.operator-set"].text;
+    expect((await response.json()).error).toBe(ZH_HANT["settings_api.locked"].text.replace("{$label}", label).replace("{$reason}", reason));
+  });
+
+  it("writes the zone through the registry, keeps its hours and the operator's run cap, and copies it to the tenant", async () => {
+    const session = await signIn();
+    const held = await registryOf("alpha");
+
+    const response = await save(session, { values: { "general.timezone": "Europe/Paris" } });
+
+    expect(response.status).toBe(200);
+    expect(await registryOf("alpha")).toEqual({ ...held, timezone: "Europe/Paris" });
+    expect(await settingsOf("alpha")).toMatchObject({ "general.digest_schedule": ["07:00"], "general.timezone": "Europe/Paris" });
+    expect((await registryOf("bravo")).timezone).toBe("Asia/Taipei");
+  });
+
+  it("refuses a zone the registry would not take, writing nothing", async () => {
+    const session = await signIn();
+    const before = await stateOf("alpha");
+
+    const response = await save(session, { values: { "general.timezone": "+08:00", "digest.style_prompt": "Short." } });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ ok: false, field: "general.timezone", error: EN["hosted_settings.refused_time_zone"].replace("{$zone}", "+08:00") });
+    expect(await stateOf("alpha")).toEqual(before);
+  });
+
+  it("names no tenant from the body but the session's", async () => {
+    const session = await signIn();
+    const bravo = await stateOf("bravo");
+
+    const response = await save(session, { tenant: "bravo", values: { "digest.style_prompt": "From alpha" } });
+
+    expect(response.status).toBe(200);
+    expect((await settingsOf("alpha"))["digest.style_prompt"]).toBe("From alpha");
+    expect(await stateOf("bravo")).toEqual(bravo);
   });
 
   it("writes the session's tenant's own settings, and no other's", async () => {
@@ -345,6 +508,38 @@ describe("POST /api/settings/values on the hosted Worker", () => {
     expect(await rowsOf("alpha")).toEqual(before);
   });
 
+  it.each([
+    ["no Origin", {}],
+    ["Origin null", { Origin: "null" }],
+    ["another site's Origin", { Origin: "https://evil.example" }],
+    ["this Origin from another site", { Origin: ORIGIN, "Sec-Fetch-Site": "cross-site" }],
+  ])("refuses a save with %s, saying why as TriageServer marks it, writing nothing", async (_name, headers) => {
+    const session = await signIn();
+    const before = await stateOf("alpha");
+
+    for (const response of [
+      await save(session, { values: { "digest.style_prompt": "Forged", "general.timezone": "Europe/Paris" } }, headers),
+      await saveHours(session, { times: ["03:00"] }, headers),
+    ]) {
+      expect(response.status).toBe(403);
+      expect(await response.json()).toEqual({ ok: false, error: EN["hosted_settings.refused_cross_origin"], reason: "cross_origin" });
+    }
+    expect(await stateOf("alpha")).toEqual(before);
+  });
+
+  it("refuses a body over the policy's size unread, and one that is not JSON", async () => {
+    const session = await signIn();
+
+    for (const path of ["/api/settings/values", "/api/settings/schedule"]) {
+      const big = await call(path, { method: "POST", session, headers: { Origin: ORIGIN }, body: { values: { "digest.style_prompt": "x".repeat(POLICY.max_body_bytes) } } });
+      const junk = await call(path, { method: "POST", session, headers: { Origin: ORIGIN }, raw: "digest.style_prompt=x" });
+
+      expect(big.status).toBe(413);
+      expect(junk.status).toBe(400);
+      expect((await junk.json()).error).toBe(EN["hosted_settings.refused_body"]);
+    }
+  });
+
   it("refuses a value the run would refuse", async () => {
     const session = await signIn();
 
@@ -353,6 +548,137 @@ describe("POST /api/settings/values on the hosted Worker", () => {
     expect(response.status).toBe(400);
     expect((await response.json()).field).toBe("digest.output_language");
   });
+});
+
+describe("POST /api/settings/schedule on the hosted Worker", () => {
+  it.each(CASES.schedules)("gives TriageServer's answer: $name", async (scheduled) => {
+    await tenantRegistry(env).setSchedule("alpha", { times: ["07:00"], timeZone: "Asia/Taipei", maxDigestTimes: scheduled.max_digest_times });
+    const session = await signIn();
+    const before = await stateOf("alpha");
+
+    await holdsTo(session, await saveHours(session, scheduled.body), scheduled, before);
+  });
+
+  it("writes the hours through the registry, keeps its zone and the operator's run cap, and copies them to the tenant", async () => {
+    await tenantRegistry(env).setSchedule("alpha", { times: ["07:00"], timeZone: "Asia/Taipei", maxDigestTimes: 2, dailyRunCap: 6 });
+    const session = await signIn();
+
+    const response = await saveHours(session, { times: ["06:00", "18:00"] });
+
+    expect(response.status).toBe(200);
+    expect(await registryOf("alpha")).toEqual({ times: '["06:00","18:00"]', timezone: "Asia/Taipei", cap: 6, most: 2 });
+    expect(await settingsOf("alpha")).toMatchObject({ "general.digest_schedule": ["06:00", "18:00"], "general.timezone": "Asia/Taipei" });
+    expect((await registryOf("bravo")).times).toBe('["07:00"]');
+  });
+
+  it("takes one hour from a tenant allowed one, and refuses two, writing nothing; a reader cannot raise its maximum", async () => {
+    const session = await signIn();
+
+    const two = await saveHours(session, { times: ["06:00", "18:00"] });
+    const kept = await registryOf("alpha");
+    const one = await saveHours(session, { times: ["06:00"] });
+
+    expect(two.status).toBe(400);
+    expect(kept).toMatchObject({ times: '["07:00"]', most: 1 });
+    expect(one.status).toBe(200);
+    expect(await registryOf("alpha")).toMatchObject({ times: '["06:00"]', most: 1 });
+    expect(await settingsOf("alpha")).toMatchObject({ "general.digest_schedule": ["06:00"] });
+    expect((await save(session, { values: { max_digest_times: 2 } })).status).toBe(400);
+    expect((await registryOf("alpha")).most).toBe(1);
+  });
+
+  it("refuses hours sent as a settings value, which have their own route", async () => {
+    const session = await signIn();
+
+    const response = await save(session, { values: { "general.digest_schedule": ["06:00"] } });
+
+    expect(response.status).toBe(400);
+    expect((await registryOf("alpha")).times).toBe('["07:00"]');
+  });
+
+  it("takes POST only", async () => {
+    const session = await signIn();
+
+    expect((await call("/api/settings/schedule", { session })).status).toBe(405);
+  });
+});
+
+// A save straight to the shared settings handler over a seeded tenant's object, with a registry
+// whose schedule writes the test sees and can refuse.
+describe("a shared save that writes settings rows and the zone", () => {
+  const SCHEDULE = { times: ["08:00", "20:00"], timeZone: "UTC" };
+  const body = { values: { "digest.style_prompt": "Short.", "general.timezone": "Asia/Taipei" } };
+  const post = (deps, path = "/api/settings/values", sent = body) =>
+    handleSharedSettings(
+      new Request(`${ORIGIN}${path}`, { method: "POST", headers: { Origin: ORIGIN, "Content-Type": "application/json" }, body: JSON.stringify(sent) }),
+      { path, registryRow: () => ({ digest_times: JSON.stringify(SCHEDULE.times), timezone: SCHEDULE.timeZone, max_digest_times: 2 }), ...deps },
+    );
+  const seeded = async () => {
+    const { db } = tenantDb();
+    await seedTenant({ db, tenant: "alpha", schemaSql: SCHEMA_SQL, hostedSchemaSql: HOSTED_SCHEMA_SQL, startingValues: STARTING_VALUES, seed: SEED, catalog: FEED_CATALOG, schedule: SCHEDULE });
+    return db;
+  };
+  const rows = (db) => db.query("SELECT key, value FROM settings ORDER BY key").rows;
+
+  it("writes no row when the registry refuses the zone", async () => {
+    const db = await seeded();
+    const before = rows(db);
+
+    const answer = await post({ db, setSchedule: async () => ({ refused: "alpha is not a registered tenant" }) });
+
+    expect(answer.status).toBe(400);
+    expect((await answer.json()).field).toBe("general.timezone");
+    expect(rows(db)).toEqual(before);
+  });
+
+  it("puts the registry's schedule back when the rows are refused", async () => {
+    const db = await seeded();
+    const written = [];
+    const refusing = { settings: (keys) => db.settings(keys), saveSettings: () => ({ refused: "not_seeded", status: 409 }) };
+
+    const answer = await post({ db: refusing, setSchedule: async (schedule) => (written.push(schedule), {}) });
+
+    expect(answer.status).toBe(409);
+    expect(written).toEqual([{ times: SCHEDULE.times, timeZone: "Asia/Taipei" }, SCHEDULE]);
+  });
+
+  it("writes no schedule for a tenant never seeded", async () => {
+    const written = [];
+    const unseeded = { settings: () => null, saveSettings: () => ({ refused: "not_seeded", status: 409 }) };
+
+    for (const [path, sent] of [["/api/settings/values", body], ["/api/settings/schedule", { times: ["06:00"] }]]) {
+      const answer = await post({ db: unseeded, registryRow: () => ({}), setSchedule: async (schedule) => (written.push(schedule), {}) }, path, sent);
+      expect(answer.status).toBe(409);
+    }
+    expect(written).toEqual([]);
+  });
+
+  it("puts the registry's schedule back when writing the rows throws", async () => {
+    const db = await seeded();
+    const written = [];
+    const throwing = { settings: (keys) => db.settings(keys), saveSettings: () => { throw new Error("storage reset"); } };
+
+    await expect(post({ db: throwing, setSchedule: async (schedule) => (written.push(schedule), {}) })).rejects.toThrow("storage reset");
+
+    expect(written).toEqual([{ times: SCHEDULE.times, timeZone: "Asia/Taipei" }, SCHEDULE]);
+  });
+
+  // The route-level lock rule TriageServer's routes keep, on the routes this Worker answers.
+  it.each(CASES.route_locks.filter(({ path }) => path === "/api/settings/schedule"))(
+    "refuses only a change to a locked key: $name",
+    async ({ locked, stored, body: sent, status, answer }) => {
+      const db = await seeded();
+      const written = [];
+      const locks = Object.fromEntries(Object.entries(locked).map(([key, reason]) => [key, { reason }]));
+      const registryRow = () => ({ digest_times: JSON.stringify(stored["general.digest_schedule"]), timezone: "UTC", max_digest_times: 2 });
+
+      const response = await post({ db, registryRow, locks, setSchedule: async (schedule) => (written.push(schedule), {}) }, "/api/settings/schedule", sent);
+
+      expect(response.status).toBe(status);
+      expect(await response.json()).toEqual(answer);
+      expect(written.length).toBe(status === 200 ? 1 : 0);
+    },
+  );
 });
 
 describe("the tabs this milestone leaves empty", () => {
@@ -491,7 +817,7 @@ describe("the Sources tab: what a hosted tenant is held to", () => {
     expect(await sourceRows("bravo")).toEqual(bravo);
   });
 
-  it.each(SOURCE_RULES.sources.written)("writes $body.name as the hosted page writes it", async ({ body, row }) => {
+  it.each(RULE_CASES.sources.written)("writes $body.name as the hosted page writes it", async ({ body, row }) => {
     const session = await signIn();
 
     const answer = await sourceCall(session, "POST", "/api/sources", body);
@@ -501,7 +827,7 @@ describe("the Sources tab: what a hosted tenant is held to", () => {
     expect({ ...kept, config: JSON.parse(kept.config) }).toEqual(row);
   });
 
-  it.each(SOURCE_RULES.sources.refused)("refuses $body.name as $reason, as the hosted page does", async ({ body, reason }) => {
+  it.each(RULE_CASES.sources.refused)("refuses $body.name as $reason, as the hosted page does", async ({ body, reason }) => {
     const session = await signIn();
     const before = await sourceRows("alpha");
 

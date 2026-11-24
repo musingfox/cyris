@@ -138,8 +138,9 @@
               <span class="label">{{ t("settings_field.general.digest_schedule") }}</span>
               <p class="small">{{ t("settings.hours_hint") }}</p>
               <div class="field-row">
-                <div class="field"><label class="small" for="morning">{{ t("settings_option.schedule_morning") }}</label><input class="input narrow" id="morning" type="number" min="0" max="23" autocomplete="off"></div>
-                <div class="field"><label class="small" for="evening">{{ t("settings_option.schedule_evening") }}</label><input class="input narrow" id="evening" type="number" min="0" max="23" autocomplete="off"></div>
+                {% set hours %}{% for hour in range(24) %}<option value="{{ hour }}">{{ "%02d:00" | format(hour) }}</option>{% endfor %}{% endset %}
+                <div class="field"><label class="small" for="morning">{{ t("settings_option.schedule_morning") }}</label><select class="select narrow" id="morning">{{ hours }}</select></div>
+                <div class="field"><label class="small" for="evening">{{ t("settings_option.schedule_evening") }}</label><select class="select narrow" id="evening">{{ hours }}</select></div>
               </div>
               <div class="notice err" id="hours-error" data-field-error hidden></div>
             </div>

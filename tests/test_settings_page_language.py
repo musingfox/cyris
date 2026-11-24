@@ -25,6 +25,8 @@ VALUE_SHAPES = {
     "from:hi@example.com",
     "cyris vote-sim",
     "cyris topic-sim",
+    # The hour selects' options, each a time of day.
+    *(f"{hour:02d}:00" for hour in range(24)),
 }
 
 

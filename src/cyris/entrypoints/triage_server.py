@@ -55,6 +55,11 @@ def _keys_on(route: str) -> tuple[str, ...]:
     return tuple(key for key, field in SETTINGS_FIELDS.items() if field["route"] == route)
 
 
+# The model providers whose REST paths are per account, so a run needs the account's id too.
+ACCOUNT_PROVIDERS: tuple[str, ...] = ("workers_ai", "ai_gateway")
+ACCOUNT_ID_ENV = "CLOUDFLARE_ACCOUNT_ID"
+
+
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 # One path segment naming a digest page; `/<name>` and `/<name>.html` both serve
@@ -72,6 +77,8 @@ NO_PAGES_WRITTEN = (
     "and run `cyris run --period morning`."
 )
 TYPE_SCALE_KEY = "digest.type_scale"
+SCHEDULE_KEY = "general.digest_schedule"
+WEBHOOK_KEY = "notify.discord_webhook_url"
 OUTPUT_LANGUAGE_KEY = "digest.output_language"
 # The steps `DigestConfig.type_scale` allows; the app Worker's own list is `type_scale.js`'s.
 TYPE_SCALES = tuple(get_args(DigestConfig.model_fields["type_scale"].annotation))
@@ -110,6 +117,30 @@ def sent_as_shown() -> list[str]:
     The hosted Worker answers the list `scripts/build_shared_settings.py` builds from this.
     """
     return [key for key in SETTINGS_FIELDS if _accepts_empty(key) or _shows_starting_select(key)]
+
+
+def key_env() -> dict[str, dict[str, list[str]]]:
+    """The environment variables each provider needs set, by provider, first the one a missing
+    key is named by: every model provider's and every embedder's, as `GET /api/settings` reads
+    them to answer `configured`.
+
+    The hosted Worker answers `configured` from which of these its operator set, from the copy
+    `scripts/build_shared_settings.py` builds from this.
+    """
+    from cyris.bootstrap import EMBEDDING_ENV, default_models
+    from cyris.config import LLMProviderConfig
+
+    providers = {
+        name: [
+            LLMProviderConfig.model_construct(provider=name).api_key_env_var,
+            *([ACCOUNT_ID_ENV] if name in ACCOUNT_PROVIDERS else []),
+        ]
+        for name in default_models()
+    }
+    return {
+        "providers": providers,
+        "embedding_providers": {name: list(env) for name, env in EMBEDDING_ENV.items()},
+    }
 
 
 def _refused(error: str, field: str) -> web.Response:
@@ -208,7 +239,9 @@ SETTINGS_SCRIPT_MESSAGES: tuple[str, ...] = (
     "settings.confirm_remove",
     "settings.confirm_retire",
     "settings.confirm_turn_off",
+    "settings.cross_origin",
     "settings.editing",
+    "settings.hour_saved",
     "settings.hours_need",
     "settings.hours_not_saved",
     "settings.hours_saved",
@@ -254,6 +287,7 @@ SETTINGS_SCRIPT_MESSAGES: tuple[str, ...] = (
     "settings.turning_off",
     "settings.unreachable",
     "settings.value_empty",
+    "settings_option.schedule_none",
     *(f"source_type.{source_type}" for source_type in get_args(SourceType)),
     *(f"lock_reason.{reason}" for reason in get_args(LockReason)),
 )
@@ -508,8 +542,16 @@ def _same_origin(origin: str, host: tuple[str, int | None], scheme: str) -> bool
     )
 
 
-def _forbidden(error: str) -> web.Response:
-    return web.json_response({"ok": False, "error": error}, status=403)
+# A 403's `reason` for a write that came from no page of this server's (`_forbidden`), as the
+# hosted Worker marks its own (hosted_shared_settings.js).
+CROSS_ORIGIN = "cross_origin"
+
+
+def _forbidden(error: str, reason: str | None = None) -> web.Response:
+    """A 403. `reason` `cross_origin` marks a write from no page of this server's, which the
+    settings page words from its own catalog; any other 403 is shown as `error` says."""
+    body = {"ok": False, "error": error, **({"reason": reason} if reason else {})}
+    return web.json_response(body, status=403)
 
 
 def _refuse_foreign_requests(bound: str) -> Callable[..., Awaitable[web.StreamResponse]]:
@@ -543,7 +585,8 @@ def _refuse_foreign_requests(bound: str) -> Callable[..., Awaitable[web.StreamRe
                 logger.warning("Refused %s %s: Origin %r", request.method, request.path, origin)
                 return _forbidden(
                     f"Refused: a write from Origin {origin!r} cannot reach {raw_host}, "
-                    f"because only a page this server serves may write to it."
+                    f"because only a page this server serves may write to it.",
+                    CROSS_ORIGIN,
                 )
             site = request.headers.get("Sec-Fetch-Site", "").lower()
             if site in REFUSED_FETCH_SITES:
@@ -552,7 +595,8 @@ def _refuse_foreign_requests(bound: str) -> Callable[..., Awaitable[web.StreamRe
                 )
                 return _forbidden(
                     f"Refused: the browser marked this write Sec-Fetch-Site {site!r}, "
-                    f"and only a page this server serves may write to it."
+                    f"and only a page this server serves may write to it.",
+                    CROSS_ORIGIN,
                 )
         return await handler(request)
 
@@ -739,6 +783,7 @@ class TriageServer:
         )
         from cyris.config import GRADE_D_KEYS, LLMProviderConfig
         from cyris.service_layer.prompts import _language_names
+        from cyris.service_layer.schedule import SELF_HOSTED_TIMES
 
         values = {key: self._values.get(key) for key in GRADE_D_KEYS}
         webhook = values["notify.discord_webhook_url"]
@@ -751,7 +796,7 @@ class TriageServer:
             # `configured` reflects what a run would actually find, not a guess.
             probe_cfg = LLMProviderConfig(provider=name, model="")
             ready = bool(probe_cfg.api_key) and (
-                bool(probe_cfg.account_id) if name in ("workers_ai", "ai_gateway") else True
+                bool(probe_cfg.account_id) if name in ACCOUNT_PROVIDERS else True
             )
             providers.append(
                 {
@@ -797,6 +842,14 @@ class TriageServer:
                 # Each key this edition locks, and why: the page disables its controls and
                 # shows the reason (ADR-0043).
                 "locked": {key: {"reason": reason} for key, reason in self._locked.items()},
+                # What this edition lets a reader set: as few and as many digest times as a
+                # self-hosted schedule holds, and an article cap the field itself bounds by
+                # none (`DigestConfig`). The hosted Worker answers its tenant's.
+                "limits": {
+                    "digest_times_min": min(SELF_HOSTED_TIMES),
+                    "digest_times_max": max(SELF_HOSTED_TIMES),
+                    "max_articles_per_digest_max": None,
+                },
             }
         )
 
@@ -807,6 +860,18 @@ class TriageServer:
                 why = t(f"lock_reason.{reason}")
                 return _refused(t("settings_api.locked", label=_label(t, key), reason=why), key)
         return None
+
+    def _refuse_locked_changes(self, t: Translator, sent: Mapping[str, Any]) -> web.Response | None:
+        """The 400 for the first locked key whose value `sent` changes, or None.
+
+        `sent` is what the route would store for each key it saves, after any rule of its own
+        that rewrites a value (none's empty model), so no request changes a locked key's value.
+
+        A route that saves several keys at once refuses only a change to a locked one: sent as
+        it is held, a locked key is no change, so a lock on one key leaves the route's others
+        writable, as `/api/settings/values` leaves every key a save does not name.
+        """
+        return self._refuse_locked(t, [k for k, v in sent.items() if v != self._values.get(k)])
 
     def _ui_language(self, request: web.Request) -> str:
         """The catalog this deployment's own pages and errors are worded from.
@@ -864,10 +929,13 @@ class TriageServer:
             return body
 
         t = self._translator(request)
-        if (refused := self._refuse_locked(t, _keys_on("llm"))) is not None:
-            return refused
         provider = (body.get("provider") or "").strip()
-        model = (body.get("model") or "").strip()
+        # Nothing to call with none, and a leftover model must not outlive its provider. Decided
+        # before the lock check, so the check sees what the route would store.
+        model = "" if provider == "none" else (body.get("model") or "").strip()
+        stored = {"llm_provider.provider": provider, "llm_provider.model": model}
+        if (refused := self._refuse_locked_changes(t, stored)) is not None:
+            return refused
         try:
             candidate = LLMProviderConfig(
                 provider=provider,
@@ -880,8 +948,6 @@ class TriageServer:
             )
 
         if provider == "none":
-            # Nothing to call, and a leftover model must not outlive its provider.
-            model = ""
             detail = t("settings.model_hint_none")
         else:
             probe = await probe_llm(candidate)
@@ -955,12 +1021,13 @@ class TriageServer:
         body = await self._settings_body(request)
         if isinstance(body, web.Response):
             return body
-        locked = self._refuse_locked(self._translator(request), _keys_on("schedule"))
+        sent = [str(t).strip() for t in body.get("times") or []]
+        locked = self._refuse_locked_changes(self._translator(request), {SCHEDULE_KEY: sent})
         if locked is not None:
             return locked
 
         try:
-            times = validate_schedule([str(t).strip() for t in body.get("times") or []])
+            times = validate_schedule(sent)
         except ValueError as e:
             return _refused(str(e), "general.digest_schedule")
 
@@ -1047,7 +1114,8 @@ class TriageServer:
         if isinstance(body, web.Response):
             return body
         t = self._translator(request)
-        if (refused := self._refuse_locked(t, _keys_on("vote"))) is not None:
+        sent = {key: body.get(key.removeprefix("vote_similarity.")) for key in _keys_on("vote")}
+        if (refused := self._refuse_locked_changes(t, sent)) is not None:
             return refused
 
         values = {}
@@ -1099,10 +1167,12 @@ class TriageServer:
         if isinstance(body, web.Response):
             return body
         t = self._translator(request)
-        if (refused := self._refuse_locked(t, _keys_on("notify"))) is not None:
+        off = body.get("off") is True
+        url = "" if off else (body.get("discord_webhook_url") or "").strip()
+        if (refused := self._refuse_locked_changes(t, {WEBHOOK_KEY: url})) is not None:
             return refused
 
-        if body.get("off") is True:
+        if off:
             if (refused := self._store({"notify.discord_webhook_url": ""})) is not None:
                 return refused
             logger.info("Discord notifications turned off")
@@ -1114,7 +1184,6 @@ class TriageServer:
                 }
             )
 
-        url = (body.get("discord_webhook_url") or "").strip()
         if not url:
             return _refused(t("settings_api.webhook_empty"), "notify.discord_webhook_url")
 
@@ -1148,12 +1217,11 @@ class TriageServer:
         if isinstance(body, web.Response):
             return body
         t = self._translator(request)
-        if (refused := self._refuse_locked(t, _keys_on("email"))) is not None:
-            return refused
-
         recipient = (body.get("email_to") or "").strip()
         sender = (body.get("email_from") or "").strip()
         values = {"notify.email_to": recipient, "notify.email_from": sender}
+        if (refused := self._refuse_locked_changes(t, values)) is not None:
+            return refused
 
         if not recipient:
             if (refused := self._store(values)) is not None:

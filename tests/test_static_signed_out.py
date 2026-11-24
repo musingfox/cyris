@@ -62,7 +62,7 @@ def test_settings_names_the_access_refusal_once():
     english = json.loads((LOCALES / "en.json").read_text(encoding="utf-8"))
 
     assert source.count('t("settings.access_not_set_up")') == 1
-    assert 'const ACCESS_NOT_SET_UP = new Error(t("settings.access_not_set_up"));' in source
+    assert 'const ACCESS_NOT_SET_UP = refusal(t("settings.access_not_set_up"));' in source
     assert english["settings.access_not_set_up"].startswith(ACCESS_NOT_SET_UP)
 
 

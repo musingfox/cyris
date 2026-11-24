@@ -77,6 +77,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `/settings` offers the digest hours as two lists of whole hours, where you typed a
+  number before. A save the server refuses as coming from another page now says so,
+  rather than saying Access is not set up.
 - **The filter gives every article a topic.** An article joins a topic from the
   last `digest.topic_lifetime_days` or opens a new one for a genuinely new story,
   so a story keeps one topic, and your votes on it, from issue to issue. A topic

@@ -658,6 +658,10 @@
     "text": "每期何時發布、包含什麼內容，以及文字顯示多大。",
     "source": "When issues are published, what each one holds, and how large its text reads."
   },
+  "settings.cross_origin": {
+    "text": "這次儲存被拒絕：它不是從這個設定頁送出的。請重新載入頁面後再儲存。",
+    "source": "This save was refused: it did not come from this settings page. Reload the page and save again."
+  },
   "settings.editing": {"text": "編輯 {$name}", "source": "Editing {$name}"},
   "settings.effort_default": {"text": "預設", "source": "Default"},
   "settings.effort_high": {"text": "高", "source": "High"},
@@ -672,9 +676,13 @@
   "settings.filter_label": {"text": "依類型篩選", "source": "Filter by type"},
   "settings.heading": {"text": "cyris 如何{#em}運作{/em}", "source": "How cyris {#em}runs{/em}"},
   "settings.homepage": {"text": "首頁", "source": "Homepage"},
+  "settings.hour_saved": {
+    "text": "發布時間：{$morning}。{$note}",
+    "source": "Digest hour: {$morning}. {$note}"
+  },
   "settings.hours_hint": {
-    "text": "填入 0 到 23 的整點；不接受半點。",
-    "source": "Whole hours from 0 to 23; half hours are refused."
+    "text": "每期在你選的整點發布，時間依下方的時區。",
+    "source": "Each digest is published on the hour you choose, in the time zone below."
   },
   "settings.hours_need": {
     "text": ".input {$count :integer}\n.match $count\n* {{{$names}需填入 0 到 23 的整點。}}",
