@@ -64,7 +64,10 @@
   </style>
 </head>
 <body>
-{% with current="settings" %}{% include "_site_bar.html.j2" %}{% endwith %}
+{#- The page's own Settings link is relative: this page is served at /settings locally and on a
+    cloud deployment, and at /t/<tenant>/settings on the hosted Worker, and `settings` is itself on
+    each. -#}
+{% with current="settings", settings_path="settings" %}{% include "_site_bar.html.j2" %}{% endwith %}
   <main class="page">
     <div class="page-head">
       <span class="label">{{ t("site.settings") }}</span>

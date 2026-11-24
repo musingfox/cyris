@@ -165,9 +165,10 @@ const hosted = {
       addNewsletterSource: (tenant, params) => addNewsletterSource({ db: tenantDb(env, tenant), params }),
       page: sitePage,
       // A provider's key is ready on the shared page when the operator set what its run is handed.
-      sharedSettings: (request, tenant, path) =>
+      sharedSettings: (request, tenant, path, voteToken) =>
         handleSharedSettings(request, {
           path,
+          voteToken,
           db: tenantDb(env, tenant),
           registryRow: () => registry().tenant(tenant),
           setSchedule: readerSchedule(tenant),

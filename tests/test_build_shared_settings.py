@@ -14,6 +14,7 @@ import importlib.util
 import json
 import re
 from pathlib import Path
+from urllib.parse import urljoin
 
 import pytest
 from aiohttp.test_utils import make_mocked_request
@@ -54,6 +55,22 @@ def test_every_catalog_has_the_page_triageserver_renders_in_it(built) -> None:
     assert set(built["pages"]) == set(catalogs())
     for tag, page in built["pages"].items():
         assert page["html"] == render_settings_page(tag)
+
+
+# Where the page is served: locally and on a cloud deployment, and on the hosted Worker.
+@pytest.mark.parametrize(
+    ("served_at", "archive"),
+    [("/settings", "/index.html"), ("/t/alpha/settings", "/t/alpha/index.html")],
+)
+def test_the_pages_settings_and_archive_links_lead_within_the_site_it_is_served_in(
+    built, served_at, archive
+) -> None:
+    for page in built["pages"].values():
+        bar = re.search(r'<header class="site-bar">.*?</header>', page["html"], re.DOTALL)[0]
+        [settings] = re.findall(r'<a class="label settings-link" href="([^"]+)"', bar)
+        [index] = re.findall(r'<a class="label archive-link" href="([^"]+)"', bar)
+        assert urljoin(served_at, settings) == served_at
+        assert urljoin(served_at, index) == archive
 
 
 def test_each_page_names_the_hash_of_each_inline_block_and_no_other(built) -> None:

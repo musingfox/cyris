@@ -629,7 +629,9 @@ async def test_settings_opens_with_the_digest_site_bar_marking_settings(
     triage: TestClient,
 ) -> None:
     env = HtmlDigestWriter("unused-by-these-tests").env
-    expected = env.get_template("_site_bar.html.j2").render(current="settings")
+    expected = env.get_template("_site_bar.html.j2").render(
+        current="settings", settings_path="settings"
+    )
     page = await _served(triage, "/settings")
     assert page.count('<header class="site-bar">') == 1
     assert _site_bar(page) == _site_bar(expected)

@@ -27,6 +27,7 @@ import PROVIDER_DEFAULTS from "../../../src/cyris/provider_defaults.json";
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json";
 import BUILT from "./shared_settings.build.json";
 import { healthJson } from "./hosted_feed_health.js";
+import { VOTE_TOKEN_META } from "./hosted_pages.js";
 import { CATALOGS, STATUS, bodyOf, refusalText, translator } from "./hosted_settings.js";
 import { POLICY, SCHEDULE_KEY, TIMEZONE_KEY, catalogTag, checkSettings, rssSource } from "./hosted_settings_rules.js";
 import { sameOrigin } from "./hosted_session.js";
@@ -368,9 +369,14 @@ export function sharedPagePolicy(origin, page) {
   ].join("; ");
 }
 
-function servePage(request, tag) {
+// The built page, with the session's vote token in a <meta> at the end of its <head> when there is
+// one, as a page the run wrote is served (hosted_pages.js): its capability probe sends it, and the
+// Worker answers a signed-in reader, so the site bar shows its Archive and Settings links. No inline
+// block changes, so the policy's hashes still hold.
+function servePage(request, tag, token) {
   const page = BUILT.pages[tag] ?? BUILT.pages.en;
-  return new Response(page.html, {
+  const html = token ? page.html.replace("</head>", `<meta name="${VOTE_TOKEN_META}" content="${token}">\n</head>`) : page.html;
+  return new Response(html, {
     status: 200,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
@@ -395,11 +401,12 @@ function serveStatic(request, path) {
 // saveSource, deleteSource); `registryRow()`, that tenant's registry row, whose schedule the page
 // shows; `setSchedule({times, timeZone})`, which writes the registry's schedule and its copy and
 // answers `{refused}` or not; `secrets`, the names of the operator's keys a run is handed;
-// `ownHosts`, this Worker's host names, which no feed may name; and `locks`, the policy's
-// (`tenantLocks`) unless a test names others.
+// `ownHosts`, this Worker's host names, which no feed may name; `locks`, the policy's
+// (`tenantLocks`) unless a test names others; and `voteToken()`, the session's vote token for the
+// page, or none.
 export async function handleSharedSettings(
   request,
-  { path, db, registryRow, setSchedule, secrets = new Set(), ownHosts = [], locks = tenantLocks() },
+  { path, db, registryRow, setSchedule, secrets = new Set(), ownHosts = [], locks = tenantLocks(), voteToken = null },
 ) {
   const method = request.method === "HEAD" ? "GET" : request.method;
   const allowed =
@@ -409,7 +416,7 @@ export async function handleSharedSettings(
   if (Object.hasOwn(EMPTY_READS, path)) return json(EMPTY_READS[path]);
   const stored = await db.settings(STORED_KEYS);
   const tag = catalogTag(stored?.[OUTPUT_LANGUAGE], Object.keys(CATALOGS));
-  if (path === SHARED_PAGE) return servePage(request, tag);
+  if (path === SHARED_PAGE) return servePage(request, tag, voteToken && request.method === "GET" ? await voteToken() : null);
   const t = translator(tag);
   if (path === SETTINGS_API) return json(settingsAnswer(t, stored, await registryRow(), secrets, locks));
   if (path === SOURCES_API && method === "GET") return json(sourcesAnswer(t, await db.sourceList()));

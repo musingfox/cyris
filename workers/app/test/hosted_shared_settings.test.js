@@ -105,6 +105,9 @@ const settingsOf = (tenant) => bound.TENANT_DB.getByName(tenant).settings();
 const rowsOf = async (tenant) =>
   (await bound.TENANT_DB.getByName(tenant).query("SELECT key, value FROM settings ORDER BY key")).rows;
 const sha256 = (text) => `sha256-${createHash("sha256").update(text, "utf8").digest("base64")}`;
+// The page as served to a session, less the vote token the Worker puts in it, which is the build's.
+const TOKEN_META = /<meta name="cyris-vote-token" content="([^"]+)">\n<\/head>/;
+const untokened = (html) => html.replace(TOKEN_META, "</head>");
 
 describe("GET /t/<tenant>/settings", () => {
   it("is the page TriageServer renders, built per catalog, in the tenant's", async () => {
@@ -114,8 +117,29 @@ describe("GET /t/<tenant>/settings", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
-    expect(await response.text()).toBe(BUILT.pages.en.html);
+    expect(untokened(await response.text())).toBe(BUILT.pages.en.html);
     expect(Object.keys(BUILT.pages).sort()).toEqual(["en", "zh-Hant"]);
+  });
+
+  // So its capability probe is answered as a digest page's is, and the site bar shows a signed-in
+  // reader its Archive and Settings links (the owner's rule, 2026-11-24).
+  it("carries the session's vote token, as a page the run wrote does, and no request without a session gets one", async () => {
+    const session = await signIn();
+
+    const html = await (await call("/t/alpha/settings", { session })).text();
+    const head = await call("/t/alpha/settings", { method: "HEAD", session });
+    const signedOut = await call("/t/alpha/settings");
+    const other = await call("/t/bravo/settings", { session });
+
+    const [, token] = TOKEN_META.exec(html) ?? [];
+    expect(token).toBeTruthy();
+    expect(html.match(/<meta name="cyris-vote-token" content=/g)).toHaveLength(1);
+    expect(await tenantRegistry(env).voteSession(token)).toMatchObject({ tenant_id: "alpha" });
+    expect(head.status).toBe(200);
+    expect(signedOut.status).toBe(302);
+    expect(other.status).toBe(404);
+    for (const response of [head, signedOut, other]) expect(await response.text()).not.toContain('<meta name="cyris-vote-token" content=');
+    expect(BUILT.pages.en.html).not.toContain('<meta name="cyris-vote-token" content=');
   });
 
   it("is worded in the catalog the tenant's output language reaches", async () => {
@@ -124,7 +148,7 @@ describe("GET /t/<tenant>/settings", () => {
 
     const html = await (await call("/t/alpha/settings", { session })).text();
 
-    expect(html).toBe(BUILT.pages["zh-Hant"].html);
+    expect(untokened(html)).toBe(BUILT.pages["zh-Hant"].html);
     expect(html).toContain('<html lang="zh-Hant">');
     expect(html).toContain('<meta name="i18n-catalog" content="/static/i18n/zh-Hant.json">');
   });
@@ -206,7 +230,7 @@ describe("GET /t/<tenant>/settings", () => {
 
     expect([archive, settings]).toEqual(["/t/alpha/index.html", "/t/alpha/settings"]);
     expect(await (await call(archive, { session })).text()).toContain("the archive");
-    expect(await (await call(settings, { session })).text()).toBe(BUILT.pages.en.html);
+    expect(untokened(await (await call(settings, { session })).text())).toBe(BUILT.pages.en.html);
   });
 });
 
@@ -554,7 +578,7 @@ describe("POST /api/settings/values on the hosted Worker", () => {
 
     await save(session, { values: { "digest.output_language": "zh-Hant" } });
 
-    expect(await (await call("/t/alpha/settings", { session })).text()).toBe(BUILT.pages["zh-Hant"].html);
+    expect(untokened(await (await call("/t/alpha/settings", { session })).text())).toBe(BUILT.pages["zh-Hant"].html);
   });
 
   it("refuses a write from no page of this origin, and one with no session", async () => {

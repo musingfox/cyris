@@ -468,8 +468,9 @@ class TestTheProbeSplit:
             "brand": True,
         }
 
-    def test_the_hosted_answer_opens_votes_and_settings_and_nothing_gated(self, tmp_path):
-        """A tenant's page links its own settings page, and no interest page (ADR-0040)."""
+    def test_the_hosted_answer_opens_votes_settings_and_archive_and_nothing_gated(self, tmp_path):
+        """A signed-in tenant reader gets the vote buttons and the Archive and Settings links on
+        every page (the owner's rule, 2026-11-24), and no interest page (ADR-0043)."""
         vote = (ROOT / "workers" / "app" / "src" / "hosted_vote.js").read_text(encoding="utf-8")
         probe = re.search(r"export const PROBE = (\{[^}]*\});", vote)[1]
         answer = json.loads(re.sub(r"(\w+):", r'"\1":', probe))
@@ -478,8 +479,8 @@ class TestTheProbeSplit:
             "vote": True,
             "settings": True,
             "gated": False,
-            "archive": False,
-            "brand": False,
+            "archive": True,
+            "brand": True,
         }
 
     def test_the_workers_answer_is_still_exactly_authorized_true(self):

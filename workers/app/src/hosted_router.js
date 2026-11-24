@@ -134,11 +134,13 @@ async function siteRequest(request, tenant, rest, deps) {
   if (!session) return signInFirst(request, token !== null);
   if (session.tenant_id !== tenant) return siteHeaders(json(NOT_FOUND, 404));
   // The tenant's settings page is the Worker's own (ADR-0043), not a page its run wrote; a paused
-  // tenant may still change its settings.
-  if (rest === SHARED_PAGE) return siteHeaders(await deps.sharedSettings(request, tenant, rest));
+  // tenant may still change its settings. It carries this session's vote token, as a page the run
+  // wrote does, so its probe shows a signed-in reader the site bar's links.
+  const voteToken = () => deps.voteToken(sessionHash);
+  if (rest === SHARED_PAGE) return siteHeaders(await deps.sharedSettings(request, tenant, rest, voteToken));
   // A paused tenant's pages stay readable; only its runs stop. The page carries a vote token for
   // this session, made only if the page is one that is served.
-  return siteHeaders(await deps.page(request, tenant, rest, () => deps.voteToken(sessionHash)));
+  return siteHeaders(await deps.page(request, tenant, rest, voteToken));
 }
 
 // The shared settings page's JSON and /static/ files (ADR-0043): to a live session, for the
@@ -176,8 +178,8 @@ async function bodyEmail(request) {
 // createSignIn); `restore(tenant, {date, from})`, which answers what hosted_backup.js's
 // restoreExport does, and `backup()`, today's backup's summary. For readers:
 // `session(sessionHash)`, the registry's live session or null,
-// `sharedSettings(request, tenant, path)`, which
-// answers the shared settings page, its JSON and its files (hosted_shared_settings.js),
+// `sharedSettings(request, tenant, path, voteToken)`, which answers the shared settings page, its
+// JSON and its files (hosted_shared_settings.js), the page with the token `voteToken()` answers,
 // `voteToken(sessionHash)`, the token that session's pages vote with, `voteSession(token)`, the
 // live session a vote token names or null, `recordVote(tenant, {url, vote})`, which queues the
 // vote in that tenant's object and answers `{queued}` or `{refused, status}`, and `login`, what
