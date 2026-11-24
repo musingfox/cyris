@@ -1579,10 +1579,11 @@ A request from a browser naming another site is refused before any session is re
 tenant's `hosted_votes` (§4), only for a URL in its own `stored_articles`, and never reaches the promote
 Worker; the tenant's next run applies it (ADR-0039). `GET /api/vote` with a live token is the
 page's capability probe, answered `{authorized, settings: false, settings_link: true}` so the vote
-buttons and the Archive and Settings links show, and the gated controls, whose pages this Worker
-does not serve, do not: a signed-in reader gets the Archive link, the Settings link and the vote
-buttons on every page the Worker serves a live session, and a signed-out visitor none of them (the
-owner's rule, 2026-11-24, recorded in ADR-0043). A tenant's pages link Settings at `/t/<tenant>/settings`, where the Worker
+buttons, the Archive and Settings links and Sign out show, and the gated controls, whose pages this
+Worker does not serve, do not: a signed-in reader gets the Archive link, the Settings link and the
+vote buttons on every page the Worker serves a live session, and a signed-out visitor none of them
+(the owner's rule, 2026-11-24, recorded in ADR-0043). Sign out, in the shared site bar, links
+`/logout`, which ends the session; only this answer opens it, so a cloud or local page has none. A tenant's pages link Settings at `/t/<tenant>/settings`, where the Worker
 serves the settings page every edition shares (ADR-0043) to a session of that tenant, behind the
 same door as its site and not sandboxed: the page TriageServer renders, built into the Worker per
 catalog (§5), under a policy of its own, with its `/static/` files and its JSON (`GET

@@ -788,15 +788,16 @@ disabled with the line `Set by the service's operator.`, the routes refuse a cha
 run pins the model and blanks the notify targets whatever the tenant's rows say. A save applies from
 the tenant's next run, and the hours and zone from the next tick, since they go to the registry as
 your schedule route's do; a save names no run cap or maximum, so yours are kept. Tracking is empty
-and read-only. Its site bar shows Archive and Settings, as the digest pages' does, to a signed-in
-reader.
+and read-only. Its site bar shows Archive, Settings and Sign out to a signed-in reader, as the
+digest, raw and archive pages' does; Sign out ends the reader's session at `/logout`.
 
 To check it on a trial tenant, after a deploy that built the page:
 
 1. Sign in as alpha's reader (above), then open Settings from one of alpha's pages, or
    `HOSTED_URL/t/alpha/settings`. The page opens on Model, in the language of alpha's output
-   language, and its site bar shows Archive, which opens alpha's archive, and Settings, marked as
-   the page you are on. Signed out, the same address sends you to the sign-in.
+   language, and its site bar shows Archive, which opens alpha's archive, Settings, marked as the
+   page you are on, and Sign out. Sign out opens `/logout`; press its button and the same address
+   sends you to the sign-in.
 2. Under Provider, `anthropic` is the one choice, selected and disabled; Model reads
    `claude-haiku-5-5` and is disabled. Each has the line `Set by the service's operator.` under its
    name, no line promises a call to the provider, and Save stays disabled. `anthropic` reads `key

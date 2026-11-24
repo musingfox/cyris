@@ -132,8 +132,10 @@ the digest pages, whose Settings link opens `/t/<tenant>/settings` until M3 poin
 > and the page's own Settings link is relative, `settings`, which is `/settings` locally and on a
 > cloud deployment and `/t/<tenant>/settings` on the hosted Worker. The vote route still reads no
 > cookie ([ADR-0039](0039-a-hosted-vote-is-queued-by-the-worker-and-applied-by-the-run.md)): the
-> token comes from the page serve, behind the session check. The sentence above, that the probe is
-> refused and the site bar shows the brand alone, no longer holds.
+> token comes from the page serve, behind the session check. The same answer opens the site bar's
+> Sign out, to the Worker's `/logout`, on the settings page and every page the run wrote, since the
+> page ADR-0040 built held the only one; a cloud or local page never shows it. The sentence above,
+> that the probe is refused and the site bar shows the brand alone, no longer holds.
 
 **Two hour controls (amends ADR-0042).** ADR-0042 had the settings page offer one hour select
 unless the tenant is allowed two. The shared page always shows the two hour controls it shows on
