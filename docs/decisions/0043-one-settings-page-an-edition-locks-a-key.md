@@ -61,8 +61,12 @@ below the help worded from `lock_reason.<code>`, which is each control's descrip
 dependency's line is (`docs/design/ui-language.md` §4 *field*). Keys of one field locked for one
 reason share the line. A locked key is never marked missing or sent as shown, and nothing on the
 page reopens it. A tab `hidden_tabs` names leaves the list and its hash opens Model. Writes name
-`referrerPolicy: "same-origin"`: the hosted Worker serves every answer `Referrer-Policy:
-no-referrer`, under which a browser may send a POST's Origin as `null`.
+`referrerPolicy: "same-origin"`, as ADR-0040's page's do. It does not decide the write's Origin:
+a `fetch` is in `cors` mode, and Fetch's *append a request `Origin` header* sets a POST's Origin
+to `null` under `no-referrer` only for a request not in that mode, such as the form
+`hosted_login.js` posts. What it decides is the `Referer`: under the hosted Worker's
+`Referrer-Policy: no-referrer` a write would send none, and with it a write sends the page's URL to
+this origin and nothing elsewhere. No route reads a `Referer`.
 
 **The build.** `scripts/build_shared_settings.py` renders the page per catalog with
 `render_settings_page`, and writes it, each `/static/` file the page loads and each module those
