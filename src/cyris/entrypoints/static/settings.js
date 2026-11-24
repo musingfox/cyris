@@ -227,11 +227,14 @@ function render() {
   if (values["vote_similarity.max_seeds"] != null) {
     $("vote-seeds").value = values["vote_similarity.max_seeds"];
   }
-  // An hour the schedule does not hold says "Not set", as a select with no value does.
+  // An hour past the fewest the edition's schedule holds may be no digest at all, and offers
+  // that; any other hour the schedule does not hold says "Not set", as a select with no value does.
   const times = values["general.digest_schedule"] || [];
   HOURS.forEach((select, i) => {
+    if (!neededHours().includes(select)) select.prepend(new Option(t("settings_option.schedule_none"), ""));
     if (times[i]) select.value = String(parseInt(times[i], 10));
-    else select.prepend(new Option(t("settings.not_set"), "", true, true));
+    else if (neededHours().includes(select)) select.prepend(new Option(t("settings.not_set"), "", true, true));
+    else select.value = "";
   });
   const cap = state.limits.max_articles_per_digest_max;
   if (cap != null) $("max-articles").max = String(cap);
@@ -267,8 +270,10 @@ function render() {
 }
 
 // The hours the reader's plan holds: an hour past `limits.digest_times_max` is disabled, with the
-// plan-limit line as a locked key's, and no save sends it.
+// plan-limit line as a locked key's, and no save sends it. Of those, the first
+// `limits.digest_times_min` need an hour; a later one left at no digest is not sent.
 const planHours = () => HOURS.slice(0, state.limits.digest_times_max);
+const neededHours = () => HOURS.slice(0, state.limits.digest_times_min);
 
 function markPlanHours() {
   for (const select of HOURS.filter((hour) => !planHours().includes(hour))) {
@@ -592,10 +597,10 @@ async function savePlain(form, stored) {
 
 const HOURS = [$("morning"), $("evening")];
 
-// An empty hour is refused here: padded, it would reach the server as 00:00.
-// Returns the reason shown beside the hours, or null when each the plan holds is filled.
+// An empty hour the schedule needs is refused here: padded, it would reach the server as 00:00.
+// Returns the reason shown beside the hours, or null when each it needs is filled.
 function emptyHours() {
-  const empty = planHours().filter((input) => input.value === "");
+  const empty = neededHours().filter((input) => input.value === "");
   if (!empty.length) return null;
   const names = listJoin(empty.map((input) => input.labels[0].textContent));
   const reason = t("settings.hours_need", {names, count: empty.length});
@@ -622,14 +627,15 @@ $("digest-form").addEventListener("submit", async (e) => {
     failed = true;
     lines.push(t("settings.hours_not_saved", {error: empty}));
   } else if (hoursChanged) {
-    const times = planHours().map((hour) => `${hour.value.padStart(2, "0")}:00`);
+    const times = planHours().filter((hour) => hour.value !== "")
+      .map((hour) => `${hour.value.padStart(2, "0")}:00`);
     try {
       const data = await post("/api/settings/schedule", {times});
       const [savedMorning, savedEvening] = data.times;
       lines.push(savedEvening === undefined
         ? t("settings.hour_saved", {morning: savedMorning, note: data.note})
         : t("settings.hours_saved", {morning: savedMorning, evening: savedEvening, note: data.note}));
-      planHours().forEach((hour) => hour.querySelector('option[value=""]')?.remove());
+      neededHours().forEach((hour) => hour.querySelector('option[value=""]')?.remove());
       Object.assign(stored, {morning, evening});
       markSet(keysSavedBy("schedule"));
     } catch (err) {

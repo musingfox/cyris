@@ -3637,6 +3637,13 @@ ONE_HOUR_PLAN = answer_settings(
     "data.limits = {...data.limits, digest_times_max: 1};"
     ' data.values["general.digest_schedule"] = ["08:00"];'
 )
+# A tenant allowed two hours, holding one or both: the second may be no digest at all.
+TWO_HOUR_PLAN = answer_settings("data.limits = {...data.limits, digest_times_min: 1};")
+TWO_HOUR_PLAN_HOLDING_ONE = answer_settings(
+    "data.limits = {...data.limits, digest_times_min: 1};"
+    ' data.values["general.digest_schedule"] = ["08:00"];'
+)
+NO_SECOND_DIGEST = json.dumps(PAGE("settings_option.schedule_none"))
 # Each schedule the page posts, recorded and answered as a server allowing it answers.
 RECORD_HOURS = (
     "{"
@@ -3716,6 +3723,49 @@ CHECKS += [
         """,
         # Installed after the preload, so it rewrites its answer: the plan holds two hours.
         sabotage_preload=answer_settings("data.limits = {...data.limits, digest_times_max: 2};"),
+    ),
+    Check(
+        id="second-hour-left-as-no-second-digest",
+        fixture="writable",
+        path="/settings#digest",
+        preload=TWO_HOUR_PLAN_HOLDING_ONE + RECORD_HOURS,
+        act="""
+            await settingsLoaded();
+            setValue($("#morning"), "9");
+            saveOf("digest").click();
+            await waitFor(() => settled(noticeOf("digest")), "the save");
+        """,
+        script=f"""
+            const evening = $("#evening");
+            const shown = evening.selectedOptions[0]?.textContent;
+            expect(!evening.disabled, "the second hour cannot be chosen");
+            expect(evening.value === "" && shown === {NO_SECOND_DIGEST},
+              `evening shows ${{shown}}`);
+            expect(!visible($("#hours-error")), $("#hours-error").textContent);
+            expect(same(window.__hours || [], ["09:00"]), `sent: ${{window.__hours}}`);
+        """,
+        # Installed after the preload, so it rewrites its answer: the schedule needs two hours.
+        sabotage_preload=answer_settings("data.limits = {...data.limits, digest_times_min: 2};"),
+    ),
+    Check(
+        id="second-hour-dropped-to-no-second-digest",
+        fixture="writable",
+        path="/settings#digest",
+        preload=TWO_HOUR_PLAN + RECORD_HOURS,
+        act=f"""
+            await settingsLoaded();
+            const none = [...$("#evening").options]
+              .find((option) => option.textContent === {NO_SECOND_DIGEST});
+            setValue($("#evening"), none ? none.value : "absent");
+            saveOf("digest").click();
+            await waitFor(() => settled(noticeOf("digest")), "the save");
+        """,
+        script="""
+            expect(same(window.__hours || [], ["08:00"]), `sent: ${window.__hours}`);
+            const notice = noticeOf("digest").textContent;
+            expect(notice.startsWith("Digest hour: 08:00."), `notice: ${notice}`);
+        """,
+        sabotage_preload=answer_settings("data.limits = {...data.limits, digest_times_min: 2};"),
     ),
     Check(
         id="article-cap-takes-the-editions-most",

@@ -19,7 +19,7 @@
   "editions": {
     "self_hosted": {
       "locked": {},
-      "limits": {"digest_times_max": 2, "max_articles_per_digest_max": null}
+      "limits": {"digest_times_min": 2, "digest_times_max": 2, "max_articles_per_digest_max": null}
     },
     "hosted": {
       "locked": {
@@ -40,7 +40,7 @@
         "notify.email_to": {"reason": "operator-set"},
         "notify.email_from": {"reason": "operator-set"}
       },
-      "limits": {"digest_times_max": 1, "max_articles_per_digest_max": 400}
+      "limits": {"digest_times_min": 1, "digest_times_max": 1, "max_articles_per_digest_max": 400}
     }
   },
   "writes": [
@@ -251,6 +251,15 @@
       "status": 200,
       "answer": {"ok": true, "times": ["06:00", "18:00"], "note": "Effective next tick."},
       "reads_back": {"general.digest_schedule": ["06:00", "18:00"]}
+    },
+    {
+      "name": "one hour is saved for a tenant allowed two, with no second digest, and refused on a self-hosted server, which publishes two",
+      "max_digest_times": 2,
+      "body": {"times": ["06:00"]},
+      "status": 200,
+      "answer": {"ok": true, "times": ["06:00"], "note": "Effective next tick."},
+      "reads_back": {"general.digest_schedule": ["06:00"]},
+      "self_hosted": {"status": 400, "refuses": "general.digest_schedule"}
     },
     {
       "name": "a half hour is refused",

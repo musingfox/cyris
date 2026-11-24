@@ -44,12 +44,15 @@ the hosted Worker keeps the same rule on the one multi-key route it answers,
 `/api/settings/values` still refuses any locked key a save names, changed or not: the page never
 sends one there.
 
-`GET /api/settings` answers `limits`, additively: `digest_times_max`, the most digest times a day
-the reader may have, and `max_articles_per_digest_max`, the article cap's most or `null` for none.
-TriageServer answers its own, two times and no cap; the hosted Worker answers the tenant's registry
-maximum and its policy's cap. The page shows the hours as two selects and disables each one past
-`digest_times_max`, with the `plan-limit` line a locked key carries, and never sends it; the
-article cap's input takes the most as its `max`. That is the control-level lock ADR-0043's *Two
+`GET /api/settings` answers `limits`, additively: `digest_times_min` and `digest_times_max`, the
+fewest and the most digest times a day the reader's schedule holds, and
+`max_articles_per_digest_max`, the article cap's most or `null` for none. TriageServer answers its
+own, exactly two times and no cap; the hosted Worker answers one time at least, the tenant's
+registry maximum at most, and its policy's cap. The page shows the hours as two selects and
+disables each one past `digest_times_max`, with the `plan-limit` line a locked key carries, and
+never sends it; each one past `digest_times_min` offers "No second digest", which is not sent, so a
+tenant allowed two may keep one, as the hosted page lets it; the article cap's input takes the most
+as its `max`. That is the control-level lock ADR-0043's *Two
 hour controls* deferred until the schedule left its stub. It is not a key lock: the schedule stays
 open, and `locked` does not name it.
 
@@ -67,7 +70,8 @@ open, and `locked` does not name it.
 
 `tests/test_shared_settings_cases.py` and `workers/app/test/hosted_shared_settings.test.js` run the
 shared cases' `route_locks`, `schedules` and `editions.*.limits`; `scripts/settings_probe.py`'s
-`second-hour-locked-by-plan`, `hours-are-whole-hour-selects` and
+`second-hour-locked-by-plan`, `second-hour-left-as-no-second-digest`,
+`second-hour-dropped-to-no-second-digest`, `hours-are-whole-hour-selects` and
 `article-cap-takes-the-editions-most` check the page in Chromium, each with its sabotage.
 
 ## More Information

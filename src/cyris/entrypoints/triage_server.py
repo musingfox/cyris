@@ -287,6 +287,7 @@ SETTINGS_SCRIPT_MESSAGES: tuple[str, ...] = (
     "settings.turning_off",
     "settings.unreachable",
     "settings.value_empty",
+    "settings_option.schedule_none",
     *(f"source_type.{source_type}" for source_type in get_args(SourceType)),
     *(f"lock_reason.{reason}" for reason in get_args(LockReason)),
 )
@@ -841,10 +842,11 @@ class TriageServer:
                 # Each key this edition locks, and why: the page disables its controls and
                 # shows the reason (ADR-0043).
                 "locked": {key: {"reason": reason} for key, reason in self._locked.items()},
-                # What this edition lets a reader set at most: as many digest times as a
+                # What this edition lets a reader set: as few and as many digest times as a
                 # self-hosted schedule holds, and an article cap the field itself bounds by
                 # none (`DigestConfig`). The hosted Worker answers its tenant's.
                 "limits": {
+                    "digest_times_min": min(SELF_HOSTED_TIMES),
                     "digest_times_max": max(SELF_HOSTED_TIMES),
                     "max_articles_per_digest_max": None,
                 },

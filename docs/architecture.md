@@ -1208,8 +1208,9 @@ each backend has exactly one home, with nothing overlaid:
   locked key sent as it is held is no change, so a lock leaves the other keys of its route
   writable; `/api/settings/values` refuses any locked key a save names
   ([ADR-0047](decisions/0047-a-route-refuses-a-change-to-a-locked-key.md)). `limits` names the
-  most digest times a day and the article cap's most (`null`, none), which the page's hour
-  selects and cap input take. `cyris triage-ui` locks nothing and answers two times and no cap.
+  fewest and most digest times a day and the article cap's most (`null`, none), which the page's
+  hour selects and cap input take: an hour past the fewest offers no digest. `cyris triage-ui`
+  locks nothing and answers exactly two times and no cap.
   The hosted Worker answers the same contract over a tenant's own object, its locks from its
   policy file and its limits from the registry and the policy
   ([ADR-0043](decisions/0043-one-settings-page-an-edition-locks-a-key.md));

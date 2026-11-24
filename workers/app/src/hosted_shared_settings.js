@@ -94,9 +94,11 @@ function changedLock(locks, sent, current) {
 const lockRefusal = (t, locks, key) =>
   refused(t("settings_api.locked", { label: t(`settings_field.${key}`), reason: t(`lock_reason.${locks[key].reason}`) }), key);
 
-// What the tenant may set at most, as `GET /api/settings` names it: the registry's most digest
-// times a day, which the operator sets, and the policy's article cap.
+// What the tenant may set, as `GET /api/settings` names it: as few digest times a day as a hosted
+// schedule holds, and as many as the registry's most, which the operator sets; and the policy's
+// article cap.
 const limitsOf = (row) => ({
+  digest_times_min: Math.min(...HOSTED_TIMES),
   digest_times_max: row?.max_digest_times ?? DEFAULT_MAX_DIGEST_TIMES,
   max_articles_per_digest_max: POLICY.max_articles_per_digest,
 });
