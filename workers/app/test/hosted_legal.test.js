@@ -297,8 +297,8 @@ describe("changes and disputes", () => {
     const [privacy, terms] = [await (await call("/privacy")).text(), await (await call("/terms")).text()];
     const days = LEGAL.notice_days;
 
-    expect(block(privacy, "en")).toContain(`If a change affects your rights or how your data is used, we also write to the address you sign in with at least ${days} days`);
-    expect(block(privacy, "zh-Hant")).toContain("變更若影響您的權利或您資料的使用方式");
+    expect(block(privacy, "en")).toContain(`If a change affects your rights, or how we collect, process or use your data, including what we collect and who receives it, we also write to the address you sign in with at least ${days} days`);
+    expect(block(privacy, "zh-Hant")).toContain("變更若影響您的權利，或影響我們蒐集、處理或利用您資料的方式");
     expect(block(terms, "en")).toContain(`If a change affects your rights or obligations, we write to the address you sign in with at least ${days} days`);
     expect(block(terms, "zh-Hant")).toContain("變更若影響您的權利或義務");
   });
