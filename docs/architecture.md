@@ -1971,6 +1971,7 @@ on main after the change lands, citing the hash it landed as.
 | 2026-11-24 | `e66ae99f` | A hosted tenant makes one digest a day by default (§3, §4, §5, §6): the registry keeps each tenant's maximum digest-time count, a single issue is stored as `morning`, new tenants' hours are spread by tenant id away from the backup hours, and four runs share the container at once; self-host keeps two digest times (ADR-0042). |
 | 2026-11-24 | `6cb09a80` | The hosted Worker serves a privacy policy and terms at `/privacy` and `/terms` without a sign-in (§6), zh-Hant authoritative with English, linked from the sign-in pages and mail; the promises the operator keeps by hand are data in `workers/app/src/hosted_legal.json` (§5). |
 | 2026-11-24 | `17e93530` | The hosted daily backup is R2 only (§4, §5): the B2 copy, its alert and its four secrets are gone, and where a second copy goes is left to a later decision (ADR 0045, superseding part of ADR-0041). |
+| 2026-11-24 | `d40eeab1` | A local `cyris triage-ui` on the SQLite store takes the pages' votes (§3.2, §4, §6): it answers `/api/vote` as the app Worker does and stamps `triaged_at` through the same `apply_promotions` a sync uses, while a server on D1 keeps votes off and leaves them to the cloud's queue (ADR 0044). |
 
 ## 8. Where the core never changes
 
