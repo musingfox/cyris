@@ -173,7 +173,12 @@ const hosted = {
           ownHosts: [env[HOSTED_DOMAIN]].filter(Boolean),
         }),
       sharedSettings: (request, tenant, path) =>
-        handleSharedSettings(request, { path, db: tenantDb(env, tenant), registryRow: () => registry().tenant(tenant) }),
+        handleSharedSettings(request, {
+          path,
+          db: tenantDb(env, tenant),
+          registryRow: () => registry().tenant(tenant),
+          ownHosts: [env[HOSTED_DOMAIN]].filter(Boolean),
+        }),
       invite: (tenant, email) => registry().invite(tenant, email),
       revoke: (tenant, email) => registry().revoke(tenant, email),
       members: (tenant) => registry().members(tenant),

@@ -6,14 +6,17 @@
 //
 // STUB (milestone M1 of the edition-parity plan): the page lives at /t/<tenant>/settings-next,
 // beside the page hosted_settings.js renders, which stays as it is until M3 replaces it. Only the
-// Model tab and `digest.output_language` are real; the policy's `shared_page` locks every other
-// key by one rule, and Sources and Tracking answer read-only and empty.
+// Model tab, `digest.output_language` and the Sources tab (M3a) are real; the policy's
+// `shared_page` locks every other key by one rule, and Tracking answers read-only and empty.
 //
 //   GET  /t/<tenant>/settings-next   the page, in the catalog the tenant's output language reaches
 //   GET  /static/<file>              the page's scripts, its style and its browser messages
 //   GET  /api/settings               values, fields, what is missing, and `locked`
 //   POST /api/settings/values        {values: {key: value}}: an open key is saved, a locked one refused
-//   GET  /api/sources, /api/topics   STUB: read-only and empty
+//   GET  /api/sources                the tenant's sources, RSS and newsletter, each with its feed's health
+//   POST /api/sources                {name, url, lane}: one RSS source added or rewritten
+//   DELETE /api/sources/<name>       one source removed; a name that is none is refused 404
+//   GET  /api/topics                 STUB: read-only and empty
 //
 // The router has checked the session (hosted_router.js). The tenant is the session's: no path,
 // body or header names one, so these paths sit outside /t/<tenant>/ and its routes for the
@@ -23,27 +26,37 @@ import FIELDS from "../../../src/cyris/settings_fields.json";
 import PROVIDER_DEFAULTS from "../../../src/cyris/provider_defaults.json";
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json";
 import BUILT from "./shared_settings.build.json";
+import { healthJson } from "./hosted_feed_health.js";
 import { CATALOGS, STATUS, bodyOf, refusalText, translator } from "./hosted_settings.js";
-import { POLICY, SCHEDULE_KEY, TIMEZONE_KEY, catalogTag, checkSettings } from "./hosted_settings_rules.js";
+import { POLICY, SCHEDULE_KEY, TIMEZONE_KEY, catalogTag, checkSettings, rssSource } from "./hosted_settings_rules.js";
 import { sameOrigin } from "./hosted_session.js";
 import { registrySchedule } from "./run_queue.js";
 
 export const SHARED_PAGE = "/settings-next";
 const SETTINGS_API = "/api/settings";
 const VALUES_API = "/api/settings/values";
-// STUB: the reads the page makes of the tabs this milestone leaves empty, each answered as a
-// deployment with no writable table answers it.
+const SOURCES_API = "/api/sources";
+const SOURCE_PREFIX = `${SOURCES_API}/`;
+// STUB: the read the page makes of the tab this milestone leaves empty, answered as a deployment
+// with no writable table answers it.
 const EMPTY_READS = {
-  "/api/sources": { writable: false, sources: [] },
   "/api/topics": { writable: false, topics: [], embedding_model: "" },
 };
 const STATIC = "/static/";
 const OUTPUT_LANGUAGE = "digest.output_language";
 const ARTICLE_CAP = "digest.max_articles_per_digest";
 
+// `/api/sources/<name>`: the source's name, percent-encoded as one path segment.
+const isSourcePath = (path) => path.startsWith(SOURCE_PREFIX) && path.length > SOURCE_PREFIX.length && !path.includes("/", SOURCE_PREFIX.length);
+
 // The paths outside /t/<tenant>/ this module answers, to a live session of any tenant.
 export const isSharedPath = (path) =>
-  path === SETTINGS_API || path === VALUES_API || Object.hasOwn(EMPTY_READS, path) || path.startsWith(STATIC);
+  path === SETTINGS_API ||
+  path === VALUES_API ||
+  path === SOURCES_API ||
+  isSourcePath(path) ||
+  Object.hasOwn(EMPTY_READS, path) ||
+  path.startsWith(STATIC);
 
 const json = (body, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -168,6 +181,93 @@ async function saveValues(t, request, db, stored) {
   });
 }
 
+// `GET /api/sources` in TriageServer's shape (`_handle_get_sources`): each source with its lane,
+// the target it is fetched by and, for an RSS feed, its poll's health. `max_sources` is the cap a
+// hosted tenant is held to (TriageServer's is null: no cap). A tenant never seeded has no table
+// to write, so it answers as a deployment with none does.
+function sourcesAnswer(t, listed) {
+  const now = Date.now();
+  return {
+    writable: listed !== null,
+    max_sources: POLICY.max_sources,
+    sources: (listed ?? []).map(({ name, type, url, config, health }) => ({
+      name,
+      type,
+      lane: config.lane ?? "skim",
+      url,
+      email_match: config.email_match ?? null,
+      homepage: config.homepage ?? null,
+      tags: config.tags ?? [],
+      health: type === "rss" ? healthJson(t, health, now) : null,
+    })),
+  };
+}
+
+// The source field each refusal reason is about, for the page to mark; none for the rest.
+const sourceFieldOf = (reason) => {
+  if (reason === "source_name" || reason === "source_cap" || reason === "source_taken") return "name";
+  if (reason === "lane") return "lane";
+  return reason.startsWith("url_") ? "url" : null;
+};
+
+// A source field the page sends that holds nothing: absent, null, blank or an empty list.
+const unset = (value) => value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
+
+// The first field of a source's body a hosted tenant may not set, or null. A tenant sets a name,
+// a URL and a lane, and its source is an RSS feed; the page sends every field of a source, so a
+// field that holds nothing, or what the source already holds (its tags and homepage, which only
+// the operator sets, sent back by a rewrite), is no setting.
+function lockedSourceField(body, held) {
+  for (const [field, value] of Object.entries(body)) {
+    if (field === "name" || field === "url" || field === "lane" || unset(value)) continue;
+    if (field === "type" && value === "rss") continue;
+    if ((field === "tags" || field === "homepage") && JSON.stringify(value) === JSON.stringify(held?.config?.[field])) continue;
+    return field;
+  }
+  return null;
+}
+
+// `POST /api/sources` in TriageServer's shape (`_handle_post_source`): one RSS source added, or the
+// one of that name rewritten, with what else its config held (its tags) kept. The rules are the
+// hosted page's own (hosted_settings_rules.js `rssSource`, `urlRefusal`), and the cap, newsletters
+// counted, is enforced in TenantDb.saveSource, in the one turn that writes the row, so two saves
+// at once cannot both take the last place.
+async function saveSource(t, request, db, listed, ownHosts) {
+  if (listed === null) return refused(refusalText(t, { reason: "not_seeded" }), null, STATUS.not_seeded);
+  const read = await bodyOf(request);
+  if (read.refused) return refused(refusalText(t, read.refused), null, STATUS[read.refused.reason] ?? 400);
+  const body = read.body;
+  if (body === null || typeof body !== "object" || Array.isArray(body)) return refused(refusalText(t, { reason: "body" }));
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  const locked = lockedSourceField(body, listed.find((source) => source.name === name));
+  if (locked !== null) return refused(t("settings_api.source_field_locked", { field: locked }), locked);
+  const made = rssSource(body, ownHosts);
+  if (made.refused) return refused(refusalText(t, made.refused), sourceFieldOf(made.refused.reason));
+  const saved = await db.saveSource(made.row, POLICY.max_sources);
+  if (saved.refused) {
+    const refusal = { reason: saved.refused, name: made.row.name, max: String(POLICY.max_sources) };
+    return refused(refusalText(t, refusal), sourceFieldOf(saved.refused), saved.status);
+  }
+  return json({ ok: true, name: made.row.name, note: t("settings_api.effective_next_run") });
+}
+
+// `DELETE /api/sources/<name>` in TriageServer's shape (`_handle_delete_source`), the one answer
+// that differs by design from TriageServer's old one: a name that is no source is refused 404 on
+// both, so a page showing a source another tab retired is told so. A source of either type goes.
+async function deleteSource(t, path, db, listed) {
+  if (listed === null) return refused(refusalText(t, { reason: "not_seeded" }), null, STATUS.not_seeded);
+  let name;
+  try {
+    name = decodeURIComponent(path.slice(SOURCE_PREFIX.length));
+  } catch {
+    return refused(refusalText(t, { reason: "source_name" }), "name");
+  }
+  const deleted = await db.deleteSource(name);
+  if (deleted.refused) return refused(refusalText(t, { reason: deleted.refused }), null, deleted.status);
+  if (deleted.deleted === 0) return refused(t("settings_api.source_missing", { name }), null, STATUS.source_missing);
+  return json({ ok: true, name, note: t("settings_api.effective_next_run") });
+}
+
 // The page's policy, its own and none of the sandboxed site's: scripts and styles from this
 // Worker's /static/ and the build's hashes of the page's inline ones (its probe and its layout),
 // fonts as every page loads them, fetches to this origin, and no form, base or frame.
@@ -209,12 +309,13 @@ function serveStatic(request, path) {
   return new Response(file.body, { status: 200, headers });
 }
 
-// `deps`: `db`, the session's tenant's object (TenantDb: settings, saveSettings), and
-// `registryRow()`, that tenant's registry row, whose schedule the page shows.
-export async function handleSharedSettings(request, { path, db, registryRow }) {
+// `deps`: `db`, the session's tenant's object (TenantDb: settings, saveSettings, sourceList,
+// saveSource, deleteSource), `registryRow()`, that tenant's registry row, whose schedule the page
+// shows, and `ownHosts`, this Worker's host names, which no feed may name.
+export async function handleSharedSettings(request, { path, db, registryRow, ownHosts = [] }) {
   const method = request.method === "HEAD" ? "GET" : request.method;
-  const post = path === VALUES_API;
-  if (method !== (post ? "POST" : "GET")) return json({ ok: false, error: `${path} takes ${post ? "POST" : "GET"}` }, 405);
+  const allowed = path === VALUES_API ? ["POST"] : path === SOURCES_API ? ["GET", "POST"] : isSourcePath(path) ? ["DELETE"] : ["GET"];
+  if (!allowed.includes(method)) return json({ ok: false, error: `${path} takes ${allowed.join(" or ")}` }, 405);
   if (path.startsWith(STATIC)) return serveStatic(request, path);
   if (Object.hasOwn(EMPTY_READS, path)) return json(EMPTY_READS[path]);
   const stored = await db.settings(STORED_KEYS);
@@ -222,7 +323,13 @@ export async function handleSharedSettings(request, { path, db, registryRow }) {
   if (path === SHARED_PAGE) return servePage(request, tag);
   const t = translator(tag);
   if (path === SETTINGS_API) return json(settingsAnswer(t, stored, await registryRow()));
+  if (path === SOURCES_API && method === "GET") return json(sourcesAnswer(t, await db.sourceList()));
   // A same-origin fetch only, as every hosted settings write (hosted_session.js `sameOrigin`).
   if (!sameOrigin(request)) return refused(refusalText(t, { reason: "cross_origin" }), null, STATUS.cross_origin);
+  if (path === SOURCES_API) {
+    const hosts = [...new Set([new URL(request.url).hostname, ...ownHosts].map((host) => host.toLowerCase()))];
+    return saveSource(t, request, db, await db.sourceList(), hosts);
+  }
+  if (isSourcePath(path)) return deleteSource(t, path, db, await db.sourceList());
   return saveValues(t, request, db, stored);
 }

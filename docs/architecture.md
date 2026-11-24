@@ -1580,9 +1580,14 @@ whose saves (`/t/<tenant>/api/settings`, `/api/sources`, `/api/sources/delete`) 
 unless their `Origin` is present and is this Worker's own. Beside it, as a stub until M3 replaces
 it, `/t/<tenant>/settings-next` serves the settings page every edition shares (ADR-0043): the page
 TriageServer renders, built into the Worker per catalog (§5), under a policy of its own, with its
-`/static/` files and its JSON (`GET /api/settings`, `POST /api/settings/values`, and
-`/api/sources` and `/api/topics`, read-only and empty) answered to a live session for
-that session's own tenant, which no path names; a write needs this Worker's own `Origin` too. Its
+`/static/` files and its JSON (`GET /api/settings`, `POST /api/settings/values`, the Sources tab's
+`GET` and `POST /api/sources` and `DELETE /api/sources/<name>`, and `/api/topics`, read-only and
+empty) answered to a live session for that session's own tenant, which no path names; a write needs
+this Worker's own `Origin` too. A source a tenant saves is held to the old page's rules (an RSS feed
+by name, URL and lane, the URL rules of ADR-0040, the policy's cap counting newsletters, enforced in
+`TenantDb.saveSource`), a name that is no source is refused 404 on both editions, and each RSS feed
+is listed with the health `cyris doctor` judges, from the tenant's own `feed_health` and
+`stored_articles` and the thresholds in `src/cyris/feed_health_rules.json`, which both read. Its
 probe carries no vote token and is refused, so its site bar links nothing. A reader signs in
 at `/login`: an address on the operator's list (the registry's `members`, §4) is mailed a
 single-use link through the `MAIL` Email Service binding from `CYRIS_HOSTED_MAIL_FROM` (§5), its
