@@ -3,7 +3,8 @@
 `scripts/build_shared_settings.py` renders `settings.html.j2` per catalog, at build time, with the
 `/static/` files the page loads and the two parts of `GET /api/settings` only the Python side
 answers. Each is held here to what a bare TriageServer serves for the same path, so the hosted
-page is the local page, byte for byte. What the Worker does with the file is
+page is the local page, byte for byte. The built file is committed, and held here to what the
+script builds now. What the Worker does with the file is
 `workers/app/test/hosted_shared_settings.test.js`'s.
 """
 
@@ -105,3 +106,15 @@ def test_the_build_writes_the_module_the_worker_imports(tmp_path) -> None:
     assert json.loads(out.read_text("utf-8"))["pages"].keys() == set(catalogs())
     assert build_script.OUT == ROOT / "workers/app/src/shared_settings.build.json"
     assert STATIC_DIR.is_dir()
+
+
+def test_the_committed_build_is_what_the_script_builds_now(tmp_path) -> None:
+    """The Worker, vitest and every other test import the committed file, never a fresh build, so
+    a template, `static/` or catalog change committed without it reaches none of them."""
+    out = tmp_path / "built.json"
+
+    assert build_script.main(["--out", str(out)]) == 0
+    assert out.read_text("utf-8") == build_script.OUT.read_text("utf-8"), (
+        f"{build_script.OUT.relative_to(ROOT)} is stale: run "
+        "`uv run python scripts/build_shared_settings.py` and commit the file it writes"
+    )

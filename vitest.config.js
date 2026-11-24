@@ -24,7 +24,5 @@ export default defineConfig({
     // does too — but its tests do not. Naming them keeps the other three
     // Workers' suites, which have their own package.json, out of this run.
     include: ["workers/app/test/**/*.test.js"],
-    // The hosted Worker imports the shared settings page, which the Python side renders.
-    globalSetup: ["workers/app/test/build_shared_settings.js"],
   },
 });

@@ -4,8 +4,10 @@
 The hosted Worker runs no Python, so the page `TriageServer` renders per request from
 `settings.html.j2` is rendered here, at build time, once per UI catalog, and written with every
 `/static/` file it loads into one JSON module the Worker imports:
-`workers/app/src/shared_settings.build.json`, which git ignores. `wrangler.hosted.toml`'s `[build]`
-runs this before each deploy, and vitest's global setup before each run.
+`workers/app/src/shared_settings.build.json`. The file is committed, so a deploy, a vitest run and
+a pytest run each read the same one in any order, and a deploy needs no Python;
+`tests/test_build_shared_settings.py` fails when it differs from what this builds, so a change to
+the template, a script under `static/` or a catalog is committed with the file rebuilt from it.
 
 What the file holds, so the Worker serves the page exactly as the local edition does:
 

@@ -73,8 +73,7 @@ Worker's URL, `HOSTED_URL`, which `deploy` reads from wrangler's output. It goes
 You need:
 
 - Docker running, because wrangler builds the container image locally;
-- `bun`, `python3` (3.11 or later), `uv` and `curl`: the deploy builds the shared settings page with
-  the project's own Python (`uv run`, step 1);
+- `bun`, `python3` (3.11 or later) and `curl`;
 - Workers Paid on the trial account, because the Worker runs containers. Email Sending to an
   address the account has not verified needs it too;
 - for step 10, a domain on Cloudflare DNS in the trial account, onboarded to Email Sending
@@ -128,9 +127,7 @@ scripts/hosted.sh deploy
 ```
 
 This runs `wrangler deploy --config wrangler.hosted.toml --env-file /dev/null`, after you
-confirm the account. Its `[build]` first runs `scripts/build_shared_settings.py`, which renders the
-settings page every edition shares into the Worker (ADR-0043); a deploy that prints no
-`shared_settings.build.json: 2 pages, 6 files` line did not build it. It deploys the Worker, its three Durable Object classes
+confirm the account. It deploys the Worker, its three Durable Object classes
 (`TenantContainer`, `TenantDb` and `TenantRegistry`), its `MAIL` Email Sending binding and the
 container application `cyris-hosted-tenantcontainer` and its `BACKUP` R2 binding. It never reads `.env`. A first deploy's registry is empty, so
 until step 5 the Worker has no tenant: the hourly tick queues nothing, and every tenant route
@@ -806,7 +803,8 @@ not.
 ### The shared settings page (stub)
 
 `HOSTED_URL/t/<tenant>/settings-next` serves the settings page a local or cloud deployment serves at
-`/settings`, the same page and script, rendered at deploy (step 1), with the keys the hosted policy
+`/settings`, the same page and script, rendered into the committed
+`workers/app/src/shared_settings.build.json` that step 1 deploys, with the keys the hosted policy
 keeps from a tenant locked ([ADR-0043](decisions/0043-one-settings-page-an-edition-locks-a-key.md)).
 It is the edition-parity plan's first milestone, and a stub: nothing links it, the page above stays
 the one the digest pages link, and of the keys a tenant writes only the output language saves here.

@@ -68,9 +68,11 @@ no-referrer`, under which a browser may send a POST's Origin as `null`.
 `render_settings_page`, and writes it, each `/static/` file the page loads and each module those
 import, each catalog's browser messages as TriageServer serves them, the SHA-256 of each inline
 script and style, and the two parts of the contract only the Python side answers (`sent_as_shown`
-and `languages`), into `workers/app/src/shared_settings.build.json`, which git ignores.
-`wrangler.hosted.toml`'s `[build]` runs it before every hosted deploy, and vitest's global setup
-before every run.
+and `languages`), into `workers/app/src/shared_settings.build.json`, which is committed. A hosted
+deploy, vitest and pytest all import the committed file and none rebuilds it, so no run depends on
+another having built it first and a deploy needs no Python; `tests/test_build_shared_settings.py`
+fails when the committed file differs from what the script builds now, naming the command that
+rebuilds it.
 
 **Where, on the hosted Worker.** STUB: the page lives at `GET /t/<tenant>/settings-next`, behind
 the door `/t/` already has (ADR-0033). Its JSON and files are `GET /api/settings`, `POST
@@ -121,8 +123,9 @@ schedule leaves the stub, and the hosted page ADR-0040 built keeps its one selec
   refused write in the same words: `workers/app/test/shared_settings_cases.json` holds the text.
 * Good, because the page's policy admits no inline script but its two hashed blocks, and no script
   from anywhere but this Worker's `/static/`.
-* Bad, because a hosted deploy and a vitest run now need `uv` and the project's Python to build the
-  page, and the bundle carries about 240 KB of it.
+* Bad, because a change to the template, a `/static/` script or a catalog must be committed with the
+  rebuilt file, which the repository carries, as the bundle does, at about 240 KB; the gate's
+  staleness test is what keeps the two together.
 * Bad, because parts of TriageServer's `GET /api/settings` (what is missing, the starting values,
   the labels, a save's note) are worked out again in the Worker; the shared cases hold the two to
   one answer.
@@ -141,8 +144,9 @@ schedule leaves the stub, and the hosted page ADR-0040 built keeps its one selec
   `model-locked-with-its-reason`, `locked-key-not-marked-missing` and
   `hidden-tab-not-listed-nor-opened` check it in Chromium, each with its sabotage.
 * `tests/test_build_shared_settings.py`: each catalog's page is `render_settings_page`'s, each inline
-  block's hash is named and no other, each file is what a bare TriageServer serves at its path, and
-  `sent_as_shown` and `languages` are TriageServer's.
+  block's hash is named and no other, each file is what a bare TriageServer serves at its path,
+  `sent_as_shown` and `languages` are TriageServer's, and the committed file is what the script
+  builds now.
 * `workers/app/test/hosted_shared_settings.test.js` drives `hosted.js` over the real registry and
   tenant objects: the page in the tenant's catalog, its policy against the hashes of its own inline
   blocks, the session check, the old page unchanged, every `/static/` file the pages load, their
