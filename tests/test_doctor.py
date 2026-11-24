@@ -103,7 +103,8 @@ async def test_a_sqlite_store_is_named_with_its_path_and_asks_cloudflare_nothing
     assert "sqlite_path" in store.fix
     assert _by_name(checks, "store wiring").status == "ok"
     assert _by_name(checks, "settings").detail == "all 26 set in the SQLite store"
-    assert _by_name(checks, "feed health").status == "skip"
+    # The file exists, so the check reads it rather than skipping; `TestFeedHealth` has the rows.
+    assert _by_name(checks, "feed health").status != "skip"
     # Its pages are still files in the vault, so the vault is still probed.
     assert _by_name(checks, "agent vault").status == "ok"
 
@@ -1424,8 +1425,34 @@ class TestFeedHealth:
             [f"https://{source}.test/{seen}", seen, source, seen],
         )
 
-    def test_a_sqlite_store_has_no_feed_health(self, tmp_path: Path) -> None:
-        assert doctor._check_feed_health(_config(tmp_path)).status == "skip"
+    def test_a_sqlite_store_not_created_yet_is_skipped_and_left_so(self, tmp_path: Path) -> None:
+        cfg = _sqlite_config(tmp_path)
+
+        check = doctor._check_feed_health(cfg)
+
+        assert (check.status, "not created yet" in check.detail) == ("skip", True)
+        assert not cfg.app.store.sqlite_path.exists()
+
+    def test_a_sqlite_store_reports_the_health_cyris_ingest_recorded(self, tmp_path: Path) -> None:
+        """The same row reads as unhealthy on a file as on D1: three failed polls in a row."""
+        from fakes import seeded_sqlite
+
+        from cyris.adapters.store.feed_health import D1FeedHealthWriter
+        from cyris.adapters.store.source_store import D1SourceStore
+
+        cfg = _sqlite_config(tmp_path)
+        cfg.app.store.sqlite_path.parent.mkdir()
+        db = seeded_sqlite(cfg.app.store.sqlite_path)
+        D1SourceStore(db).upsert(SourceConfig(name="Feed", url="https://a.test/feed"))
+        self._article(db, "Feed", timedelta(days=2))
+
+        assert doctor._check_feed_health(cfg).detail.startswith("1 RSS feed")
+        for _ in range(3):
+            D1FeedHealthWriter(db).record([("Feed", "HTTP 503")], datetime.now(UTC))
+        check = doctor._check_feed_health(cfg)
+
+        assert check.status == "warn"
+        assert "Feed (3 failures in a row · HTTP 503)" in check.detail
 
     def test_feeds_that_poll_and_publish_are_ok(self, tmp_path: Path, monkeypatch) -> None:
         db = self._db(monkeypatch, "fine")
@@ -1478,7 +1505,7 @@ class TestFeedHealth:
         assert "HTTP 500" in check.detail
 
     async def test_the_report_carries_the_check(self, tmp_path: Path) -> None:
-        checks = await doctor.run_checks(_config(tmp_path))
+        checks = await doctor.run_checks(_sqlite_config(tmp_path))
         assert _by_name(checks, "feed health").status == "skip"
 
 
