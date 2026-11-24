@@ -6,6 +6,13 @@ decision-makers: ""
 
 # A hosted tenant edits its settings and sources on a page the hosted Worker renders
 
+> Superseded in part by [ADR-0043](0043-one-settings-page-an-edition-locks-a-key.md)
+> (2026-11-24). The settings page every edition shares is served by the hosted Worker too, built
+> from `settings.html.j2` at build time, at `/t/<tenant>/settings-next` until M3 replaces this
+> record's page: for that page, *The page* and its policy below are ADR-0043's, and the probe on it
+> is refused, so its site bar links nothing. The rest of this ADR still stands, this record's page
+> and routes among it.
+
 ## Context and Problem Statement
 
 A hosted tenant's settings and sources were the operator's alone: the seed wrote them

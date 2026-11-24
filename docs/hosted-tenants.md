@@ -73,7 +73,8 @@ Worker's URL, `HOSTED_URL`, which `deploy` reads from wrangler's output. It goes
 You need:
 
 - Docker running, because wrangler builds the container image locally;
-- `bun`, `python3` (3.11 or later) and `curl`;
+- `bun`, `python3` (3.11 or later), `uv` and `curl`: the deploy builds the shared settings page with
+  the project's own Python (`uv run`, step 1);
 - Workers Paid on the trial account, because the Worker runs containers. Email Sending to an
   address the account has not verified needs it too;
 - for step 10, a domain on Cloudflare DNS in the trial account, onboarded to Email Sending
@@ -127,7 +128,9 @@ scripts/hosted.sh deploy
 ```
 
 This runs `wrangler deploy --config wrangler.hosted.toml --env-file /dev/null`, after you
-confirm the account. It deploys the Worker, its three Durable Object classes
+confirm the account. Its `[build]` first runs `scripts/build_shared_settings.py`, which renders the
+settings page every edition shares into the Worker (ADR-0043); a deploy that prints no
+`shared_settings.build.json: 2 pages, 6 files` line did not build it. It deploys the Worker, its three Durable Object classes
 (`TenantContainer`, `TenantDb` and `TenantRegistry`), its `MAIL` Email Sending binding and the
 container application `cyris-hosted-tenantcontainer` and its `BACKUP` R2 binding. It never reads `.env`. A first deploy's registry is empty, so
 until step 5 the Worker has no tenant: the hourly tick queues nothing, and every tenant route
@@ -799,6 +802,36 @@ gap [ADR-0040](decisions/0040-a-hosted-tenant-edits-its-settings-on-the-hosted-w
 under its consequences. *Unverified in a browser:* that the page's save carries the `Origin` the
 routes require; a save refused with "saved only from this digest's own settings page" means it did
 not.
+
+### The shared settings page (stub)
+
+`HOSTED_URL/t/<tenant>/settings-next` serves the settings page a local or cloud deployment serves at
+`/settings`, the same page and script, rendered at deploy (step 1), with the keys the hosted policy
+keeps from a tenant locked ([ADR-0043](decisions/0043-one-settings-page-an-edition-locks-a-key.md)).
+It is the edition-parity plan's first milestone, and a stub: nothing links it, the page above stays
+the one the digest pages link, and of the keys a tenant writes only the output language saves here.
+Every other control is disabled with the line `Set by the service's operator.`, Sources and
+Tracking are empty and read-only, and Areas is not shown. Its site bar shows the brand alone.
+
+To check it on a trial tenant, after a deploy that built the page:
+
+1. Sign in as alpha's reader (above), then open `HOSTED_URL/t/alpha/settings-next`. The page opens
+   on Model, in the language of alpha's output language.
+2. Under Provider, `anthropic` is the one choice, selected and disabled; Model reads
+   `claude-haiku-5-5` and is disabled. Each has the line `Set by the service's operator.` under its
+   name, and Save stays disabled.
+3. Open Digest. Output language is the one control not disabled. Choose another language, such as
+   `繁體中文 (Traditional Chinese)`, and press Save: the notice names the saved value and says it is
+   effective next run.
+4. Reload. The page is now worded in that language and the select shows it.
+5. As the operator, read it back: `POST /hosted/tenants/alpha/query` with `{"sql": "SELECT value
+   FROM settings WHERE key = 'digest.output_language'"}` answers `"zh-Hant"`.
+6. Set the language back on either page, and open `HOSTED_URL/t/alpha/settings`: the hosted page is
+   unchanged.
+
+A save refused with a 403 and `Access is not set up for this deployment` means the browser sent the
+save without this Worker's `Origin`; the browser's console names any script or style the page's
+policy refused.
 
 ## 11. Back up every tenant daily, and drill a restore
 
