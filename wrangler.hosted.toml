@@ -29,6 +29,12 @@ compatibility_flags = ["durable_object_io_tasks_prevent_eviction"]
 workers_dev = true
 preview_urls = false
 
+# The shared settings page (ADR-0043) is rendered from settings.html.j2 by the Python side, which
+# the Worker cannot run: so it is built, with its /static/ files, into a git-ignored module that
+# hosted.js imports, before every deploy.
+[build]
+command = "uv run --frozen python scripts/build_shared_settings.py"
+
 # Each tenant's tick asks its own database whether this hour is a digest hour.
 [triggers]
 crons = ["0 * * * *"]

@@ -113,6 +113,15 @@ def _shows_starting_select(key: str) -> bool:
     return bool(field.get("select")) and not field.get("optional") and key in STARTING_VALUES
 
 
+def sent_as_shown() -> list[str]:
+    """The keys a save sends as the page shows them while the home lacks them: an empty
+    field's answer, and a select's starting value.
+
+    The hosted Worker answers the list `scripts/build_shared_settings.py` builds from this.
+    """
+    return [key for key in SETTINGS_FIELDS if _accepts_empty(key) or _shows_starting_select(key)]
+
+
 def _refused(error: str, field: str) -> web.Response:
     """A 400 whose `field`, a settings key or a source field, is the one the page marks."""
     return web.json_response({"ok": False, "error": error, "field": field}, status=400)
@@ -850,13 +859,7 @@ class TriageServer:
                 "values": values,
                 "fields": _fields(self._translator(request)),
                 "missing": sorted(key for key in GRADE_D_KEYS if key not in self._values),
-                # The keys a save sends as the page shows them while the home lacks them:
-                # an empty field's answer, and a select's starting value.
-                "sent_as_shown": [
-                    key
-                    for key in GRADE_D_KEYS
-                    if _accepts_empty(key) or _shows_starting_select(key)
-                ],
+                "sent_as_shown": sent_as_shown(),
                 # What the wizard pre-fills for each key it may write, only while the home
                 # lacks it: a stored key is never offered, so the wizard cannot write over it.
                 "starting": {

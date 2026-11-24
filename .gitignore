@@ -92,3 +92,7 @@ wrangler.preview-*.toml
 
 # launch film workspace (product-launch-motion skill); renders and voice files stay out of the public repo
 launch-video/
+
+# The shared settings page and its /static/ files, built for the hosted Worker by
+# scripts/build_shared_settings.py before each hosted deploy and each vitest run (ADR-0043).
+workers/app/src/shared_settings.build.json
