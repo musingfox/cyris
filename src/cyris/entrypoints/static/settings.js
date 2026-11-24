@@ -903,6 +903,11 @@ function loaded(d) {
   sources = d.sources;
   sourcesWritable = d.writable;
   $("add-source").disabled = !d.writable;
+  // A deployment that caps its sources (the hosted one) says how many are used; one with no cap
+  // answers null and shows nothing.
+  const cap = $("sources-cap");
+  cap.hidden = d.max_sources == null;
+  if (d.max_sources != null) cap.textContent = t("settings.sources_used", {count: sources.length, max: d.max_sources});
   if (!d.writable) show("err", NO_SOURCE_TABLE, "sources-notice");
   // No source publishes no issue, so the category is marked like a missing
   // setting; unlike one, the next run waits instead of stopping.

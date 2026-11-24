@@ -806,8 +806,8 @@ It is a stub of the edition-parity plan: nothing links it, and the page above st
 digest pages link. It saves what that page saves, the eight keys and the schedule's hours and zone,
 which go to the registry as that page's do; every other control is disabled with the line `Set by
 the service's operator.`, and a second publish hour, for a tenant allowed one, with `Not included in
-your plan.` ([ADR-0047](decisions/0047-a-route-refuses-a-change-to-a-locked-key.md)). Sources and
-Tracking are empty and read-only. Its site bar shows the brand alone.
+your plan.` ([ADR-0047](decisions/0047-a-route-refuses-a-change-to-a-locked-key.md)). Sources lists,
+adds and deletes the tenant's RSS sources under that page's rules; Tracking is empty and read-only. Its site bar shows the brand alone.
 
 To check it on a trial tenant, after a deploy that built the page:
 

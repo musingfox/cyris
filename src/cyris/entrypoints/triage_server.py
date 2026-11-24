@@ -280,6 +280,7 @@ SETTINGS_SCRIPT_MESSAGES: tuple[str, ...] = (
     "settings.sending_test",
     "settings.session_expired",
     "settings.source_retired",
+    "settings.sources_used",
     "settings.topic_other_model",
     "settings.topic_removed",
     "settings.turn_off",
@@ -1277,6 +1278,8 @@ class TriageServer:
         return web.json_response(
             {
                 "writable": self._source_store is not None,
+                # TriageServer holds no cap; the hosted Worker answers its policy's.
+                "max_sources": None,
                 "sources": [
                     {
                         "name": s.name,
@@ -1698,9 +1701,14 @@ class TriageServer:
         try:
             # The last source may go: an empty table is a deployment waiting for
             # onboarding, and a run with none ends without fetching anything.
-            self._source_store.delete(name)
+            deleted = self._source_store.delete(name)
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             return web.json_response({"ok": False, "error": str(e)}, status=500)
+        if not deleted:
+            # As the hosted Worker answers one (workers/app/src/hosted_shared_settings.js).
+            return web.json_response(
+                {"ok": False, "error": t("settings_api.source_missing", name=name)}, status=404
+            )
 
         logger.info("Source %s retired", name)
         note = t("settings_api.effective_next_run")

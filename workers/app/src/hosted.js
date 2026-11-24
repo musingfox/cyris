@@ -181,6 +181,7 @@ const hosted = {
           registryRow: () => registry().tenant(tenant),
           setSchedule: readerSchedule(tenant),
           secrets: new Set(handedSecrets(env)),
+          ownHosts: [env[HOSTED_DOMAIN]].filter(Boolean),
         }),
       invite: (tenant, email) => registry().invite(tenant, email),
       revoke: (tenant, email) => registry().revoke(tenant, email),

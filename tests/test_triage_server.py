@@ -133,14 +133,14 @@ class TestSourcesEndpoint:
         finally:
             await test_client.close()
 
-        assert set(data) == {"writable", "sources"}
+        assert set(data) == {"writable", "max_sources", "sources"}
         by_name = {s["name"]: s for s in data["sources"]}
         assert by_name["feed"]["lane"] == "read"
         assert by_name["letter"]["email_match"] == "from:a@b.com"
 
     async def test_no_sources_wired_is_empty_not_an_error(self, client: TestClient) -> None:
         data = await (await client.get("/api/sources")).json()
-        assert data == {"writable": False, "sources": []}
+        assert data == {"writable": False, "max_sources": None, "sources": []}
 
     async def test_writes_are_refused_without_a_writable_table(self, client: TestClient) -> None:
         """A partial server with no source store has nowhere to put a source."""
@@ -186,8 +186,18 @@ class TestSourcesWriteSurface:
         assert set(self.sources.list_sources()) == {"New"}
 
     async def test_retiring_a_source_removes_its_row(self, client: TestClient) -> None:
+        for name in ("New Feed", "Kept Feed"):
+            await client.post("/api/sources", json={"name": name, "url": "https://n.test/rss"})
+        assert (await client.delete("/api/sources/New Feed")).status == 200
+        assert set(self.sources.list_sources()) == {"Kept Feed"}
+
+    async def test_a_source_only_the_startup_list_holds_has_no_row_to_retire(
+        self, client: TestClient
+    ) -> None:
         await client.post("/api/sources", json={"name": "New Feed", "url": "https://n.test/rss"})
-        assert (await client.delete("/api/sources/From File")).status == 200
+        resp = await client.delete("/api/sources/From File")
+        assert resp.status == 404
+        assert (await resp.json())["ok"] is False
         assert set(self.sources.list_sources()) == {"New Feed"}
 
     async def test_changing_lane_replaces_the_row_it_owns(self, client: TestClient) -> None:
@@ -407,4 +417,4 @@ async def test_an_emptied_table_is_listed_empty_not_as_the_startup_list() -> Non
     finally:
         await test_client.close()
 
-    assert data == {"writable": True, "sources": []}
+    assert data == {"writable": True, "max_sources": None, "sources": []}

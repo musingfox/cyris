@@ -99,8 +99,8 @@ key no tenant writes (outside `writable_settings` and the schedule) is locked fo
 `operator_reason`. STUB: of the keys a tenant writes, the shared page opens only `open`,
 `digest.output_language`, and locks every other for `stub_reason`; both reasons are `operator-set`
 in M1. So the Model tab is real, its provider and model shown as the run is pinned to them, and
-locked; only the output language saves. Sources and Tracking answer read-only and empty, and Areas
-answers so and is hidden.
+locked; only the output language saves. Tracking answers read-only and empty, and Areas answers
+so and is hidden; Sources lists, adds and deletes the tenant's RSS sources (M3a).
 
 **The page's policy.** This supersedes ADR-0040's for the shared page: `default-src 'none'`,
 `script-src` and `style-src` this Worker's `<origin>/static/` and the build's hash of each of the
