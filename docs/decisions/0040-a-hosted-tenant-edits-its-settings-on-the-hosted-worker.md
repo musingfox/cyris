@@ -12,6 +12,11 @@ decision-makers: ""
 > record's page: for that page, *The page* and its policy below are ADR-0043's, and the probe on it
 > is refused, so its site bar links nothing. The rest of this ADR still stands, this record's page
 > and routes among it.
+>
+> Update (2026-11-24, M3): this record's page, its policy and its `/t/<tenant>/api/settings`,
+> `/api/sources` and `/api/sources/delete` routes are deleted, and `/t/<tenant>/settings` serves
+> ADR-0043's shared page. Its writable keys, its CSRF rule, its source rules and the poll's hold
+> stand, as the shared page's routes keep them.
 
 ## Context and Problem Statement
 

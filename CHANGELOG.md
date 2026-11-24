@@ -77,6 +77,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- On a hosted deployment, a reader's Settings link opens the same settings page every
+  edition serves, at `/t/<tenant>/settings`; the smaller page the hosted Worker drew
+  there, and its `/t/<tenant>/api/settings` and `/api/sources` routes, are gone, as is the
+  trial path `/t/<tenant>/settings-next`. The page's site bar shows only the brand there.
 - `/settings` offers the digest hours as two lists of whole hours, where you typed a
   number before. A save the server refuses as coming from another page now says so,
   rather than saying Access is not set up.

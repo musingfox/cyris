@@ -10,6 +10,15 @@ decision-makers: ""
 > route refuses a write that changes a locked key, not one that names it; `GET /api/settings`
 > answers `limits`; and the shared page opens the keys a tenant writes and the schedule, so the
 > policy's `shared_page` stub is gone. The rest of this ADR still stands.
+>
+> Update (2026-11-24, M3): the shared page has left its stub path. The hosted Worker serves it at
+> `/t/<tenant>/settings`, the path the digest pages' Settings link opens, and
+> `/t/<tenant>/settings-next` is gone. The page ADR-0040 built is deleted with its policy and its
+> `/t/<tenant>/api/settings`, `/api/sources` and `/api/sources/delete` routes, so the driver that it
+> keeps working until M3, the STUB in *Where, on the hosted Worker* and the Confirmation's "the old
+> page unchanged" are history. *The probe* still holds: on the hosted Worker the page's site bar
+> shows its brand alone. The trial check is `docs/hosted-tenants.md` step 10, *The reader's
+> settings page*.
 
 ## Context and Problem Statement
 
