@@ -138,6 +138,37 @@ export class TenantDb extends DurableObject {
       .map(({ name, url, type, config }) => ({ name, url, type, lane: stored(config)?.lane ?? null }));
   }
 
+  // The tenant's sources with what the shared page lists of each (hosted_shared_settings.js): its
+  // columns, its config parsed, and for an RSS feed its poll record, which `D1FeedHealth` reads
+  // by the same join (src/cyris/adapters/store/feed_health.py): the `feed_health` row the poll
+  // writes (tenant_buffer.js) and the newest article it stored. A feed never polled has a record
+  // of nothing. Health is an annotation: a failed read of it leaves every `health` null and the
+  // list still answers. Null for a tenant never seeded.
+  sourceList() {
+    const sql = this.ctx.storage.sql;
+    if (!hasTable(sql, "sources")) return null;
+    const rows = sql.exec("SELECT name, url, type, config FROM sources ORDER BY name").toArray();
+    let polled = new Map();
+    try {
+      polled = new Map(
+        sql
+          .exec(
+            `SELECT s.name, h.consecutive_failures, h.last_error, h.last_failed_at, h.last_ok_at, a.newest_article_at
+               FROM sources s
+               LEFT JOIN feed_health h ON h.name = s.name
+               LEFT JOIN (SELECT source_name, max(first_seen_at) AS newest_article_at
+                            FROM stored_articles GROUP BY source_name) a ON a.source_name = s.name
+              WHERE s.type = 'rss' AND s.url IS NOT NULL`,
+          )
+          .toArray()
+          .map(({ name, consecutive_failures, ...rest }) => [name, { consecutive_failures: consecutive_failures ?? 0, ...rest }]),
+      );
+    } catch (error) {
+      console.warn("feed_health read failed:", String(error?.message ?? error));
+    }
+    return rows.map(({ name, url, type, config }) => ({ name, url, type, config: stored(config) ?? {}, health: polled.get(name) ?? null }));
+  }
+
   // Adds `row` ({name, url, type, config}) or rewrites the RSS source of its name, keeping what
   // else that row's config held (its tags, language). The count and the write are one
   // synchronous turn of this object, so two saves at once cannot both take the last place under

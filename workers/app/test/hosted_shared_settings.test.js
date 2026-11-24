@@ -6,12 +6,18 @@ import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json" with { type:
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json" with { type: "json" };
 import SEED from "../src/hosted_seed.json" with { type: "json" };
 import BUILT from "../src/shared_settings.build.json" with { type: "json" };
+import EN from "../../../src/cyris/locales/en.json" with { type: "json" };
+import ZH_HANT from "../../../src/cyris/locales/zh-Hant.json" with { type: "json" };
+import RULES from "../../../src/cyris/feed_health_rules.json" with { type: "json" };
 import worker from "../src/hosted.js";
 import { seedTenant } from "../src/hosted_seed.js";
-import { hostedValues, sharedPagePolicy } from "../src/hosted_shared_settings.js";
+import { QUIET_DAYS, UNHEALTHY_FAILURE_STREAK, findings } from "../src/hosted_feed_health.js";
+import { hostedValues, isSharedPath, sharedPagePolicy } from "../src/hosted_shared_settings.js";
+import POLICY from "../src/hosted_settings_policy.json" with { type: "json" };
 import { SESSION_COOKIE } from "../src/hosted_session.js";
 import { tenantRegistry } from "../src/tenant_registry.js";
 import CASES from "./shared_settings_cases.json" with { type: "json" };
+import SOURCE_RULES from "./hosted_settings_cases.json" with { type: "json" };
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace, registryNamespace } from "./sql_storage.js";
 
 // The shared settings page on the hosted Worker (ADR-0043): built from settings.html.j2, served
@@ -350,12 +356,297 @@ describe("POST /api/settings/values on the hosted Worker", () => {
 });
 
 describe("the tabs this milestone leaves empty", () => {
-  it.each([
-    ["/api/sources", { writable: false, sources: [] }],
-    ["/api/topics", { writable: false, topics: [], embedding_model: "" }],
-  ])("answer %s read-only and empty", async (path, answer) => {
+  it("answers /api/topics read-only and empty", async () => {
     const session = await signIn();
 
-    expect(await (await call(path, { session })).json()).toEqual(answer);
+    expect(await (await call("/api/topics", { session })).json()).toEqual({ writable: false, topics: [], embedding_model: "" });
+  });
+});
+
+// The Sources tab: the cases tests/test_shared_settings_cases.py runs against TriageServer, over
+// a tenant whose tables each case sets.
+const SOURCES = CASES.sources;
+const expand = (value) => JSON.parse(JSON.stringify(value).replace(/\{pad:(\d+)\}/g, (_, n) => "a".repeat(Number(n))));
+const dbOf = (tenant) => bound.TENANT_DB.getByName(tenant);
+const put = (db, { name, type, url, config }) =>
+  db.query("INSERT INTO sources (name, url, type, config) VALUES (?, ?, ?, ?)", [name, url, type, JSON.stringify(config)]);
+const sourceRows = async (tenant) => (await dbOf(tenant).query("SELECT name, url, type, config FROM sources ORDER BY name")).rows;
+
+// `tenant`'s tables as the case says: its sources, their poll records and stored articles.
+async function arrange(tenant, { rows = [], feed_health: health = [], articles = [], fill_to_cap: fill = false }) {
+  const db = dbOf(tenant);
+  for (const table of ["sources", "feed_health", "stored_articles"]) await db.query(`DELETE FROM ${table}`);
+  for (const row of rows) await put(db, row);
+  for (let n = 1; fill && (await sourceRows(tenant)).length < SOURCES.max_sources.hosted; n++) {
+    await put(db, { name: `Filler ${n}`, type: "rss", url: `https://filler${n}.example/feed`, config: { lane: "skim" } });
+  }
+  for (const row of health) {
+    await db.query(
+      "INSERT INTO feed_health (name, consecutive_failures, last_error, last_failed_at, last_ok_at) VALUES (?, ?, ?, ?, ?)",
+      [row.name, row.consecutive_failures, row.last_error, row.last_failed_at, row.last_ok_at],
+    );
+  }
+  for (const [n, row] of articles.entries()) {
+    await db.query(
+      "INSERT INTO stored_articles (url, published_at, source_name, source_lane, first_seen_at) VALUES (?, ?, ?, 'skim', ?)",
+      [`https://stored.example/${n}`, row.first_seen_at, row.source_name, row.first_seen_at],
+    );
+  }
+}
+
+const SAME_ORIGIN = { Origin: ORIGIN };
+const sourceCall = (session, method, path, body, headers = SAME_ORIGIN) => call(path, { method, session, headers, body });
+const listed = async (session) => (await (await call("/api/sources", { session })).json()).sources;
+const withoutHealth = (sources) => sources.map(({ health: _health, ...source }) => source);
+
+describe("the Sources tab on the hosted Worker: the cases TriageServer answers too", () => {
+  it.each(SOURCES.cases)("gives TriageServer's answer: $name", async (one) => {
+    const session = await signIn();
+    await arrange("alpha", one);
+    const before = await sourceRows("alpha");
+    const bravo = await sourceRows("bravo");
+
+    const response = await sourceCall(session, one.method, one.path, one.body && expand(one.body));
+    const answer = await response.json();
+
+    expect(response.status).toBe(one.status);
+    if (one.method === "GET") {
+      expect(answer.max_sources).toBe(SOURCES.max_sources.hosted);
+      delete answer.max_sources;
+    }
+    expect(answer).toEqual(one.answer);
+    if (one.method !== "GET") {
+      const after = await listed(session);
+      if (one.reads_back) expect(withoutHealth(after)).toEqual(one.reads_back);
+      else if (one.holds) {
+        expect(after).toHaveLength(one.count);
+        expect(withoutHealth(after)).toEqual(expect.arrayContaining(one.holds));
+      } else expect(await sourceRows("alpha")).toEqual(before);
+    }
+    expect(await sourceRows("bravo")).toEqual(bravo);
+  });
+
+  it("holds the cases' own cap equal to the policy's", () => {
+    expect(SOURCES.max_sources.hosted).toBe(POLICY.max_sources);
+    expect(SOURCES.max_sources.self_hosted).toBeNull();
+  });
+
+  it("is signed in first, and answers each path only its own methods", async () => {
+    const session = await signIn();
+
+    expect((await call("/api/sources")).status).toBe(302);
+    expect((await call("/api/sources/Plain", { method: "DELETE", headers: SAME_ORIGIN })).status).toBe(401);
+    expect((await sourceCall(session, "PUT", "/api/sources", {})).status).toBe(405);
+    expect((await sourceCall(session, "DELETE", "/api/sources", undefined)).status).toBe(405);
+    expect((await call("/api/sources/Plain", { session })).status).toBe(405);
+    expect((await sourceCall(session, "POST", "/api/sources/Plain", {})).status).toBe(405);
+  });
+
+  it("names the paths it answers, /api/sources/<name> one segment deep", () => {
+    expect(isSharedPath("/api/sources")).toBe(true);
+    expect(isSharedPath("/api/sources/Plain")).toBe(true);
+    expect(isSharedPath("/api/sources/Two%20Words")).toBe(true);
+    expect(isSharedPath("/api/sources/")).toBe(false);
+    expect(isSharedPath("/api/sources/a/b")).toBe(false);
+    expect(isSharedPath("/api/sourcesx")).toBe(false);
+  });
+});
+
+describe("the Sources tab: what a hosted tenant is held to", () => {
+  it("lists the session's tenant's sources, whichever the body or the path names", async () => {
+    const session = await signIn();
+    await arrange("alpha", { rows: [{ name: "Alpha only", type: "rss", url: "https://alpha.example/feed", config: {} }] });
+    await arrange("bravo", { rows: [{ name: "Bravo only", type: "rss", url: "https://bravo.example/feed", config: {} }] });
+
+    const answer = await (await call("/api/sources?tenant=bravo", { session, headers: { "X-Tenant": "bravo" } })).json();
+
+    expect(answer.sources.map((source) => source.name)).toEqual(["Alpha only"]);
+  });
+
+  it("refuses a body that names a tenant as a field a hosted digest does not set, and writes nothing", async () => {
+    const session = await signIn();
+    const bravo = await sourceRows("bravo");
+    const alpha = await sourceRows("alpha");
+
+    const answer = await sourceCall(session, "POST", "/api/sources", { name: "Sneak", url: "https://sneak.example/feed", tenant: "bravo" });
+
+    expect(answer.status).toBe(400);
+    expect((await answer.json()).field).toBe("tenant");
+    expect(await sourceRows("bravo")).toEqual(bravo);
+    expect(await sourceRows("alpha")).toEqual(alpha);
+  });
+
+  it("adds to the session's tenant, and removes from it, and no other's", async () => {
+    const session = await signIn();
+    const bravo = await sourceRows("bravo");
+
+    const added = await sourceCall(session, "POST", "/api/sources", { name: "Example", url: "https://example.org/feed.xml", lane: "read" });
+    const removed = await sourceCall(session, "DELETE", "/api/sources/Hacker%20News");
+
+    expect(added.status).toBe(200);
+    expect(removed.status).toBe(200);
+    const names = (await listed(session)).map((source) => source.name);
+    expect(names).toContain("Example");
+    expect(names).not.toContain("Hacker News");
+    expect(await sourceRows("bravo")).toEqual(bravo);
+  });
+
+  it.each(SOURCE_RULES.sources.written)("writes $body.name as the hosted page writes it", async ({ body, row }) => {
+    const session = await signIn();
+
+    const answer = await sourceCall(session, "POST", "/api/sources", body);
+
+    expect(answer.status).toBe(200);
+    const kept = (await sourceRows("alpha")).find((source) => source.name === row.name);
+    expect({ ...kept, config: JSON.parse(kept.config) }).toEqual(row);
+  });
+
+  it.each(SOURCE_RULES.sources.refused)("refuses $body.name as $reason, as the hosted page does", async ({ body, reason }) => {
+    const session = await signIn();
+    const before = await sourceRows("alpha");
+
+    const answer = await sourceCall(session, "POST", "/api/sources", body);
+    const refusal = await answer.json();
+
+    expect(answer.status).toBe(400);
+    expect(refusal.ok).toBe(false);
+    expect(refusal.error).toMatch(/\S/);
+    expect(refusal.error).not.toContain("{$");
+    expect(refusal.field).toBe(reason.startsWith("url_") ? "url" : reason.replace("source_", ""));
+    expect(await sourceRows("alpha")).toEqual(before);
+  });
+
+  it("takes a URL of the policy's length and no longer", async () => {
+    const session = await signIn();
+    const base = "https://example.org/";
+    const at = base + "a".repeat(POLICY.source_url.max_length - base.length);
+
+    const taken = await sourceCall(session, "POST", "/api/sources", { name: "Long", url: at });
+    const past = await sourceCall(session, "POST", "/api/sources", { name: "Longer", url: `${at}a` });
+
+    expect(taken.status).toBe(200);
+    expect(past.status).toBe(400);
+    expect((await past.json()).error).toBe(EN["hosted_settings.refused_url_length"].replace("{$max}", String(POLICY.source_url.max_length)));
+  });
+
+  it("refuses this Worker's own host, whatever its name", async () => {
+    const session = await signIn();
+    env.CYRIS_STORE_HOSTED_DOMAIN = "digest.example.com";
+
+    const own = await sourceCall(session, "POST", "/api/sources", { name: "Own", url: "https://digest.example.com/hosted/spend" });
+    const other = await sourceCall(session, "POST", "/api/sources", { name: "Other", url: "https://digest.example.org/feed" });
+
+    expect(own.status).toBe(400);
+    expect((await own.json()).field).toBe("url");
+    expect(other.status).toBe(200);
+  });
+
+  it("lets two saves at once take the last place under the cap, and only one", async () => {
+    const session = await signIn();
+    await arrange("alpha", { rows: [], fill_to_cap: true });
+    await dbOf("alpha").query("DELETE FROM sources WHERE name = 'Filler 1'");
+
+    const answers = await Promise.all(
+      ["Last A", "Last B"].map((name) => sourceCall(session, "POST", "/api/sources", { name, url: `https://${name[5].toLowerCase()}.example/feed` })),
+    );
+
+    expect(answers.map((answer) => answer.status).sort()).toEqual([200, 409]);
+    const refusal = await (await answers.find((answer) => answer.status === 409)).json();
+    expect(refusal.error).toBe(EN["hosted_settings.refused_source_cap"].replace("{$max}", String(POLICY.max_sources)));
+    expect(await sourceRows("alpha")).toHaveLength(POLICY.max_sources);
+  });
+
+  it("refuses a save from no page of this origin, and a removal too, and a save with no session", async () => {
+    const session = await signIn();
+    const before = await sourceRows("alpha");
+    const body = { name: "Example", url: "https://example.org/feed" };
+
+    for (const headers of [{}, { Origin: "https://elsewhere.example" }]) {
+      const added = await sourceCall(session, "POST", "/api/sources", body, headers);
+      const removed = await sourceCall(session, "DELETE", "/api/sources/Hacker%20News", undefined, headers);
+      expect(added.status).toBe(403);
+      expect((await added.json()).error).toBe(EN["hosted_settings.refused_cross_origin"]);
+      expect(removed.status).toBe(403);
+    }
+    expect((await sourceCall(undefined, "POST", "/api/sources", body)).status).toBe(401);
+    expect(await sourceRows("alpha")).toEqual(before);
+  });
+
+  it("refuses a body past the policy's size unread, and one that is no JSON", async () => {
+    const session = await signIn();
+    const before = await sourceRows("alpha");
+    const big = JSON.stringify({ name: "Big", url: "https://example.org/feed", lane: "x".repeat(POLICY.max_body_bytes) });
+
+    const large = await call("/api/sources", { method: "POST", session, headers: { ...SAME_ORIGIN, "Content-Type": "application/json" }, raw: big });
+    const broken = await call("/api/sources", { method: "POST", session, headers: { ...SAME_ORIGIN, "Content-Type": "application/json" }, raw: "{not json" });
+
+    expect(large.status).toBe(413);
+    expect((await large.json()).error).toBe(EN["hosted_settings.refused_too_large"]);
+    expect(broken.status).toBe(400);
+    expect(await sourceRows("alpha")).toEqual(before);
+  });
+
+  it("words its refusals in the catalog the tenant's output language reaches", async () => {
+    const session = await signIn();
+    await dbOf("alpha").saveSettings([["digest.output_language", "zh-Hant"]]);
+
+    const refused = await sourceCall(session, "POST", "/api/sources", { name: "Example", url: "ftp://example.org/feed" });
+    const missing = await sourceCall(session, "DELETE", "/api/sources/Nothing");
+
+    expect((await refused.json()).error).toBe(ZH_HANT["hosted_settings.refused_url_scheme"].text);
+    expect((await missing.json()).error).toBe(ZH_HANT["settings_api.source_missing"].text.replace("{$name}", "Nothing"));
+  });
+
+  it("answers a tenant never seeded as a deployment with no source table does, and writes nothing", async () => {
+    await tenantRegistry(env).register("charlie");
+    await tenantRegistry(env).invite("charlie", "cy@example.com");
+    const session = await signIn("cy@example.com");
+
+    const list = await (await call("/api/sources", { session })).json();
+    const added = await sourceCall(session, "POST", "/api/sources", { name: "Example", url: "https://example.org/feed" });
+    const removed = await sourceCall(session, "DELETE", "/api/sources/Example");
+
+    expect(list).toEqual({ writable: false, max_sources: POLICY.max_sources, sources: [] });
+    expect([added.status, removed.status]).toEqual([409, 409]);
+    expect((await added.json()).error).toBe(EN["hosted_settings.refused_not_seeded"]);
+  });
+});
+
+describe("the Sources tab's feed health", () => {
+  it("is judged by the thresholds cyris doctor is, from the one file both read", () => {
+    expect([UNHEALTHY_FAILURE_STREAK, QUIET_DAYS]).toEqual([RULES.unhealthy_failure_streak, RULES.quiet_days]);
+    const now = Date.parse("2026-11-24T06:00:00Z");
+    const polled = { consecutive_failures: 0, newest_article_at: "2026-11-24T06:00:00.000Z" };
+
+    expect(findings({ ...polled, consecutive_failures: UNHEALTHY_FAILURE_STREAK - 1 }, now)).toEqual([]);
+    expect(findings({ ...polled, consecutive_failures: UNHEALTHY_FAILURE_STREAK }, now)).toEqual(["failing"]);
+    expect(findings({ ...polled, newest_article_at: null }, now)).toEqual(["never_stored"]);
+    const edge = new Date(now - QUIET_DAYS * 24 * 3600 * 1000);
+    expect(findings({ ...polled, newest_article_at: edge.toISOString() }, now)).toEqual(["quiet"]);
+    expect(findings({ ...polled, newest_article_at: new Date(edge.getTime() + 3600 * 1000).toISOString() }, now)).toEqual([]);
+    // A stamp with no zone is UTC, as `_utc` reads it.
+    expect(findings({ ...polled, newest_article_at: "2026-10-01 00:00:00" }, now)).toEqual(["quiet"]);
+  });
+
+  it("shows the record the tenant's own poll writes", async () => {
+    const session = await signIn();
+    await arrange("alpha", { rows: [{ name: "Down", type: "rss", url: "https://down.example/feed", config: { lane: "skim" } }] });
+    await dbOf("alpha").query(
+      "INSERT INTO feed_health (name, consecutive_failures, last_error, last_failed_at) VALUES ('Down', 1, 'HTTP 503', '2026-11-24T05:00:00.000Z')",
+    );
+
+    const [down] = await listed(session);
+
+    expect(down.health).toMatchObject({ consecutive_failures: 1, last_error: "HTTP 503", problems: ["no article stored yet"] });
+  });
+
+  it("still lists the sources when the poll's tables cannot be read", async () => {
+    const session = await signIn();
+    await dbOf("alpha").query("DROP TABLE feed_health");
+
+    const sources = await listed(session);
+
+    expect(sources.length).toBeGreaterThan(0);
+    expect(sources.map((source) => source.health)).toEqual(sources.map(() => null));
   });
 });

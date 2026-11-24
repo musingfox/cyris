@@ -117,5 +117,447 @@
       "stored": {"digest.max_articles_per_digest": 120},
       "shown": {"digest.max_articles_per_digest": 120}
     }
-  ]
+  ],
+  "sources": {
+    "_comment": "The Sources tab's contract. Each case seeds the tenant's own tables (`rows`: `sources` rows, `feed_health` and `articles`: stored_articles rows' `source_name` and `first_seen_at`), sends one request and holds the answer. Run by workers/app/test/hosted_shared_settings.test.js against the hosted Worker and, for each case whose `editions` holds self_hosted (the default is both), by tests/test_shared_settings_cases.py against TriageServer. A `hosted` case is a rule only a hosted tenant is held to (the URL rules, the field lock, the cap, ADR-0040), so TriageServer, which sets none, takes no such case; `fill_to_cap` first adds feeds named `Filler <n>` until the table holds `max_sources`, newsletters counted; `{pad:N}` in a string is N letters `a`. A list case's `answer` leaves out `max_sources`, which `max_sources` states for each edition. `reads_back` is the list after a write, health left out; `null` means the table is as it was (a write that took holds only `holds`, entries the list must contain, and `count`, how many sources it lists). A refused write changes nothing.",
+    "max_sources": {"hosted": 30, "self_hosted": null},
+    "cases": [
+      {
+        "name": "a list of a feed with a lane and tags, a feed with no config, and a newsletter",
+        "rows": [{"name": "Tagged", "type": "rss", "url": "https://tagged.example/feed", "config": {"lane": "read", "tags": ["ai", "policy"], "homepage": "https://tagged.example/"}}, {"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}, {"name": "Letter", "type": "newsletter", "url": null, "config": {"lane": "read", "email_match": "from:news@letter.example", "homepage": "https://letter.example/"}}],
+        "method": "GET",
+        "path": "/api/sources",
+        "status": 200,
+        "answer": {"writable": true, "sources": [{"name": "Letter", "type": "newsletter", "lane": "read", "url": null, "email_match": "from:news@letter.example", "homepage": "https://letter.example/", "tags": [], "health": null}, {"name": "Plain", "type": "rss", "lane": "skim", "url": "https://plain.example/feed", "email_match": null, "homepage": null, "tags": [], "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": null, "newest_article_at": null, "problems": ["no article stored yet"]}}, {"name": "Tagged", "type": "rss", "lane": "read", "url": "https://tagged.example/feed", "email_match": null, "homepage": "https://tagged.example/", "tags": ["ai", "policy"], "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": null, "newest_article_at": null, "problems": ["no article stored yet"]}}]}
+      },
+      {
+        "name": "an empty table is listed empty",
+        "rows": [],
+        "method": "GET",
+        "path": "/api/sources",
+        "status": 200,
+        "answer": {"writable": true, "sources": []}
+      },
+      {
+        "name": "a feed's health is its poll record and the problems cyris doctor would name",
+        "rows": [{"name": "Failing", "type": "rss", "url": "https://failing.example/feed", "config": {}}, {"name": "Failing no error", "type": "rss", "url": "https://failing-no-error.example/feed", "config": {}}, {"name": "Two failures", "type": "rss", "url": "https://two-failures.example/feed", "config": {}}, {"name": "Quiet", "type": "rss", "url": "https://quiet.example/feed", "config": {}}, {"name": "Never stored", "type": "rss", "url": "https://never-stored.example/feed", "config": {}}, {"name": "Unpolled", "type": "rss", "url": "https://unpolled.example/feed", "config": {}}, {"name": "Healthy", "type": "rss", "url": "https://healthy.example/feed", "config": {}}, {"name": "Letter", "type": "newsletter", "url": null, "config": {"lane": "read", "email_match": "from:news@letter.example", "homepage": "https://letter.example/"}}],
+        "feed_health": [{"name": "Failing", "consecutive_failures": 3, "last_error": "HTTP 503\n  at the edge", "last_failed_at": "2026-10-08T11:00:00.000Z", "last_ok_at": null}, {"name": "Failing no error", "consecutive_failures": 4, "last_error": null, "last_failed_at": "2026-10-08T11:00:00.000Z", "last_ok_at": "2026-10-01T11:00:00.000Z"}, {"name": "Two failures", "consecutive_failures": 2, "last_error": "HTTP 429", "last_failed_at": "2026-10-08T11:00:00.000Z", "last_ok_at": "2026-10-01T11:00:00.000Z"}, {"name": "Quiet", "consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": "2026-10-08T11:00:00.000Z"}, {"name": "Never stored", "consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": "2026-10-08T11:00:00.000Z"}, {"name": "Healthy", "consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": "2026-10-08T11:00:00.000Z"}],
+        "articles": [{"source_name": "Failing", "first_seen_at": "2099-01-01T00:00:00.000Z"}, {"source_name": "Failing no error", "first_seen_at": "2099-01-01T00:00:00.000Z"}, {"source_name": "Two failures", "first_seen_at": "2099-01-01T00:00:00.000Z"}, {"source_name": "Healthy", "first_seen_at": "2099-01-01T00:00:00.000Z"}, {"source_name": "Quiet", "first_seen_at": "2020-01-01T00:00:00.000Z"}],
+        "method": "GET",
+        "path": "/api/sources",
+        "status": 200,
+        "answer": {"writable": true, "sources": [{"name": "Failing", "type": "rss", "lane": "skim", "url": "https://failing.example/feed", "email_match": null, "homepage": null, "tags": [], "health": {"consecutive_failures": 3, "last_error": "HTTP 503\n  at the edge", "last_failed_at": "2026-10-08T11:00:00.000Z", "last_ok_at": null, "newest_article_at": "2099-01-01T00:00:00.000Z", "problems": ["3 failures in a row · HTTP 503 at the edge"]}}, {"name": "Failing no error", "type": "rss", "lane": "skim", "url": "https://failing-no-error.example/feed", "email_match": null, "homepage": null, "tags": [], "health": {"consecutive_failures": 4, "last_error": null, "last_failed_at": "2026-10-08T11:00:00.000Z", "last_ok_at": "2026-10-01T11:00:00.000Z", "newest_article_at": "2099-01-01T00:00:00.000Z", "problems": ["4 failures in a row"]}}, {"name": "Healthy", "type": "rss", "lane": "skim", "url": "https://healthy.example/feed", "email_match": null, "homepage": null, "tags": [], "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": "2026-10-08T11:00:00.000Z", "newest_article_at": "2099-01-01T00:00:00.000Z", "problems": []}}, {"name": "Letter", "type": "newsletter", "lane": "read", "url": null, "email_match": "from:news@letter.example", "homepage": "https://letter.example/", "tags": [], "health": null}, {"name": "Never stored", "type": "rss", "lane": "skim", "url": "https://never-stored.example/feed", "email_match": null, "homepage": null, "tags": [], "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": "2026-10-08T11:00:00.000Z", "newest_article_at": null, "problems": ["no article stored yet"]}}, {"name": "Quiet", "type": "rss", "lane": "skim", "url": "https://quiet.example/feed", "email_match": null, "homepage": null, "tags": [], "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": "2026-10-08T11:00:00.000Z", "newest_article_at": "2020-01-01T00:00:00.000Z", "problems": ["no article in 30 days"]}}, {"name": "Two failures", "type": "rss", "lane": "skim", "url": "https://two-failures.example/feed", "email_match": null, "homepage": null, "tags": [], "health": {"consecutive_failures": 2, "last_error": "HTTP 429", "last_failed_at": "2026-10-08T11:00:00.000Z", "last_ok_at": "2026-10-01T11:00:00.000Z", "newest_article_at": "2099-01-01T00:00:00.000Z", "problems": []}}, {"name": "Unpolled", "type": "rss", "lane": "skim", "url": "https://unpolled.example/feed", "email_match": null, "homepage": null, "tags": [], "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": null, "newest_article_at": null, "problems": ["no article stored yet"]}}]}
+      },
+      {
+        "name": "a source is added from a name, a URL and a lane",
+        "rows": [],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "https://example.org/feed.xml", "lane": "read"},
+        "status": 200,
+        "answer": {"ok": true, "name": "Example", "note": "Effective next run."},
+        "reads_back": [{"name": "Example", "type": "rss", "lane": "read", "url": "https://example.org/feed.xml", "email_match": null, "homepage": null, "tags": []}]
+      },
+      {
+        "name": "a source is added with the lane left to its default",
+        "rows": [],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "https://example.org/feed.xml"},
+        "status": 200,
+        "answer": {"ok": true, "name": "Example", "note": "Effective next run."},
+        "reads_back": [{"name": "Example", "type": "rss", "lane": "skim", "url": "https://example.org/feed.xml", "email_match": null, "homepage": null, "tags": []}]
+      },
+      {
+        "name": "a source is added from the body the page sends, every field of it",
+        "rows": [{"name": "Letter", "type": "newsletter", "url": null, "config": {"lane": "read", "email_match": "from:news@letter.example", "homepage": "https://letter.example/"}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "type": "rss", "lane": "follow", "url": "https://example.org/feed.xml", "email_match": null, "homepage": null, "tags": []},
+        "status": 200,
+        "answer": {"ok": true, "name": "Example", "note": "Effective next run."},
+        "reads_back": [{"name": "Example", "type": "rss", "lane": "follow", "url": "https://example.org/feed.xml", "email_match": null, "homepage": null, "tags": []}, {"name": "Letter", "type": "newsletter", "lane": "read", "url": null, "email_match": "from:news@letter.example", "homepage": "https://letter.example/", "tags": []}]
+      },
+      {
+        "name": "a source is rewritten by the body the page sends back, and keeps its tags and homepage",
+        "rows": [{"name": "Tagged", "type": "rss", "url": "https://tagged.example/feed", "config": {"lane": "read", "tags": ["ai", "policy"], "homepage": "https://tagged.example/"}}, {"name": "Other", "type": "rss", "url": "https://other.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Tagged", "type": "rss", "lane": "follow", "url": "https://tagged.example/rss", "email_match": null, "homepage": "https://tagged.example/", "tags": ["ai", "policy"]},
+        "status": 200,
+        "answer": {"ok": true, "name": "Tagged", "note": "Effective next run."},
+        "reads_back": [{"name": "Other", "type": "rss", "lane": "skim", "url": "https://other.example/feed", "email_match": null, "homepage": null, "tags": []}, {"name": "Tagged", "type": "rss", "lane": "follow", "url": "https://tagged.example/rss", "email_match": null, "homepage": "https://tagged.example/", "tags": ["ai", "policy"]}]
+      },
+      {
+        "name": "a rewrite that names a name, a URL and a lane only keeps the tags the row held",
+        "editions": ["hosted"],
+        "rows": [{"name": "Tagged", "type": "rss", "url": "https://tagged.example/feed", "config": {"lane": "read", "tags": ["ai", "policy"], "homepage": "https://tagged.example/"}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Tagged", "url": "https://tagged.example/rss", "lane": "skim"},
+        "status": 200,
+        "answer": {"ok": true, "name": "Tagged", "note": "Effective next run."},
+        "reads_back": [{"name": "Tagged", "type": "rss", "lane": "skim", "url": "https://tagged.example/rss", "email_match": null, "homepage": "https://tagged.example/", "tags": ["ai", "policy"]}]
+      },
+      {
+        "name": "a name is trimmed, and a URL is written as the URL parser reads it",
+        "editions": ["hosted"],
+        "rows": [],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "  Example  ", "url": " https://Example.org "},
+        "status": 200,
+        "answer": {"ok": true, "name": "Example", "note": "Effective next run."},
+        "reads_back": [{"name": "Example", "type": "rss", "lane": "skim", "url": "https://example.org/", "email_match": null, "homepage": null, "tags": []}]
+      },
+      {
+        "name": "a source is removed, and the last one too",
+        "rows": [{"name": "Only", "type": "rss", "url": "https://only.example/feed", "config": {}}],
+        "method": "DELETE",
+        "path": "/api/sources/Only",
+        "status": 200,
+        "answer": {"ok": true, "name": "Only", "note": "Effective next run."},
+        "reads_back": []
+      },
+      {
+        "name": "a newsletter source is removed",
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}, {"name": "Letter", "type": "newsletter", "url": null, "config": {"lane": "read", "email_match": "from:news@letter.example", "homepage": "https://letter.example/"}}],
+        "method": "DELETE",
+        "path": "/api/sources/Letter",
+        "status": 200,
+        "answer": {"ok": true, "name": "Letter", "note": "Effective next run."},
+        "reads_back": [{"name": "Plain", "type": "rss", "lane": "skim", "url": "https://plain.example/feed", "email_match": null, "homepage": null, "tags": []}]
+      },
+      {
+        "name": "a name with a space in it is removed by its percent-encoded path",
+        "rows": [{"name": "Two Words", "type": "rss", "url": "https://two-words.example/feed", "config": {}}, {"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "DELETE",
+        "path": "/api/sources/Two%20Words",
+        "status": 200,
+        "answer": {"ok": true, "name": "Two Words", "note": "Effective next run."},
+        "reads_back": [{"name": "Plain", "type": "rss", "lane": "skim", "url": "https://plain.example/feed", "email_match": null, "homepage": null, "tags": []}]
+      },
+      {
+        "name": "a name that is no source is refused 404, and nothing is removed",
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "DELETE",
+        "path": "/api/sources/Nothing",
+        "status": 404,
+        "answer": {"ok": false, "error": "There is no source named Nothing."},
+        "reads_back": [{"name": "Plain", "type": "rss", "lane": "skim", "url": "https://plain.example/feed", "email_match": null, "homepage": null, "tags": []}]
+      },
+      {
+        "name": "refused: a name of no characters",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "  ", "url": "https://example.org/feed"},
+        "status": 400,
+        "answer": {"ok": false, "error": "A source name is 1 to 80 characters, with no control characters.", "field": "name"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a name of a control character",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "a\nb", "url": "https://example.org/feed"},
+        "status": 400,
+        "answer": {"ok": false, "error": "A source name is 1 to 80 characters, with no control characters.", "field": "name"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a name of 81 characters",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "url": "https://example.org/feed"},
+        "status": 400,
+        "answer": {"ok": false, "error": "A source name is 1 to 80 characters, with no control characters.", "field": "name"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a name that is no text",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": 7, "url": "https://example.org/feed"},
+        "status": 400,
+        "answer": {"ok": false, "error": "A source name is 1 to 80 characters, with no control characters.", "field": "name"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a lane that is none",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "https://example.org/feed", "lane": "daily"},
+        "status": 400,
+        "answer": {"ok": false, "error": "Lane is skim, read or follow.", "field": "lane"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: no URL",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example"},
+        "status": 400,
+        "answer": {"ok": false, "error": "That is not a URL.", "field": "url"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a URL of nothing",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "  "},
+        "status": 400,
+        "answer": {"ok": false, "error": "That is not a URL.", "field": "url"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: text that is no URL",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "not a url"},
+        "status": 400,
+        "answer": {"ok": false, "error": "That is not a URL.", "field": "url"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a URL past 2048 characters",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "https://example.org/{pad:2100}"},
+        "status": 400,
+        "answer": {"ok": false, "error": "A feed URL is at most 2048 characters.", "field": "url"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a scheme that is not http or https",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "ftp://example.org/feed"},
+        "status": 400,
+        "answer": {"ok": false, "error": "A feed URL starts with http:// or https://.", "field": "url"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a port that is not the standard one",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "https://example.org:8443/feed"},
+        "status": 400,
+        "answer": {"ok": false, "error": "A feed URL uses the standard port: none, 80 or 443.", "field": "url"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a user name and password in the URL",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "https://user:pass@example.org/feed"},
+        "status": 400,
+        "answer": {"ok": false, "error": "A feed URL carries no user name or password.", "field": "url"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: an IP address",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "http://169.254.169.254/latest"},
+        "status": 400,
+        "answer": {"ok": false, "error": "A feed URL names a domain, not an IP address.", "field": "url"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: an address spelled as a number",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "http://2130706433/feed"},
+        "status": 400,
+        "answer": {"ok": false, "error": "A feed URL names a domain, not an IP address.", "field": "url"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a name with no dot in it",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "http://intranet/feed"},
+        "status": 400,
+        "answer": {"ok": false, "error": "A feed URL names a domain, not an IP address.", "field": "url"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: localhost",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "https://localhost/feed"},
+        "status": 400,
+        "answer": {"ok": false, "error": "A feed URL names a public domain, not a local or internal one.", "field": "url"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: an internal domain",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "https://wiki.internal/feed"},
+        "status": 400,
+        "answer": {"ok": false, "error": "A feed URL names a public domain, not a local or internal one.", "field": "url"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: an address on workers.dev",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "https://anything.workers.dev/feed"},
+        "status": 400,
+        "answer": {"ok": false, "error": "A feed URL cannot be an address on this service or on workers.dev.", "field": "url"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a field a hosted digest does not set: type",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "type": "newsletter", "url": "https://example.org/feed"},
+        "status": 400,
+        "answer": {"ok": false, "error": "This digest's sources are RSS feeds set by name, URL and lane; type is not yours to set.", "field": "type"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a field a hosted digest does not set: email_match",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "https://example.org/feed", "email_match": "from:a@b.example"},
+        "status": 400,
+        "answer": {"ok": false, "error": "This digest's sources are RSS feeds set by name, URL and lane; email_match is not yours to set.", "field": "email_match"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a field a hosted digest does not set: tags",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "https://example.org/feed", "tags": ["ai"]},
+        "status": 400,
+        "answer": {"ok": false, "error": "This digest's sources are RSS feeds set by name, URL and lane; tags is not yours to set.", "field": "tags"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a field a hosted digest does not set: homepage",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "https://example.org/feed", "homepage": "https://example.org/"},
+        "status": 400,
+        "answer": {"ok": false, "error": "This digest's sources are RSS feeds set by name, URL and lane; homepage is not yours to set.", "field": "homepage"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a field a hosted digest does not set: tags that differ from the row's",
+        "editions": ["hosted"],
+        "rows": [{"name": "Tagged", "type": "rss", "url": "https://tagged.example/feed", "config": {"lane": "read", "tags": ["ai", "policy"], "homepage": "https://tagged.example/"}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Tagged", "url": "https://tagged.example/feed", "tags": ["other"]},
+        "status": 400,
+        "answer": {"ok": false, "error": "This digest's sources are RSS feeds set by name, URL and lane; tags is not yours to set.", "field": "tags"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a field nothing knows",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "https://example.org/feed", "area_id": 3},
+        "status": 400,
+        "answer": {"ok": false, "error": "This digest's sources are RSS feeds set by name, URL and lane; area_id is not yours to set.", "field": "area_id"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a body that is no object",
+        "editions": ["hosted"],
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": [],
+        "status": 400,
+        "answer": {"ok": false, "error": "The request is not a JSON object of settings."},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a name a newsletter source holds",
+        "editions": ["hosted"],
+        "rows": [{"name": "Letter", "type": "newsletter", "url": null, "config": {"lane": "read", "email_match": "from:news@letter.example", "homepage": "https://letter.example/"}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Letter", "url": "https://example.org/feed"},
+        "status": 409,
+        "answer": {"ok": false, "error": "Letter is already a newsletter source.", "field": "name"},
+        "reads_back": null
+      },
+      {
+        "name": "refused: a source past the cap, newsletters counted",
+        "editions": ["hosted"],
+        "rows": [{"name": "Letter", "type": "newsletter", "url": null, "config": {"lane": "read", "email_match": "from:news@letter.example", "homepage": "https://letter.example/"}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "One more", "url": "https://more.example/feed"},
+        "status": 409,
+        "answer": {"ok": false, "error": "This digest already has 30 sources, the most it can have. Remove one first.", "field": "name"},
+        "reads_back": null,
+        "fill_to_cap": true
+      },
+      {
+        "name": "a source the digest holds is rewritten at the cap",
+        "editions": ["hosted"],
+        "rows": [{"name": "Letter", "type": "newsletter", "url": null, "config": {"lane": "read", "email_match": "from:news@letter.example", "homepage": "https://letter.example/"}}],
+        "fill_to_cap": true,
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Filler 1", "url": "https://moved.example/feed", "lane": "read"},
+        "status": 200,
+        "answer": {"ok": true, "name": "Filler 1", "note": "Effective next run."},
+        "reads_back": null,
+        "holds": [{"name": "Filler 1", "type": "rss", "lane": "read", "url": "https://moved.example/feed", "email_match": null, "homepage": null, "tags": []}],
+        "count": 30
+      }
+    ]
+  }
 }

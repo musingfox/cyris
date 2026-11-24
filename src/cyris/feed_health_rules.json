@@ -1,0 +1,5 @@
+{
+  "_comment": "When a polled feed is unhealthy (docs/architecture.md §5, grade A). Read by adapters/store/feed_health.py, which `cyris doctor` and TriageServer judge through, and by the hosted Worker's sources list (workers/app/src/hosted_feed_health.js), so neither side copies a number. One Substack 429 is routine; three hourly polls failing in a row is not. Feeds publish weekly or monthly, so a shorter silence is noise.",
+  "unhealthy_failure_streak": 3,
+  "quiet_days": 30
+}

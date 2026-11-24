@@ -108,8 +108,8 @@ class FakeSourceStore:
     def upsert(self, source: SourceConfig) -> None:
         self.sources[source.name] = source
 
-    def delete(self, name: str) -> None:
-        self.sources.pop(name, None)
+    def delete(self, name: str) -> int:
+        return 1 if self.sources.pop(name, None) else 0
 
 
 class FakeTopicStore:

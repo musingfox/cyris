@@ -781,6 +781,7 @@
     "text": "下一期會讀取的資訊來源與電子報寄件者。",
     "source": "The feeds and newsletter senders the next run reads."
   },
+  "settings.sources_used": {"text": "{$count} / {$max} 個來源", "source": "{$count} of {$max} sources"},
   "settings.tab_digest": {"text": "精選", "source": "Digest"},
   "settings.tab_model": {"text": "模型", "source": "Model"},
   "settings.tab_notifications": {"text": "通知", "source": "Notifications"},
@@ -870,6 +871,8 @@
     "text": "{$labels}一分鐘內會顯示在頁面上，其餘設定下一期生效。",
     "source": "{$labels}: pages show it within a minute. The rest: effective next run."
   },
+  "settings_api.source_field_locked": {"text": "這份摘要的來源是以名稱、網址和分類設定的 RSS 訂閱；{$field} 不開放設定。", "source": "This digest's sources are RSS feeds set by name, URL and lane; {$field} is not yours to set."},
+  "settings_api.source_missing": {"text": "沒有名為 {$name} 的來源。", "source": "There is no source named {$name}."},
   "settings_api.source_needs_name": {"text": "來源需要名稱。", "source": "A source needs a name."},
   "settings_api.source_type_unknown": {
     "text": "來源類型只能是 rss 或 newsletter，不能是 {$type}。",
