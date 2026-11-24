@@ -13,6 +13,7 @@ from aiohttp.test_utils import TestClient, TestServer, make_mocked_request
 from fakes import seed_d1_settings
 from typer.testing import CliRunner
 
+from cyris.adapters.store.topics import D1TopicStore
 from cyris.entrypoints.cli import app
 from cyris.entrypoints.triage_server import TriageServer
 
@@ -123,6 +124,9 @@ def test_a_sqlite_ui_role_wires_every_store_and_builds_no_run_store(
     assert kwargs["topic_store"] is not None
     assert kwargs["blind_labels"] is not None
     assert kwargs["article_store"] is not None
+    # A page vote writes its topic vote beside its stamp, on the one file (ADR-0044).
+    assert isinstance(kwargs["issue_topics"], D1TopicStore)
+    assert kwargs["issue_topics"]._db is kwargs["article_store"]._db
     assert kwargs["area_store"] is not None
     assert kwargs["source_titles"] is not None
     assert kwargs["onboarding_articles"] is not None

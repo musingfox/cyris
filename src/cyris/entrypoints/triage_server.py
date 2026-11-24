@@ -465,6 +465,12 @@ ONBOARDING_EXIT_MARK = ("from", "onboarding")
 # A vote card's two answers, as the digest's own votes name them: "up" is
 # Interested and is written accepted, "down" is Not interested, rejected.
 VOTES = ("up", "down")
+# What a digest or raw page's vote button may post to /api/vote, as the promote Worker takes
+# it (`VOTES` in workers/promote/src/index.js): "deep" is the deep-read button of the pages
+# published 2026-07-31 to 2026-08-06, and no vote at all is an older page's, which meant it.
+# `workers/app/test/vote_cases.json` holds both editions to the same answers.
+PAGE_VOTES = ("up", "down", "deep")
+NO_PAGE_VOTE = "deep"
 
 
 def _onboarding_catalog() -> dict[str, Any]:
@@ -633,6 +639,7 @@ class TriageServer:
         topic_store=None,
         blind_labels=None,
         article_store=None,
+        issue_topics=None,
         area_store=None,
         source_titles=None,
         llm_factory=None,
@@ -676,6 +683,14 @@ class TriageServer:
         # written to as votes; both optional for a partial server.
         self._blind_labels = blind_labels
         self._article_store = article_store
+        # D1's `topics` and `topic_votes` (a `TopicRepository`, not the tracked topics above):
+        # a page vote on an item an issue put under a topic is also a vote on that topic.
+        # Optional; without it a vote stamps its article and nothing more.
+        self._issue_topics = issue_topics
+        # The pages' votes are taken here only on a local `cyris triage-ui` with a store to
+        # write them to. Behind the app Worker the Worker answers /api/vote itself and
+        # queues the vote for the run (`docs/architecture.md` §6).
+        self._takes_votes = article_store is not None and not behind_app_worker
         # D1's areas and birth threshold; optional for a partial server.
         self._area_store = area_store
         # D1's recent article titles for the Propose prompt; optional for a partial
@@ -712,7 +727,11 @@ class TriageServer:
             middlewares=[] if behind_app_worker else [_refuse_foreign_requests(host)]
         )
         self._app.router.add_get("/api/build", self._handle_build)
-        self._app.router.add_get("/api/vote", self._handle_vote_probe)
+        if self._takes_votes:
+            # Every method, as the app Worker's `handleVote` answers every method.
+            self._app.router.add_route("*", "/api/vote", self._handle_vote)
+        else:
+            self._app.router.add_get("/api/vote", self._handle_vote_probe)
         self._app.router.add_get("/api/settings", self._handle_get_settings)
         self._app.router.add_post("/api/settings", self._handle_post_settings)
         self._app.router.add_post("/api/diagnostics/llm", self._handle_diagnose_llm)
@@ -2392,13 +2411,58 @@ class TriageServer:
         return web.Response(body=html_digest.FAVICON.read_bytes(), content_type="image/svg+xml")
 
     async def _handle_vote_probe(self, request: web.Request) -> web.Response:
-        """The pages' capability probe: signed in, but this server takes no vote.
+        """The pages' capability probe on a server with no store to take a vote into.
 
         `votes: false` opens Settings and the Archive link and leaves the vote buttons and
-        `.gated` controls closed. The app Worker answers this path itself, without that
-        field, so the cloud edition's pages open all of them.
+        `.gated` controls closed. A local `cyris triage-ui` takes votes (`_handle_vote`),
+        and the app Worker answers this path itself; both answer without that field.
         """
         return web.json_response({"authorized": True, "votes": False})
+
+    async def _handle_vote(self, request: web.Request) -> web.Response:
+        """A digest or raw page's vote, answered as the cloud edition answers it, applied at once.
+
+        The request and every answer are the app Worker's `handleVote` and the promote
+        Worker's behind it (`workers/app/test/vote_cases.json`), so the pages speak to
+        either edition alike. Where the cloud queues the vote for the next run's
+        `promote-sync`, this server is that run's own Python and the store is a file beside
+        it, so it hands the vote straight to `apply_promotions`, the one rule every queue is
+        drained by: the same `triaged_at` stamp, state and topic vote, on the same tables
+        (ADR-0044). The Host and Origin check is what lets only this server's own pages
+        write here; a local install has no sign-in (ADR-0025).
+        """
+        from cyris.adapters.promotions import PromotedArticle, apply_promotions
+
+        if request.method in ("GET", "HEAD"):
+            return web.json_response({"authorized": True})
+        if request.method != "POST":
+            return web.json_response({"error": "method not allowed"}, status=405)
+        try:
+            body = await request.json()
+        except Exception:
+            # The promote Worker reads a body it cannot parse as none.
+            body = None
+        url = body.get("url") if isinstance(body, dict) else None
+        if not isinstance(url, str) or not url:
+            return web.json_response({"error": "missing url"}, status=400)
+        vote = body.get("vote")
+        vote = NO_PAGE_VOTE if vote is None else vote
+        if vote not in PAGE_VOTES:
+            return web.json_response({"error": "bad vote"}, status=400)
+        digest_date = body.get("digest_date")
+        promotion = PromotedArticle(
+            url=url,
+            vote=vote,
+            digest_date=digest_date if isinstance(digest_date, str) else None,
+            # The click's time, as the promote Worker stamps its queue entry with its own clock.
+            ts=datetime.now(UTC).isoformat(),
+        )
+        try:
+            apply_promotions([promotion], self._article_store, self._issue_topics)
+        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+            logger.warning("Vote for %s not recorded: %s", url, e)
+            return web.json_response({"error": str(e)}, status=500)
+        return web.json_response({"ok": True})
 
     def _type_scale(self) -> float:
         """The deployment's type size; 1 for a value that is not one of the steps."""

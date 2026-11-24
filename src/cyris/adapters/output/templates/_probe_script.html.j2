@@ -2,11 +2,11 @@
     // Capability probe: check if /api/vote is available before showing buttons and Settings.
     // Contract (do not follow Access redirects):
     // - Access redirect (opaqueredirect) → Sign in shows
-    // - 200 JSON {"authorized":true} → vote buttons, Settings, the Archive link and gated controls show
-    // - 200 JSON {"authorized":true,"votes":false} (a local `cyris triage-ui`, which serves these
-    //   pages but takes no vote on them) → Settings and the
-    //   Archive link show; vote buttons and gated controls stay closed. The Worker's answer
-    //   carries no `votes` field, so only `votes === false` closes them.
+    // - 200 JSON {"authorized":true} (the app Worker, and a local `cyris triage-ui`, which takes
+    //   votes itself, ADR-0044) → vote buttons, Settings, the Archive link and gated controls show
+    // - 200 JSON {"authorized":true,"votes":false} (a settings server with no article store to
+    //   take a vote into) → Settings and the Archive link show; vote buttons and gated controls
+    //   stay closed. The other answers carry no `votes` field, so only `votes === false` closes them.
     // - 200 JSON {"authorized":true,"settings":false,"settings_link":true} (a hosted tenant's page,
     //   ADR-0039 and ADR-0040: the hosted Worker takes votes and serves the tenant's own settings
     //   page, but no archive link or interest page) → the vote buttons and the Settings link show;
