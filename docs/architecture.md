@@ -1579,8 +1579,10 @@ A request from a browser naming another site is refused before any session is re
 tenant's `hosted_votes` (§4), only for a URL in its own `stored_articles`, and never reaches the promote
 Worker; the tenant's next run applies it (ADR-0039). `GET /api/vote` with a live token is the
 page's capability probe, answered `{authorized, settings: false, settings_link: true}` so the vote
-buttons and the Settings link show, and the archive link and gated controls, whose pages this Worker
-does not serve, do not. A tenant's pages link Settings at `/t/<tenant>/settings`, where the Worker
+buttons and the Archive and Settings links show, and the gated controls, whose pages this Worker
+does not serve, do not: a signed-in reader gets the Archive link, the Settings link and the vote
+buttons on every page the Worker serves a live session, and a signed-out visitor none of them (the
+owner's rule, 2026-11-24, recorded in ADR-0043). A tenant's pages link Settings at `/t/<tenant>/settings`, where the Worker
 serves the settings page every edition shares (ADR-0043) to a session of that tenant, behind the
 same door as its site and not sandboxed: the page TriageServer renders, built into the Worker per
 catalog (§5), under a policy of its own, with its `/static/` files and its JSON (`GET
@@ -1596,8 +1598,11 @@ hosted rules (an RSS feed by name, URL and lane, the URL rules of ADR-0040, the 
 counting newsletters, enforced in `TenantDb.saveSource`), a name that is no source is refused 404 on
 both editions, and each RSS feed is listed with the health `cyris doctor` judges, from the tenant's
 own `feed_health` and `stored_articles` and the thresholds in `src/cyris/feed_health_rules.json`,
-which both read. Its
-probe carries no vote token and is refused, so its site bar links nothing. A reader signs in
+which both read. The Worker puts the session's vote token in the page as it serves it, as in a
+page the run wrote, so its probe is answered as theirs is and its site bar shows the Archive and
+Settings links; its own Settings link is relative, so it is this page on every edition. The vote
+route still reads no cookie (ADR-0039): only a page served behind the session check carries the
+token. A reader signs in
 at `/login`: an address on the operator's list (the registry's `members`, §4) is mailed a
 single-use link through the `MAIL` Email Service binding from `CYRIS_HOSTED_MAIL_FROM` (§5), its
 token in the link's fragment; `/login/confirm` turns the token into the `__Host-reader_session`

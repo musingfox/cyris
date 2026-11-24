@@ -16,9 +16,8 @@ decision-makers: ""
 > `/t/<tenant>/settings-next` is gone. The page ADR-0040 built is deleted with its policy and its
 > `/t/<tenant>/api/settings`, `/api/sources` and `/api/sources/delete` routes, so the driver that it
 > keeps working until M3, the STUB in *Where, on the hosted Worker* and the Confirmation's "the old
-> page unchanged" are history. *The probe* still holds: on the hosted Worker the page's site bar
-> shows its brand alone. The trial check is `docs/hosted-tenants.md` step 10, *The reader's
-> settings page*.
+> page unchanged" are history. *The probe* is updated below. The trial check is
+> `docs/hosted-tenants.md` step 10, *The reader's settings page*.
 
 ## Context and Problem Statement
 
@@ -123,6 +122,18 @@ holds no vote token, so on the hosted Worker the probe is refused and the page's
 brand alone, with no Archive, Settings or sign-out link, where ADR-0040's page linked all three.
 ADR-0040's sentence that the probe answers `settings: false, settings_link: true` still holds for
 the digest pages, whose Settings link opens `/t/<tenant>/settings` until M3 points it here.
+
+> Update (2026-11-24, the owner's rule): a signed-in reader always gets the whole page, the Archive
+> link, the Settings link and the vote buttons, on every page the hosted Worker serves to a live
+> session, and a signed-out visitor gets none of them. So the Worker puts the session's vote token in
+> the shared page when it serves it to a session, as it does in a page the run wrote, and the probe
+> is answered as on a digest page; the probe now opens the Archive link (and points the brand at the
+> archive) on `settings_link: true` as it opens the Settings link, the gated controls still closed;
+> and the page's own Settings link is relative, `settings`, which is `/settings` locally and on a
+> cloud deployment and `/t/<tenant>/settings` on the hosted Worker. The vote route still reads no
+> cookie ([ADR-0039](0039-a-hosted-vote-is-queued-by-the-worker-and-applied-by-the-run.md)): the
+> token comes from the page serve, behind the session check. The sentence above, that the probe is
+> refused and the site bar shows the brand alone, no longer holds.
 
 **Two hour controls (amends ADR-0042).** ADR-0042 had the settings page offer one hour select
 unless the tenant is allowed two. The shared page always shows the two hour controls it shows on
