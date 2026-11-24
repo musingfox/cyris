@@ -23,7 +23,7 @@ export const SESSION_ENDED = "vote_session_ended";
 // What the page's capability probe reads (_probe_script.html.j2): signed in, so the vote buttons
 // show. `settings: false` keeps the self-hosted Settings, the archive link and the gated controls
 // (the interest page) closed, which this Worker does not serve; `settings_link: true` opens the
-// Settings link alone, which on a tenant's page leads to its own settings page (ADR-0040). A page
+// Settings link alone, which on a tenant's page leads to its own settings page (ADR-0043). A page
 // published before that link existed reads only `settings: false`, so its old `/settings` link,
 // an operator route here, stays hidden.
 export const PROBE = { authorized: true, settings: false, settings_link: true };
