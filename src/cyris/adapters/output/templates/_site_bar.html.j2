@@ -5,6 +5,7 @@
                 <a class="label{{ " archive-link" if current in ("settings", "labels", "onboarding") }}" href="index.html"{% if current in ("settings", "labels", "onboarding") %} hidden{% endif %}{% if current is not defined or current == "archive" %} aria-current="page"{% endif %}>{{ t("site.archive") }}</a>
                 <a class="label settings-link" href="{{ settings_path | default("/settings") }}{{ "?from=onboarding" if current == "onboarding" }}"{% if current == "settings" %} aria-current="page"{% endif %}>{{ t("site.settings") }}</a>
                 <a class="label signin-link" href="/login" hidden>{{ t("site.sign_in") }}</a>
+                <a class="label signout-link" href="/logout" hidden>{{ t("site.sign_out") }}</a>
             </nav>
         </div>
     </header>

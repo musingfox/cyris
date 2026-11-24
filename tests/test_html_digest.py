@@ -5,6 +5,7 @@ import re
 from datetime import UTC, datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urljoin
 
 import pytest
 from css_rules import parse_style_block, receipt_fixtures, text_langs
@@ -1779,6 +1780,7 @@ SITE_BAR_ON_THE_ARCHIVE = "\n".join(
         '                <a class="label" href="index.html" aria-current="page">Archive</a>',
         '                <a class="label settings-link" href="/settings">Settings</a>',
         '                <a class="label signin-link" href="/login" hidden>Sign in</a>',
+        '                <a class="label signout-link" href="/logout" hidden>Sign out</a>',
         "            </nav>",
         "        </div>",
         "    </header>",
@@ -1800,6 +1802,26 @@ def test_a_hosted_tenants_pages_link_its_own_settings_page(tmp_path):
         bar = _site_bar(html)
         assert '<a class="label settings-link" href="/t/alpha/settings">Settings</a>' in bar, name
         assert 'href="/settings"' not in html, name
+
+
+def test_a_hosted_tenants_pages_link_its_archive_and_settings_within_its_site(tmp_path):
+    """Each link resolves to the path the hosted Worker serves under /t/<tenant>/: the archive the
+    run wrote, and the shared settings page (workers/app/test/hosted_shared_settings.test.js follows
+    the two from a stored page)."""
+    pages = _issue_pages(tmp_path, settings_path=tenant_settings_path("alpha"))
+    served_at = {
+        "index": "/t/alpha/",
+        "digest": "/t/alpha/2026-04-15-evening",
+        "raw": "/t/alpha/2026-04-15-evening-raw.html",
+    }
+
+    for name, html in pages.items():
+        bar = _site_bar(html)
+        archive = re.search(r'<a class="label" href="([^"]+)"[^>]*>Archive</a>', bar)
+        settings = re.search(r'<a class="label settings-link" href="([^"]+)">Settings</a>', bar)
+        assert archive and settings, name
+        assert urljoin(served_at[name], archive[1]) == "/t/alpha/index.html", name
+        assert urljoin(served_at[name], settings[1]) == "/t/alpha/settings", name
 
 
 def test_the_site_bar_can_mark_settings_as_the_current_page(tmp_path):
@@ -1839,6 +1861,19 @@ def test_the_probe_links_sign_in_to_login_with_this_page_as_next(tmp_path):
     assert '<a class="label signin-link" href="/login" hidden>Sign in</a>' in html
     assert "encodeURIComponent(location.pathname + location.search)" in html
     assert "a.href = '/login?next=' + next;" in html
+
+
+def test_every_page_carries_a_hidden_sign_out_the_hosted_probe_opens(tmp_path):
+    """A hosted reader signs out from any page; the link to the Worker's /logout ships hidden, and
+    only the hosted answer, `settings_link: true`, opens it (tests/test_local_pages.py runs it)."""
+    pages = _issue_pages(tmp_path, settings_path=tenant_settings_path("alpha"))
+
+    for name, html in pages.items():
+        bar = _site_bar(html)
+        assert '<a class="label signout-link" href="/logout" hidden>Sign out</a>' in bar, name
+    probe = HtmlDigestWriter(tmp_path).env.get_template("_probe_script.html.j2").render()
+    opened = probe.split("if (data.settings_link === true) {", 1)[1].split("}", 1)[0]
+    assert "document.querySelectorAll('.signout-link').forEach((a) => a.hidden = false);" in opened
 
 
 def test_the_probe_checks_the_access_redirect_before_it_parses_an_answer(tmp_path):

@@ -522,9 +522,9 @@ async function parseAnswer(res) {
 
 // Rejects with what the reader needs: the server's own explanation when it
 // gives one, otherwise what happened and what to do next.
-// A write names `same-origin`, as hosted_settings.js's do, so under the hosted Worker's
-// `Referrer-Policy: no-referrer` it sends a Referer to this origin and nowhere else. The Origin
-// a write needs is sent either way: a fetch is in `cors` mode, which no referrer policy nulls.
+// A write names `same-origin`, so under the hosted Worker's `Referrer-Policy: no-referrer` it
+// sends a Referer to this origin and nowhere else; no route reads one. The Origin a write needs
+// is sent either way: a fetch is in `cors` mode, which no referrer policy nulls.
 async function post(url, body, method = "POST") {
   let res;
   try {

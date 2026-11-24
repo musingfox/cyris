@@ -394,6 +394,7 @@ const els = {
   '.archive-link': [{ hidden: true }],
   '[data-gated-href]': [{ href: '', dataset: { gatedHref: 'index.html' } }],
   '.signin-link': [{ hidden: true, href: '' }],
+  '.signout-link': [{ hidden: true }],
 };
 globalThis.document = { querySelectorAll: (selector) => els[selector] ?? [] };
 globalThis.location = { pathname: '/settings', search: '' };
@@ -407,6 +408,7 @@ setTimeout(() => console.log(JSON.stringify({
   gated: els['.gated'][0].hidden === false,
   archive: els['.archive-link'][0].hidden === false,
   brand: els['[data-gated-href]'][0].href === 'index.html',
+  signout: els['.signout-link'][0].hidden === false,
 })), 50);
 """
 
@@ -443,6 +445,7 @@ class TestTheProbeSplit:
             "gated": True,
             "archive": True,
             "brand": True,
+            "signout": False,
         }
 
     async def test_a_storeless_answer_opens_settings_and_archive_and_leaves_votes_closed(
@@ -456,6 +459,7 @@ class TestTheProbeSplit:
             "gated": False,
             "archive": True,
             "brand": True,
+            "signout": False,
         }
 
     def test_the_workers_answer_still_opens_everything(self, tmp_path):
@@ -466,10 +470,13 @@ class TestTheProbeSplit:
             "gated": True,
             "archive": True,
             "brand": True,
+            "signout": False,
         }
 
-    def test_the_hosted_answer_opens_votes_and_settings_and_nothing_gated(self, tmp_path):
-        """A tenant's page links its own settings page, and no interest page (ADR-0040)."""
+    def test_the_hosted_answer_opens_votes_settings_and_archive_and_nothing_gated(self, tmp_path):
+        """A signed-in tenant reader gets the vote buttons, the Archive and Settings links and Sign
+        out on every page (the owner's rule, 2026-11-24), and no interest page (ADR-0043). Only this
+        answer opens Sign out: a cloud or local page has none to give."""
         vote = (ROOT / "workers" / "app" / "src" / "hosted_vote.js").read_text(encoding="utf-8")
         probe = re.search(r"export const PROBE = (\{[^}]*\});", vote)[1]
         answer = json.loads(re.sub(r"(\w+):", r'"\1":', probe))
@@ -478,8 +485,9 @@ class TestTheProbeSplit:
             "vote": True,
             "settings": True,
             "gated": False,
-            "archive": False,
-            "brand": False,
+            "archive": True,
+            "brand": True,
+            "signout": True,
         }
 
     def test_the_workers_answer_is_still_exactly_authorized_true(self):

@@ -101,8 +101,8 @@ export class TenantDb extends DurableObject {
   }
 
   // The tenant's own settings a reader may see, as values: by default every writable key and the
-  // schedule's copy, what /t/<tenant>/settings shows; or `keys`, any grade-D key the shared page
-  // shows (hosted_shared_settings.js), but never a notify target, which the run pins blank
+  // schedule's copy; or `keys`, any grade-D key the settings page shows
+  // (hosted_shared_settings.js), but never a notify target, which the run pins blank
   // whatever a row holds (ADR-0040). Null for a tenant never seeded, which has no `settings` table.
   settings(keys = [...WRITABLE, ...SCHEDULE_COPY]) {
     const sql = this.ctx.storage.sql;
@@ -125,17 +125,6 @@ export class TenantDb extends DurableObject {
       for (const [key, value] of rows) storage.sql.exec(SETTING_UPSERT, key, JSON.stringify(value), stamp(now));
     });
     return { saved: rows.map(([key]) => key) };
-  }
-
-  // The tenant's sources, RSS and newsletter, by name: what /t/<tenant>/settings lists; null for
-  // a tenant never seeded.
-  sources() {
-    const sql = this.ctx.storage.sql;
-    if (!hasTable(sql, "sources")) return null;
-    return sql
-      .exec("SELECT name, url, type, config FROM sources ORDER BY name")
-      .toArray()
-      .map(({ name, url, type, config }) => ({ name, url, type, lane: stored(config)?.lane ?? null }));
   }
 
   // The tenant's sources with what the shared page lists of each (hosted_shared_settings.js): its

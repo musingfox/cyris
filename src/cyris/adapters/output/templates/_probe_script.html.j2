@@ -8,12 +8,15 @@
     //   take a vote into) → Settings and the Archive link show; vote buttons and gated controls
     //   stay closed. The other answers carry no `votes` field, so only `votes === false` closes them.
     // - 200 JSON {"authorized":true,"settings":false,"settings_link":true} (a hosted tenant's page,
-    //   ADR-0039 and ADR-0040: the hosted Worker takes votes and serves the tenant's own settings
-    //   page, but no archive link or interest page) → the vote buttons and the Settings link show;
+    //   ADR-0039 and ADR-0043: the hosted Worker takes votes and serves the tenant's archive and its
+    //   own settings page, but no interest page) → the vote buttons, the Settings link and the
+    //   Archive link show, as they do for every signed-in reader (the owner's rule, 2026-11-24);
     //   the gated controls stay closed. Only `settings === false` closes them, and only
-    //   `settings_link === true` opens the Settings link without them. The hosted Worker answers a
-    //   request carrying the page's vote token (its <meta name="cyris-vote-token">) and refuses
-    //   one without.
+    //   `settings_link === true` opens the Settings and Archive links without them, and Sign out,
+    //   which only the hosted Worker's readers have: its /logout ends their session. The hosted
+    //   Worker answers a request carrying the page's vote token (its <meta name="cyris-vote-token">,
+    //   which it puts in every page it serves a session, its settings page too) and refuses one
+    //   without.
     // - anything else (the Worker's 403, a non-ok status such as a 404 on a host with no
     //   Worker, a 200 that is not authorized JSON, a failed fetch) → nothing shows
     (async () => {
@@ -33,10 +36,11 @@
             const settings = data.settings !== false;
             if (settings || data.settings_link === true) {
                 document.querySelectorAll('.settings-link').forEach((s) => s.style.display = 'inline');
-            }
-            if (settings) {
                 document.querySelectorAll('.archive-link').forEach((a) => a.hidden = false);
                 document.querySelectorAll('[data-gated-href]').forEach((a) => a.href = a.dataset.gatedHref);
+            }
+            if (data.settings_link === true) {
+                document.querySelectorAll('.signout-link').forEach((a) => a.hidden = false);
             }
             // This server takes no vote: leave the vote buttons and the gated controls closed
             if (data.votes === false) return;

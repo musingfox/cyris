@@ -25,11 +25,13 @@ import asyncio
 import contextlib
 import json
 import os
+import re
 import sys
 import tempfile
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
@@ -461,6 +463,18 @@ SIGNED_IN = (
     "Promise.resolve(new Response(JSON.stringify({authorized: true}), "
     '{headers: {"Content-Type": "application/json"}}))'
 )
+# What the hosted Worker's /api/vote answers a page carrying a signed-in reader's vote token, as
+# workers/app/src/hosted_vote.js's `PROBE` holds it; the Worker puts that token in the settings page
+# it serves a session (workers/app/test/hosted_shared_settings.test.js).
+HOSTED_PROBE = re.search(
+    r"^export const PROBE = (\{[^}]*\});$",
+    (Path(__file__).resolve().parents[1] / "workers/app/src/hosted_vote.js").read_text("utf-8"),
+    re.M,
+)[1]
+HOSTED_SIGNED_IN = (
+    f"Promise.resolve(new Response(JSON.stringify({HOSTED_PROBE}), "
+    '{headers: {"Content-Type": "application/json"}}))'
+)
 
 
 def answer_post(path: str, answer: str, method: str = "POST") -> str:
@@ -786,7 +800,7 @@ CHECKS: list[Check] = [
         """,
         # The shape the bar had before: the gate on a wrapper, the link inside it.
         sabotage="""
-            const link = $('.site-nav a[href="/settings"]');
+            const link = $(".site-nav a.settings-link");
             const wrapper = document.createElement("span");
             wrapper.className = "label";
             link.classList.remove("label");
@@ -1773,6 +1787,7 @@ CHECKS: list[Check] = [
         script="""
             const archive = $(".site-nav a.archive-link");
             expect(archive && !visible(archive), "Archive shows on a refused probe");
+            expect(!visible($(".site-nav a.signout-link")), "Sign out shows on a refused probe");
             expect(!$(".brand").hasAttribute("href"), `brand links ${$(".brand").href}`);
             expect(visible($(".brand")), "the brand is gone");
         """,
@@ -1792,6 +1807,59 @@ CHECKS: list[Check] = [
             expect(!visible($(".signin-link")), "Sign in shows");
         """,
         sabotage="""$(".brand").removeAttribute("href");""",
+    ),
+    # The owner's rule (2026-11-24): a signed-in reader has the Archive and Settings links on every
+    # page, the hosted settings page too, whose probe is answered as a tenant's page's is.
+    Check(
+        id="settings-links-archive-and-settings-on-hosted",
+        fixture="readonly",
+        path="/settings",
+        preload=answer_get("/api/vote", HOSTED_SIGNED_IN),
+        act="""await waitFor(() => visible($(".site-nav a.settings-link")), "Settings");""",
+        script="""
+            const archive = $(".site-nav a.archive-link");
+            expect(archive && visible(archive), "Archive is hidden from a signed-in reader");
+            expect(archive.getAttribute("href") === "index.html", `Archive links ${archive.href}`);
+            const settings = $(".site-nav a.settings-link");
+            const resolved = new URL(settings.getAttribute("href"), location.href).pathname;
+            expect(resolved === location.pathname, `Settings leads to ${resolved}`);
+            expect($(".brand").getAttribute("href") === "index.html", "the brand links nowhere");
+            expect($$(".gated").every((g) => !visible(g)), "a gated control shows on hosted");
+            expect(!visible($(".signin-link")), "Sign in shows");
+        """,
+        # The probe as it was: the hosted answer opened the Settings link alone.
+        sabotage="""$(".site-nav a.archive-link").hidden = true;""",
+    ),
+    # A hosted reader signs out from the site bar, as from every page the Worker serves a session;
+    # /logout is the Worker's sign-out (workers/app/src/hosted_login.js).
+    Check(
+        id="settings-links-sign-out-on-hosted",
+        fixture="readonly",
+        path="/settings",
+        preload=answer_get("/api/vote", HOSTED_SIGNED_IN),
+        act="""await waitFor(() => visible($(".site-nav a.settings-link")), "Settings");""",
+        script=f"""
+            const out = $(".site-nav a.signout-link");
+            expect(out && visible(out), "Sign out is hidden from a signed-in hosted reader");
+            const target = new URL(out.getAttribute("href"), location.href).pathname;
+            expect(target === "/logout", `Sign out leads to ${{target}}`);
+            const words = out.textContent.trim();
+            expect(words === {json.dumps(PAGE("site.sign_out"))}, `Sign out reads ${{words}}`);
+        """,
+        # The site bar before Sign out came back: the link never opens.
+        sabotage="""$(".site-nav a.signout-link").hidden = true;""",
+    ),
+    # A cloud or local page has no sign-out of this kind: the app Worker's answer leaves it closed.
+    Check(
+        id="settings-no-sign-out-off-hosted",
+        fixture="readonly",
+        path="/settings",
+        preload=answer_get("/api/vote", SIGNED_IN),
+        act="""await waitFor(() => visible($(".site-nav a.archive-link")), "Archive");""",
+        script="""
+            expect(!visible($(".site-nav a.signout-link")), "Sign out shows off the hosted Worker");
+        """,
+        sabotage="""$(".site-nav a.signout-link").hidden = false;""",
     ),
     Check(
         id="sources-load-failure",

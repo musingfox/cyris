@@ -647,7 +647,7 @@ require a pass, so measure it once:
 
 The handler logs the verdicts and does not act on them yet. Nothing a tenant can see shows its
 address, and Gmail's confirmation reaches a tenant only through you. Both wait for a later
-card: the tenant's settings page (step 10) adds RSS sources only.
+card: the tenant's settings page (step 10) adds and removes RSS sources only.
 
 ## 10. Invite a reader and check the sign-in
 
@@ -772,47 +772,32 @@ by 11.1's rule, and R2 removes an expired object typically within 24 hours, so a
 
 ### The reader's settings page
 
-A signed-in reader's pages show a Settings link to `HOSTED_URL/t/<tenant>/settings`, a page the
-Worker renders itself; no container starts for it (ADR-0040). There the reader changes the
-tenant's output language, style, type size, articles per run (at most 400), window, vote order,
-follow summaries, Top story score and publish hour, and adds or removes RSS feeds, 30 sources
-at most with newsletters counted. The page offers one publish hour, and two only to a tenant you
-allowed two. The model, the notify targets, the run cap, the number of digest hours and the AI
-allowance stay yours: the page refuses them, and the run pins the model and blanks the notify targets
-whatever the tenant's rows say. A save applies from the tenant's next run, and the hours from the
-next tick, since they go to the registry as your schedule route's do; a save names no run cap or
-maximum, so yours are kept.
-
-To check it on a trial tenant, sign in as alpha's reader, open Settings, change Articles per run
-and add one feed. Then read alpha's report as the operator: its `sources` list the new feed, and
-`POST /hosted/tenants/alpha/query` with `{"sql": "SELECT value FROM settings WHERE key =
-'digest.max_articles_per_digest'"}` answers the new value. A feed whose host is an IP literal
-(in any spelling the URL parser reads as an address), `localhost`, a `.localhost`, `.local`,
-`.internal` or `.arpa` name, this Worker's host or any `workers.dev` name is refused at the save,
-and a feed that redirects to one fails its poll with `refused` in the `feed failed` line. Nothing
-looks a name up in DNS, so a public name that resolves to a private address is not refused: the
-gap [ADR-0040](decisions/0040-a-hosted-tenant-edits-its-settings-on-the-hosted-worker.md) records
-under its consequences. *Unverified in a browser:* that the page's save carries the `Origin` the
-routes require; a save refused with "saved only from this digest's own settings page" means it did
-not.
-
-### The shared settings page (stub)
-
-`HOSTED_URL/t/<tenant>/settings-next` serves the settings page a local or cloud deployment serves at
-`/settings`, the same page and script, rendered into the committed
-`workers/app/src/shared_settings.build.json` that step 1 deploys, with the keys the hosted policy
-keeps from a tenant locked ([ADR-0043](decisions/0043-one-settings-page-an-edition-locks-a-key.md)).
-It is a stub of the edition-parity plan: nothing links it, and the page above stays the one the
-digest pages link. It saves what that page saves, the eight keys and the schedule's hours and zone,
-which go to the registry as that page's do; every other control is disabled with the line `Set by
-the service's operator.`, and a second publish hour, for a tenant allowed one, with `Not included in
-your plan.` ([ADR-0047](decisions/0047-a-route-refuses-a-change-to-a-locked-key.md)). Sources lists,
-adds and deletes the tenant's RSS sources under that page's rules; Tracking is empty and read-only. Its site bar shows the brand alone.
+A signed-in reader's pages show a Settings link to `HOSTED_URL/t/<tenant>/settings`, which serves
+the settings page a local or cloud deployment serves at `/settings`, the same page and script,
+rendered into the committed `workers/app/src/shared_settings.build.json` that step 1 deploys, with
+the keys the hosted policy keeps from a tenant locked
+([ADR-0043](decisions/0043-one-settings-page-an-edition-locks-a-key.md)); no container starts for
+it (ADR-0040). There the reader changes the tenant's output language, style, type size, articles
+per run (at most 400), window, vote order, follow summaries, Top story score, publish hour and time
+zone, and adds or removes RSS feeds, 30 sources at most with newsletters counted. The page offers a
+second publish hour only to a tenant you allowed two: for a tenant allowed one, Evening is disabled
+with `Not included in your plan.`
+([ADR-0047](decisions/0047-a-route-refuses-a-change-to-a-locked-key.md)). The model, the notify
+targets, the run cap, the number of digest hours and the AI allowance stay yours: their controls are
+disabled with the line `Set by the service's operator.`, the routes refuse a change to them, and the
+run pins the model and blanks the notify targets whatever the tenant's rows say. A save applies from
+the tenant's next run, and the hours and zone from the next tick, since they go to the registry as
+your schedule route's do; a save names no run cap or maximum, so yours are kept. Tracking is empty
+and read-only. Its site bar shows Archive, Settings and Sign out to a signed-in reader, as the
+digest, raw and archive pages' does; Sign out ends the reader's session at `/logout`.
 
 To check it on a trial tenant, after a deploy that built the page:
 
-1. Sign in as alpha's reader (above), then open `HOSTED_URL/t/alpha/settings-next`. The page opens
-   on Model, in the language of alpha's output language.
+1. Sign in as alpha's reader (above), then open Settings from one of alpha's pages, or
+   `HOSTED_URL/t/alpha/settings`. The page opens on Model, in the language of alpha's output
+   language, and its site bar shows Archive, which opens alpha's archive, Settings, marked as the
+   page you are on, and Sign out. Sign out opens `/logout`; press its button and the same address
+   sends you to the sign-in.
 2. Under Provider, `anthropic` is the one choice, selected and disabled; Model reads
    `claude-haiku-5-5` and is disabled. Each has the line `Set by the service's operator.` under its
    name, no line promises a call to the provider, and Save stays disabled. `anthropic` reads `key
@@ -826,8 +811,15 @@ To check it on a trial tenant, after a deploy that built the page:
    FROM settings WHERE key = 'digest.output_language'"}` answers `"zh-Hant"`, and the same query for
    `general.digest_schedule` answers the new hour, the registry's schedule copied into the tenant.
 6. Open Pipeline: Articles per run refuses a value past 400.
-7. Set the language and the hour back on either page, and open `HOSTED_URL/t/alpha/settings`: the
-   hosted page is unchanged.
+7. Open Sources and add one feed: alpha's report as the operator lists it in its `sources`. A feed
+   whose host is an IP literal (in any spelling the URL parser reads as an address), `localhost`, a
+   `.localhost`, `.local`, `.internal` or `.arpa` name, this Worker's host or any `workers.dev` name
+   is refused at the save, and a feed that redirects to one fails its poll with `refused` in the
+   `feed failed` line. Nothing looks a name up in DNS, so a public name that resolves to a private
+   address is not refused: the gap
+   [ADR-0040](decisions/0040-a-hosted-tenant-edits-its-settings-on-the-hosted-worker.md) records
+   under its consequences.
+8. Set the language and the hour back.
 
 A save refused with `This save was refused: it did not come from this settings page.` means the
 browser sent the save without this Worker's `Origin`; the browser's console names any script or

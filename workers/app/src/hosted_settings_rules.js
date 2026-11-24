@@ -1,6 +1,6 @@
 // What a hosted tenant may write of its own settings and sources, value by value, as the policy
 // file says (hosted_settings_policy.json): the rules the settings routes hold a save to
-// (hosted_settings.js) and the poll holds each feed URL to at every hop (tenant_buffer.js).
+// (hosted_shared_settings.js) and the poll holds each feed URL to at every hop (tenant_buffer.js).
 // docs/decisions/0040-a-hosted-tenant-edits-its-settings-on-the-hosted-worker.md.
 // No workerd-only imports: vitest runs this under Node.
 //

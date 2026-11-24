@@ -24,7 +24,6 @@ import { createSignIn } from "./hosted_login.js";
 import SEED from "./hosted_seed.json";
 import { receiveInbound } from "./hosted_inbound.js";
 import { handleHostedRequest } from "./hosted_router.js";
-import { handleTenantSettings } from "./hosted_settings.js";
 import { handleSharedSettings } from "./hosted_shared_settings.js";
 import { createSitePage } from "./hosted_site.js";
 import { addNewsletterSource, seedSchedule, seedTenant, tenantReport, writeSchedule } from "./hosted_seed.js";
@@ -165,18 +164,11 @@ const hosted = {
       revokeAddress: (tenant) => tenantRegistry(env).revokeInboundAddress(tenant),
       addNewsletterSource: (tenant, params) => addNewsletterSource({ db: tenantDb(env, tenant), params }),
       page: sitePage,
-      settings: (request, tenant, rest) =>
-        handleTenantSettings(request, {
-          rest,
-          db: tenantDb(env, tenant),
-          registryRow: () => registry().tenant(tenant),
-          setSchedule: readerSchedule(tenant),
-          ownHosts: [env[HOSTED_DOMAIN]].filter(Boolean),
-        }),
       // A provider's key is ready on the shared page when the operator set what its run is handed.
-      sharedSettings: (request, tenant, path) =>
+      sharedSettings: (request, tenant, path, voteToken) =>
         handleSharedSettings(request, {
           path,
+          voteToken,
           db: tenantDb(env, tenant),
           registryRow: () => registry().tenant(tenant),
           setSchedule: readerSchedule(tenant),
