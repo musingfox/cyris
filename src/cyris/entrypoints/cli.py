@@ -1317,6 +1317,7 @@ def triage_ui(
         build_feed_checker,
         build_onboarding_articles,
         build_settings,
+        build_topic_store,
         load_effective_config,
     )
     from cyris.entrypoints.triage_server import (
@@ -1349,6 +1350,7 @@ def triage_ui(
             topic_store=D1TrackedTopicStore(d1),
             blind_labels=D1BlindLabels(d1),
             article_store=D1ArticleStore(d1),
+            issue_topics=build_topic_store(cfg, d1),
             area_store=D1AreaStore(d1),
             source_titles=D1SourceTitles(d1),
             llm_factory=_llm_from_values,
@@ -1358,6 +1360,7 @@ def triage_ui(
             run_log=D1RunLog(d1, ""),
             interest_reader=D1InterestReader(d1).read,
             behind_app_worker=os.environ.get(BEHIND_APP_WORKER_ENV) == BEHIND_APP_WORKER_VALUE,
+            store_is_local=not cfg.app.store.is_cloudflare,
             html_dir=Path(cfg.app.html_output.output_dir) if cfg.app.html_output.enabled else None,
             start_run=partial(_start_detached_run, config_path, sources_path),
         )

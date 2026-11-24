@@ -1,0 +1,118 @@
+{
+  "_comment": "The contract the digest and raw pages' vote script speaks to /api/vote (src/cyris/adapters/output/templates/_promote_script.html.j2, _probe_script.html.j2), answered the same by both editions. workers/app/test/vote_contract.test.js holds the app Worker (workers/app/src/router.js, handleVote) and the promote Worker behind it (workers/promote/src/index.js) to every case, and reads what each accepted vote left in the promote queue; tests/test_local_votes.py holds a local `cyris triage-ui` (TriageServer) on a SQLite file to the same cases and reads the stamped row. `verdict` is the state the vote sets on its article once applied, `accepted` or `rejected`, or null for a request that queues and stamps nothing. A case whose `url` is not `stored` names an article the store lacks: the cloud edition queues it and its sync stamps nothing (`apply_promotions`), so the local one answers the same and writes no row. docs/decisions/0044-a-local-install-takes-votes.md",
+  "stored": "https://example.com/stored",
+  "cases": [
+    {
+      "case": "an upvote",
+      "method": "POST",
+      "body": { "url": "https://example.com/stored", "vote": "up", "digest_date": "2026-11-24" },
+      "status": 200,
+      "answer": { "ok": true },
+      "verdict": "accepted"
+    },
+    {
+      "case": "a downvote",
+      "method": "POST",
+      "body": { "url": "https://example.com/stored", "vote": "down", "digest_date": "2026-11-24" },
+      "status": 200,
+      "answer": { "ok": true },
+      "verdict": "rejected"
+    },
+    {
+      "case": "a page published before the vote field sends no vote, which meant a deep read",
+      "method": "POST",
+      "body": { "url": "https://example.com/stored", "digest_date": "2026-07-30" },
+      "status": 200,
+      "answer": { "ok": true },
+      "verdict": "accepted"
+    },
+    {
+      "case": "a null vote is no vote",
+      "method": "POST",
+      "body": { "url": "https://example.com/stored", "vote": null },
+      "status": 200,
+      "answer": { "ok": true },
+      "verdict": "accepted"
+    },
+    {
+      "case": "a deep-read button of the pages published 2026-07-31 to 2026-08-06",
+      "method": "POST",
+      "body": { "url": "https://example.com/stored", "vote": "deep", "digest_date": "2026-08-01" },
+      "status": 200,
+      "answer": { "ok": true },
+      "verdict": "accepted"
+    },
+    {
+      "case": "a vote with no digest date",
+      "method": "POST",
+      "body": { "url": "https://example.com/stored", "vote": "down" },
+      "status": 200,
+      "answer": { "ok": true },
+      "verdict": "rejected"
+    },
+    {
+      "case": "an article the store lacks is taken, and stamps nothing",
+      "method": "POST",
+      "body": { "url": "https://example.com/never-stored", "vote": "up", "digest_date": "2026-11-24" },
+      "status": 200,
+      "answer": { "ok": true },
+      "verdict": "accepted"
+    },
+    {
+      "case": "no url",
+      "method": "POST",
+      "body": { "vote": "up", "digest_date": "2026-11-24" },
+      "status": 400,
+      "answer": { "error": "missing url" },
+      "verdict": null
+    },
+    {
+      "case": "an empty url",
+      "method": "POST",
+      "body": { "url": "", "vote": "up" },
+      "status": 400,
+      "answer": { "error": "missing url" },
+      "verdict": null
+    },
+    {
+      "case": "a null body",
+      "method": "POST",
+      "body": null,
+      "status": 400,
+      "answer": { "error": "missing url" },
+      "verdict": null
+    },
+    {
+      "case": "a vote that is neither up, down nor deep",
+      "method": "POST",
+      "body": { "url": "https://example.com/stored", "vote": "sideways" },
+      "status": 400,
+      "answer": { "error": "bad vote" },
+      "verdict": null
+    },
+    {
+      "case": "the probe",
+      "method": "GET",
+      "body": null,
+      "status": 200,
+      "answer": { "authorized": true },
+      "verdict": null
+    },
+    {
+      "case": "the probe by HEAD",
+      "method": "HEAD",
+      "body": null,
+      "status": 200,
+      "answer": null,
+      "verdict": null
+    },
+    {
+      "case": "any other method",
+      "method": "PUT",
+      "body": { "url": "https://example.com/stored", "vote": "up" },
+      "status": 405,
+      "answer": { "error": "method not allowed" },
+      "verdict": null
+    }
+  ]
+}

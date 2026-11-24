@@ -218,3 +218,6 @@ Worker has neither a Settings page nor an interest page, so the buttons open and
   needs a browser, and a deployed hosted Worker. The test reads the headers a browser needs; the
   operator should vote once on a trial page and read the report's `hosted_votes` count
   (`docs/hosted-tenants.md`).
+* Extended by [ADR-0044](0044-a-local-install-takes-votes.md): a local install's server hands each
+  page vote to the same `apply_promotions`, at once and with no queue, so one function writes every
+  edition's votes.

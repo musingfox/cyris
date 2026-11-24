@@ -236,9 +236,14 @@ articles it finds.
 The server shows the archive at `http://127.0.0.1:8766/`: the issue list, each issue and its All
 articles page, from `[html_output] output_dir`. It also serves
 `http://127.0.0.1:8766/settings`, which changes every runtime setting and the source list; the
-Settings and Archive links move between the two. A change takes effect on the next run. The vote
-buttons and the Interest map stay hidden here (see below); an issue written by an earlier version
-still shows its vote buttons, and a click reports a failure.
+Settings and Archive links move between the two. A change takes effect on the next run.
+
+Each issue and its All articles page show the 👍/👎 buttons and the Interest link, as the cloud
+edition's do, an issue written by an earlier version included. The server writes a vote into the
+SQLite file as you click: the article is accepted or rejected as your decision, which no run
+changes, and the next run's vote similarity and order read it
+([ADR-0044](decisions/0044-a-local-install-takes-votes.md)). A vote counts only through this
+server: a page opened from disk has no buttons.
 
 Set `[html_output] base_url = "http://127.0.0.1:8766"` in `cyris.toml` and each notification carries
 a Read online link to its issue. That address opens only on this machine, so with it empty, the
@@ -258,8 +263,6 @@ another device reaching it gets the `403`.
 
 ## What a local install cannot do
 
-- **Votes on an issue.** 👍/👎 on a digest go through the Cloudflare app Worker and `workers/promote`.
-  Locally, the wizard's votes and `cyris articles accept|reject` record the same decision.
 - **Email-only newsletters.** Receiving mail needs `workers/newsletter` and your own domain with
   Cloudflare Email Routing. Newsletters that publish RSS are ordinary feeds and work locally.
 - **An archive you can reach from anywhere.** The server shows the archive only while it runs, at
@@ -313,6 +316,7 @@ sets them.
 - **`docker compose up` says a mount is not a file, or `cyris.toml` is a directory**: a source was missing
   the first time. Remove the directory Docker made, then do step 1's copies.
 - **compose ignores an edit to `cyris.toml`**: `docker compose up -d --force-recreate`.
-- **`Promotion sync not configured` every hour in the log**: harmless; there is no vote Worker locally.
+- **`Promotion sync not configured` every hour in the log**: harmless; the server takes your votes
+  itself, so there is no vote Worker to pull them from.
 - **doctor warns `rss buffer — not configured`**: informational on a local install, which runs `cyris
   ingest` hourly ([step 5](#5-the-schedule)).

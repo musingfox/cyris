@@ -16,9 +16,11 @@ from pathlib import Path
 import pytest
 from aiohttp import web
 from aiohttp.test_utils import make_mocked_request
+from fakes import SqliteD1
 from multidict import CIMultiDict
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
+from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.domain.models import (
     ArticleState,
     DigestContent,
@@ -99,6 +101,11 @@ async def _get(
 
 def _server(html_dir: Path | None, **values: object) -> TriageServer:
     return TriageServer(html_dir=html_dir, values=values)
+
+
+def _voting_server() -> TriageServer:
+    """A server with a SQLite store to take a vote into, as `cyris triage-ui` builds one."""
+    return TriageServer(article_store=D1ArticleStore(SqliteD1()), store_is_local=True)
 
 
 class TestTheTable:
@@ -344,14 +351,23 @@ class TestTypeSize:
 
 class TestTheVoteProbeAnswer:
     @pytest.mark.parametrize("method", ["GET", "HEAD"])
-    async def test_it_answers_authorized_without_votes(self, method):
+    async def test_a_local_install_answers_as_the_worker_does(self, method):
+        """`cyris triage-ui` hands its server the store, so it takes votes (ADR-0044)."""
+        response = await _get(_voting_server(), "/api/vote", method=method)
+
+        assert response.status == 200
+        assert response.content_type == "application/json"
+        assert json.loads(response.text) == WORKER_ANSWER
+
+    @pytest.mark.parametrize("method", ["GET", "HEAD"])
+    async def test_a_server_with_no_store_answers_authorized_without_votes(self, method):
         response = await _get(_server(None), "/api/vote", method=method)
 
         assert response.status == 200
         assert response.content_type == "application/json"
         assert json.loads(response.text) == {"authorized": True, "votes": False}
 
-    async def test_a_vote_is_not_routed(self):
+    async def test_a_server_with_no_store_routes_no_vote(self):
         response = await _get(_server(None), "/api/vote", method="POST")
 
         assert response.status == 405
@@ -417,7 +433,19 @@ def _probe_opens(tmp_path: Path, answer: object, status: int = 200) -> dict[str,
 
 
 class TestTheProbeSplit:
-    async def test_the_local_answer_opens_settings_and_archive_and_leaves_votes_closed(
+    async def test_the_local_answer_opens_the_vote_buttons_and_the_gated_controls(self, tmp_path):
+        """The Interest link and the raw page's views are `.gated`, so they open with the votes."""
+        answer = json.loads((await _get(_voting_server(), "/api/vote")).text)
+
+        assert _probe_opens(tmp_path, answer) == {
+            "vote": True,
+            "settings": True,
+            "gated": True,
+            "archive": True,
+            "brand": True,
+        }
+
+    async def test_a_storeless_answer_opens_settings_and_archive_and_leaves_votes_closed(
         self, tmp_path
     ):
         answer = json.loads((await _get(_server(None), "/api/vote")).text)

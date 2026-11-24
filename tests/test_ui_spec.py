@@ -1983,7 +1983,6 @@ NEEDS_NOTHING = {
 @pytest.mark.parametrize(
     ("card", "limit", "en", "zh", "denied"),
     [
-        ("local", "vote", [r"\bvot"], ["投票"], True),
         (
             "local",
             "newsletter",
@@ -2019,12 +2018,18 @@ def test_an_edition_card_states_each_limit_in_both_languages(
         assert stated, f"{language}: {sentences} no longer state the {limit} limit"
 
 
-async def test_the_local_server_still_takes_no_vote_as_its_card_says() -> None:
-    app = TriageServer()._app
+async def test_the_local_server_takes_votes_as_its_card_says() -> None:
+    """`cyris triage-ui` hands its server a SQLite store; only that is read here (ADR-0044)."""
+    app = TriageServer(article_store=object(), store_is_local=True)._app
     app.freeze()
     request = make_mocked_request("GET", "/api/vote", headers={"Host": "127.0.0.1"}, app=app)
     probe = await app._handle(request)
-    assert json.loads(probe.text)["votes"] is False
+    assert json.loads(probe.text) == {"authorized": True}
+    body = re.search(r'<p data-zh="([^"]*)">(.*?)</p>', _edition_cards()["local"], re.DOTALL)
+    for language, text in (("en", body[2]), ("zh", body[1])):
+        for sentence in re.split(SENTENCE_ENDS[language], text):
+            if re.search(r"\bvot|投票", sentence, re.IGNORECASE):
+                assert not re.search(DENIALS[language], sentence, re.IGNORECASE), sentence
 
 
 @pytest.mark.parametrize(

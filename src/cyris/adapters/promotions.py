@@ -150,6 +150,8 @@ def apply_promotions(
     promotions: list[PromotedArticle],
     store: ArticleRepository,
     topics: TopicRepository | None = None,
+    *,
+    at: datetime | None = None,
 ) -> SyncResult:
     """Write pulled votes to the store: the one write rule, whichever queue they came from.
 
@@ -168,6 +170,9 @@ def apply_promotions(
     holding it would re-stamp the same URLs every run, making old votes look newest.
     It is logged and named in the result, and the topic votes of that sync are lost.
 
+    `at` is the stamp's time, now unless the caller's own clock gives it: a sync stamps
+    at the sync's time, a local server at the click's (ADR-0044).
+
     Returns:
         The votes applied, and why their topic votes were not written.
     """
@@ -181,7 +186,7 @@ def apply_promotions(
 
     rejected = [a.url for a in found if vote_by_url[a.url] == "down"]
     accepted = [a.url for a in found if vote_by_url[a.url] != "down"]
-    now = datetime.now(UTC)
+    now = at or datetime.now(UTC)
     record_votes(store, accepted=accepted, rejected=rejected, at=now)
     failed = ""
     if topics is not None:

@@ -719,8 +719,9 @@ ACCESS_NOT_SET_UP = (
     "Access setup, then reload the page."
 )
 
-# What the app Worker's /api/vote answers a signed-in reader. `TriageServer` answers the same
-# with `"votes": false` added, which leaves the vote controls closed.
+# What the app Worker's /api/vote answers a signed-in reader, and what a local `TriageServer`
+# on its SQLite file answers too (ADR-0044). One with no such store, or on D1, adds
+# `"votes": false`, which leaves the vote controls closed.
 SIGNED_IN = (
     "Promise.resolve(new Response(JSON.stringify({authorized: true}), "
     '{headers: {"Content-Type": "application/json"}}))'

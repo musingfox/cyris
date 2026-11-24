@@ -28,8 +28,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the hourly run says so and gives up, and that hour has no issue.
 - `cyris triage-ui` serves the archive. Open `http://127.0.0.1:8766/` to read the
   issue list, an issue and its All articles page, and to move to Settings and back, with
-  `[digest] type_scale` applied. It needs `[html_output] enabled`. The vote buttons and
-  the Interest map stay hidden there, since a local install takes no vote.
+  `[digest] type_scale` applied. It needs `[html_output] enabled`.
+- You can vote on a local install's pages. On a SQLite store, `cyris triage-ui` shows
+  the vote buttons, the All articles page's views and the Interest map, and a 👍 or
+  👎 counts at once, as a cloud vote does after its next sync, topic votes included.
+  A vote that could not be saved shows as failed, so you can click again. On a D1
+  store the server leaves voting to the cloud deployment's pages, as before.
 - Onboarding opens with a short scene before its first step: headlines pour
   in, then calm down into one lane and a few rows, and **Show me how** starts
   the setup. **Skip intro** jumps to its end, and with reduced motion on it is
