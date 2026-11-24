@@ -1991,6 +1991,7 @@ on main after the change lands, citing the hash it landed as.
 | 2026-11-24 | `17e93530` | The hosted daily backup is R2 only (§4, §5): the B2 copy, its alert and its four secrets are gone, and where a second copy goes is left to a later decision (ADR 0045, superseding part of ADR-0041). |
 | 2026-11-24 | `d40eeab1` | A local `cyris triage-ui` on the SQLite store takes the pages' votes (§3.2, §4, §6): it answers `/api/vote` as the app Worker does and stamps `triaged_at` through the same `apply_promotions` a sync uses, while a server on D1 keeps votes off and leaves them to the cloud's queue (ADR 0044). |
 | 2026-11-24 | `4d83e2f5` | One settings page for every edition (§2, §5, §6): the hosted Worker serves the page rendered from `settings.html.j2` into a committed build file a test keeps fresh, and answers the same `/api/settings` contract plus a `locked` field the page shows disabled with its reason; it sits at `/t/<tenant>/settings-next` beside the old hosted page (ADR 0043, partly superseding ADR-0040). |
+| 2026-11-24 | `6031bd31` | A local `cyris ingest` on the SQLite store records each feed's health in `feed_health` by the rules `workers/rss` uses, held by one case file both suites run, so `cyris doctor` and the local `/settings` Sources tab read it instead of skipping (§3.1, §4). |
 
 ## 8. Where the core never changes
 
