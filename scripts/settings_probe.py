@@ -3634,7 +3634,7 @@ CHECKS += [
 # `GET /api/settings`: an hour past `digest_times_max` is disabled with the plan-limit line and
 # never sent, and the article cap's input takes the edition's most.
 ONE_HOUR_PLAN = answer_settings(
-    "data.limits = {...data.limits, digest_times_max: 1};"
+    "data.limits = {...data.limits, digest_times_min: 1, digest_times_max: 1};"
     ' data.values["general.digest_schedule"] = ["08:00"];'
 )
 # A tenant allowed two hours, holding one or both: the second may be no digest at all.
@@ -3658,12 +3658,16 @@ RECORD_HOURS = (
 
 
 def refused_403(path: str, body: str) -> str:
-    """A preload under which the page's POST to `path` is answered 403 with `body`, a JS object."""
-    return answer_post(
+    """A preload under which the page's POST to `path` is answered 403 with `body`, a JS object.
+
+    A block, so its `realFetch` does not clash with another preload's, such as a sabotage's.
+    """
+    answer = answer_post(
         path,
         f"Promise.resolve(new Response(JSON.stringify({body}), "
         '{status: 403, headers: {"Content-Type": "application/json"}}))',
     )
+    return "{" + answer + "}"
 
 
 # The hosted Worker's refusal of a write from no page of its own, which TriageServer marks too.

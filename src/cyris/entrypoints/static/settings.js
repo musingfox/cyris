@@ -273,7 +273,8 @@ function render() {
 // plan-limit line as a locked key's, and no save sends it. Of those, the first
 // `limits.digest_times_min` need an hour; a later one left at no digest is not sent.
 const planHours = () => HOURS.slice(0, state.limits.digest_times_max);
-const neededHours = () => HOURS.slice(0, state.limits.digest_times_min);
+const neededHours = () =>
+  HOURS.slice(0, Math.min(state.limits.digest_times_min, state.limits.digest_times_max));
 
 function markPlanHours() {
   for (const select of HOURS.filter((hour) => !planHours().includes(hour))) {
