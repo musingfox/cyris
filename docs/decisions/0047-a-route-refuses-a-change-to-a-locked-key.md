@@ -38,7 +38,10 @@ are not a self-hosted server's. The page knew neither.
 
 Chosen: the first, because it keeps the routes and their probes as they are and gives every route
 the rule `/api/settings/values` already keeps. TriageServer's `_refuse_locked_changes` compares
-each key a route would save with the value the server holds, before any rule, probe or store call;
+the value a route would store for each key it saves with the value the server holds, before any
+probe or store call: the model route decides first that no provider stores no model, so choosing
+`none` cannot clear a locked model, and every other route stores what it compares, or the same
+value its rule reads it as;
 the hosted Worker keeps the same rule on the one multi-key route it answers,
 `POST /api/settings/schedule` (`changedLock` in `workers/app/src/hosted_shared_settings.js`).
 `/api/settings/values` still refuses any locked key a save names, changed or not: the page never

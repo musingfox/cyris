@@ -864,6 +864,9 @@ class TriageServer:
     def _refuse_locked_changes(self, t: Translator, sent: Mapping[str, Any]) -> web.Response | None:
         """The 400 for the first locked key whose value `sent` changes, or None.
 
+        `sent` is what the route would store for each key it saves, after any rule of its own
+        that rewrites a value (none's empty model), so no request changes a locked key's value.
+
         A route that saves several keys at once refuses only a change to a locked one: sent as
         it is held, a locked key is no change, so a lock on one key leaves the route's others
         writable, as `/api/settings/values` leaves every key a save does not name.
@@ -927,9 +930,11 @@ class TriageServer:
 
         t = self._translator(request)
         provider = (body.get("provider") or "").strip()
-        model = (body.get("model") or "").strip()
-        sent = {"llm_provider.provider": provider, "llm_provider.model": model}
-        if (refused := self._refuse_locked_changes(t, sent)) is not None:
+        # Nothing to call with none, and a leftover model must not outlive its provider. Decided
+        # before the lock check, so the check sees what the route would store.
+        model = "" if provider == "none" else (body.get("model") or "").strip()
+        stored = {"llm_provider.provider": provider, "llm_provider.model": model}
+        if (refused := self._refuse_locked_changes(t, stored)) is not None:
             return refused
         try:
             candidate = LLMProviderConfig(
@@ -943,8 +948,6 @@ class TriageServer:
             )
 
         if provider == "none":
-            # Nothing to call, and a leftover model must not outlive its provider.
-            model = ""
             detail = t("settings.model_hint_none")
         else:
             probe = await probe_llm(candidate)

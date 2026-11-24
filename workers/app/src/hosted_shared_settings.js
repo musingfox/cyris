@@ -106,8 +106,10 @@ const limitsOf = (row) => ({
 // A provider's entry in TriageServer's shape: its key is ready only when every variable its run
 // reads it from (BUILT.key_env, TriageServer's `key_env`) is among those the operator set, which
 // are what each run container is handed (hosted_container.js `handedSecrets`).
+// A provider the build names no variables for is never ready.
 function providerEntry(name, defaultModel, variables = [], secrets) {
-  return { name, env_var: variables[0] ?? "", default_model: defaultModel, configured: variables.every((variable) => secrets.has(variable)) };
+  const configured = variables.length > 0 && variables.every((variable) => secrets.has(variable));
+  return { name, env_var: variables[0] ?? "", default_model: defaultModel, configured };
 }
 
 // The keys read from the tenant's own rows: every grade-D key but what the run pins and the
@@ -206,6 +208,9 @@ async function saveValues(t, values, { db, stored, locks, registryRow, setSchedu
     if (Object.hasOwn(locks, key)) return lockRefusal(t, locks, key);
     if (FIELDS[key].route !== "plain") return refused(t("settings_api.own_form", { label }), key);
     if (key === TIMEZONE_KEY) {
+      // A zone is a name: none, or anything else, is refused here, as `validate_setting` refuses
+      // it, and never stands for the zone the registry holds.
+      if (typeof value !== "string") return refusedFor(t, { reason: "time_zone", zone: String(value) }, TIMEZONE_KEY);
       zone = value;
       continue;
     }

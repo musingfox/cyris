@@ -96,11 +96,11 @@ target, with the provider, the model, the notify targets and the article cap put
 
 **The locks, from the policy.** `hosted_settings_policy.json`'s `shared_page` names them: a grade-D
 key no tenant writes (outside `writable_settings` and the schedule) is locked for
-`operator_reason`. STUB: of the keys a tenant writes, the shared page opens only `open`,
-`digest.output_language`, and locks every other for `stub_reason`; both reasons are `operator-set`
-in M1. So the Model tab is real, its provider and model shown as the run is pinned to them, and
-locked; only the output language saves. Tracking answers read-only and empty, and Areas answers
-so and is hidden; Sources lists, adds and deletes the tenant's RSS sources (M3a).
+`operator_reason`, `operator-set`. In M1 a STUB opened only `digest.output_language` of the keys a
+tenant writes; since ADR-0047 the shared page opens all of them and the schedule's hours and zone,
+and the stub's `open` and `stub_reason` are gone. So the Model tab is real, its provider and model
+shown as the run is pinned to them, and locked. Tracking answers read-only and empty, and Areas
+answers so and is hidden; Sources lists, adds and deletes the tenant's RSS sources (M3a).
 
 **The page's policy.** This supersedes ADR-0040's for the shared page: `default-src 'none'`,
 `script-src` and `style-src` this Worker's `<origin>/static/` and the build's hash of each of the

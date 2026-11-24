@@ -174,6 +174,18 @@
       "refuses": "routing.score_threshold"
     },
     {
+      "name": "no time zone is refused, and never stands for the one held",
+      "body": {"values": {"general.timezone": null}},
+      "status": 400,
+      "refuses": "general.timezone"
+    },
+    {
+      "name": "no time zone beside a key refuses the whole save",
+      "body": {"values": {"digest.style_prompt": "Short.", "general.timezone": null}},
+      "status": 400,
+      "refuses": "general.timezone"
+    },
+    {
       "name": "a time zone no one keeps is refused",
       "body": {"values": {"general.timezone": "Mars/Olympus"}},
       "status": 400,
@@ -274,6 +286,27 @@
       "body": {"times": ["06:00", "12:00", "18:00"]},
       "status": 400,
       "refuses": "general.digest_schedule"
+    },
+    {
+      "name": "no hour at all is refused",
+      "max_digest_times": 2,
+      "body": {"times": []},
+      "status": 400,
+      "refuses": "general.digest_schedule"
+    },
+    {
+      "name": "one hour twice is refused",
+      "max_digest_times": 2,
+      "body": {"times": ["07:00", "07:00"]},
+      "status": 400,
+      "refuses": "general.digest_schedule"
+    },
+    {
+      "name": "hours that are not a list are refused",
+      "max_digest_times": 2,
+      "body": {"times": "07:00,19:00"},
+      "status": 400,
+      "refuses": "general.digest_schedule"
     }
   ],
   "route_locks": [
@@ -303,6 +336,15 @@
       "body": {"provider": "none", "model": ""},
       "status": 200,
       "answer": {"ok": true, "provider": "none", "model": "", "detail": "No model is called.", "note": "Saved. The next digest run picks this up."}
+    },
+    {
+      "name": "the locked model is not cleared by choosing no provider",
+      "path": "/api/settings",
+      "locked": {"llm_provider.model": "operator-set"},
+      "stored": {"llm_provider.provider": "anthropic", "llm_provider.model": "claude-haiku-5-5"},
+      "body": {"provider": "none", "model": "claude-haiku-5-5"},
+      "status": 400,
+      "answer": {"ok": false, "field": "llm_provider.model", "error": "Model is locked here. Set by the service's operator."}
     },
     {
       "name": "the locked provider changed is refused",
