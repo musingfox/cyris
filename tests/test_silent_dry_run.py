@@ -10,7 +10,6 @@ from fakes import FakeLLM, RecordingD1, make_config
 
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.adapters.output.usage_log import append_usage_d1
-from cyris.adapters.store.areas import D1AreaStore
 from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.adapters.store.digests import D1DigestStore
 from cyris.adapters.store.runs import D1RunLog
@@ -89,7 +88,6 @@ def _deps(tmp_path: Path, db: RecordingD1, sent: list, log_usage=None) -> Deps:
         tag_store=D1TagStore(db),
         story_store=D1StoryStore(db),
         topic_store=D1TopicStore(db),
-        area_store=D1AreaStore(db),
         record_run=D1RunLog(db, "").record,
         record_similarity=D1SimilarityShadow(db, "test-model").record,
         digest_store=D1DigestStore(db),

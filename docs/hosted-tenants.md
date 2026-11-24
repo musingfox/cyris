@@ -804,8 +804,8 @@ not.
 keeps from a tenant locked ([ADR-0043](decisions/0043-one-settings-page-an-edition-locks-a-key.md)).
 It is the edition-parity plan's first milestone, and a stub: nothing links it, the page above stays
 the one the digest pages link, and of the keys a tenant writes only the output language saves here.
-Every other control is disabled with the line `Set by the service's operator.`, Sources and
-Tracking are empty and read-only, and Areas is not shown. Its site bar shows the brand alone.
+Every other control is disabled with the line `Set by the service's operator.`, and Sources
+and Tracking are empty and read-only. Its site bar shows the brand alone.
 
 To check it on a trial tenant, after a deploy that built the page:
 

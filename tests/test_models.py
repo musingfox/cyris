@@ -237,15 +237,29 @@ class TestDigestItemLink:
         assert item.link is None
 
 
-def test_a_stored_digest_without_area_order_loads_with_an_empty_order() -> None:
-    content = DigestContent(
-        date="2026-10-15",
-        period="morning",
-        sources_processed=1,
-        articles_received=1,
-        articles_included=0,
-    )
-    stored = content.model_dump(mode="json")
-    del stored["area_order"]
+def test_a_digest_stored_with_the_area_skeleton_still_loads() -> None:
+    """Issues saved while areas existed keep `area_order`, `news_paragraphs` and item areas."""
+    item = {"title": "t", "summary": "s", "sources": ["x"], "urls": ["https://x.test/1"]}
+    stored = {
+        "date": "2026-10-27",
+        "period": "morning",
+        "sources_processed": 1,
+        "articles_received": 1,
+        "articles_included": 1,
+        "filtered_headlines": [{**item, "area": "World"}],
+        "news_paragraphs": [{"text": "A paragraph.", "units": [item]}],
+        "area_order": ["World"],
+    }
 
-    assert DigestContent.model_validate(stored).area_order == []
+    content = DigestContent.model_validate(stored)
+
+    assert [i.title for i in content.filtered_headlines] == ["t"]
+    dumped = content.model_dump()
+    assert not {"area_order", "news_paragraphs"} & set(dumped)
+    assert "area" not in dumped["filtered_headlines"][0]
+
+
+def test_a_source_stored_with_an_area_id_still_loads() -> None:
+    source = SourceConfig.model_validate({"name": "S", "url": "https://s.test/feed", "area_id": 3})
+
+    assert "area_id" not in source.model_dump()

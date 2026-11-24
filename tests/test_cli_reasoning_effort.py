@@ -8,7 +8,7 @@ from typer.testing import CliRunner
 
 from cyris.adapters.store.source_store import D1SourceStore
 from cyris.domain.models import SourceConfig
-from cyris.entrypoints.cli import _build_arm, _llm_from_values, app
+from cyris.entrypoints.cli import _build_arm, app
 
 pytestmark = pytest.mark.integration
 
@@ -63,17 +63,3 @@ def test_llm_compare_builds_every_arm_at_the_configured_effort(tmp_path, d1, bui
         ("openai", "high"),
         ("anthropic", "high"),
     ]
-
-
-def test_a_saved_effort_reaches_the_client_the_settings_page_builds(built) -> None:
-    _llm_from_values({"llm_provider.provider": "openai", "llm_provider.model": "", KEY: "medium"})
-
-    [cfg] = built
-    assert cfg.reasoning_effort == "medium"
-
-
-def test_a_page_without_a_saved_effort_builds_at_default(built) -> None:
-    _llm_from_values({"llm_provider.provider": "openai", "llm_provider.model": ""})
-
-    [cfg] = built
-    assert cfg.reasoning_effort == "default"

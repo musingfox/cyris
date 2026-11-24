@@ -43,8 +43,6 @@ class SourceConfig(BaseModel):
     # Where this source publishes. Its host is what makes "the sender's own domain"
     # knowable instead of guessed from link statistics.
     homepage: str | None = None
-    # The reader's area for this source, an `areas` row id; None until one is chosen.
-    area_id: int | None = None
 
     @model_validator(mode="before")
     @classmethod
@@ -115,8 +113,6 @@ class DigestItem(BaseModel):
     # wrote it: it is untranslated, so the page cannot tag it with the output language. The
     # title is the article's own too, unless the summarizer gave a translated headline.
     passed_through: bool = False
-    # The reader's area for this item, by name: stamped after the pipeline, never by it.
-    area: str | None = None
     # Shown on its card or row: on a read-lane item the tags scoring gave the article this
     # run, none if it was scored in an earlier run; on a headline its topic's tags.
     tags: list[str] = Field(default_factory=list)
@@ -152,31 +148,6 @@ class DigestSection(BaseModel):
     # that carries the cluster's vote. Empty everywhere else and on clusters stored
     # before it, whose members are only the merged item's URLs.
     members: list[DigestItem] = Field(default_factory=list)
-
-
-class NewsParagraph(BaseModel):
-    """One paragraph of the remaining news, and the units it cites.
-
-    No run writes one any more; issues stored while one did still carry them, and
-    `domain.layers` draws them. Each unit is one story, merged into one item with every
-    member article's links and sources; a unit is cited by one paragraph only.
-    """
-
-    text: str
-    units: list[DigestItem] = Field(default_factory=list)
-    # True when the text is the units' own excerpt rather than a model's paragraph, so
-    # the page cannot tag it with the output language.
-    passed_through: bool = False
-    # Legacy, read by nothing: the digest items the units stood for when an issue
-    # stored with paragraphs counted them, a cluster as one; `articles_included` now
-    # counts the page's article URLs.
-    items: int | None = None
-
-    @model_validator(mode="after")
-    def _one_item_per_unit_unless_told(self) -> "NewsParagraph":
-        if self.items is None:
-            self.items = len(self.units)
-        return self
 
 
 # USD per million tokens, (input, output), keyed by the exact model id the
@@ -292,9 +263,6 @@ class DigestContent(BaseModel):
     attention_sections: list[DigestSection] = Field(default_factory=list)
     filtered_headlines: list[DigestItem] = Field(default_factory=list)
     fan_sections: list[DigestSection] = Field(default_factory=list)
-    # The news as paragraphs, from a step no run calls any more: an issue stored while it
-    # ran holds these in place of `news_clusters` and `filtered_headlines`.
-    news_paragraphs: list[NewsParagraph] = Field(default_factory=list)
     # One section per tracked topic with a hit this run, headed by the topic's name.
     # Outside the issue's cap and its article count: a hit changes no article's state.
     tracked_topics: list[DigestSection] = Field(default_factory=list)
@@ -302,9 +270,6 @@ class DigestContent(BaseModel):
     dead_link_count: int | None = None
     synthetic_url_count: int | None = None
     output_language: str = ""
-    # The active area names in position order, frozen when the issue is stamped, so a
-    # later re-render shows the sections it was published with.
-    area_order: list[str] = Field(default_factory=list)
 
 
 class ArticleState(StrEnum):

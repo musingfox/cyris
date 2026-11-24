@@ -64,7 +64,7 @@ class TestScoringSystem:
     def test_build_scoring_system_prompt(self):
         from cyris.service_layer.prompts import build_scoring_system_prompt
 
-        prompt = build_scoring_system_prompt([])
+        prompt = build_scoring_system_prompt()
         assert "relevance" in prompt.lower()
         assert len(prompt) > 100
 
@@ -183,9 +183,7 @@ class TestScoreArticlesBatch:
             )
         )
 
-        result, tags, usage, _ = await score_articles_batch(
-            sample_articles, llm, snippet_length=1000, area_names=[]
-        )
+        result, tags, usage = await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         assert result["http://a.com"] == (85.0, "en")
         assert result["http://b.com"] == (72.0, "zh")
@@ -196,9 +194,7 @@ class TestScoreArticlesBatch:
     async def test_empty_articles(self):
         from cyris.service_layer.scoring import score_articles_batch
 
-        result, tags, usage, _ = await score_articles_batch(
-            [], FakeLLM(), snippet_length=1000, area_names=[]
-        )
+        result, tags, usage = await score_articles_batch([], FakeLLM(), snippet_length=1000)
         assert result == {}
         assert tags == {}
         assert usage.api_calls == 0
@@ -217,9 +213,7 @@ class TestScoreArticlesBatch:
             )
         )
 
-        result, _, _, _ = await score_articles_batch(
-            sample_articles, llm, snippet_length=1000, area_names=[]
-        )
+        result, _, _ = await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         # Article 2 has Chinese content, should fallback to "zh"
         assert result["http://b.com"][1] == "zh"
@@ -243,9 +237,7 @@ class TestScoreArticlesBatch:
             )
         )
 
-        scores, tags, _, _ = await score_articles_batch(
-            sample_articles, llm, snippet_length=1000, area_names=[]
-        )
+        scores, tags, _ = await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         assert scores["http://a.com"] == (80.0, "en")
         assert tags == {"http://a.com": ["rust"]}  # normalized at the source
@@ -264,9 +256,7 @@ class TestScoreArticlesBatch:
             )
         )
 
-        scores, tags, _, _ = await score_articles_batch(
-            sample_articles, llm, snippet_length=1000, area_names=[]
-        )
+        scores, tags, _ = await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         assert scores["http://a.com"] == (80.0, "en")  # nothing thrown away
         assert tags["http://a.com"] == ["ai"]  # 42 dropped, no TypeError
@@ -277,9 +267,7 @@ class TestScoreArticlesBatch:
 
         llm = FakeLLM(json.dumps({"scores": [{"id": 0, "score": 80, "language": "en"}]}))
 
-        scores, tags, _, _ = await score_articles_batch(
-            sample_articles, llm, snippet_length=1000, area_names=[]
-        )
+        scores, tags, _ = await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         assert scores["http://a.com"] == (80.0, "en")
         assert tags == {}
@@ -289,7 +277,7 @@ class TestScoreArticlesBatch:
 
         llm = FakeLLM(json.dumps({"scores": [{"id": 0, "score": 75, "language": "en"}]}))
 
-        await score_articles_batch([sample_articles[0]], llm, snippet_length=500, area_names=[])
+        await score_articles_batch([sample_articles[0]], llm, snippet_length=500)
 
         # Verify user prompt was built with custom snippet length
         assert "Score the following articles" in llm.calls[0]["prompt"]
@@ -304,9 +292,7 @@ class TestScoreArticlesBatch:
 
         llm = FakeLLM(json.dumps(reply))
 
-        scores, _, _, _ = await score_articles_batch(
-            sample_articles, llm, snippet_length=1000, area_names=[]
-        )
+        scores, _, _ = await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         assert scores == {}
         (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
@@ -327,9 +313,7 @@ class TestScoreArticlesBatch:
         reply = {"scores": [{"id": echoed(n), "score": n, "language": "en"} for n in range(14)]}
         llm = FakeLLM(json.dumps(reply))
 
-        scores, _, _, _ = await score_articles_batch(
-            articles, llm, snippet_length=1000, area_names=[]
-        )
+        scores, _, _ = await score_articles_batch(articles, llm, snippet_length=1000)
 
         assert scores == {f"http://{n}.com": (float(n), "en") for n in range(14)}
         assert [r for r in caplog.records if r.levelname == "WARNING"] == []
@@ -339,7 +323,7 @@ class TestScoreArticlesBatch:
 
         llm = FakeLLM(json.dumps({"scores": []}))
 
-        await score_articles_batch(sample_articles, llm, snippet_length=1000, area_names=[])
+        await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         prompt = llm.calls[0]["prompt"]
         assert "[0] AI Research Paper" in prompt
@@ -359,9 +343,7 @@ class TestScoreArticlesBatch:
         reply = {"scores": [{"id": 0, "score": 80}, {"id": echoed, "score": 70}]}
         llm = FakeLLM(json.dumps(reply))
 
-        scores, _, _, _ = await score_articles_batch(
-            sample_articles, llm, snippet_length=1000, area_names=[]
-        )
+        scores, _, _ = await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         assert list(scores) == ["http://a.com"]
         (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
@@ -379,9 +361,7 @@ class TestScoreArticlesBatch:
         article = sample_articles[1]
         llm = FakeLLM(json.dumps({"scores": [{"id": "0", "score": 70}]}))
 
-        scores, _, _, _ = await score_articles_batch(
-            [article], llm, snippet_length=1000, area_names=[]
-        )
+        scores, _, _ = await score_articles_batch([article], llm, snippet_length=1000)
 
         assert scores == {"http://b.com": (70.0, "zh")}
 
@@ -393,7 +373,7 @@ class TestScoreArticlesBatch:
         reply = {"scores": [{"id": f"x{n}", "score": 50} for n in range(8)]}
         llm = FakeLLM(json.dumps(reply))
 
-        await score_articles_batch(sample_articles, llm, snippet_length=1000, area_names=[])
+        await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
         message = record.getMessage()
@@ -409,7 +389,7 @@ class TestScoreArticlesBatch:
 
         llm = FakeLLM(json.dumps({"scores": [{"id": 9, "score": 50}]}))
 
-        await score_articles_batch(sample_articles, llm, snippet_length=1000, area_names=[])
+        await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
         assert "ids received, first five: [9]" in record.getMessage()
@@ -419,7 +399,7 @@ class TestScoreArticlesBatch:
 
         llm = FakeLLM(json.dumps({"scores": [{"id": 9, "score": 50}]}))
 
-        await score_articles_batch(sample_articles, llm, snippet_length=1000, area_names=[])
+        await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
         for article in sample_articles:
@@ -432,7 +412,7 @@ class TestScoreArticlesBatch:
         reply = {"scores": [{"id": 0, "score": 80}, {"id": 1, "score": 70}]}
         llm = FakeLLM(json.dumps(reply))
 
-        await score_articles_batch(sample_articles, llm, snippet_length=1000, area_names=[])
+        await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         assert [r for r in caplog.records if r.levelname == "WARNING"] == []
 
@@ -441,9 +421,7 @@ class TestScoreArticlesBatch:
 
         llm = FakeLLM(json.dumps({"scores": [{"id": 0, "score": 80, "language": "en"}]}))
 
-        scores, _, _, _ = await score_articles_batch(
-            sample_articles, llm, snippet_length=1000, area_names=[]
-        )
+        scores, _, _ = await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         assert scores == {"http://a.com": (80.0, "en")}  # the matched entry is still kept
         (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
@@ -461,7 +439,7 @@ class TestScoreArticlesBatch:
         reply = {"scores": [{"id": 0, "score": 80}, {"id": "[1]", "score": 70}]}
         llm = FakeLLM(json.dumps(reply))
 
-        await score_articles_batch(sample_articles, llm, snippet_length=1000, area_names=[])
+        await score_articles_batch(sample_articles, llm, snippet_length=1000)
 
         (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
         message = record.getMessage()
@@ -480,7 +458,7 @@ class TestScoreArticlesBatch:
         reply["scores"] += [{"id": f"r{n}", "score": 50} for n in range(8)]
         llm = FakeLLM(json.dumps(reply))
 
-        await score_articles_batch(articles, llm, snippet_length=1000, area_names=[])
+        await score_articles_batch(articles, llm, snippet_length=1000)
 
         (record,) = [r for r in caplog.records if r.levelname == "WARNING"]
         message = record.getMessage()
@@ -700,13 +678,12 @@ class TestBatchGuard:
 
         scored: dict[str, tuple[float, str]] = {}
         tagged: dict[str, list[str]] = {}
-        usage, _ = await score_in_batches(
+        usage = await score_in_batches(
             articles,
             llm,
             snippet_length=1000,
             persist=scored.update,
             persist_tags=tagged.update,
-            area_names=[],
         )
 
         first = {f"http://e.com/{n}" for n in range(BATCH_SIZE)}
@@ -779,9 +756,10 @@ def test_scoring_filter_has_one_implementation() -> None:
         assert "Lane.FOLLOW" not in source, path
 
 
-# --- Area prompt (ScoringAreaPrompt) ---
+# --- Prompt pins ---
 
-# The scoring system prompt as it stood before the area clause; with no areas it must not change.
+# The scoring system prompt as it stood before the area clause, which the area skeleton's
+# removal restores for every deployment.
 PRE_AREA_SCORING_SYSTEM = """\
 You are an article relevance evaluator. Score each article on a 0-100 scale based on \
 personal relevance to the reader's interests.
@@ -808,28 +786,11 @@ Respond in JSON:
 """
 
 
-class TestScoringAreaPrompt:
-    def test_no_areas_leaves_the_prompt_exactly_as_it_was(self):
+class TestPromptPins:
+    def test_the_scoring_prompt_is_the_one_before_areas(self):
         from cyris.service_layer.prompts import build_scoring_system_prompt
 
-        assert build_scoring_system_prompt([]) == PRE_AREA_SCORING_SYSTEM
-
-    def test_areas_are_offered_in_order_as_a_closed_set(self):
-        from cyris.service_layer.prompts import build_scoring_system_prompt
-
-        prompt = build_scoring_system_prompt(["Tech", "Food"])
-
-        assert prompt.startswith(PRE_AREA_SCORING_SYSTEM)
-        assert prompt.index("Tech") < prompt.index("Food")
-        assert "area" in prompt and "suggest_area" in prompt
-
-    def test_non_ascii_area_names_reach_the_model_as_written(self):
-        from cyris.service_layer.prompts import build_scoring_system_prompt
-
-        prompt = build_scoring_system_prompt(["科技", "Food"])
-
-        assert "科技" in prompt
-        assert prompt.index("科技") < prompt.index("Food")
+        assert build_scoring_system_prompt() == PRE_AREA_SCORING_SYSTEM
 
     def test_the_filter_prompt_is_byte_identical(self):
         import hashlib
@@ -850,81 +811,3 @@ class TestScoringAreaPrompt:
             build_sand_line_system_prompt("en", style_prompt="Plain.").encode()
         ).hexdigest()
         assert digest == "7c577024c8fce40d44d4ca11557e7ab5a1abe20b23e37778a5588731c6c32e2b"
-
-
-# --- Area pick parsing (ScoringAreaParse) ---
-
-
-class TestScoringAreaParse:
-    @pytest.fixture
-    def two_articles(self) -> list[StoredArticle]:
-        now = datetime.now(UTC)
-        return [
-            StoredArticle(
-                url=f"http://{name}.com",
-                original_id=i,
-                title=f"Title {name}",
-                content="Body text",
-                published_at=now,
-                source_name="Src",
-                source_lane=Lane.READ,
-                first_seen_at=now,
-            )
-            for i, name in ((1, "a"), (2, "b"))
-        ]
-
-    async def _run(self, articles, entries, names):
-        from cyris.service_layer.scoring import score_articles_batch
-
-        llm = FakeLLM(json.dumps({"scores": entries}))
-        return await score_articles_batch(articles, llm, snippet_length=1000, area_names=names)
-
-    async def test_a_matched_pick_comes_back_in_the_supplied_spelling(self, two_articles):
-        from cyris.service_layer.scoring import AreaPick
-
-        result, _, _, picks = await self._run(
-            two_articles[:1], [{"id": 0, "score": 7, "area": "tech"}], ["Tech"]
-        )
-
-        assert picks["http://a.com"] == AreaPick("Tech", None)
-        assert result["http://a.com"][0] == 7.0
-
-    async def test_an_out_of_set_pick_keeps_the_suggestion_and_the_score(self, two_articles):
-        from cyris.service_layer.scoring import AreaPick
-
-        result, _, _, picks = await self._run(
-            two_articles[:1],
-            [{"id": 0, "score": 5, "area": "Astrology", "suggest_area": "Space"}],
-            ["Tech"],
-        )
-
-        assert picks["http://a.com"] == AreaPick(None, "Space")
-        assert result["http://a.com"][0] == 5.0
-
-    async def test_a_non_string_pick_costs_only_its_entry(self, two_articles):
-        from cyris.service_layer.scoring import AreaPick
-
-        result, _, _, picks = await self._run(
-            two_articles,
-            [
-                {"id": 0, "score": 9, "area": 42},
-                {"id": 1, "score": 6, "area": "Tech"},
-            ],
-            ["Tech"],
-        )
-
-        assert picks["http://a.com"] == AreaPick(None, None)
-        assert result["http://a.com"][0] == 9.0
-        assert picks["http://b.com"] == AreaPick("Tech", None)
-        assert result["http://b.com"][0] == 6.0
-
-    async def test_with_no_areas_every_pick_is_empty(self, two_articles):
-        from cyris.service_layer.scoring import AreaPick
-
-        _, _, _, picks = await self._run(
-            two_articles,
-            [{"id": 0, "score": 1, "area": "Tech"}, {"id": 1, "score": 2, "area": "Food"}],
-            [],
-        )
-
-        assert set(picks.values()) == {AreaPick(None, None)}

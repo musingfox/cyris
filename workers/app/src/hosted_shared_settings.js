@@ -7,13 +7,13 @@
 // STUB (milestone M1 of the edition-parity plan): the page lives at /t/<tenant>/settings-next,
 // beside the page hosted_settings.js renders, which stays as it is until M3 replaces it. Only the
 // Model tab and `digest.output_language` are real; the policy's `shared_page` locks every other
-// key by one rule, Sources and Tracking answer read-only and empty, and Areas is hidden.
+// key by one rule, and Sources and Tracking answer read-only and empty.
 //
 //   GET  /t/<tenant>/settings-next   the page, in the catalog the tenant's output language reaches
 //   GET  /static/<file>              the page's scripts, its style and its browser messages
 //   GET  /api/settings               values, fields, what is missing, and `locked`
 //   POST /api/settings/values        {values: {key: value}}: an open key is saved, a locked one refused
-//   GET  /api/sources, /api/topics, /api/areas   STUB: read-only and empty
+//   GET  /api/sources, /api/topics   STUB: read-only and empty
 //
 // The router has checked the session (hosted_router.js). The tenant is the session's: no path,
 // body or header names one, so these paths sit outside /t/<tenant>/ and its routes for the
@@ -36,7 +36,6 @@ const VALUES_API = "/api/settings/values";
 const EMPTY_READS = {
   "/api/sources": { writable: false, sources: [] },
   "/api/topics": { writable: false, topics: [], embedding_model: "" },
-  "/api/areas": { writable: false, areas: [], birth_threshold: null },
 };
 const STATIC = "/static/";
 const OUTPUT_LANGUAGE = "digest.output_language";
@@ -115,7 +114,6 @@ function settingsAnswer(t, stored, row) {
     languages: BUILT.languages,
     writable: stored !== null,
     locked: tenantLocks(),
-    hidden_tabs: POLICY.shared_page.hidden_tabs,
   };
 }
 

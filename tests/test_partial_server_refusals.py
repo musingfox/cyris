@@ -1,6 +1,6 @@
 """A partial server's refusals of the SQL-store features name both SQL backends.
 
-Blind labels, the interest map and the source, topic and area tables live in the
+Blind labels, the interest map and the source and topic tables live in the
 D1 tables, which a local install keeps in a SQLite file. A refusal that names only
 `"d1"` sends a local reader to Cloudflare, which a local install exists to avoid.
 """

@@ -131,8 +131,6 @@ def test_a_sqlite_ui_role_wires_every_store_and_builds_no_run_store(
     # A page vote writes its topic vote beside its stamp, on the one file (ADR-0044).
     assert isinstance(kwargs["issue_topics"], D1TopicStore)
     assert kwargs["issue_topics"]._db is kwargs["article_store"]._db
-    assert kwargs["area_store"] is not None
-    assert kwargs["source_titles"] is not None
     assert kwargs["onboarding_articles"] is not None
     assert kwargs["feed_checker"] is not None
     assert kwargs["digest_store"] is not None

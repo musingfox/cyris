@@ -15,11 +15,10 @@ import httpx
 from cyris.adapters.cloudflare import API_ROOT, TIMEOUT_SECONDS
 from cyris.adapters.notify import redact_webhook_tokens
 from cyris.adapters.output.email_digest import raw_page_url, render_digest_email
-from cyris.adapters.output.html_digest import Story, citation_links, issue_language
+from cyris.adapters.output.html_digest import issue_language
 from cyris.adapters.run_alert import alert_message
-from cyris.domain.area_layout import AreaSection
 from cyris.domain.layers import Sand, layer_by_lane
-from cyris.domain.models import DigestContent, DigestItem, DigestSection, NewsParagraph
+from cyris.domain.models import DigestContent, DigestItem, DigestSection
 from cyris.i18n import issue_name, translator
 from cyris.service_layer.alerts import RunAlert
 
@@ -68,30 +67,8 @@ async def send_mail(
     return "queued" if recipient in (result.get("queued") or []) else "delivered"
 
 
-def _line(item: DigestItem | Story) -> str:
+def _line(item: DigestItem) -> str:
     return f"- {item.title} — {item.link}" if item.link else f"- {item.title}"
-
-
-def _wire_lines(item: DigestItem) -> list[str]:
-    return [_line(item), f"  {item.summary}"] if item.summary else [_line(item)]
-
-
-def _paragraph_lines(paragraph: NewsParagraph) -> list[str]:
-    """The paragraph, then each cited article's link on its own indented line."""
-    return [
-        paragraph.text,
-        *(
-            f"  {label} — {link}" if link else f"  {label}"
-            for unit in paragraph.units
-            for label, link in citation_links(unit)
-        ),
-    ]
-
-
-def _story_lines(story: Story) -> list[str]:
-    if not story.grouped:
-        return [_line(story)]
-    return [_line(story), *(f"  {_line(member)}" for member in story.members)]
 
 
 def build_digest_mail(
@@ -166,17 +143,6 @@ def _pebble_lines(item: DigestItem) -> list[str]:
 def _sand_lines(sand: Sand) -> list[str]:
     """A topic's heading and its line, whole; no article link and no source."""
     return [f"- {sand.heading}", *([f"  {sand.line}"] if sand.line else [])]
-
-
-def _area_entries(section: AreaSection) -> list[str]:
-    features = [Story(i.title, i.summary, (i,)) for s in section.features for i in s.items]
-    return [
-        *(line for story in features for line in _story_lines(story)),
-        *(_line(i) for s in section.following for i in s.items),
-        *(f"- {cluster.heading}" for cluster in section.clusters),
-        *(line for row in section.rows for line in _wire_lines(row.item)),
-        *(line for paragraph in section.paragraphs for line in _paragraph_lines(paragraph)),
-    ]
 
 
 async def send_digest_mail(

@@ -9,7 +9,6 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from cyris.domain.areas import AreaCatalog
 from cyris.domain.models import (
     NO_LLM_MODEL,
     ArticleState,
@@ -22,12 +21,11 @@ from cyris.domain.selection import count_dead_links, digest_urls
 from cyris.domain.suppression import Suppression, suppression_until
 from cyris.domain.triage import RejectReason
 from cyris.service_layer.alerts import AlertKind, RunAlert
-from cyris.service_layer.area_stamp import stamp_areas
 from cyris.service_layer.digest_pipeline import DigestPipeline
 from cyris.service_layer.fetching import fetch_all_articles
 from cyris.service_layer.ports import EmbeddingRejectedError
 from cyris.service_layer.schedule import PERIOD_ORDER, Period, is_latest_issue
-from cyris.service_layer.scoring import AreaPick, score_in_batches, select_scorable
+from cyris.service_layer.scoring import score_in_batches, select_scorable
 from cyris.service_layer.topic_order import recent_topic_list
 from cyris.service_layer.vote_order import VoteOrder
 from cyris.utils.timezone import now_in_timezone
@@ -36,35 +34,6 @@ if TYPE_CHECKING:
     from cyris.bootstrap import Deps
 
 logger = logging.getLogger(__name__)
-
-
-def placements_from(picks: dict[str, AreaPick], catalog: AreaCatalog) -> dict[str, str]:
-    """The area each scored article was placed in this run: its pick, or a suggestion now active."""
-    placements: dict[str, str] = {}
-    for url, pick in picks.items():
-        if pick.area:
-            placements[url] = pick.area
-        elif pick.suggest:
-            placed = catalog.place(pick.suggest)
-            if placed.kind == "active" and placed.area is not None:
-                placements[url] = placed.area.name
-    return placements
-
-
-def proposal_counts(picks: dict[str, AreaPick], catalog: AreaCatalog) -> dict[str, int]:
-    """Articles per name the model suggested that is not yet an active area.
-
-    A suggestion that resolves to a proposal or to no area at all is a proposal; one that
-    resolves to an active or merged area, or was dismissed, is not counted.
-    """
-    counts: dict[str, int] = {}
-    for pick in picks.values():
-        if not pick.suggest:
-            continue
-        if catalog.place(pick.suggest).kind in ("proposed", "unknown"):
-            name = pick.suggest.strip()
-            counts[name] = counts.get(name, 0) + 1
-    return counts
 
 
 @dataclass(frozen=True)
@@ -616,7 +585,6 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         scorable = select_scorable(pending_articles, force=options.force)
 
     total_usage = UsageStats(model=cfg.app.llm_provider.model or NO_LLM_MODEL)
-    area_picks: dict[str, AreaPick] = {}
 
     # Kept in memory for the page whether or not anything stores them: a dry run, or
     # a deployment with no tag store, still shows each article's tags.
@@ -639,14 +607,13 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
     if scorable and deps.llm is not None:
         progress(f"Scoring {len(scorable)} articles...")
         try:
-            usage, area_picks = await score_in_batches(
+            usage = await score_in_batches(
                 scorable,
                 deps.llm,
                 snippet_length=cfg.app.digest.scoring_snippet_length,
                 progress=progress,
                 persist=persist_scores,
                 persist_tags=persist_tags,
-                area_names=AreaCatalog(cfg.areas).names(),
             )
             total_usage.merge(usage)
         except Exception:
@@ -654,15 +621,6 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
             total_usage.fell_back_to_excerpts = True
     elif scorable:
         logger.info("No LLM configured; skipping scoring for %d articles", len(scorable))
-
-    if deps.area_store is not None and not options.dry_run and not rerun:
-        try:
-            counts = proposal_counts(area_picks, AreaCatalog(cfg.areas))
-            if counts:
-                deps.area_store.record_proposals(counts, summary["started_at"])
-        except Exception as e:
-            logger.error("Recording area proposals failed: %s", type(e).__name__)
-            summary["area_proposal_error"] = type(e).__name__
 
     # Reload pending articles after scoring
     if rerun:
@@ -881,21 +839,6 @@ async def _run_digest(deps: "Deps", options: RunOptions, summary: dict) -> RunRe
         except Exception as e:
             logger.warning("Failed to persist topics: %s", e)
             summary["topics_error"] = str(e)
-
-    # In memory: the saved row carries the stamp, and so do the mail and Discord, which
-    # still lay the issue out by area; no other store does.
-    try:
-        catalog = AreaCatalog(cfg.areas)
-        stamp = stamp_areas(
-            content,
-            placements=placements_from(area_picks, catalog),
-            sources=cfg.sources,
-            catalog=catalog,
-        )
-        content.area_order = catalog.names()
-        summary["area_stamp"] = stamp.model_dump()
-    except Exception as e:
-        logger.error("Stamping areas failed: %s", type(e).__name__)
 
     content.synthetic_url_count = sum(1 for a in digest_articles if a.url.startswith("newsletter:"))
     if content.synthetic_url_count:

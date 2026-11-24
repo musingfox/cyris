@@ -30,10 +30,9 @@
     "max_feed_bytes": 5242880
   },
   "shared_page": {
-    "_comment": "STUB (milestone M1 of the edition-parity plan, docs/decisions/0043-one-settings-page-an-edition-locks-a-key.md): the settings page every edition shares, which the hosted Worker serves at /t/<tenant>/settings-next (workers/app/src/hosted_shared_settings.js). A key outside `writable_settings` and the schedule is the operator's, locked for `operator_reason`. Of the keys a tenant writes on /t/<tenant>/settings, the shared page opens only `open` and locks every other for `stub_reason`, until M3 brings them over. `hidden_tabs` are the tabs it does not show, until M2 deletes Areas. Each reason is one of `LockReason` in src/cyris/entrypoints/triage_server.py.",
+    "_comment": "STUB (milestone M1 of the edition-parity plan, docs/decisions/0043-one-settings-page-an-edition-locks-a-key.md): the settings page every edition shares, which the hosted Worker serves at /t/<tenant>/settings-next (workers/app/src/hosted_shared_settings.js). A key outside `writable_settings` and the schedule is the operator's, locked for `operator_reason`. Of the keys a tenant writes on /t/<tenant>/settings, the shared page opens only `open` and locks every other for `stub_reason`, until M3 brings them over. Each reason is one of `LockReason` in src/cyris/entrypoints/triage_server.py.",
     "open": ["digest.output_language"],
     "operator_reason": "operator-set",
-    "stub_reason": "operator-set",
-    "hidden_tabs": ["areas"]
+    "stub_reason": "operator-set"
   }
 }

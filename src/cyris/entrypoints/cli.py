@@ -1252,26 +1252,6 @@ def config_show(
         typer.echo(f"\n{note}")
 
 
-def _llm_from_values(values: dict):
-    """The LLM the reader's saved provider and model name, or None when none can be built."""
-    from pydantic import ValidationError
-
-    from cyris.bootstrap import build_llm
-    from cyris.config import LLMProviderConfig
-
-    effort_key = "llm_provider.reasoning_effort"
-    effort = {"reasoning_effort": values[effort_key]} if effort_key in values else {}
-    try:
-        candidate = LLMProviderConfig(
-            provider=values.get("llm_provider.provider") or "",
-            model=values.get("llm_provider.model") or "",
-            **effort,
-        )
-    except ValidationError:
-        return None
-    return build_llm(candidate)
-
-
 @app.command("triage-ui")
 def triage_ui(
     port: Annotated[int, typer.Option(help="Server port")] = 8766,
@@ -1301,7 +1281,6 @@ def triage_ui(
     _refuse_as_operator("triage-ui")
     _setup_logging(verbose)
 
-    from cyris.adapters.store.areas import D1AreaStore
     from cyris.adapters.store.blind_labels import D1BlindLabels
     from cyris.adapters.store.d1 import D1Error
     from cyris.adapters.store.d1_store import D1ArticleStore
@@ -1310,7 +1289,6 @@ def triage_ui(
     from cyris.adapters.store.interest import D1InterestReader
     from cyris.adapters.store.runs import D1RunLog
     from cyris.adapters.store.source_store import D1SourceStore
-    from cyris.adapters.store.source_titles import D1SourceTitles
     from cyris.adapters.store.tracked_topics import D1TrackedTopicStore
     from cyris.bootstrap import (
         build_d1_client,
@@ -1351,9 +1329,6 @@ def triage_ui(
             blind_labels=D1BlindLabels(d1),
             article_store=D1ArticleStore(d1),
             issue_topics=build_topic_store(cfg, d1),
-            area_store=D1AreaStore(d1),
-            source_titles=D1SourceTitles(d1),
-            llm_factory=_llm_from_values,
             onboarding_articles=build_onboarding_articles(cfg),
             feed_checker=build_feed_checker(),
             digest_store=D1DigestStore(d1),
@@ -1671,11 +1646,8 @@ def articles_score(
     _refuse_as_operator("articles score")
     _setup_logging(verbose)
 
-    from cyris.adapters.store.areas import D1AreaStore
     from cyris.bootstrap import build_d1_client, build_store, load_effective_config
-    from cyris.domain.areas import AreaCatalog
     from cyris.domain.models import ArticleState
-    from cyris.service_layer.run_digest import proposal_counts
     from cyris.service_layer.scoring import score_in_batches, select_scorable
 
     try:
@@ -1726,22 +1698,14 @@ def articles_score(
             except Exception as e:
                 logger.warning("Failed to persist scoring tags: %s", e)
 
-        catalog = AreaCatalog(cfg.areas)
-        total_usage, picks = await score_in_batches(
+        total_usage = await score_in_batches(
             scorable,
             llm,
             snippet_length=cfg.app.digest.scoring_snippet_length,
             progress=typer.echo,
             persist=persist,
             persist_tags=persist_tags,
-            area_names=catalog.names(),
         )
-        try:
-            counts = proposal_counts(picks, catalog)
-            if counts:
-                D1AreaStore(d1).record_proposals(counts, None)
-        except Exception as e:
-            logger.warning("Recording area proposals failed: %s", type(e).__name__)
 
         cost = total_usage.estimated_cost
         typer.echo(

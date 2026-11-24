@@ -20,10 +20,6 @@
 {%- set urls = item.ref_urls if item.ref_urls else item.urls -%}
 {%- for url in urls %}{% set label = url | hostname if item.ref_urls else item.sources[loop.index0] if loop.index0 < item.sources | length else url %}{% if url.startswith('http') %}<a href="{{ url }}">{{ label }}</a>{% else %}{{ label }}{% endif %}{{ ' · ' if not loop.last }}{% endfor -%}
 {%- endmacro -%}
-{#- A news paragraph's citations, one link per cited article. -#}
-{% macro paragraph_sources(paragraph) -%}
-{%- for label, url in paragraph | paragraph_links %}{% if url %}<a href="{{ url }}">{{ label }}</a>{% else %}{{ label }}{% endif %}{{ ' · ' if not loop.last }}{% endfor -%}
-{%- endmacro -%}
 {% macro title_link(item) -%}
 {% if item.link %}<a href="{{ item.link }}">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}
 {%- endmacro -%}

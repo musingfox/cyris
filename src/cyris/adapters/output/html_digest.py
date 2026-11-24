@@ -14,13 +14,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from cyris.domain.graph_layout import layout
 from cyris.domain.interest_graph import InterestGraph
 from cyris.domain.layers import layer_by_lane
-from cyris.domain.models import (
-    DigestContent,
-    DigestItem,
-    DigestSection,
-    NewsParagraph,
-    StoredArticle,
-)
+from cyris.domain.models import DigestContent, DigestItem, DigestSection, StoredArticle
 from cyris.i18n import issue_day, issue_hour, issue_name, resolve, translator
 from cyris.service_layer.degrade import cut
 from cyris.service_layer.schedule import PERIOD_ORDER
@@ -56,28 +50,8 @@ def _hostname(url: str) -> str:
 _LANGUAGE_TAG = re.compile(r"[A-Za-z]{2,3}(?:-[A-Za-z0-9]{1,8})*")
 
 
-def citation_links(unit: DigestItem) -> list[tuple[str, str | None]]:
-    """A news unit's links, one per article, labelled as the page labels them.
-
-    Reference links take their hostname; otherwise each store URL takes the source
-    beside it. Only an http(s) URL is a link, from either: a synthetic store URL
-    (newsletter:<id>) is none, and neither is any other scheme a feed or a mail names.
-    """
-    if unit.ref_urls:
-        return [(_hostname(url), _href(url)) for url in unit.ref_urls]
-    return [
-        (unit.sources[i] if i < len(unit.sources) else url, _href(url))
-        for i, url in enumerate(unit.urls)
-    ]
-
-
 def _href(url: str) -> str | None:
     return url if url.startswith(("http://", "https://")) else None
-
-
-def paragraph_links(paragraph: NewsParagraph) -> list[tuple[str, str | None]]:
-    """Every cited article's link in a news paragraph, unit by unit."""
-    return [link for unit in paragraph.units for link in citation_links(unit)]
 
 
 def _html_lang(value: str) -> str:
@@ -101,7 +75,6 @@ def _environment(tag: str, search_path: tuple[Path, ...]) -> Environment:
     )
     env.filters["hostname"] = _hostname
     env.filters["card_line"] = functools.partial(cut, length=CARD_LINE_CHARS)
-    env.filters["paragraph_links"] = paragraph_links
     # `is web_link`: a URL a page may put in an href. A feed or a mail names any scheme, and a
     # `javascript:` link would run on the page; a synthetic `newsletter:` URL links nowhere.
     env.tests["web_link"] = lambda url: _href(str(url)) is not None

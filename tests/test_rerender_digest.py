@@ -24,7 +24,6 @@ def _content() -> DigestContent:
         articles_received=3,
         articles_included=3,
         usage=UsageStats(api_calls=1),
-        area_order=["Space", "Tech"],
     )
 
 

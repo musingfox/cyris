@@ -43,7 +43,7 @@ def unredirected_fetches(source: str) -> list[str]:
 
 @pytest.mark.parametrize(
     ("path", "expected"),
-    [(SETTINGS, 5), (LABELS, 2), (PROMOTE, 1)],
+    [(SETTINGS, 4), (LABELS, 2), (PROMOTE, 1)],
     ids=["settings", "labels", "promote"],
 )
 def test_every_fetch_in_the_signed_in_pages_sets_redirect(path, expected):

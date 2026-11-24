@@ -746,7 +746,6 @@ class TestThePickSourcesStep:
             s.model_dump(mode="json", include=set(body))
             for s, body in zip(store.upserts, posted, strict=True)
         ] == posted
-        assert [s.area_id for s in store.upserts] == [None] * len(CATALOG)
         assert {s.type for s in store.upserts} == {"rss"}
 
     async def test_an_entry_posted_with_its_topics_still_stores_none(self, serve) -> None:

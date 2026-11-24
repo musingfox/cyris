@@ -34,7 +34,7 @@
 //   /t/<tenant>/settings, /t/<tenant>/api/{settings,sources,sources/delete}
 //                                                           its settings and sources (hosted_settings.js), to its session
 //   GET  /t/<tenant>/settings-next                          STUB: the settings page every edition shares, to its session
-//   /api/settings, /api/settings/values, /api/{sources,topics,areas}, /static/...
+//   /api/settings, /api/settings/values, /api/{sources,topics}, /static/...
 //                                                           that page's JSON and files, to a session, for its own tenant
 //                                                           (hosted_shared_settings.js, ADR-0043)
 //   /login, /login/confirm, /logout                         the sign-in (hosted_login.js)

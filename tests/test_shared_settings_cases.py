@@ -74,7 +74,6 @@ async def test_a_server_the_cli_starts_answers_the_self_hosted_edition() -> None
 
     edition = CASES["editions"]["self_hosted"]
     assert data["locked"] == edition["locked"]
-    assert data["hidden_tabs"] == edition["hidden_tabs"]
 
 
 def test_the_hosted_edition_locks_only_settings_for_one_of_the_two_reasons() -> None:

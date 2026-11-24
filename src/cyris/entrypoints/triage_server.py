@@ -1,6 +1,5 @@
 """The settings web server: /settings, /labels and the APIs they call."""
 
-import asyncio
 import ipaddress
 import json
 import logging
@@ -16,17 +15,9 @@ from aiohttp import web
 from pydantic import ValidationError
 
 from cyris.adapters.output import html_digest
-from cyris.adapters.store.d1 import MAX_BOUND_PARAMS
 from cyris.adapters.store.feed_health import QUIET_DAYS, FeedHealth
 from cyris.config import SETTINGS_FIELDS, STARTING_VALUES, DigestConfig
-from cyris.diagnostics.doctor import LLM_PROBE_TIMEOUT_SECONDS, probe_discord, probe_embedder
-from cyris.domain.areas import (
-    Area,
-    AreaCatalog,
-    AreaStatus,
-    is_unplaced_label,
-    meets_birth_threshold,
-)
+from cyris.diagnostics.doctor import probe_discord, probe_embedder
 from cyris.domain.models import (
     NEWSLETTER_SOURCE_TYPE,
     Lane,
@@ -43,7 +34,6 @@ from cyris.i18n import (
     resolve,
     translator,
 )
-from cyris.service_layer import area_llm
 
 logger = logging.getLogger(__name__)
 
@@ -172,16 +162,6 @@ def _no_table(error: str) -> web.Response:
     return web.json_response({"ok": False, "error": error}, status=409)
 
 
-def _no_area(t: Translator, area_id: int) -> web.Response:
-    return web.json_response(
-        {"ok": False, "error": t("settings_api.no_area", id=str(area_id))}, status=404
-    )
-
-
-def _area_status(t: Translator, area: Area) -> str:
-    return t(f"area_status.{area.status}")
-
-
 def _feed_problem(t: Translator, health: FeedHealth, problem: str) -> str:
     """One finding of `FeedHealth.findings`, in `t`'s words."""
     if problem == "failing":
@@ -192,18 +172,6 @@ def _feed_problem(t: Translator, health: FeedHealth, problem: str) -> str:
     if problem == "never_stored":
         return t("settings_api.feed_never_stored")
     return t("settings_api.feed_quiet", days=QUIET_DAYS)
-
-
-_AREA_GROUP = {"active": 0, "proposed": 1, "dismissed": 2, "merged": 3}
-
-
-def _area_order(area: Area) -> tuple[int, int, int, int]:
-    """Active by position, proposals by how much evidence they have, then the rest by id."""
-    if area.status == "active":
-        return (0, area.position, 0, area.id)
-    if area.status == "proposed":
-        return (1, -area.proposal_issues, -area.proposal_articles, area.id)
-    return (_AREA_GROUP[area.status], 0, 0, area.id)
 
 
 def _health_json(t: Translator, health: FeedHealth | None, now: datetime) -> dict[str, Any] | None:
@@ -234,31 +202,12 @@ def _topic_refusal(t: Translator, field: str) -> str | None:
 # The keys `static/settings.js` formats beyond those listed with the other pages' below.
 SETTINGS_SCRIPT_MESSAGES: tuple[str, ...] = (
     "settings.access_not_set_up",
-    "settings.activating",
     "settings.answered_without_reason",
-    "settings.area_activated",
-    "settings.area_dismissed",
-    "settings.area_for",
-    "settings.area_gone",
-    "settings.area_list_not_loaded",
-    "settings.area_merged",
-    "settings.area_none",
-    "settings.area_not_active",
-    "settings.assign_no_sources",
-    "settings.assign_partial",
-    "settings.assign_partial_activated",
     "settings.checking_embedder",
     "settings.checking_provider",
-    "settings.closed_merged",
-    "settings.closed_status",
-    "settings.confirm_area_first",
-    "settings.confirm_dismiss",
-    "settings.confirm_merge",
     "settings.confirm_remove",
     "settings.confirm_retire",
     "settings.confirm_turn_off",
-    "settings.dismiss",
-    "settings.dismissing",
     "settings.editing",
     "settings.hours_need",
     "settings.hours_not_saved",
@@ -268,67 +217,36 @@ SETTINGS_SCRIPT_MESSAGES: tuple[str, ...] = (
     "settings.key_ready",
     "settings.list_last",
     "settings.list_more",
-    "settings.load_areas_failed",
     "settings.load_settings_failed",
     "settings.load_sources_failed",
     "settings.load_topics_failed",
-    "settings.loading_areas",
-    "settings.loading_sources",
-    "settings.meets_threshold",
-    "settings.merge",
-    "settings.merging",
     "settings.missing_notice",
     "settings.model_hint_call",
     "settings.model_hint_none",
     "settings.model_hint_pick",
-    "settings.new_proposals",
     "settings.new_source",
     "settings.new_topic",
-    "settings.no_area_table",
-    "settings.no_areas",
-    "settings.no_closed_areas",
     "settings.no_key_needed",
-    "settings.no_merge_target",
-    "settings.no_new_proposals",
     "settings.no_newsletter_sources",
-    "settings.no_proposals",
     "settings.no_rss_sources",
     "settings.no_settings_store",
     "settings.no_source_table",
     "settings.no_sources",
-    "settings.no_suggestion",
     "settings.no_topic_table",
     "settings.no_topics",
     "settings.not_saved",
     "settings.not_set",
-    "settings.order_saved",
     "settings.pick_provider_first",
-    "settings.position_of",
-    "settings.proposal_counts",
-    "settings.proposed",
-    "settings.proposing",
-    "settings.proposing_areas",
     "settings.remove",
     "settings.removing",
     "settings.retire",
     "settings.retiring",
-    "settings.save_unconfirmed",
     "settings.saved_value",
     "settings.saved_values",
     "settings.saving",
-    "settings.saving_assignments",
-    "settings.saving_order",
     "settings.sending_test",
     "settings.session_expired",
     "settings.source_retired",
-    "settings.sources_assigned",
-    "settings.sources_assigned_activated",
-    "settings.sources_picked",
-    "settings.suggest",
-    "settings.suggested",
-    "settings.suggesting",
-    "settings.suggests_area",
-    "settings.threshold_saved",
     "settings.topic_other_model",
     "settings.topic_removed",
     "settings.turn_off",
@@ -345,7 +263,6 @@ BROWSER_MESSAGES: tuple[str, ...] = (
     "settings.checking_discord",
     "provider.none",
     *(f"lane.{lane}" for lane in Lane),
-    *(f"area_status.{status}" for status in get_args(AreaStatus)),
     "labels.signed_out",
     "labels.access_not_set_up",
     "labels.refused",
@@ -660,9 +577,6 @@ class TriageServer:
         blind_labels=None,
         article_store=None,
         issue_topics=None,
-        area_store=None,
-        source_titles=None,
-        llm_factory=None,
         onboarding_articles=None,
         feed_checker=None,
         digest_store=None,
@@ -722,13 +636,6 @@ class TriageServer:
         # cloud's: each write would block this loop on D1's REST round trips, and a later
         # `promote-sync` would stamp an older queued vote over it at the sync's time (ADR-0044).
         self._takes_votes = article_store is not None and store_is_local and not behind_app_worker
-        # D1's areas and birth threshold; optional for a partial server.
-        self._area_store = area_store
-        # D1's recent article titles for the Propose prompt; optional for a partial
-        # server, and a Propose without it asks the model with no titles.
-        self._source_titles = source_titles
-        # Called with the grade-D values for an LLM client; None when no LLM can be built.
-        self._llm_factory = llm_factory
         # The wizard's card reader, over the run's own RSS edge
         # (`bootstrap.build_onboarding_articles`); optional for a partial server.
         self._onboarding_articles = onboarding_articles
@@ -785,17 +692,6 @@ class TriageServer:
         self._app.router.add_get("/api/topics", self._handle_get_topics)
         self._app.router.add_post("/api/topics", self._handle_post_topic)
         self._app.router.add_delete("/api/topics/{name}", self._handle_delete_topic)
-        self._app.router.add_get("/api/areas", self._handle_get_areas)
-        self._app.router.add_post("/api/sources/suggest-area", self._handle_suggest_area)
-        self._app.router.add_post("/api/areas/propose", self._handle_propose_areas)
-        self._app.router.add_post("/api/areas/assign", self._handle_bulk_assign)
-        self._app.router.add_put("/api/areas/birth-threshold", self._handle_put_birth_threshold)
-        self._app.router.add_put("/api/areas/order", self._handle_put_area_order)
-        self._app.router.add_post(r"/api/areas/{id:\d+}/activate", self._handle_activate_area)
-        self._app.router.add_post(r"/api/areas/{id:\d+}/dismiss", self._handle_dismiss_area)
-        self._app.router.add_post(r"/api/areas/{id:\d+}/merge", self._handle_merge_area)
-        self._app.router.add_post(r"/api/areas/{id:\d+}/sources", self._handle_assign_sources)
-        self._app.router.add_put(r"/api/areas/{id:\d+}", self._handle_rename_area)
         self._app.router.add_get("/api/labels", self._handle_get_labels)
         self._app.router.add_post("/api/labels", self._handle_post_label)
         self._app.router.add_get("/settings", self._handle_settings_page)
@@ -900,9 +796,6 @@ class TriageServer:
                 # Each key this edition locks, and why: the page disables its controls and
                 # shows the reason (ADR-0043).
                 "locked": {key: {"reason": reason} for key, reason in self._locked.items()},
-                # STUB until Areas is deleted (M2): the tabs an edition does not show. This
-                # one shows every tab; the hosted Worker hides Areas.
-                "hidden_tabs": [],
             }
         )
 
@@ -1330,7 +1223,6 @@ class TriageServer:
                         "email_match": s.email_match,
                         "homepage": s.homepage,
                         "tags": s.tags,
-                        "area_id": s.area_id,
                         "health": _health_json(t, health.get(s.name), now),
                     }
                     for s in sources.values()
@@ -1385,24 +1277,6 @@ class TriageServer:
             return _refused(*needs[source.type])
 
         try:
-            if "area_id" in body:
-                if source.area_id is not None:
-                    if self._area_store is None:
-                        return web.json_response(
-                            {
-                                "ok": False,
-                                "error": t("settings_api.no_area_table_to_check"),
-                                "field": "area_id",
-                            },
-                            status=409,
-                        )
-                    area = self._area_store.get(source.area_id)
-                    if area is None or area.status != "active":
-                        return _refused(t("settings_api.pick_active_area"), "area_id")
-            else:
-                # A save that does not mention the area leaves the stored one as it was.
-                stored = self._source_store.list_sources().get(source.name)
-                source.area_id = stored.area_id if stored else None
             self._source_store.upsert(source)
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             return web.json_response({"ok": False, "error": str(e)}, status=500)
@@ -1861,477 +1735,6 @@ class TriageServer:
                 "excerpt": excerpt(card.content),
             }
         return {"answered": answered, "total": total, "item": item}
-
-    async def _handle_get_areas(self, request: web.Request) -> web.Response:
-        """Every area with its status and counts, in the order the page lists them."""
-        t = self._translator(request)
-        if self._area_store is None:
-            return web.json_response({"writable": False, "areas": [], "birth_threshold": None})
-        try:
-            areas = self._area_store.list_areas()
-            threshold = self._area_store.birth_threshold()
-        except Exception as e:  # noqa: BLE001 - the reason goes to the log, not the page
-            logger.error("Reading areas failed: %s", type(e).__name__)
-            return web.json_response(
-                {"ok": False, "error": t("settings_api.area_table_unreadable")}, status=500
-            )
-        return web.json_response(
-            {
-                "writable": True,
-                "areas": [
-                    {
-                        **area.model_dump(),
-                        "meets_birth_threshold": meets_birth_threshold(area, threshold),
-                    }
-                    for area in sorted(areas, key=_area_order)
-                ],
-                "birth_threshold": (
-                    None
-                    if threshold is None
-                    else {"articles": threshold[0], "issues": threshold[1]}
-                ),
-            }
-        )
-
-    @staticmethod
-    def _unplaced_proposal(t: Translator, area: Area) -> web.Response:
-        """409 for activating a proposal stored as "Other" before the name was reserved."""
-        return web.json_response(
-            {"ok": False, "error": t("settings_api.unplaced_proposal", name=area.name)}, status=409
-        )
-
-    def _not_proposed(self, t: Translator, area_id: int) -> web.Response:
-        """409 for a proposal-only action on an area that is not a proposal; 404 if it is gone."""
-        area = self._area_store.get(area_id)
-        if area is None:
-            return _no_area(t, area_id)
-        error = t("settings_api.not_proposed", name=area.name, status=_area_status(t, area))
-        return web.json_response({"ok": False, "error": error}, status=409)
-
-    async def _handle_activate_area(self, request: web.Request) -> web.Response:
-        """Confirm a proposal: it joins the closed set the next run offers the model."""
-        t = self._translator(request)
-        if self._area_store is None:
-            return _no_table(t("settings_api.no_area_table"))
-        area_id = int(request.match_info["id"])
-        try:
-            area = self._area_store.get(area_id)
-            if area is not None and area.status == "proposed" and is_unplaced_label(area.name):
-                return self._unplaced_proposal(t, area)
-            if not self._area_store.activate(area_id):
-                return self._not_proposed(t, area_id)
-            area = self._area_store.get(area_id)
-        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
-            return web.json_response({"ok": False, "error": str(e)}, status=500)
-
-        logger.info("Area %s activated", area_id)
-        return web.json_response(
-            {
-                "ok": True,
-                "id": area.id,
-                "name": area.name,
-                "position": area.position,
-                "note": t("settings_api.effective_next_run"),
-            }
-        )
-
-    async def _handle_dismiss_area(self, request: web.Request) -> web.Response:
-        """Reject a proposal; its name is then ignored, not proposed again."""
-        t = self._translator(request)
-        if self._area_store is None:
-            return _no_table(t("settings_api.no_area_table"))
-        area_id = int(request.match_info["id"])
-        try:
-            if not self._area_store.dismiss(area_id):
-                return self._not_proposed(t, area_id)
-        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
-            return web.json_response({"ok": False, "error": str(e)}, status=500)
-
-        logger.info("Area %s dismissed", area_id)
-        note = t("settings_api.effective_next_run")
-        return web.json_response({"ok": True, "id": area_id, "note": note})
-
-    async def _handle_merge_area(self, request: web.Request) -> web.Response:
-        """Fold a proposal into an active area; the proposal's name resolves to that area."""
-        t = self._translator(request)
-        if self._area_store is None:
-            return _no_table(t("settings_api.no_area_table"))
-        area_id = int(request.match_info["id"])
-        try:
-            body = await request.json()
-        except Exception:
-            return _invalid_json(t)
-        into = body.get("into") if isinstance(body, dict) else None
-        if isinstance(into, bool) or not isinstance(into, int) or into == area_id:
-            return _refused(t("settings_api.merge_into_other"), "into")
-        try:
-            target = self._area_store.get(into)
-            if target is None or target.status != "active":
-                return _refused(t("settings_api.merge_into_active"), "into")
-            if self._area_store.get(area_id) is None:
-                return _no_area(t, area_id)
-            if not self._area_store.merge(area_id, into):
-                return self._not_proposed(t, area_id)
-        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
-            return web.json_response({"ok": False, "error": str(e)}, status=500)
-
-        logger.info("Area %s merged into %s", area_id, into)
-        return web.json_response(
-            {"ok": True, "id": area_id, "into": into, "note": t("settings_api.effective_next_run")}
-        )
-
-    async def _handle_assign_sources(self, request: web.Request) -> web.Response:
-        """Place a batch of sources in one active area; each keeps every other field."""
-        t = self._translator(request)
-        if self._area_store is None or self._source_store is None:
-            return _no_table(t("settings_api.no_area_table"))
-        area_id = int(request.match_info["id"])
-        try:
-            body = await request.json()
-        except Exception:
-            return _invalid_json(t)
-        names = body.get("sources") if isinstance(body, dict) else None
-        if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
-            return _refused(t("settings_api.sources_not_a_list"), "sources")
-        try:
-            area = self._area_store.get(area_id)
-            if area is None:
-                return _no_area(t, area_id)
-            if area.status != "active":
-                error = t("settings_api.not_active", name=area.name, status=_area_status(t, area))
-                return web.json_response({"ok": False, "error": error}, status=409)
-            stored = self._source_store.list_sources()
-            unknown = [name for name in names if name not in stored]
-            if unknown:
-                return web.json_response(
-                    {
-                        "ok": False,
-                        "error": t("settings_api.unknown_sources", names=_list(t, unknown)),
-                        "field": "sources",
-                        "names": unknown,
-                    },
-                    status=400,
-                )
-            for name in dict.fromkeys(names):
-                self._source_store.upsert(stored[name].model_copy(update={"area_id": area_id}))
-        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
-            return web.json_response({"ok": False, "error": str(e)}, status=500)
-
-        logger.info("%d sources assigned to area %s", len(set(names)), area_id)
-        return web.json_response({"ok": True, "assigned": len(set(names))})
-
-    async def _handle_bulk_assign(self, request: web.Request) -> web.Response:
-        """Give each named source its area, or none, in one request.
-
-        A proposal named here is activated first.
-
-        Every refusal is decided before the first write, so a refused request changes nothing.
-        A write that fails midway answers 500 with what did land, so the page can recompute.
-        """
-        t = self._translator(request)
-        if self._area_store is None or self._source_store is None:
-            return _no_table(t("settings_api.no_area_table"))
-        try:
-            body = await request.json()
-        except Exception:
-            return _invalid_json(t)
-        assignments = body.get("assignments") if isinstance(body, dict) else None
-        if not isinstance(assignments, dict) or not all(
-            value is None or (isinstance(value, int) and not isinstance(value, bool))
-            for value in assignments.values()
-        ):
-            return _refused(t("settings_api.assignments_shape"), "assignments")
-        assigned: list[str] = []
-        activated: list[dict[str, Any]] = []
-        try:
-            stored = self._source_store.list_sources()
-            unknown = [name for name in assignments if name not in stored]
-            if unknown:
-                return web.json_response(
-                    {
-                        "ok": False,
-                        "error": t("settings_api.unknown_sources", names=_list(t, unknown)),
-                        "field": "assignments",
-                        "names": unknown,
-                    },
-                    status=400,
-                )
-            targets: dict[int, Area] = {}
-            for area_id in dict.fromkeys(v for v in assignments.values() if v is not None):
-                area = self._area_store.get(area_id)
-                if area is None:
-                    return _no_area(t, area_id)
-                if area.status in ("dismissed", "merged"):
-                    status = _area_status(t, area)
-                    error = t("settings_api.not_assignable", name=area.name, status=status)
-                    return web.json_response({"ok": False, "error": error}, status=409)
-                if area.status == "proposed" and is_unplaced_label(area.name):
-                    return self._unplaced_proposal(t, area)
-                targets[area_id] = area
-            for area in sorted(
-                (a for a in targets.values() if a.status == "proposed"), key=_area_order
-            ):
-                if self._area_store.activate(area.id):
-                    activated.append({"id": area.id, "name": area.name})
-            for name, area_id in assignments.items():
-                self._source_store.upsert(stored[name].model_copy(update={"area_id": area_id}))
-                assigned.append(name)
-        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
-            return web.json_response(
-                {
-                    "ok": False,
-                    "error": str(e),
-                    "assigned": assigned,
-                    "activated": activated,
-                },
-                status=500,
-            )
-
-        logger.info("%d sources assigned, %d areas activated", len(assigned), len(activated))
-        return web.json_response({"ok": True, "assigned": len(assigned), "activated": activated})
-
-    def _llm(self):
-        return self._llm_factory(self._values) if self._llm_factory is not None else None
-
-    async def _handle_suggest_area(self, request: web.Request) -> web.Response:
-        """Suggest the active area for a source being added. A failure never stops the save."""
-        t = self._translator(request)
-        if self._area_store is None:
-            return _no_table(t("settings_api.no_area_table"))
-        try:
-            body = await request.json()
-        except Exception:
-            return _invalid_json(t)
-        url = body.get("url") if isinstance(body, dict) else None
-        if not isinstance(url, str) or not url.strip():
-            return _refused(t("settings_api.suggest_needs_url"), "url")
-
-        def answer(suggestion, note: str) -> web.Response:
-            return web.json_response({"ok": True, "suggestion": suggestion, "note": note})
-
-        try:
-            catalog = AreaCatalog(self._area_store.list_areas())
-        except Exception as e:  # noqa: BLE001 - the reason stays in the log, not the page
-            logger.error("Reading areas failed: %s", type(e).__name__)
-            return web.json_response(
-                {"ok": False, "error": t("settings_api.area_table_unreadable")}, status=500
-            )
-        names = catalog.names()
-        if not names:
-            return answer(None, t("settings_api.suggest_no_active_area"))
-        try:
-            llm = self._llm()
-        except Exception as e:  # noqa: BLE001 - only the class name leaves this handler
-            logger.warning("Suggesting an area failed: %s", type(e).__name__)
-            return answer(None, t("settings_api.model_call_failed", error=type(e).__name__))
-        if llm is None:
-            return answer(None, t("settings_api.suggest_no_llm"))
-
-        source_type = body.get("type") or "rss"
-        if source_type not in get_args(SourceType):
-            return _refused(_unknown_source_type(t, source_type), "type")
-        source = SourceConfig(
-            name=str(body.get("name") or "").strip() or url,
-            url=url.strip(),
-            type=source_type,
-            tags=[t for t in body.get("tags") or [] if isinstance(t, str)],
-            homepage=body.get("homepage") if isinstance(body.get("homepage"), str) else None,
-        )
-        try:
-            picked = await asyncio.wait_for(
-                area_llm.suggest_area(llm, source, names), LLM_PROBE_TIMEOUT_SECONDS
-            )
-        except Exception as e:  # noqa: BLE001 - only the class name leaves this handler
-            logger.warning("Suggesting an area failed: %s", type(e).__name__)
-            return answer(None, t("settings_api.model_call_failed", error=type(e).__name__))
-        if picked is None:
-            return answer(None, t("settings_api.suggest_no_pick"))
-        area = catalog.place(picked).area
-        return answer({"id": area.id, "name": area.name}, t("settings_api.suggested"))
-
-    async def _handle_propose_areas(self, request: web.Request) -> web.Response:
-        """Ask the model to group every source into areas, and record the new names as proposals."""
-        t = self._translator(request)
-        if self._area_store is None:
-            return _no_table(t("settings_api.no_area_table"))
-        sources = self._source_store.list_sources() if self._source_store else self._sources
-        if not sources:
-            return _refused(t("settings_api.propose_no_sources"), "sources")
-
-        def model_failed(error: Exception) -> web.Response:
-            logger.warning("Proposing areas failed: %s", type(error).__name__)
-            return web.json_response(
-                {
-                    "ok": False,
-                    "error": t("settings_api.model_call_failed", error=type(error).__name__),
-                },
-                status=502,
-            )
-
-        try:
-            llm = self._llm()
-        except Exception as e:  # noqa: BLE001 - only the class name leaves this handler
-            return model_failed(e)
-        if llm is None:
-            return web.json_response(
-                {"ok": False, "error": t("settings_api.propose_no_llm")},
-                status=409,
-            )
-        try:
-            areas = self._area_store.list_areas()
-        except Exception as e:  # noqa: BLE001 - the reason stays in the log, not the page
-            logger.error("Reading areas failed: %s", type(e).__name__)
-            return web.json_response(
-                {"ok": False, "error": t("settings_api.area_table_unreadable")}, status=500
-            )
-        catalog = AreaCatalog(areas)
-        # The model is offered the active areas by position, then the proposals.
-        names = [
-            area.name
-            for area in sorted(areas, key=_area_order)
-            if area.status in ("active", "proposed")
-        ]
-        titles = None
-        if self._source_titles is not None:
-            try:
-                titles = self._source_titles.recent(datetime.now(UTC))
-            except Exception as e:  # noqa: BLE001 - only the class name leaves this handler
-                logger.warning("Reading source titles failed: %s", type(e).__name__)
-        try:
-            grouping = await asyncio.wait_for(
-                area_llm.propose_areas(llm, sources, titles=titles, area_names=names),
-                LLM_PROBE_TIMEOUT_SECONDS,
-            )
-        except Exception as e:  # noqa: BLE001 - only the class name leaves this handler
-            return model_failed(e)
-
-        # Every name is placed before the first write, so a refused reply writes nothing.
-        placements = [(name, members, catalog.place(name)) for name, members in grouping.items()]
-        placements = [
-            entry
-            for entry in placements
-            if entry[2].kind != "dismissed" and not is_unplaced_label(entry[0])
-        ]
-        new_names = [name for name, _, placed in placements if placed.kind == "unknown"]
-        # The new rows go in one statement so a failure writes none, and D1 binds
-        # one parameter per name; chunking would give up the all-or-nothing write.
-        if len(new_names) > MAX_BOUND_PARAMS:
-            return web.json_response(
-                {
-                    "ok": False,
-                    "error": t("settings_api.too_many_proposals", limit=MAX_BOUND_PARAMS),
-                },
-                status=502,
-            )
-        try:
-            new_ids = self._area_store.insert_proposed(new_names)
-        except Exception as e:  # noqa: BLE001 - the reason stays in the log, not the page
-            logger.error("Writing proposed areas failed: %s", type(e).__name__)
-            return web.json_response(
-                {"ok": False, "error": t("settings_api.area_table_unwritable")}, status=500
-            )
-        proposals = []
-        for name, members, placed in placements:
-            if placed.kind == "unknown":
-                proposals.append({"id": new_ids[name], "name": name, "sources": members})
-            else:
-                area = placed.area
-                proposals.append({"id": area.id, "name": area.name, "sources": members})
-
-        return web.json_response({"ok": True, "proposals": proposals, "created": len(new_names)})
-
-    async def _handle_put_area_order(self, request: web.Request) -> web.Response:
-        """Set the order of the active areas: the page's list, top to bottom."""
-        t = self._translator(request)
-        if self._area_store is None:
-            return _no_table(t("settings_api.no_area_table"))
-        try:
-            body = await request.json()
-        except Exception:
-            return _invalid_json(t)
-        ids = body.get("ids") if isinstance(body, dict) else None
-        if not isinstance(ids, list) or not all(
-            isinstance(i, int) and not isinstance(i, bool) for i in ids
-        ):
-            return _refused(t("settings_api.ids_not_a_list"), "ids")
-        try:
-            active = {area.id for area in self._area_store.list_areas() if area.status == "active"}
-            if len(set(ids)) != len(ids) or set(ids) != active:
-                return _refused(t("settings_api.ids_not_every_area"), "ids")
-            self._area_store.set_order(ids)
-        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
-            return web.json_response({"ok": False, "error": str(e)}, status=500)
-
-        logger.info("Active areas reordered")
-        return web.json_response({"ok": True, "note": t("settings_api.effective_next_run")})
-
-    async def _handle_rename_area(self, request: web.Request) -> web.Response:
-        """Give an area a new name; every source and pick keeps resolving to it by id."""
-        t = self._translator(request)
-        if self._area_store is None:
-            return _no_table(t("settings_api.no_area_table"))
-        area_id = int(request.match_info["id"])
-        try:
-            body = await request.json()
-        except Exception:
-            return _invalid_json(t)
-        raw = body.get("name") if isinstance(body, dict) else None
-        name = raw.strip() if isinstance(raw, str) else ""
-        if not name or "\n" in raw or "\r" in raw:
-            return _refused(t("settings_api.name_shape"), "name")
-        try:
-            if self._area_store.get(area_id) is None:
-                return _no_area(t, area_id)
-            if is_unplaced_label(name):
-                return web.json_response(
-                    {
-                        "ok": False,
-                        "error": t("settings_api.name_reserved", name=name),
-                        "field": "name",
-                    },
-                    status=409,
-                )
-            if self._area_store.name_taken(name, area_id):
-                return web.json_response(
-                    {
-                        "ok": False,
-                        "error": t("settings_api.name_taken", name=name),
-                        "field": "name",
-                    },
-                    status=409,
-                )
-            self._area_store.rename(area_id, name)
-        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
-            return web.json_response({"ok": False, "error": str(e)}, status=500)
-
-        logger.info("Area %s renamed", area_id)
-        return web.json_response(
-            {"ok": True, "id": area_id, "name": name, "note": t("settings_api.effective_next_run")}
-        )
-
-    async def _handle_put_birth_threshold(self, request: web.Request) -> web.Response:
-        """The (articles, issues) a proposal must reach to be marked as meeting the threshold."""
-        t = self._translator(request)
-        if self._area_store is None:
-            return _no_table(t("settings_api.no_area_table"))
-        try:
-            body = await request.json()
-        except Exception:
-            return _invalid_json(t)
-
-        values = {}
-        for field in ("articles", "issues"):
-            value = body.get(field) if isinstance(body, dict) else None
-            if isinstance(value, bool) or not isinstance(value, int) or value < 1:
-                return _refused(t("settings_api.threshold_whole_number", field=field), field)
-            values[field] = value
-        try:
-            self._area_store.set_birth_threshold(values["articles"], values["issues"])
-        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
-            return web.json_response({"ok": False, "error": str(e)}, status=500)
-
-        logger.info("Area birth threshold set to %s", values)
-        return web.json_response({"ok": True, **values})
 
     async def _handle_get_labels(self, request: web.Request) -> web.Response:
         if self._blind_labels is None:

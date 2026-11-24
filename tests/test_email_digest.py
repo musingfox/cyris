@@ -572,44 +572,6 @@ def test_no_item_shows_a_score_pill_as_on_the_page():
     assert "91.0" not in html and "80.0" not in html
 
 
-def _paragraph_issue():
-    from cyris.domain.models import DigestContent, DigestItem, NewsParagraph
-
-    pair = DigestItem(
-        title="Quake",
-        summary="",
-        sources=["Wire A", "Wire B"],
-        urls=["https://a.test/quake", "https://b.test/quake"],
-        area="World",
-    )
-    letter = DigestItem(
-        title="Letter",
-        summary="",
-        sources=["Letters"],
-        urls=["newsletter:abc"],
-        area="World",
-    )
-    return DigestContent(
-        date="2026-10-27",
-        period="morning",
-        sources_processed=2,
-        articles_received=3,
-        articles_included=3,
-        area_order=["World"],
-        news_paragraphs=[
-            NewsParagraph(text="A quake struck; a letter followed.", units=[pair, letter])
-        ],
-    )
-
-
-def test_a_legacy_news_paragraph_in_the_mail_takes_the_layers_of_its_units() -> None:
-    html = render_digest_email(_paragraph_issue(), DIGEST_URL)
-    topics = _section(html, "Topics")
-    assert '<p class="summary">A quake struck; a letter followed.</p>' in topics
-    assert "Wire A" not in topics and "Wire B" not in topics
-    assert "Letter" not in html
-
-
 class TestGlanceWhenAlone:
     @pytest.mark.parametrize("language", ["en", "zh-Hant"])
     def test_water_alone_is_listed_under_the_glance_marker(self, language):

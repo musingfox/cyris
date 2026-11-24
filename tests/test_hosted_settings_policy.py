@@ -19,7 +19,7 @@ from cyris.adapters.fetch import feed_check
 from cyris.adapters.hosted import POLICY_PATH, hosted_policy
 from cyris.adapters.store.source_store import source_from_row
 from cyris.config import GRADE_D_KEYS, validate_setting
-from cyris.entrypoints.triage_server import LockReason, render_settings_page
+from cyris.entrypoints.triage_server import LockReason
 from cyris.i18n import LOCALES, resolve
 
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
@@ -74,13 +74,11 @@ def test_every_writable_key_is_a_settings_key_and_none_is_the_operators() -> Non
 
 def test_the_shared_page_opens_only_keys_a_tenant_writes_and_locks_for_the_two_reasons() -> None:
     """The stub the shared settings page is locked by (ADR-0043): what it opens, a tenant
-    already writes; each reason is one the page words; each tab it hides is one the page has."""
+    already writes, and each reason is one the page words."""
     page = POLICY["shared_page"]
-    tabs = re.findall(r'data-tab="([a-z]+)"', render_settings_page())
 
     assert set(page["open"]) <= set(POLICY["writable_settings"])
     assert {page["operator_reason"], page["stub_reason"]} <= set(get_args(LockReason))
-    assert set(page["hidden_tabs"]) < set(tabs)
 
 
 @pytest.mark.parametrize("case", CASES["sources"]["written"], ids=lambda c: c["row"]["name"])

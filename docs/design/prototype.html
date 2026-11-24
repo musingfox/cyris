@@ -501,21 +501,6 @@ tr.editor[inert] .form { opacity: .4; }
 .editor-title { margin-bottom: var(--s-4); }
 .editor-foot { display: flex; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; margin-top: var(--s-5); }
 
-/* ---- areas: sections, position selects, the assignment table ---- */
-.areas-part { margin-top: var(--s-12); }
-.tab-head + .areas-part { margin-top: 0; }
-.areas-part-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s-4); flex-wrap: wrap; min-height: 44px; margin-bottom: var(--s-3); }
-.areas-save { margin-top: var(--s-4); }
-table.src.areas-table, table.src.assign { min-width: 0; }
-table.src .name .areas-note { display: block; margin-top: var(--s-1); font-weight: 400; white-space: normal; }
-table.src td.areas-pos-cell { width: 1%; }
-.areas-pos { width: 96px; }
-.areas-cell { display: flex; align-items: center; gap: var(--s-3); }
-.areas-cell .select { flex: 0 1 320px; min-width: 0; }
-.areas-foot, .areas-foot .actions-line { align-items: flex-end; }
-.areas-merge .select { width: 200px; }
-.areas-threshold { display: flex; flex-wrap: wrap; }
-
 /* ---- system overview ---- */
 .sys-section { margin-bottom: var(--s-16); }
 .sys-section > .label { display: flex; align-items: center; gap: var(--s-3); margin-bottom: var(--s-5); }
@@ -592,13 +577,6 @@ table.src td.areas-pos-cell { width: 1%; }
   .settings-nav { position: static; display: flex; overflow-x: auto; overflow-y: hidden; border-left: 0; border-bottom: 1px solid var(--border); }
   .settings-nav a { border-left: 0; margin-left: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; min-height: calc(44px + 1px); white-space: nowrap; gap: var(--s-2); }
   .settings-nav a[aria-current="page"] { border-bottom-color: var(--accent); }
-  .areas-part { margin-top: var(--s-8); }
-  table.src.assign thead { display: none; }
-  table.src.assign, table.src.assign tbody, table.src.assign tr, table.src.assign td { display: block; }
-  table.src.assign td.name { white-space: normal; border-bottom: 0; padding-bottom: var(--s-2); }
-  table.src.assign td + td { padding-top: 0; }
-  .areas-cell { flex-wrap: wrap; }
-  .areas-cell .select { flex-basis: 100%; }
   .settings-nav::before { content: "›" / ""; order: 1; position: sticky; right: 0; pointer-events: none; flex: 0 0 var(--s-8); display: flex; align-items: center; justify-content: flex-end; padding-right: var(--s-2); background: linear-gradient(to right, transparent, var(--bg) var(--s-4)); font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); color: var(--text-dim); }
   .settings-nav::after { content: ""; order: 2; position: relative; flex: 0 0 var(--s-8); margin-left: calc(-1 * var(--s-8)); background: var(--bg); }
 }
@@ -1261,7 +1239,6 @@ Press Try again, or Finish to leave: the next publish hour brings an issue eithe
         <a class="label missing" href="#settings/pipeline" data-tab="pipeline">Pipeline <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
         <a class="label" href="#settings/notifications" data-tab="notifications">Notifications <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
         <a class="label" href="#settings/sources" data-tab="sources">Sources <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
-        <a class="label" href="#settings/areas" data-tab="areas">Areas <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
         <a class="label" href="#settings/tracking" data-tab="tracking">Tracking <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
       </nav>
 
@@ -1472,66 +1449,6 @@ Press Try again, or Finish to leave: the next publish hour brings an issue eithe
           </div>
         </div>
 
-        <!-- AREAS: source-centric. Sources pick their area in one table; a proposal that receives a source is activated when the assignments are saved. -->
-        <div class="tab" data-tab="areas" hidden>
-          <div class="tab-head">
-            <h2 class="heading">Areas</h2>
-            <p class="small">The areas the model files each article under, and which area each source belongs to.</p>
-          </div>
-          <section class="areas-part" aria-labelledby="areas-active-h">
-            <div class="areas-part-head"><h3 class="label" id="areas-active-h">Areas</h3></div>
-            <div class="table-wrap">
-              <table class="src areas-table">
-                <thead><tr><th class="label">Name</th><th class="label">Position</th></tr></thead>
-                <tbody id="area-body"></tbody>
-              </table>
-            </div>
-            <div class="actions-line areas-save">
-              <button class="btn primary" type="button" id="save-order" disabled>Save order</button>
-              <div class="notice" role="status" id="order-result" hidden>Order saved. Effective next run.</div>
-            </div>
-          </section>
-          <section class="areas-part" aria-labelledby="areas-proposed-h">
-            <div class="areas-part-head"><h3 class="label" id="areas-proposed-h">Proposed</h3></div>
-            <div class="table-wrap">
-              <table class="src areas-table">
-                <thead><tr><th class="label">Name</th><th class="label">Counts</th></tr></thead>
-                <tbody id="proposal-body"></tbody>
-              </table>
-            </div>
-          </section>
-          <section class="areas-part" aria-labelledby="areas-sources-h">
-            <div class="areas-part-head">
-              <h3 class="label" id="areas-sources-h">Sources</h3>
-              <div class="actions-line">
-                <button class="btn primary" type="button" id="propose-areas">Propose areas from my sources</button>
-                <div class="notice" role="status" id="propose-result" hidden></div>
-              </div>
-            </div>
-            <div class="table-wrap">
-              <table class="src assign">
-                <thead><tr><th class="label">Source</th><th class="label">Area</th></tr></thead>
-                <tbody id="assign-body"></tbody>
-              </table>
-            </div>
-            <div class="actions-line areas-save">
-              <button class="btn primary" type="button" id="save-assign" disabled>Save assignments</button>
-              <div class="notice" role="status" id="assign-result" hidden></div>
-            </div>
-          </section>
-          <section class="areas-part" aria-labelledby="areas-threshold-h">
-            <div class="areas-part-head"><h3 class="label" id="areas-threshold-h">Birth threshold</h3></div>
-            <div class="field-row areas-threshold">
-              <div class="field"><label class="label" for="proto-th-articles">Articles</label><input class="input narrow" id="proto-th-articles" type="number" value="10"></div>
-              <div class="field"><label class="label" for="proto-th-issues">Issues</label><input class="input narrow" id="proto-th-issues" type="number" value="3"></div>
-            </div>
-            <div class="actions-line areas-save"><button class="btn primary" type="button" disabled>Save</button></div>
-          </section>
-          <details class="more areas-part"><summary id="closed-summary">Closed</summary>
-            <ul class="small" id="closed-list"></ul>
-          </details>
-        </div>
-
         <!-- TRACKING: the rows open an editor exactly as a source's do, so only the table is drawn here -->
         <div class="tab" data-tab="tracking" hidden>
           <div class="tab-head">
@@ -1574,11 +1491,6 @@ Press Try again, or Finish to leave: the next publish hour brings an issue eithe
         <p class="small">Maps a sender to this source; email routing itself stays in the Cloudflare dashboard.</p></div>
       <div class="field" data-for="newsletter"><label class="label" for="e-home">Homepage</label><input class="input" id="e-home" type="text"></div>
       <div class="field"><label class="label" for="e-tags">Tags</label><input class="input" id="e-tags" type="text" placeholder="comma separated"></div>
-      <div class="field-row">
-        <div class="field"><label class="label" for="e-area">Area</label><select class="select" id="e-area"><option>None</option><option>Tech</option><option>Food</option></select><span class="pill">Suggested</span></div>
-        <div class="field"><button class="btn secondary" type="button" data-act="suggest">Suggest</button></div>
-      </div>
-      <p class="small" data-suggest-note hidden></p>
     </div>
     <div class="editor-foot">
       <div class="actions-line"><button class="btn primary" type="button" data-act="save">Save source</button><button class="btn secondary" type="button" data-act="cancel">Cancel</button></div>
@@ -1868,206 +1780,6 @@ $$("[data-filter]").forEach((b) => b.onclick = () => {
 $("#add-source").onclick = () => { openName = null; renderSources(); openEditor(""); };
 renderSources();
 
-/* ---- areas: each source picks its area in one table; Save assignments sends only the changed
-   sources and activates every proposal that received one. Reordering is local until Save order. ---- */
-const areaState = {
-  active: [{id: "tech", name: "Tech"}, {id: "food", name: "Food"}, {id: "finance", name: "Finance"}],
-  proposed: [{id: "energy", name: "Energy", articles: 12, issues: 3, meets: true}],
-  closed: [{name: "Old", note: "dismissed"}, {name: "Sports", note: "merged into Tech"}],
-};
-/* What the prototype's Propose answers with; the page asks the model. */
-const proposeAnswer = {
-  proposals: [{id: "ai", name: "AI", articles: 9, issues: 2, meets: false}, {id: "business", name: "Business", articles: 4, issues: 1, meets: false}],
-  suggestions: {"Simon Willison": "ai", "Hacker News": "ai", "曼報": "business", "Cloudflare Blog": "tech", "IEO": "energy"},
-};
-let savedOrder = areaState.active.map((a) => a.id);
-const storedArea = {"Simon Willison": "tech", "Cloudflare Blog": "tech"};
-const pickedArea = {};
-const suggestion = {};
-const touched = new Set();
-let openArea = null;
-const areaName = (id) => [...areaState.active, ...areaState.proposed].find((a) => a.id === id)?.name ?? "";
-const stored = (n) => storedArea[n] ?? "";
-const current = (n) => Object.hasOwn(pickedArea, n) ? pickedArea[n] : stored(n);
-const changedSources = () => sources.filter((s) => current(s.name) !== stored(s.name));
-const orderDirty = () => areaState.active.map((a) => a.id).join() !== savedOrder.join();
-const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
-const listJoin = (xs) => xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`;
-const option = (id, name, cur) => `<option value="${id}"${id === cur ? " selected" : ""}>${esc(name)}</option>`;
-const areaOptions = (cur) => option("", "None", cur)
-  + areaState.active.map((a) => option(a.id, a.name, cur)).join("")
-  + (areaState.proposed.length ? `<optgroup label="Proposed">${areaState.proposed.map((p) => option(p.id, p.name, cur)).join("")}</optgroup>` : "");
-const nameField = (a) => `
-  <h3 class="label editor-title">Editing ${esc(a.name)}</h3>
-  <div class="form"><div class="field"><label class="label" for="area-name">Name</label><input class="input" id="area-name" type="text" value="${esc(a.name)}"></div></div>`;
-const areaEditor = (a) => `
-  <tr class="editor"><td colspan="2"><div class="editor-body">${nameField(a)}
-    <div class="editor-foot"><div class="actions-line"><button class="btn primary" type="button" data-act="rename" disabled>Save name</button><button class="btn secondary" type="button" data-act="cancel">Cancel</button><div class="notice" role="status" data-act="rename-result" hidden>Name saved.</div></div></div>
-  </div></td></tr>`;
-const proposalEditor = (p) => `
-  <tr class="editor"><td colspan="2"><div class="editor-body">${nameField(p)}
-    <div class="editor-foot areas-foot">
-      <div class="actions-line"><button class="btn primary" type="button" data-act="activate">Activate</button><button class="btn secondary" type="button" data-act="rename" disabled>Save name</button><button class="btn secondary" type="button" data-act="cancel">Cancel</button><div class="notice" role="status" data-act="rename-result" hidden>Name saved.</div></div>
-      <div class="actions-line"><button class="btn danger" type="button" data-act="dismiss">Dismiss</button>
-        <div class="field areas-merge"><label class="label" for="merge-into">Merge into</label>${areaState.active.length
-          ? `<select class="select" id="merge-into">${areaState.active.map((a) => option(a.id, a.name, "")).join("")}</select>`
-          : `<p class="small">No active area to merge into</p>`}</div>
-        <button class="btn danger" type="button" data-act="merge"${areaState.active.length ? "" : " disabled"}>Merge</button></div>
-    </div>
-  </div></td></tr>`;
-function renderAreas() {
-  const n = areaState.active.length;
-  $("#area-body").innerHTML = areaState.active.map((a, i) => `
-    <tr class="src-row${openArea === a.id ? " open" : ""}" data-area="${a.id}" tabindex="0">
-      <td class="name">${esc(a.name)}</td>
-      <td class="areas-pos-cell"><select class="select areas-pos" aria-label="Position of ${esc(a.name)}" data-pos="${a.id}">${
-        Array.from({length: n}, (_, k) => `<option value="${k}"${k === i ? " selected" : ""}>${k + 1}</option>`).join("")}</select></td>
-    </tr>${openArea === a.id ? areaEditor(a) : ""}`).join("")
-    || `<tr><td class="small" colspan="2">No areas yet. Use "Propose areas from my sources" under Sources, or wait for the next run to suggest some.</td></tr>`;
-  $("#proposal-body").innerHTML = areaState.proposed.map((p) => {
-    const picked = changedSources().filter((s) => current(s.name) === p.id).length;
-    return `
-    <tr class="src-row${openArea === p.id ? " open" : ""}" data-area="${p.id}" tabindex="0">
-      <td class="name">${esc(p.name)}${picked ? `<span class="small areas-note">${plural(picked, "source")} picked</span>` : ""}</td>
-      <td class="small">${plural(p.articles, "article")} / ${plural(p.issues, "issue")} ${p.meets ? `<span class="pill">Meets birth threshold</span>` : ""}</td>
-    </tr>${openArea === p.id ? proposalEditor(p) : ""}`;
-  }).join("") || `<tr><td class="small" colspan="2">No proposals yet.</td></tr>`;
-  $("#assign-body").innerHTML = sources.map((s) => {
-    const sug = suggestion[s.name], st = stored(s.name), cur = current(s.name);
-    const note = st && sug && sug !== st ? `<span class="small areas-note">Suggests ${esc(areaName(sug))}</span>` : "";
-    const pill = !st && sug && cur === sug && !touched.has(s.name) ? `<span class="pill">Suggested</span>` : "";
-    return `
-    <tr><td class="name">${esc(s.name)}${note}</td>
-      <td><div class="areas-cell"><select class="select" aria-label="Area for ${esc(s.name)}" data-source="${esc(s.name)}">${areaOptions(cur)}</select>${pill}</div></td></tr>`;
-  }).join("") || `<tr><td class="small" colspan="2">No sources yet. <a href="#settings/sources">Add one under Sources</a>.</td></tr>`;
-  $("#closed-list").innerHTML = areaState.closed.map((c) => `<li>${esc(c.name)} — ${esc(c.note)}</li>`).join("") || "<li>No closed areas.</li>";
-  $("#save-order").disabled = !orderDirty();
-  $("#save-assign").disabled = !changedSources().length;
-  $("#propose-areas").disabled = !sources.length || $("#propose-areas").textContent !== "Propose areas from my sources";
-  $('.settings-nav a[data-tab="areas"]').classList.toggle("dirty", orderDirty() || changedSources().length > 0);
-}
-const areaRow = (id) => $(`tr.src-row[data-area="${id}"]`);
-function closeArea(p, note, retarget) {
-  areaState.proposed = areaState.proposed.filter((x) => x !== p);
-  areaState.closed.push({name: p.name, note});
-  for (const map of [pickedArea, suggestion]) {
-    for (const [n, id] of Object.entries(map)) if (id === p.id) retarget ? map[n] = retarget : delete map[n];
-  }
-  openArea = null;
-  renderAreas();
-  $("#closed-summary").focus();
-}
-function confirmPress(b, label, act) {
-  if (!b.classList.contains("armed")) {
-    b.classList.add("armed"); b.textContent = `Confirm ${label.toLowerCase()}`;
-    b.armTimer = setTimeout(() => { b.classList.remove("armed"); b.textContent = label; }, 3000);
-    return;
-  }
-  clearTimeout(b.armTimer);
-  act();
-}
-function onAreaClick(e) {
-  const b = e.target.closest("button[data-act]");
-  if (b) {
-    const id = openArea;
-    const a = areaState.active.find((x) => x.id === id), p = areaState.proposed.find((x) => x.id === id);
-    const act = b.dataset.act;
-    if (act === "cancel") { openArea = null; renderAreas(); areaRow(id).focus(); }
-    if (act === "rename") {
-      (a || p).name = $("#area-name").value.trim();
-      renderAreas();
-      $('[data-act="rename-result"]', areaRow(id).nextElementSibling).hidden = false;
-      areaRow(id).focus();
-    }
-    if (act === "activate") {
-      areaState.proposed = areaState.proposed.filter((x) => x !== p);
-      areaState.active.push({id: p.id, name: p.name}); savedOrder.push(p.id);
-      openArea = null; renderAreas(); areaRow(id).focus();
-    }
-    if (act === "dismiss") confirmPress(b, "Dismiss", () => closeArea(p, "dismissed"));
-    if (act === "merge") confirmPress(b, "Merge", () => {
-      const into = $("#merge-into").value;
-      closeArea(p, `merged into ${areaName(into)}`, into);
-    });
-    return;
-  }
-  const tr = e.target.closest("tr.src-row");
-  if (!tr || e.target.closest("select")) return;
-  openArea = openArea === tr.dataset.area ? null : tr.dataset.area;
-  renderAreas();
-  if (openArea) $("#area-name").focus(); else areaRow(tr.dataset.area).focus();
-}
-["#area-body", "#proposal-body"].forEach((body) => {
-  $(body).addEventListener("click", onAreaClick);
-  $(body).addEventListener("keydown", (e) => {
-    if ((e.key === "Enter" || e.key === " ") && e.target.matches("tr.src-row")) { e.preventDefault(); e.target.click(); }
-  });
-  $(body).addEventListener("input", (e) => {
-    if (e.target.id !== "area-name") return;
-    const a = [...areaState.active, ...areaState.proposed].find((x) => x.id === openArea);
-    const v = e.target.value.trim();
-    $('[data-act="rename"]', e.target.closest(".editor-body")).disabled = !v || v === a.name;
-  });
-});
-$("#area-body").addEventListener("change", (e) => {
-  const id = e.target.dataset.pos;
-  if (!id) return;
-  const a = areaState.active.find((x) => x.id === id);
-  areaState.active = areaState.active.filter((x) => x !== a);
-  areaState.active.splice(Number(e.target.value), 0, a);
-  $("#order-result").hidden = true;
-  renderAreas();
-  $(`[data-pos="${id}"]`).focus();
-});
-$("#save-order").onclick = () => {
-  savedOrder = areaState.active.map((a) => a.id);
-  renderAreas();
-  $("#order-result").hidden = false;
-};
-$("#assign-body").addEventListener("change", (e) => {
-  const n = e.target.dataset.source;
-  if (n === undefined) return;
-  if (e.target.value === stored(n)) delete pickedArea[n]; else pickedArea[n] = e.target.value;
-  touched.add(n);
-  $("#assign-result").hidden = true;
-  renderAreas();
-  $(`select[data-source="${CSS.escape(n)}"]`).focus();
-});
-$("#save-assign").onclick = () => {
-  const changed = changedSources();
-  const activated = areaState.proposed.filter((p) => changed.some((s) => current(s.name) === p.id));
-  areaState.proposed = areaState.proposed.filter((p) => !activated.includes(p));
-  activated.forEach((p) => { areaState.active.push({id: p.id, name: p.name}); savedOrder.push(p.id); });
-  changed.forEach((s) => { const v = current(s.name); v ? storedArea[s.name] = v : delete storedArea[s.name]; delete pickedArea[s.name]; });
-  renderAreas();
-  const names = activated.map((p) => p.name);
-  const result = $("#assign-result");
-  result.textContent = `${plural(changed.length, "source")} assigned${names.length ? `; ${listJoin(names)} ${names.length === 1 ? "is" : "are"} active` : ""}.`;
-  result.hidden = false;
-};
-$("#propose-areas").onclick = () => {
-  const b = $("#propose-areas");
-  b.textContent = "Proposing…"; b.disabled = true;
-  $("#propose-result").hidden = true;
-  setTimeout(() => {
-    const known = new Set([...areaState.active, ...areaState.proposed].map((a) => a.id));
-    const fresh = proposeAnswer.proposals.filter((p) => !known.has(p.id));
-    areaState.proposed.push(...fresh.map((p) => ({...p})));
-    for (const s of sources) {
-      const sug = proposeAnswer.suggestions[s.name];
-      if (!sug) continue;
-      suggestion[s.name] = sug;
-      touched.delete(s.name);
-      if (!stored(s.name)) pickedArea[s.name] = sug;
-    }
-    b.textContent = "Propose areas from my sources";
-    $("#propose-result").textContent = fresh.length ? `${plural(fresh.length, "new proposal")} under Proposed.` : "No new proposals.";
-    $("#propose-result").hidden = false;
-    renderAreas();
-  }, 600);
-};
-renderAreas();
-
 /* ---- settings dependencies: Clef waits for vote similarity (§4 field) ---- */
 const clefNeeds = () => {
   const on = $("#vote-enabled").value === "true";
@@ -2163,7 +1875,6 @@ function route() {
     const t = tab || "model";
     $$(".tab").forEach((p) => p.hidden = p.dataset.tab !== t);
     $$(".settings-nav a").forEach((a) => a.dataset.tab === t ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"));
-    if (t === "areas") renderAreas();
   }
   window.scrollTo(0, 0);
   const activeTab = $('.settings-nav a[aria-current]');

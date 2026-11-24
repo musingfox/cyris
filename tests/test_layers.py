@@ -3,7 +3,7 @@
 import pytest
 
 from cyris.domain.layers import layer_by_lane
-from cyris.domain.models import DigestContent, DigestItem, DigestSection, NewsParagraph
+from cyris.domain.models import DigestContent, DigestItem, DigestSection
 
 pytestmark = pytest.mark.unit
 
@@ -235,35 +235,6 @@ def test_a_legacy_cluster_counts_its_articles_not_its_reference_links() -> None:
 
     assert layers.sand == ()
     assert [w.item for w in layers.water] == [merged]
-
-
-def test_a_legacy_paragraph_unit_of_two_or_more_urls_is_sand_and_one_url_is_water() -> None:
-    big = DigestItem(
-        title="Busy unit",
-        summary="",
-        sources=["A", "B"],
-        urls=["https://example.test/a", "https://example.test/b"],
-    )
-    small = DigestItem(title="Quiet unit", summary="", sources=["C"], urls=["https://c.test/"])
-    late = DigestItem(title="Late unit", summary="", sources=["D"], urls=["https://d.test/"])
-    content = _content(
-        news_paragraphs=[
-            NewsParagraph(text="Two events.", units=[big, small]),
-            NewsParagraph(text="Its own text.", units=[late], passed_through=True),
-        ]
-    )
-
-    layers = layer_by_lane(content)
-
-    (sand,) = layers.sand
-    assert (sand.heading, sand.vote.urls) == ("Busy unit", big.urls)
-    assert [m.title for m in sand.members] == ["A", "B"]
-    # A paragraph's text rides on its first unit, so none of it is lost.
-    assert (sand.line, sand.line_untranslated) == ("Two events.", False)
-    assert [(w.item.title, w.item.summary, w.untranslated) for w in layers.water] == [
-        ("Quiet unit", "", False),
-        ("Late unit", "Its own text.", True),
-    ]
 
 
 def test_tracking_passes_through_untouched() -> None:

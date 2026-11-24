@@ -47,11 +47,10 @@ async def _call(server: TriageServer, method: str, path: str, body=None) -> tupl
     return response.status, json.loads(response.text)
 
 
-async def test_a_server_the_cli_starts_locks_nothing_and_hides_no_tab() -> None:
+async def test_a_server_the_cli_starts_locks_nothing() -> None:
     _, data = await _call(TriageServer(settings=FakeSettings()), "GET", "/api/settings")
 
     assert data["locked"] == {}
-    assert data["hidden_tabs"] == []
 
 
 async def test_a_locked_key_is_named_with_its_reason() -> None:

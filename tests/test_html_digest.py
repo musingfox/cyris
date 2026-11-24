@@ -11,7 +11,7 @@ from css_rules import parse_style_block, receipt_fixtures, text_langs
 
 from cyris.adapters.output import html_digest
 from cyris.adapters.output.hosted_pages import tenant_settings_path
-from cyris.adapters.output.html_digest import PROJECT_URL, HtmlDigestWriter, citation_links
+from cyris.adapters.output.html_digest import PROJECT_URL, HtmlDigestWriter
 from cyris.domain.models import (
     NO_LLM_MODEL,
     ArticleState,
@@ -1110,7 +1110,7 @@ def test_all_sections_render(tmp_path):
     assert "Featured Story" in html
     assert "Second Feature" in html
     assert "Tech Industry" in html
-    # Thematic summaries render inside the area section, not as their own section
+    # Thematic summaries render as cards, not as a section of their own
     assert "Research Paper" in html
     assert "Thematic Summaries" not in html
     assert "Attention Item" in html
@@ -2295,17 +2295,16 @@ def test_an_issue_with_no_hit_has_no_tracking_section(tmp_path):
 # ---- the page is three layers, pebble, sand and water ---------------------------
 
 
-def _area_item(title: str, area: str | None = None, url: str | None = None) -> DigestItem:
+def _layer_item(title: str, url: str | None = None) -> DigestItem:
     return DigestItem(
         title=title,
         summary=f"{title} summary.",
         sources=["Src"],
         urls=[url or f"https://x.test/{title}"],
-        area=area,
     )
 
 
-def _areas_issue(area_order: list[str], **fields) -> DigestContent:
+def _layers_issue(**fields) -> DigestContent:
     """Top story, a feature, a cluster, a following article, a radar item and two rows."""
     content = DigestContent(
         date="2026-04-15",
@@ -2314,10 +2313,9 @@ def _areas_issue(area_order: list[str], **fields) -> DigestContent:
         articles_received=6,
         articles_included=6,
         usage=UsageStats(model=NO_LLM_MODEL),
-        area_order=area_order,
-        featured_articles=[DigestSection(heading="Lead", items=[_area_item("Lead")])],
+        featured_articles=[DigestSection(heading="Lead", items=[_layer_item("Lead")])],
         thematic_summaries=[
-            DigestSection(heading="Tech feature", items=[_area_item("Tech feature", "Tech")])
+            DigestSection(heading="Tech feature", items=[_layer_item("Tech feature")])
         ],
         news_clusters=[
             DigestSection(
@@ -2329,18 +2327,13 @@ def _areas_issue(area_order: list[str], **fields) -> DigestContent:
                         summary="Cluster summary.",
                         sources=["A", "B"],
                         urls=["https://a.test/health", "https://b.test/health"],
-                        area="Health",
                     )
                 ],
             )
         ],
-        fan_sections=[
-            DigestSection(heading="Health fan", items=[_area_item("Health fan", "Health")])
-        ],
-        attention_sections=[
-            DigestSection(heading="Radar", items=[_area_item("Tech radar", "Tech")])
-        ],
-        filtered_headlines=[_area_item("Tech wire", "Tech"), _area_item("Unplaced wire")],
+        fan_sections=[DigestSection(heading="Health fan", items=[_layer_item("Health fan")])],
+        attention_sections=[DigestSection(heading="Radar", items=[_layer_item("Tech radar")])],
+        filtered_headlines=[_layer_item("Tech wire"), _layer_item("Second wire")],
     )
     return content.model_copy(update=fields)
 
@@ -2360,7 +2353,7 @@ def test_a_page_with_nothing_in_it_draws_no_marker_and_keeps_its_note(tmp_path):
 
 
 def test_a_cluster_keeps_its_story_id_and_every_url_is_shown_and_voted_once(tmp_path):
-    content = _areas_issue(["Tech", "Health"])
+    content = _layers_issue()
     html = HtmlDigestWriter(tmp_path).render(content)
 
     assert 'data-story-id="story-health"' in html
@@ -2372,8 +2365,8 @@ def test_a_cluster_keeps_its_story_id_and_every_url_is_shown_and_voted_once(tmp_
         assert sum(url in vote for vote in votes) == 1, url
 
 
-def test_the_archive_card_still_draws_its_lead_and_clusters_from_an_area_issue(tmp_path):
-    content = _areas_issue(["Tech", "Health"])
+def test_the_archive_card_draws_its_lead_and_clusters(tmp_path):
+    content = _layers_issue()
     index = HtmlDigestWriter(tmp_path).render_index(["2026-04-15-morning.html"], content=content)
 
     assert "Lead" in index
@@ -2446,50 +2439,6 @@ def test_the_interest_page_is_never_an_issue_row_or_counted(tmp_path) -> None:
     assert html.count("2026-10-17") == bare.count("2026-10-17")
     assert "1 issue" in html
     assert "2 issue" not in html
-
-
-def _paragraph_issue():
-    from cyris.domain.models import DigestContent, DigestItem, NewsParagraph
-
-    pair = DigestItem(
-        title="Quake",
-        summary="",
-        sources=["Wire A", "Wire B"],
-        urls=["https://a.test/quake", "https://b.test/quake"],
-        area="World",
-    )
-    letter = DigestItem(
-        title="Letter",
-        summary="",
-        sources=["Letters"],
-        urls=["newsletter:abc"],
-        area="World",
-    )
-    return DigestContent(
-        date="2026-10-27",
-        period="morning",
-        sources_processed=2,
-        articles_received=3,
-        articles_included=3,
-        area_order=["World"],
-        news_paragraphs=[
-            NewsParagraph(text="A quake struck; a letter followed.", units=[pair, letter])
-        ],
-    )
-
-
-def test_a_legacy_paragraph_issue_renders_its_units_as_sand_and_water() -> None:
-    html = HtmlDigestWriter(Path("/tmp/html-test")).render(_paragraph_issue())
-    dom = _Dom(html).root
-
-    (sand,) = dom.find_all(lambda n: "news-cluster" in n.classes)
-    (water,) = dom.find_all(lambda n: "headline-item" in n.classes)
-    assert "Quake" in sand.text_content()
-    assert "A quake struck; a letter followed." in sand.text_content()
-    assert _vote_urls(sand) == [["https://a.test/quake", "https://b.test/quake"]]
-    # The synthetic URL is a label only, and still carries the unit's vote.
-    assert "Letter" in water.text_content() and 'href="newsletter:abc"' not in html
-    assert _vote_urls(water) == [["newsletter:abc"]]
 
 
 # Every token a source name or a host could leak as: each article's source and its host.
@@ -2947,7 +2896,7 @@ def test_a_low_score_read_item_is_an_untranslated_pebble_and_a_wire_row_keeps_th
 
 
 def test_a_legacy_cluster_stored_without_members_renders_as_sand_and_votes_on_its_urls(tmp_path):
-    content = _areas_issue(["Tech", "Health"])
+    content = _layers_issue()
     root = _Dom(HtmlDigestWriter(tmp_path).render(content)).root
 
     (sand,) = _by_class(root, "news-cluster")
@@ -2958,25 +2907,3 @@ def test_a_legacy_cluster_stored_without_members_renders_as_sand_and_votes_on_it
     assert [a.text_content() for a in dialog.find_all(lambda n: n.tag == "a")] == ["A", "B"]
     # A member built from a link has no excerpt of its own.
     assert _by_class(dialog, "topic-member-excerpt") == []
-
-
-def test_the_page_names_no_area(tmp_path):
-    html = HtmlDigestWriter(tmp_path).render(_areas_issue(["Tech", "Health"]))
-
-    assert _markers(html) == ["Stories", "Topics", "Glance"]
-
-
-def test_a_reference_link_that_is_not_http_is_drawn_as_no_link() -> None:
-    """A mail or a feed is untrusted input: only an http(s) URL becomes an href."""
-    item = DigestItem(
-        title="t",
-        summary="s",
-        sources=["Letter"],
-        urls=["newsletter:1"],
-        ref_urls=["javascript:alert(1)", "https://news.example"],
-    )
-
-    assert citation_links(item) == [
-        ("javascript:alert(1)", None),
-        ("news.example", "https://news.example"),
-    ]

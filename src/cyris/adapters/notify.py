@@ -6,17 +6,10 @@ from collections.abc import Callable
 
 import httpx
 
-from cyris.adapters.output.html_digest import Story, citation_links, issue_language
+from cyris.adapters.output.html_digest import issue_language
 from cyris.adapters.run_alert import alert_message
-from cyris.domain.area_layout import AreaSection
 from cyris.domain.layers import Pebble, Sand, layer_by_lane
-from cyris.domain.models import (
-    NO_LLM_MODEL,
-    DigestContent,
-    DigestItem,
-    DigestSection,
-    NewsParagraph,
-)
+from cyris.domain.models import NO_LLM_MODEL, DigestContent, DigestSection
 from cyris.i18n import issue_name, translator
 from cyris.service_layer.alerts import RunAlert
 
@@ -73,103 +66,8 @@ def redact_webhook_tokens(text: str) -> str:
     return _DISCORD_WEBHOOK_IN_TEXT.sub(rf"\1/{WEBHOOK_MASK}", text)
 
 
-# The embed of the area section that has no area: a digest whose area order is empty.
-UNNAMED_SECTION_TITLE = "Digest"
-
-
-def _render_section_embed(section: DigestSection) -> str:
-    """Render a DigestSection as Discord markdown text."""
-    lines: list[str] = []
-    if not section.items:
-        return ""
-
-    first = section.items[0]
-    # Heading with link
-    if first.urls:
-        lines.append(f"### [{section.heading}]({first.urls[0]})")
-    else:
-        lines.append(f"### {section.heading}")
-
-    if section.description:
-        lines.append(section.description)
-
-    if first.summary:
-        lines.append(first.summary)
-
-    all_sources: list[str] = []
-    for item in section.items:
-        all_sources.extend(item.sources)
-    unique_sources = list(dict.fromkeys(all_sources))
-    if unique_sources:
-        lines.append(f"*{', '.join(unique_sources)}*")
-
-    lines.append("")
-    return "\n".join(lines)
-
-
 def _linked(title: str, link: str | None) -> str:
     return f"[{title}]({link})" if link else title
-
-
-def _render_story_embed(story: Story) -> str:
-    """A Top story or Features card as the page draws it: one summary, then its articles."""
-    lines = [f"### {_linked(story.title, story.link)}"]
-    if story.summary:
-        lines.append(story.summary)
-    if story.grouped:
-        lines += [f"- {_linked(m.title, m.link)}" for m in story.members]
-    if story.sources:
-        lines.append(f"*{', '.join(story.sources)}*")
-    lines.append("")
-    return "\n".join(lines)
-
-
-def _render_fan_section(section: DigestSection) -> str:
-    """A followed group as Discord markdown: its heading, then one line per article."""
-    lines = [f"### {section.heading}"]
-    for item in section.items:
-        title_part = f"**[{item.title}]({item.urls[0]})**" if item.urls else f"**{item.title}**"
-        summary_str = f" — {item.summary}" if item.summary else ""
-        lines.append(f"- {title_part}{summary_str}")
-    lines.append("")
-    return "\n".join(lines)
-
-
-def _render_row(item: DigestItem) -> list[str]:
-    """A row the page draws as a headline: its title with sources, then its summary cut short."""
-    source_str = f" ({', '.join(item.sources)})" if item.sources else ""
-    title_part = f"**[{item.title}]({item.urls[0]})**" if item.urls else f"**{item.title}**"
-    lines = [f"- {title_part}{source_str}"]
-    if item.summary:
-        summary = item.summary if len(item.summary) <= 80 else item.summary[:80] + "…"
-        lines.append(f"  {summary}")
-    return lines
-
-
-def _render_paragraph(paragraph: NewsParagraph) -> str:
-    """A news paragraph as the page draws it: its text, then one link per cited article."""
-    links = " · ".join(
-        _linked(label, link) for unit in paragraph.units for label, link in citation_links(unit)
-    )
-    return f"{paragraph.text}\n{links}\n" if links else f"{paragraph.text}\n"
-
-
-def _render_area_section(section: AreaSection) -> str:
-    """One area's cards, Following groups, clusters, rows and paragraphs, in page order."""
-    cards = [
-        _render_story_embed(Story(item.title, item.summary, (item,)))
-        for feature in section.features
-        for item in feature.items
-    ]
-    rows = [line for row in section.rows for line in _render_row(row.item)]
-    parts = [
-        *cards,
-        *(_render_fan_section(group) for group in section.following),
-        *(_render_section_embed(cluster) for cluster in section.clusters),
-        "\n".join(rows),
-        *(_render_paragraph(paragraph) for paragraph in section.paragraphs),
-    ]
-    return "\n".join(part for part in parts if part).strip()
 
 
 def _render_tracking(topic: DigestSection) -> str:

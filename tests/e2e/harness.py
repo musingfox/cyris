@@ -106,8 +106,6 @@ class Scenario:
     pages_pending_reads: int = 0
     # Rows an earlier run left in the store, written as they are.
     stored: list[StoredArticle] = field(default_factory=list)
-    # Rows of the `areas` table, as column name to value, inserted as they are.
-    areas: list[dict[str, Any]] = field(default_factory=list)
     # Publishers' own feeds, polled directly: feed URL -> its items, each a title, url,
     # content and ISO `published_at`. An item's URL is an article page as well.
     feeds: dict[str, list[dict]] = field(default_factory=dict)
@@ -150,7 +148,7 @@ def _rows(path: Path, sql: str, params: tuple = ()) -> list[dict]:
         return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
 
-READ_ONLY_TABLES = ("settings", "sources", "areas")
+READ_ONLY_TABLES = ("settings", "sources")
 
 
 class _FileD1(SqliteD1):
@@ -182,10 +180,6 @@ def _seed_d1(path: Path, scenario: Scenario) -> None:
         D1Settings(d1).set(scenario.settings)
         D1SourceStore(d1).replace_all({s.name: s for s in scenario.sources})
         insert_stored(d1, scenario.stored)
-        for area in scenario.areas:
-            columns = ", ".join(area)
-            marks = ", ".join("?" * len(area))
-            d1.query(f"INSERT INTO areas ({columns}) VALUES ({marks})", list(area.values()))
     finally:
         d1.close()
 

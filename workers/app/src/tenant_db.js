@@ -139,7 +139,7 @@ export class TenantDb extends DurableObject {
   }
 
   // Adds `row` ({name, url, type, config}) or rewrites the RSS source of its name, keeping what
-  // else that row's config held (its area, tags, language). The count and the write are one
+  // else that row's config held (its tags, language). The count and the write are one
   // synchronous turn of this object, so two saves at once cannot both take the last place under
   // `cap`: a new name past it is refused, a rewrite never is. A name a newsletter source holds is
   // refused, as the operator's newsletter route refuses an RSS one's.

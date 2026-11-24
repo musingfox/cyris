@@ -222,13 +222,12 @@ describe("GET /api/settings on the hosted Worker", () => {
     expect(data.writable).toBe(true);
   });
 
-  it("locks every key but the open one, each for its reason, and hides Areas", async () => {
+  it("locks every key but the open one, each for its reason", async () => {
     const session = await signIn();
 
     const data = await (await call("/api/settings", { session })).json();
 
     expect(data.locked).toEqual(CASES.editions.hosted.locked);
-    expect(data.hidden_tabs).toEqual(CASES.editions.hosted.hidden_tabs);
     expect(data.missing.filter((key) => !(key in data.locked))).toEqual([]);
   });
 
@@ -354,7 +353,6 @@ describe("the tabs this milestone leaves empty", () => {
   it.each([
     ["/api/sources", { writable: false, sources: [] }],
     ["/api/topics", { writable: false, topics: [], embedding_model: "" }],
-    ["/api/areas", { writable: false, areas: [], birth_threshold: null }],
   ])("answer %s read-only and empty", async (path, answer) => {
     const session = await signIn();
 
