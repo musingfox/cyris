@@ -65,9 +65,14 @@ the step has no precondition, and one cut short is finished by the next boot.
   and source assignments are deleted and kept nowhere. The owner accepted this on 2026-11-24.
 * Bad, because a deployment that had active areas scores with a shorter prompt from its next run,
   which may move scores slightly; no output used the area picks.
-* Neutral, because an issue stored while areas existed still holds `area_order`, item areas and,
-  from 2026-10-27 to 10-29, news paragraphs. They load and are dropped unread, so a re-render of
-  one of those three days' issues draws its clusters and headlines without its paragraphs' text.
+* Bad, because an issue stored from 2026-10-27 to 10-29 holds its sand and water news only in
+  `news_paragraphs`, which now loads as nothing: a `cyris regenerate` of such an issue, or
+  `_republish_missing` publishing it, draws none of that news, not its articles, their links or
+  their vote buttons. Pages already published are unaffected, and the issue's raw JSON stays in
+  D1 `digests`. The owner accepted this on 2026-11-24 and chose no load-time compatibility for
+  those issues, since only the owner uses cyris.
+* Neutral, because every other issue stored while areas existed still holds `area_order` and item
+  areas, which load and are dropped unread; its page draws as before.
 
 ### Confirmation
 
