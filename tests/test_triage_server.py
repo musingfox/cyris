@@ -186,8 +186,18 @@ class TestSourcesWriteSurface:
         assert set(self.sources.list_sources()) == {"New"}
 
     async def test_retiring_a_source_removes_its_row(self, client: TestClient) -> None:
+        for name in ("New Feed", "Kept Feed"):
+            await client.post("/api/sources", json={"name": name, "url": "https://n.test/rss"})
+        assert (await client.delete("/api/sources/New Feed")).status == 200
+        assert set(self.sources.list_sources()) == {"Kept Feed"}
+
+    async def test_a_source_only_the_startup_list_holds_has_no_row_to_retire(
+        self, client: TestClient
+    ) -> None:
         await client.post("/api/sources", json={"name": "New Feed", "url": "https://n.test/rss"})
-        assert (await client.delete("/api/sources/From File")).status == 200
+        resp = await client.delete("/api/sources/From File")
+        assert resp.status == 404
+        assert (await resp.json())["ok"] is False
         assert set(self.sources.list_sources()) == {"New Feed"}
 
     async def test_changing_lane_replaces_the_row_it_owns(self, client: TestClient) -> None:
