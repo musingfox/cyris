@@ -681,8 +681,8 @@
     "source": "Digest hour: {$morning}. {$note}"
   },
   "settings.hours_hint": {
-    "text": "填入 0 到 23 的整點；不接受半點。",
-    "source": "Whole hours from 0 to 23; half hours are refused."
+    "text": "每期在你選的整點發布，時間依下方的時區。",
+    "source": "Each digest is published on the hour you choose, in the time zone below."
   },
   "settings.hours_need": {
     "text": ".input {$count :integer}\n.match $count\n* {{{$names}需填入 0 到 23 的整點。}}",

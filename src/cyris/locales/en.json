@@ -346,7 +346,7 @@
   "settings.heading": "How cyris {#em}runs{/em}",
   "settings.homepage": "Homepage",
   "settings.hour_saved": "Digest hour: {$morning}. {$note}",
-  "settings.hours_hint": "Whole hours from 0 to 23; half hours are refused.",
+  "settings.hours_hint": "Each digest is published on the hour you choose, in the time zone below.",
   "settings.hours_need": ".input {$count :integer}\n.match $count\none {{{$names} needs a whole hour from 0 to 23.}}\n* {{{$names} need a whole hour from 0 to 23.}}",
   "settings.hours_not_saved": "Digest hours not saved: {$error}",
   "settings.hours_saved": "Digest hours: {$morning} and {$evening}. {$note}",
