@@ -278,6 +278,8 @@
   "layer.stories": {"text": "報導", "source": "Stories"},
   "layer.topics": {"text": "主題", "source": "Topics"},
   "layer.tracking": {"text": "追蹤", "source": "Tracking"},
+  "lock_reason.operator-set": {"text": "由服務的營運方設定。", "source": "Set by the service's operator."},
+  "lock_reason.plan-limit": {"text": "不在你的方案內。", "source": "Not included in your plan."},
   "mail.empty": {"text": "本期沒有內容。", "source": "Nothing is in this issue."},
   "mail.empty_raw_at": {"text": "本期沒有內容。每一篇的評選結果見「所有文章」：{$url}", "source": "Nothing is in this issue. All articles lists each one with its verdict: {$url}"},
   "mail.footer_links": {"text": "{#archive}過往精選{/archive} · {#settings}設定{/settings}", "source": "{#archive}Archive{/archive} · {#settings}Settings{/settings}"},
@@ -955,6 +957,7 @@
     "source": "ids must name every active area exactly once."
   },
   "settings_api.invalid_json": {"text": "JSON 格式無效", "source": "invalid JSON"},
+  "settings_api.locked": {"text": "{$label}在這裡無法變更。{$reason}", "source": "{$label} is locked here. {$reason}"},
   "settings_api.mail_needs_cloudflare": {
     "text": "本站未設定 CLOUDFLARE_ACCOUNT_ID 或 CLOUDFLARE_API_TOKEN，無法寄信。請設定兩者後再儲存一次。",
     "source": "This deployment has no CLOUDFLARE_ACCOUNT_ID or CLOUDFLARE_API_TOKEN, so it cannot send mail. Set both, then save again."

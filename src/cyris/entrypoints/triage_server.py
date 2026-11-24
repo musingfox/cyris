@@ -6,11 +6,11 @@ import json
 import logging
 import os
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from datetime import UTC, datetime
 from importlib.resources import files
 from pathlib import Path
-from typing import Any, get_args
+from typing import Any, Literal, get_args
 
 from aiohttp import web
 from pydantic import ValidationError
@@ -55,6 +55,16 @@ STATIC_DIR = Path(__file__).parent / "static"
 PLAIN_KEYS: tuple[str, ...] = tuple(
     key for key, field in SETTINGS_FIELDS.items() if field["route"] == "plain"
 )
+# Why an edition keeps a reader from changing a key: its operator sets it, or the reader's plan
+# does not include it (ADR-0043). Each is shown through `lock_reason.<code>`.
+LockReason = Literal["operator-set", "plan-limit"]
+
+
+def _keys_on(route: str) -> tuple[str, ...]:
+    """The grade-D keys one write route saves."""
+    return tuple(key for key, field in SETTINGS_FIELDS.items() if field["route"] == route)
+
+
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 # One path segment naming a digest page; `/<name>` and `/<name>.html` both serve
@@ -645,8 +655,16 @@ class TriageServer:
         behind_app_worker: bool = False,
         html_dir: Path | None = None,
         start_run: Callable[[str | None, str | None], None] | None = None,
+        locked: Mapping[str, LockReason] | None = None,
     ) -> None:
         self._host = host
+        # The grade-D keys this edition keeps the reader from changing, each with its reason
+        # (ADR-0043): `GET /api/settings` names them and every write route refuses them. No
+        # server `cyris triage-ui` starts locks a key; the shared settings cases do.
+        self._locked = dict(locked or {})
+        for key, reason in self._locked.items():
+            if key not in SETTINGS_FIELDS or reason not in get_args(LockReason):
+                raise ValueError(f"cannot lock {key!r} for {reason!r}")
         # Where `HtmlDigestWriter` wrote the archive; None serves no page. The app Worker
         # sends these paths to Pages, so only a local `cyris triage-ui` ever answers them.
         self._html_dir = html_dir
@@ -853,8 +871,22 @@ class TriageServer:
                     {"tag": tag, "name": name} for tag, name in _language_names().items()
                 ],
                 "writable": self._settings is not None,
+                # Each key this edition locks, and why: the page disables its controls and
+                # shows the reason (ADR-0043).
+                "locked": {key: {"reason": reason} for key, reason in self._locked.items()},
+                # STUB until Areas is deleted (M2): the tabs an edition does not show. This
+                # one shows every tab; the hosted Worker hides Areas.
+                "hidden_tabs": [],
             }
         )
+
+    def _refuse_locked(self, t: Translator, keys: Iterable[str]) -> web.Response | None:
+        """The 400 for the first of `keys` this edition locks, or None when it locks none."""
+        for key in keys:
+            if (reason := self._locked.get(key)) is not None:
+                why = t(f"lock_reason.{reason}")
+                return _refused(t("settings_api.locked", label=_label(t, key), reason=why), key)
+        return None
 
     def _ui_language(self, request: web.Request) -> str:
         """The catalog this deployment's own pages and errors are worded from.
@@ -912,6 +944,8 @@ class TriageServer:
             return body
 
         t = self._translator(request)
+        if (refused := self._refuse_locked(t, _keys_on("llm"))) is not None:
+            return refused
         provider = (body.get("provider") or "").strip()
         model = (body.get("model") or "").strip()
         try:
@@ -1001,6 +1035,9 @@ class TriageServer:
         body = await self._settings_body(request)
         if isinstance(body, web.Response):
             return body
+        locked = self._refuse_locked(self._translator(request), _keys_on("schedule"))
+        if locked is not None:
+            return locked
 
         try:
             times = validate_schedule([str(t).strip() for t in body.get("times") or []])
@@ -1038,6 +1075,8 @@ class TriageServer:
                     {"ok": False, "error": t("settings_api.not_a_setting", key=repr(key))},
                     status=400,
                 )
+            if (refused := self._refuse_locked(t, [key])) is not None:
+                return refused
             if key not in PLAIN_KEYS:
                 return _refused(t("settings_api.own_form", label=_label(t, key)), key)
             try:
@@ -1088,6 +1127,8 @@ class TriageServer:
         if isinstance(body, web.Response):
             return body
         t = self._translator(request)
+        if (refused := self._refuse_locked(t, _keys_on("vote"))) is not None:
+            return refused
 
         values = {}
         for field in ("enabled", "provider", "model", "max_seeds"):
@@ -1138,6 +1179,8 @@ class TriageServer:
         if isinstance(body, web.Response):
             return body
         t = self._translator(request)
+        if (refused := self._refuse_locked(t, _keys_on("notify"))) is not None:
+            return refused
 
         if body.get("off") is True:
             if (refused := self._store({"notify.discord_webhook_url": ""})) is not None:
@@ -1185,6 +1228,8 @@ class TriageServer:
         if isinstance(body, web.Response):
             return body
         t = self._translator(request)
+        if (refused := self._refuse_locked(t, _keys_on("email"))) is not None:
+            return refused
 
         recipient = (body.get("email_to") or "").strip()
         sender = (body.get("email_from") or "").strip()
