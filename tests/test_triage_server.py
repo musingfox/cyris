@@ -133,14 +133,14 @@ class TestSourcesEndpoint:
         finally:
             await test_client.close()
 
-        assert set(data) == {"writable", "sources"}
+        assert set(data) == {"writable", "max_sources", "sources"}
         by_name = {s["name"]: s for s in data["sources"]}
         assert by_name["feed"]["lane"] == "read"
         assert by_name["letter"]["email_match"] == "from:a@b.com"
 
     async def test_no_sources_wired_is_empty_not_an_error(self, client: TestClient) -> None:
         data = await (await client.get("/api/sources")).json()
-        assert data == {"writable": False, "sources": []}
+        assert data == {"writable": False, "max_sources": None, "sources": []}
 
     async def test_writes_are_refused_without_a_writable_table(self, client: TestClient) -> None:
         """A partial server with no source store has nowhere to put a source."""
@@ -407,4 +407,4 @@ async def test_an_emptied_table_is_listed_empty_not_as_the_startup_list() -> Non
     finally:
         await test_client.close()
 
-    assert data == {"writable": True, "sources": []}
+    assert data == {"writable": True, "max_sources": None, "sources": []}
