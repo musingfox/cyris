@@ -5,10 +5,14 @@ inside the loop pytest-asyncio would give an `async def` test.
 """
 
 import asyncio
+import json
 import signal
 from pathlib import Path
+from unittest import mock
 
 import pytest
+from aiohttp import web
+from aiohttp.streams import StreamReader
 from aiohttp.test_utils import TestClient, TestServer, make_mocked_request
 from fakes import seed_d1_settings
 from typer.testing import CliRunner
@@ -263,6 +267,64 @@ class _LocalServer(TriageServer):
 
     async def start(self) -> None:
         asyncio.get_running_loop().call_soon(signal.raise_signal, signal.SIGINT)
+
+
+def _vote_answers(config: tuple[Path, Path], monkeypatch) -> tuple[dict, int]:
+    """The probe's answer and a page vote's status from the server the command builds."""
+    _LocalServer.built = []
+    monkeypatch.setattr("cyris.entrypoints.triage_server.TriageServer", _LocalServer)
+    result = _run(config)
+    assert result.exit_code == 0, result.output
+    [server] = _LocalServer.built
+    app = server._app
+    app.freeze()
+
+    async def send(method: str, body: bytes) -> web.StreamResponse:
+        # Through the app's own dispatch, the Host check included, without a socket.
+        payload = StreamReader(
+            mock.Mock(_reading_paused=False), 2**16, loop=asyncio.get_running_loop()
+        )
+        payload.feed_data(body)
+        payload.feed_eof()
+        headers = {"Host": "127.0.0.1:8766", "Content-Type": "application/json"}
+        request = make_mocked_request(
+            method, "/api/vote", headers=headers, payload=payload, app=app
+        )
+        try:
+            return await app._handle(request)
+        except web.HTTPException as refusal:
+            return refusal
+
+    async def both() -> tuple[dict, int]:
+        probe = await send("GET", b"")
+        vote = await send(
+            "POST", json.dumps({"url": "https://example.com/a", "vote": "up"}).encode()
+        )
+        return json.loads(probe.text), vote.status
+
+    return asyncio.run(both())
+
+
+def test_a_sqlite_server_takes_the_pages_votes(config: tuple[Path, Path], monkeypatch) -> None:
+    config_path, _ = config
+    with config_path.open("a") as toml:
+        toml.write(
+            '\n[store]\nbackend = "sqlite"\n'
+            f'sqlite_path = "{config_path.parent / "state" / "cyris.sqlite3"}"\n'
+        )
+
+    assert _vote_answers(config, monkeypatch) == ({"authorized": True}, 200)
+
+
+def test_a_d1_server_leaves_the_votes_to_the_clouds_queue(
+    config: tuple[Path, Path], d1, monkeypatch
+) -> None:
+    # Not behind the app Worker, yet on production's D1: a vote here would block the loop on
+    # D1's round trips, and the next promote-sync could stamp an older queued vote over it.
+    monkeypatch.delenv("CYRIS_BEHIND_APP_WORKER", raising=False)
+    seed_d1_settings(d1)
+
+    assert _vote_answers(config, monkeypatch) == ({"authorized": True, "votes": False}, 405)
 
 
 def _post_run_status(config: tuple[Path, Path], monkeypatch) -> tuple[int, list]:

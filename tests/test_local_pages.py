@@ -104,8 +104,8 @@ def _server(html_dir: Path | None, **values: object) -> TriageServer:
 
 
 def _voting_server() -> TriageServer:
-    """A server with an article store to take a vote into, as `cyris triage-ui` builds one."""
-    return TriageServer(article_store=D1ArticleStore(SqliteD1()))
+    """A server with a SQLite store to take a vote into, as `cyris triage-ui` builds one."""
+    return TriageServer(article_store=D1ArticleStore(SqliteD1()), store_is_local=True)
 
 
 class TestTheTable:

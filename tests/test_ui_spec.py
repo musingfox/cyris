@@ -2019,8 +2019,8 @@ def test_an_edition_card_states_each_limit_in_both_languages(
 
 
 async def test_the_local_server_takes_votes_as_its_card_says() -> None:
-    """`cyris triage-ui` hands its server an article store; only that is read here (ADR-0044)."""
-    app = TriageServer(article_store=object())._app
+    """`cyris triage-ui` hands its server a SQLite store; only that is read here (ADR-0044)."""
+    app = TriageServer(article_store=object(), store_is_local=True)._app
     app.freeze()
     request = make_mocked_request("GET", "/api/vote", headers={"Host": "127.0.0.1"}, app=app)
     probe = await app._handle(request)

@@ -1360,6 +1360,7 @@ def triage_ui(
             run_log=D1RunLog(d1, ""),
             interest_reader=D1InterestReader(d1).read,
             behind_app_worker=os.environ.get(BEHIND_APP_WORKER_ENV) == BEHIND_APP_WORKER_VALUE,
+            store_is_local=not cfg.app.store.is_cloudflare,
             html_dir=Path(cfg.app.html_output.output_dir) if cfg.app.html_output.enabled else None,
             start_run=partial(_start_detached_run, config_path, sources_path),
         )

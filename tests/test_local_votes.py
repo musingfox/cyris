@@ -74,6 +74,7 @@ def _save(client: LocalD1Client, titles: dict[str, str]) -> None:
 
 def _server(client: LocalD1Client, **kwargs) -> TriageServer:
     """The stores `cyris triage-ui` hands its server, on one file."""
+    kwargs.setdefault("store_is_local", True)
     return TriageServer(
         article_store=D1ArticleStore(client), issue_topics=D1TopicStore(client), **kwargs
     )
@@ -250,8 +251,22 @@ class TestWhoMayVote:
         assert json.loads(probe.text) == {"authorized": True, "votes": False}
         assert _row(path, STORED)["triaged_at"] is None
 
+    async def test_a_server_on_d1_answers_that_it_takes_no_vote(self, db):
+        # The cloud's queue takes a D1 store's votes; one written here would block the loop
+        # on D1's round trips and lose to an older queued vote the next sync stamps later.
+        client, path = db
+        _save(client, {STORED: "A stored article"})
+        server = _server(client, store_is_local=False)
+
+        response = await _vote(server, STORED, "up")
+        probe = await _send(server, "GET")
+
+        assert response.status == 405
+        assert json.loads(probe.text) == {"authorized": True, "votes": False}
+        assert _row(path, STORED)["triaged_at"] is None
+
     async def test_a_server_with_no_store_answers_that_it_takes_no_vote(self):
-        server = TriageServer()
+        server = TriageServer(store_is_local=True)
 
         assert (await _vote(server, STORED, "up")).status == 405
         assert json.loads((await _send(server, "GET")).text) == {"authorized": True, "votes": False}
@@ -262,7 +277,7 @@ class TestWhoMayVote:
         store = D1ArticleStore(client)
         store.record_verdicts = MagicMock(side_effect=RuntimeError("database is locked"))
 
-        response = await _vote(TriageServer(article_store=store), STORED, "up")
+        response = await _vote(TriageServer(article_store=store, store_is_local=True), STORED, "up")
 
         assert response.status == 500
         assert json.loads(response.text) == {"error": "database is locked"}

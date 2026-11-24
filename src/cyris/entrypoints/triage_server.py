@@ -650,6 +650,7 @@ class TriageServer:
         interest_reader=None,
         clock=None,
         behind_app_worker: bool = False,
+        store_is_local: bool = False,
         html_dir: Path | None = None,
         start_run: Callable[[str | None, str | None], None] | None = None,
     ) -> None:
@@ -687,10 +688,12 @@ class TriageServer:
         # a page vote on an item an issue put under a topic is also a vote on that topic.
         # Optional; without it a vote stamps its article and nothing more.
         self._issue_topics = issue_topics
-        # The pages' votes are taken here only on a local `cyris triage-ui` with a store to
-        # write them to. Behind the app Worker the Worker answers /api/vote itself and
-        # queues the vote for the run (`docs/architecture.md` §6).
-        self._takes_votes = article_store is not None and not behind_app_worker
+        # The pages' votes are taken here only on a local `cyris triage-ui` whose store is
+        # the local SQLite file. Behind the app Worker the Worker answers /api/vote itself and
+        # queues the vote for the run (`docs/architecture.md` §6). On D1 a vote stays the
+        # cloud's: each write would block this loop on D1's REST round trips, and a later
+        # `promote-sync` would stamp an older queued vote over it at the sync's time (ADR-0044).
+        self._takes_votes = article_store is not None and store_is_local and not behind_app_worker
         # D1's areas and birth threshold; optional for a partial server.
         self._area_store = area_store
         # D1's recent article titles for the Propose prompt; optional for a partial
@@ -2411,10 +2414,11 @@ class TriageServer:
         return web.Response(body=html_digest.FAVICON.read_bytes(), content_type="image/svg+xml")
 
     async def _handle_vote_probe(self, request: web.Request) -> web.Response:
-        """The pages' capability probe on a server with no store to take a vote into.
+        """The pages' capability probe on a server with no local SQLite store to vote into.
 
         `votes: false` opens Settings and the Archive link and leaves the vote buttons and
-        `.gated` controls closed. A local `cyris triage-ui` takes votes (`_handle_vote`),
+        `.gated` controls closed. A server on D1 answers it too: the cloud's queue takes
+        that store's votes. A local `cyris triage-ui` takes votes (`_handle_vote`),
         and the app Worker answers this path itself; both answer without that field.
         """
         return web.json_response({"authorized": True, "votes": False})

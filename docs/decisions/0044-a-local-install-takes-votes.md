@@ -55,8 +55,8 @@ the queue every other edition has exists to carry a vote from a Worker that cann
 Python to a run that can, and here there is nothing to carry it across.
 
 **The route.** `TriageServer` answers `/api/vote` on every method, as `handleVote`
-(`workers/app/src/router.js`) does, when it holds an article store and is not behind the app
-Worker. `GET` and `HEAD` answer `{"authorized":true}`, the Worker's answer, so the probe opens the
+(`workers/app/src/router.js`) does, when its article store is the local SQLite file and it is
+not behind the app Worker. `GET` and `HEAD` answer `{"authorized":true}`, the Worker's answer, so the probe opens the
 vote buttons and every `.gated` control. A `POST` takes the body a page sends (`{url, vote,
 digest_date}`), refuses what the promote Worker refuses, with its words (`missing url`,
 `bad vote`), reads no vote as `deep`, as the promote Worker does, and answers `{"ok":true}`. Every
@@ -89,6 +89,15 @@ probe `votes:false`; the Worker answers `/api/vote` itself and no request for it
 container. A server with no article store answers `votes:false` too, so the probe script's branch
 for it stays and is now only that server's answer.
 
+**On D1, not behind the app Worker** (a `cyris triage-ui` run on a host with `[store] backend =
+"d1"`) the server takes no vote either: it answers its probe `votes:false` and routes no `POST`,
+and the vote stays the cloud's, through the app Worker and the promote queue. Two reasons. A D1
+write is several synchronous REST round trips (`D1Client`), so each click would hold the
+server's event loop for all of them, where a SQLite write is a local lock. And the cloud's queue
+still drains into the same D1: `apply_promotions` stamps a synced vote with the sync's time, so a
+vote queued before a direct one here would be applied after it and stamped later, and the older
+vote would win. On the SQLite file no queue feeds the store, so neither arises.
+
 ### Consequences
 
 * Good, because a local install's pages show the vote buttons, the raw page's views and the
@@ -120,7 +129,7 @@ for it stays and is now only that server's answer.
 * `tests/test_local_votes.py` also holds that an upvote stamps `triaged_at` and accepts, a downvote
   rejects as `not_interested`, a change of mind ends on the later vote, a sand block's three posts
   are one topic vote, a write from another origin, a cross-site fetch or a foreign Host stamps
-  nothing, a server behind the app Worker or with no store takes no vote, and a failed write
+  nothing, a server behind the app Worker, on D1 or with no store takes no vote, and a failed write
   answers `500`. Its last test gives the same clicks to this server and, through the real
   `sync_promotions`, to a second file as the promote Worker would have queued them, and requires
   the same verdict columns, the same topic votes and the same vote-similarity seeds and
@@ -128,7 +137,8 @@ for it stays and is now only that server's answer.
 * `tests/test_local_pages.py` runs the pages' real probe script on this server's answer: with a
   store it opens the vote buttons and the gated controls; without one it leaves them closed.
 * `tests/test_cli_triage_ui.py` holds that `cyris triage-ui` gives the server the topic store on
-  the article store's file.
+  the article store's file, and that the server it builds takes the pages' votes on a SQLite
+  store and answers `votes:false` and refuses the `POST` on D1.
 * Not verified here: a click in a real browser on a running `cyris triage-ui`. The sandbox this was
   written in binds no port; it is the first check after merge.
 

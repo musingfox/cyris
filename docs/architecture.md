@@ -1829,8 +1829,8 @@ are `{"authorized":true}`, so its pages open the vote buttons, `#raw-views` and 
 as the cloud pages do, and a `POST` is applied to the SQLite file at once by `apply_promotions`
 (§3.2, [ADR-0044](decisions/0044-a-local-install-takes-votes.md)). Its Host and Origin check is the
 only gate, since a local install has no sign-in: a page another site serves cannot vote. A server
-with no article store, and the container's own behind the app Worker, which no `/api/vote`
-reaches, answer `{"authorized":true,"votes":false}` instead: the probe opens Settings and the site
+with no article store, one on D1 (whose votes the cloud's queue takes, ADR-0044), and the
+container's own behind the app Worker, which no `/api/vote` reaches, answer `{"authorized":true,"votes":false}` instead: the probe opens Settings and the site
 bar's Archive link on `authorized` and stops before the vote buttons and the gated controls when
 `votes` is `false`, and `POST` is `405`. A `pages.dev` reader, where that path is not routed, sees none,
 and a stranger cannot record a human verdict. Why the vote token
