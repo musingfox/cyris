@@ -80,7 +80,7 @@ with the feed count. Cron Triggers themselves are free — 5 per account [2]; CP
 | Database | Cloudflare D1 free plan, inside every ceiling in §3 [7][8] | $0 |
 | Vote Worker + queue | Cloudflare free plan — 100,000 requests/day [2], 1,000 KV writes/day [10] | $0 |
 | Inbound newsletters | IMAP polling from the job, or Mailgun Free (1 inbound route) [25] / Resend Free (inbound counted against 3,000/month, 100/day) [26] | $0 |
-| Durable backup | R2 free tier 10 GB-month [27], or Backblaze B2 "first 10GB storage is always free" [28] | $0 |
+| Durable backup | R2 free tier 10 GB-month [27] | $0 |
 | Admin UI | run locally on demand — no hosted always-on tier | $0 |
 | Total | LLM spend unchanged (§1); every row above is $0 | ~$1.9/month |
 
@@ -151,5 +151,4 @@ are paths under `https://developers.cloudflare.com/`: `[1]` `workers/platform/pr
 <https://docs.netlify.com/build/functions/scheduled-functions/> · `[22]`
 <https://render.com/docs/cronjobs> · `[23]` <https://fly.io/docs/about/pricing/> · `[24]`
 <https://www.hetzner.com/_resources/app/data/app/live_data_prices.json> · `[25]`
-<https://www.mailgun.com/pricing/> · `[26]` <https://resend.com/pricing> · `[28]`
-<https://www.backblaze.com/cloud-storage/pricing>
+<https://www.mailgun.com/pricing/> · `[26]` <https://resend.com/pricing>
