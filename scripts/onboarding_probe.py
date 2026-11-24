@@ -585,6 +585,8 @@ def build_fixture(kind: str) -> Fixture:
         digest_store=None if kind == "partial" else FakeDigestStore(),
         run_log=run_log,
         clock=(lambda: EARLY) if kind == "first-issue-early" else (lambda: BETWEEN),
+        # The wizard runs on a local install, whose store is the SQLite file (ADR-0044).
+        store_is_local=articles is not None,
     )
     if kind.endswith("-largest"):
         render = server._onboarding_page
