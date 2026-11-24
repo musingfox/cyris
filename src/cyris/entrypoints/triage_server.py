@@ -2462,10 +2462,15 @@ class TriageServer:
             ts=datetime.now(UTC).isoformat(),
         )
         try:
-            apply_promotions([promotion], self._article_store, self._issue_topics)
+            result = apply_promotions([promotion], self._article_store, self._issue_topics)
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             logger.warning("Vote for %s not recorded: %s", url, e)
             return web.json_response({"error": str(e)}, status=500)
+        if result.topic_votes_failed:
+            # A sync acks past this, as a held ack would re-stamp its URLs every run; here the
+            # reader is still on the page, so the click shows as failed and can be made again.
+            logger.warning("Topic vote for %s not recorded: %s", url, result.topic_votes_failed)
+            return web.json_response({"error": result.topic_votes_failed}, status=500)
         return web.json_response({"ok": True})
 
     def _type_scale(self) -> float:

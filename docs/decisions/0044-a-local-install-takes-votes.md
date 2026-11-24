@@ -70,6 +70,9 @@ article store and the run's topic store on the same file. The stamp, the state, 
 rejection reason and the topic vote, with its one-click window across a sand block's per-URL
 posts, are written by the code that writes a synced or a hosted vote. A URL the store lacks is
 answered `{"ok":true}` and stamps nothing, as the cloud's sync acknowledges it and stamps nothing.
+A write that fails, the stamp's or the topic vote's, answers `500` naming it, which the page shows
+as a vote not taken. A sync acknowledges past a failed topic vote, since holding it would re-stamp
+its URLs every run; here the reader is still on the page and can click again.
 
 **At once, not at the next run.** A queue would add a table to the file and a row to §4, and a
 drain to every run, to buy a delay nobody wants. `hosted_votes` stays hosted-only, as
@@ -129,8 +132,8 @@ vote would win. On the SQLite file no queue feeds the store, so neither arises.
 * `tests/test_local_votes.py` also holds that an upvote stamps `triaged_at` and accepts, a downvote
   rejects as `not_interested`, a change of mind ends on the later vote, a sand block's three posts
   are one topic vote, a write from another origin, a cross-site fetch or a foreign Host stamps
-  nothing, a server behind the app Worker, on D1 or with no store takes no vote, and a failed write
-  answers `500`. Its last test gives the same clicks to this server and, through the real
+  nothing, a server behind the app Worker, on D1 or with no store takes no vote, and a failed write,
+  the topic vote's included, answers `500`. Its last test gives the same clicks to this server and, through the real
   `sync_promotions`, to a second file as the promote Worker would have queued them, and requires
   the same verdict columns, the same topic votes and the same vote-similarity seeds and
   suppression from both.

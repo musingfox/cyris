@@ -75,9 +75,8 @@ def _save(client: LocalD1Client, titles: dict[str, str]) -> None:
 def _server(client: LocalD1Client, **kwargs) -> TriageServer:
     """The stores `cyris triage-ui` hands its server, on one file."""
     kwargs.setdefault("store_is_local", True)
-    return TriageServer(
-        article_store=D1ArticleStore(client), issue_topics=D1TopicStore(client), **kwargs
-    )
+    kwargs.setdefault("issue_topics", D1TopicStore(client))
+    return TriageServer(article_store=D1ArticleStore(client), **kwargs)
 
 
 async def _send(
@@ -282,6 +281,22 @@ class TestWhoMayVote:
         assert response.status == 500
         assert json.loads(response.text) == {"error": "database is locked"}
         assert _row(path, STORED)["triaged_at"] is None
+
+    async def test_a_failed_topic_vote_write_answers_500_naming_it(self, db):
+        client, _ = db
+        _save(client, {STORED: "A stored article"})
+        topics = D1TopicStore(client)
+        topics.save_topics(
+            DATE, PERIOD, [TopicRecord(id="t-a", name="A", urls=[STORED])], datetime.now(UTC)
+        )
+        topics.record_topic_votes = MagicMock(side_effect=RuntimeError("database is locked"))
+
+        response = await _vote(_server(client, issue_topics=topics), STORED, "up")
+
+        assert response.status == 500
+        assert json.loads(response.text) == {
+            "error": "topic store failed: RuntimeError: database is locked"
+        }
 
 
 # The next run's vote similarity, embedding each title to a fixed direction: the reader liked
