@@ -40,6 +40,23 @@ def test_the_page_saves_a_missing_select_as_shown_without_a_per_field_list() -> 
     assert "state.may_be_empty" not in js
 
 
+def test_the_page_disables_each_locked_key_with_its_reason_as_their_description() -> None:
+    """A key an edition locks (ADR-0043): its controls are disabled, one line worded from the
+    `lock_reason.` family describes them, and it is never marked missing. What a browser does
+    with it is scripts/settings_probe.py's `model-locked-with-its-reason`."""
+    js = SETTINGS_JS.read_text()
+    render = js[js.index("function render()") : js.index("\n}\n", js.index("function render()"))]
+    lock = js[js.index("function markLocked()") : js.index("\nfunction chosen()")]
+
+    assert "state.missing = state.missing.filter((key) => !isLocked(key));" in render
+    assert render.rstrip().endswith("markLocked();")
+    assert "for (const [key, {reason}] of Object.entries(state.locked))" in lock
+    assert "FIELDS[key].controls.map($)" in lock
+    assert "t(`lock_reason.${reason}`)" in lock
+    assert "input.disabled = true;" in lock
+    assert "describe(input, line.id, true);" in lock
+
+
 def test_the_page_shows_a_missing_select_its_starting_value_else_not_set() -> None:
     js = SETTINGS_JS.read_text()
     assert "key in state.starting" in js

@@ -327,6 +327,7 @@ SETTINGS_SCRIPT_MESSAGES: tuple[str, ...] = (
     "settings.unreachable",
     "settings.value_empty",
     *(f"source_type.{source_type}" for source_type in get_args(SourceType)),
+    *(f"lock_reason.{reason}" for reason in get_args(LockReason)),
 )
 # Every catalog key a container page script formats, all pages' scripts together:
 # `tests/test_catalog_coverage.py` holds it equal to what those scripts call `t` with.
