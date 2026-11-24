@@ -3877,7 +3877,9 @@ CHECKS += [
         preload=answer_settings(LOCK_MODEL),
         act="await settingsLoaded();",
         script=LOCKED_MODEL,
-        sabotage_preload=answer_settings(""),
+        # Installed after the preload, so it wraps it and rewrites its answer: the model is no
+        # longer locked, as on a page that locks only the first key of a field.
+        sabotage_preload=answer_settings('delete data.locked["llm_provider.model"];'),
     ),
     Check(
         id="locked-key-not-marked-missing",
@@ -3895,7 +3897,8 @@ CHECKS += [
             expect(line && line.textContent === want, `line: ${{line?.textContent}}`);
             expect(saveOf("digest").disabled, "Save would send a locked key as shown");
         """,
-        sabotage_preload=answer_settings(""),
+        # The unset key arrives unlocked, so the page marks it missing, as if it ignored `locked`.
+        sabotage_preload=answer_settings("data.locked = {};"),
     ),
     Check(
         id="hidden-tab-not-listed-nor-opened",
@@ -3907,7 +3910,8 @@ CHECKS += [
             expect(!visible(navOf("areas")), "Areas is listed");
             expect(same(panels(), ["model"]), `visible panels: ${panels()}`);
         """,
-        sabotage_preload=answer_settings(""),
+        # No tab arrives hidden, so Areas is listed and its hash opens it.
+        sabotage_preload=answer_settings("data.hidden_tabs = [];"),
     ),
 ]
 # Every tap target takes taps over 44 x 44 on a phone, and none covers another. Help
