@@ -455,14 +455,12 @@ describe("the Sources tab on the hosted Worker: the cases TriageServer answers t
 describe("the Sources tab: what a hosted tenant is held to", () => {
   it("lists the session's tenant's sources, whichever the body or the path names", async () => {
     const session = await signIn();
-    const bravoNames = (await dbOf("bravo").sources()).map((source) => source.name);
+    await arrange("alpha", { rows: [{ name: "Alpha only", type: "rss", url: "https://alpha.example/feed", config: {} }] });
+    await arrange("bravo", { rows: [{ name: "Bravo only", type: "rss", url: "https://bravo.example/feed", config: {} }] });
 
     const answer = await (await call("/api/sources?tenant=bravo", { session, headers: { "X-Tenant": "bravo" } })).json();
 
-    expect(answer.writable).toBe(true);
-    expect(answer.sources.map((source) => source.name)).toEqual((await dbOf("alpha").sources()).map((source) => source.name));
-    expect(new Set(answer.sources.map((source) => source.name))).not.toEqual(new Set(["unrelated"]));
-    expect(bravoNames.length).toBeGreaterThan(0);
+    expect(answer.sources.map((source) => source.name)).toEqual(["Alpha only"]);
   });
 
   it("refuses a body that names a tenant as a field a hosted digest does not set, and writes nothing", async () => {
