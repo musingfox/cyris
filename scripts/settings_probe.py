@@ -3849,6 +3849,72 @@ CHECKS += [
         ),
     ),
 ]
+# A key an edition locks (ADR-0043) is disabled with one line below its help saying why, which is
+# its description as a dependency's line is (ui-language.md §4 field), and is never marked
+# missing; a tab the edition hides is neither listed nor opened by its hash.
+LOCK_MODEL = (
+    'data.locked = {"llm_provider.provider": {reason: "operator-set"},'
+    ' "llm_provider.model": {reason: "operator-set"}};'
+)
+LOCKED_MODEL = f"""
+const radios = $$("#providers input");
+expect(radios.length > 0 && radios.every((radio) => radio.disabled), "a provider can be picked");
+const model = $("#model-input");
+expect(model.disabled, "the model can be typed");
+for (const control of [radios[0], model]) {{
+  const line = $("[data-lock]", control.closest(".form > .field"));
+  expect(line && visible(line), `no line says why ${{control.id || control.name}} is locked`);
+  const want = {json.dumps(PAGE("lock_reason.operator-set"))};
+  expect(line.textContent === want, `line: ${{line.textContent}}`);
+  const ids = (control.getAttribute("aria-describedby") || "").split(" ");
+  expect(ids.includes(line.id), `described by: ${{ids}}`);
+}}
+"""
+CHECKS += [
+    Check(
+        id="model-locked-with-its-reason",
+        fixture="writable",
+        path="/settings#model",
+        preload=answer_settings(LOCK_MODEL),
+        act="await settingsLoaded();",
+        script=LOCKED_MODEL,
+        # Installed after the preload, so it wraps it and rewrites its answer: the model is no
+        # longer locked, as on a page that locks only the first key of a field.
+        sabotage_preload=answer_settings('delete data.locked["llm_provider.model"];'),
+    ),
+    Check(
+        id="locked-key-not-marked-missing",
+        fixture="writable",
+        path="/settings#digest",
+        setup=_unset("digest.style_prompt"),
+        preload=answer_settings('data.locked = {"digest.style_prompt": {reason: "plan-limit"}};'),
+        act="await settingsLoaded();",
+        script=f"""
+            expect(!visible($("#digest-missing")), "a locked key is marked missing");
+            expect(!navOf("digest").classList.contains("missing"), "Digest carries the dot");
+            expect($("#style-prompt").disabled, "the style prompt can be typed");
+            const line = $('[data-lock="plan-limit"]');
+            const want = {json.dumps(PAGE("lock_reason.plan-limit"))};
+            expect(line && line.textContent === want, `line: ${{line?.textContent}}`);
+            expect(saveOf("digest").disabled, "Save would send a locked key as shown");
+        """,
+        # The unset key arrives unlocked, so the page marks it missing, as if it ignored `locked`.
+        sabotage_preload=answer_settings("data.locked = {};"),
+    ),
+    Check(
+        id="hidden-tab-not-listed-nor-opened",
+        fixture="writable",
+        path="/settings#areas",
+        preload=answer_settings('data.hidden_tabs = ["areas"];'),
+        act="await settingsLoaded();",
+        script="""
+            expect(!visible(navOf("areas")), "Areas is listed");
+            expect(same(panels(), ["model"]), `visible panels: ${panels()}`);
+        """,
+        # No tab arrives hidden, so Areas is listed and its hash opens it.
+        sabotage_preload=answer_settings("data.hidden_tabs = [];"),
+    ),
+]
 # Every tap target takes taps over 44 x 44 on a phone, and none covers another. Help
 # is in view now, so the one fold left is Areas' `Closed`, which sits a part's gap
 # below anything else: a fold kept clear of the control above it has nothing to clear.

@@ -6,6 +6,11 @@ decision-makers: ""
 
 # A hosted tenant makes one digest a day unless the operator allows it two
 
+> Amended by [ADR-0043](0043-one-settings-page-an-edition-locks-a-key.md) (2026-11-24). The
+> settings page every edition shares always shows two hour controls; the second is locked for
+> `plan-limit` while the tenant may have one. The hosted page ADR-0040 built keeps its one select
+> until M3 replaces it. The rest of this ADR still stands.
+
 ## Context and Problem Statement
 
 Every Cyris schedule was two whole hours, a morning and an evening issue, on both editions

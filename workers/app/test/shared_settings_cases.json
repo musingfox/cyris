@@ -1,0 +1,124 @@
+{
+  "_comment": "One settings page for every edition; an edition locks keys (docs/decisions/0043-one-settings-page-an-edition-locks-a-key.md). Run by workers/app/test/hosted_shared_settings.test.js against the hosted Worker and by tests/test_shared_settings_cases.py against TriageServer. `answer_keys` and the entry keys are GET /api/settings' shape on both. `editions` is what each answers for `locked` and `hidden_tabs`: TriageServer as `cyris triage-ui` starts it, and the hosted Worker as its policy file computes them. `writes` go to POST /api/settings/values on the hosted Worker, and on a TriageServer given the hosted edition's locks, and each gets the same status and answer from both; a refused one writes nothing. `pins` are the values a hosted run takes from a tenant's rows, held by vitest to the Worker's `hostedValues` and by pytest to `pin_tenant_settings`.",
+  "answer_keys": [
+    "clef_ready",
+    "embedding_providers",
+    "fields",
+    "hidden_tabs",
+    "languages",
+    "locked",
+    "missing",
+    "providers",
+    "sent_as_shown",
+    "starting",
+    "values",
+    "writable"
+  ],
+  "provider_keys": ["configured", "default_model", "env_var", "name"],
+  "field_keys": ["controls", "label", "route", "tab"],
+  "editions": {
+    "self_hosted": {
+      "locked": {},
+      "hidden_tabs": []
+    },
+    "hosted": {
+      "locked": {
+        "llm_provider.provider": {"reason": "operator-set"},
+        "llm_provider.model": {"reason": "operator-set"},
+        "vote_similarity.provider": {"reason": "operator-set"},
+        "vote_similarity.model": {"reason": "operator-set"},
+        "vote_similarity.enabled": {"reason": "operator-set"},
+        "vote_similarity.max_seeds": {"reason": "operator-set"},
+        "general.digest_schedule": {"reason": "operator-set"},
+        "general.timezone": {"reason": "operator-set"},
+        "digest.style_prompt": {"reason": "operator-set"},
+        "digest.type_scale": {"reason": "operator-set"},
+        "digest.rank_by_preference": {"reason": "operator-set"},
+        "digest.preference_source": {"reason": "operator-set"},
+        "digest.summarize_follow": {"reason": "operator-set"},
+        "digest.vote_half_life_days": {"reason": "operator-set"},
+        "digest.topic_lifetime_days": {"reason": "operator-set"},
+        "general.digest_window_hours": {"reason": "operator-set"},
+        "digest.max_articles_per_digest": {"reason": "operator-set"},
+        "routing.score_threshold": {"reason": "operator-set"},
+        "digest.scoring_snippet_length": {"reason": "operator-set"},
+        "digest.summarize_snippet_length": {"reason": "operator-set"},
+        "digest.filter_snippet_length": {"reason": "operator-set"},
+        "llm_provider.reasoning_effort": {"reason": "operator-set"},
+        "notify.discord_webhook_url": {"reason": "operator-set"},
+        "notify.email_to": {"reason": "operator-set"},
+        "notify.email_from": {"reason": "operator-set"}
+      },
+      "hidden_tabs": ["areas"]
+    }
+  },
+  "writes": [
+    {
+      "name": "an open key is saved",
+      "body": {"values": {"digest.output_language": "zh-Hant"}},
+      "status": 200,
+      "answer": {"ok": true, "values": {"digest.output_language": "zh-Hant"}, "note": "Effective next run.", "ui_lang": "zh-Hant"},
+      "reads_back": {"digest.output_language": "zh-Hant"}
+    },
+    {
+      "name": "a key the stub locks is refused",
+      "body": {"values": {"digest.style_prompt": "Short."}},
+      "status": 400,
+      "answer": {"ok": false, "field": "digest.style_prompt", "error": "Style is locked here. Set by the service's operator."}
+    },
+    {
+      "name": "a key the operator sets is refused as locked before its own form is named",
+      "body": {"values": {"llm_provider.provider": "gemini"}},
+      "status": 400,
+      "answer": {"ok": false, "field": "llm_provider.provider", "error": "Provider is locked here. Set by the service's operator."}
+    },
+    {
+      "name": "one locked key refuses the whole save, the open key with it",
+      "body": {"values": {"digest.output_language": "zh-Hant", "routing.score_threshold": 50}},
+      "status": 400,
+      "answer": {"ok": false, "field": "routing.score_threshold", "error": "Top story score is locked here. Set by the service's operator."}
+    },
+    {
+      "name": "a key that is no setting is refused",
+      "body": {"values": {"no.such_key": 1}},
+      "status": 400,
+      "answer": {"ok": false, "error": "'no.such_key' is not a setting"}
+    },
+    {
+      "name": "a save of nothing is refused",
+      "body": {"values": {}},
+      "status": 400,
+      "answer": {"ok": false, "error": "values must name at least one setting"}
+    }
+  ],
+  "pins": [
+    {
+      "name": "the provider, the model and the notify targets are the policy's, whatever the rows say",
+      "stored": {
+        "llm_provider.provider": "gemini",
+        "llm_provider.model": "gemini-3.5-flash-lite",
+        "notify.discord_webhook_url": "https://discord.com/api/webhooks/1/container-wrote-it",
+        "notify.email_to": "someone@example.org",
+        "digest.style_prompt": "Short."
+      },
+      "shown": {
+        "llm_provider.provider": "anthropic",
+        "llm_provider.model": "claude-haiku-5-5",
+        "notify.discord_webhook_url": "",
+        "notify.email_to": "",
+        "notify.email_from": "",
+        "digest.style_prompt": "Short."
+      }
+    },
+    {
+      "name": "an article cap past the policy's is the policy's",
+      "stored": {"digest.max_articles_per_digest": 4000},
+      "shown": {"digest.max_articles_per_digest": 400}
+    },
+    {
+      "name": "an article cap under the policy's is kept",
+      "stored": {"digest.max_articles_per_digest": 120},
+      "shown": {"digest.max_articles_per_digest": 120}
+    }
+  ]
+}

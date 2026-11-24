@@ -10,12 +10,14 @@ let state = null;
 
 const TABS = ["model", "digest", "pipeline", "notifications", "sources", "areas", "tracking"];
 const SETTINGS_NOTICES = ["model-result", "digest-result", "pipeline-result", "notify-result"];
+// STUB until Areas is deleted (M2): the tabs this edition does not show, from GET /api/settings.
+let hiddenTabs = new Set();
 
 // The category lives in the hash, not the path: the Worker guards /settings by
 // exact match, and a hash never leaves the browser.
 function route() {
   const hash = location.hash.slice(1);
-  const tab = TABS.includes(hash) ? hash : "model";
+  const tab = TABS.includes(hash) && !hiddenTabs.has(hash) ? hash : "model";
   document.querySelectorAll(".tab").forEach((panel) => {
     panel.hidden = panel.dataset.tab !== tab;
   });
@@ -101,6 +103,9 @@ document.querySelectorAll("[placeholder]").forEach((el) => {
   el.dataset.placeholder = el.placeholder;
 });
 
+// A key this edition keeps the reader from changing, with its reason (ADR-0043).
+const isLocked = (key) => Object.hasOwn(state.locked, key);
+
 // Whether `el` is a control of a setting this deployment's home lacks.
 const isMissing = (el) => Object.entries(FIELDS)
   .some(([key, field]) => field.controls.includes(el.id) && state.missing.includes(key));
@@ -176,7 +181,7 @@ function fillTimezones(select, stored) {
 // detected rather than stored; the form's Save then stores it.
 function detectTimezone(form) {
   const zone = browserZone();
-  if (state.values["general.timezone"] != null || !zone) return;
+  if (state.values["general.timezone"] != null || !zone || isLocked("general.timezone")) return;
   $("timezone").value = zone;
   $("timezone-detected").hidden = false;
   refresh(form);
@@ -189,6 +194,13 @@ function render() {
   const values = state.values;
   FIELDS = state.fields;
   PLAIN = Object.fromEntries(keysSavedBy("plain").map((key) => [FIELDS[key].controls[0], key]));
+  // A locked key is not the reader's to set, so it is never marked missing nor sent as shown.
+  state.missing = state.missing.filter((key) => !isLocked(key));
+  hiddenTabs = new Set(state.hidden_tabs);
+  document.querySelectorAll(".settings-nav a").forEach((link) => {
+    link.hidden = hiddenTabs.has(link.dataset.tab);
+  });
+  if (hiddenTabs.size) route();
   $("providers").innerHTML = state.providers.map((p) => `
     <label class="choice${p.configured ? "" : " unavailable"}">
       <input type="radio" name="provider" value="${esc(p.name)}"
@@ -252,6 +264,34 @@ function render() {
     });
   }
   updateDependencies();
+  markLocked();
+}
+
+// Each locked key's controls are disabled, with one line in the small role below the help saying
+// why, which is each control's description, as a dependency's line is (ui-language.md §4 field).
+// Keys of one field locked for one reason share its line.
+function markLocked() {
+  for (const [key, {reason}] of Object.entries(state.locked)) {
+    const controls = FIELDS[key].controls.map($);
+    const field = controls[0].closest(".form > .field");
+    let line = field.querySelector(`[data-lock="${reason}"]`);
+    if (!line) {
+      line = document.createElement("p");
+      line.className = "small";
+      line.id = `${controls[0].id}-locked`;
+      line.dataset.lock = reason;
+      line.textContent = t(`lock_reason.${reason}`);
+      field.insertBefore(line, [...field.children].find((child) => child.contains(controls[0])));
+    }
+    for (const control of controls) {
+      // A radio group's control is its container: each of its choices is disabled.
+      const inputs = control.matches("input, select, textarea") ? [control] : control.querySelectorAll("input");
+      inputs.forEach((input) => {
+        input.disabled = true;
+        describe(input, line.id, true);
+      });
+    }
+  }
 }
 
 function chosen() {
@@ -263,7 +303,7 @@ function updateHint() {
   const p = chosen();
   // None calls no model, so there is no model to name.
   const none = p && p.name === "none";
-  $("model-input").disabled = !!none;
+  $("model-input").disabled = !!none || isLocked("llm_provider.model");
   if (none) $("model-input").value = "";
   $("model-input").dataset.placeholder = p && !none
     ? t("settings_option.model_default", {model: p.default_model}) : "";
@@ -285,15 +325,16 @@ function updateEmbeddingHint() {
 // with a line saying what it waits for (ui-language.md §4 field). Clef's option
 // waits for two things: vote similarity, whose nearest votes it reads, as the Vote
 // similarity select stands, unsaved or not; and its token, which only the server's
-// environment can change.
+// environment can change. A locked select says only why it is locked.
 function updateDependencies() {
   const votes = $("vote-enabled").value === "true";
   const source = $("preference-source");
+  const open = !isLocked("digest.preference_source");
   source.querySelector('option[value="clef"]').disabled = !votes || !state.clef_ready;
-  $("clef-needs-votes").hidden = votes;
-  describe(source, "clef-needs-votes", !votes);
-  $("clef-needs").hidden = !!state.clef_ready;
-  describe(source, "clef-needs", !state.clef_ready);
+  $("clef-needs-votes").hidden = votes || !open;
+  describe(source, "clef-needs-votes", !votes && open);
+  $("clef-needs").hidden = !!state.clef_ready || !open;
+  describe(source, "clef-needs", !state.clef_ready && open);
 }
 
 $("vote-enabled").addEventListener("change", () => { if (state) updateDependencies(); });
@@ -448,6 +489,9 @@ async function parseAnswer(res) {
 
 // Rejects with what the reader needs: the server's own explanation when it
 // gives one, otherwise what happened and what to do next.
+// A write names `same-origin`, as hosted_settings.js's do, so under the hosted Worker's
+// `Referrer-Policy: no-referrer` it sends a Referer to this origin and nowhere else. The Origin
+// a write needs is sent either way: a fetch is in `cors` mode, which no referrer policy nulls.
 async function post(url, body, method = "POST") {
   let res;
   try {
@@ -456,6 +500,7 @@ async function post(url, body, method = "POST") {
       headers: {"Content-Type": "application/json"},
       body: body ? JSON.stringify(body) : undefined,
       redirect: "manual",
+      referrerPolicy: "same-origin",
     });
   } catch (err) {
     throw new Error(t("settings.unreachable", {error: err.message}));
@@ -645,7 +690,7 @@ $("notify-form").addEventListener("submit", async (e) => {
 function showNotifyState() {
   const webhook = state.values["notify.discord_webhook_url"];
   $("notify-state").hidden = webhook !== "";
-  $("notify-off").hidden = !(webhook !== "" && state.writable);
+  $("notify-off").hidden = !(webhook !== "" && state.writable && !isLocked("notify.discord_webhook_url"));
 }
 
 // The spec's destructive confirm, as Retire does it: the stored URL cannot be

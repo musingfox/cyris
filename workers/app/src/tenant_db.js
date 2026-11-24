@@ -8,9 +8,10 @@
 // and refuses every other request with 403; the container holds no token and no binding.
 
 import { DurableObject, WorkerEntrypoint } from "cloudflare:workers";
+import FIELDS from "../../../src/cyris/settings_fields.json";
 import { dumpObject, restoreObject } from "./sqlite_dump.js";
 import { SETTING_UPSERT, SOURCE_UPSERT, stamp } from "./hosted_seed.js";
-import { SCHEDULE_KEY, TIMEZONE_KEY, WRITABLE } from "./hosted_settings_rules.js";
+import { POLICY, SCHEDULE_KEY, TIMEZONE_KEY, WRITABLE } from "./hosted_settings_rules.js";
 import { pollTenantBuffer } from "./tenant_buffer.js";
 import { storeNewsletter } from "./tenant_inbound.js";
 import { queueVote } from "./tenant_votes.js";
@@ -99,13 +100,16 @@ export class TenantDb extends DurableObject {
     return queueVote(this.ctx.storage, vote);
   }
 
-  // The tenant's own settings a reader may see on /t/<tenant>/settings: every writable key and the
-  // schedule's copy, as values; null for a tenant never seeded, which has no `settings` table.
-  settings() {
+  // The tenant's own settings a reader may see, as values: by default every writable key and the
+  // schedule's copy, what /t/<tenant>/settings shows; or `keys`, any grade-D key the shared page
+  // shows (hosted_shared_settings.js), but never a notify target, which the run pins blank
+  // whatever a row holds (ADR-0040). Null for a tenant never seeded, which has no `settings` table.
+  settings(keys = [...WRITABLE, ...SCHEDULE_COPY]) {
     const sql = this.ctx.storage.sql;
     if (!hasTable(sql, "settings")) return null;
-    const keys = [...WRITABLE, ...SCHEDULE_COPY];
-    const rows = sql.exec(`SELECT key, value FROM settings WHERE key IN (${keys.map(() => "?").join(", ")})`, ...keys);
+    const asked = keys.filter((key) => Object.hasOwn(FIELDS, key) && !POLICY.blank_settings.includes(key));
+    if (!asked.length) return {};
+    const rows = sql.exec(`SELECT key, value FROM settings WHERE key IN (${asked.map(() => "?").join(", ")})`, ...asked);
     return Object.fromEntries(rows.toArray().map((row) => [row.key, stored(row.value)]));
   }
 

@@ -38,6 +38,7 @@ from cyris.entrypoints.triage_server import (
     BROWSER_MESSAGES,
     STATIC_DIR,
     TEMPLATES_DIR,
+    LockReason,
     TriageServer,
     load_onboarding_topics,
     render_labels_page,
@@ -58,6 +59,7 @@ FUNCTIONS = {"string", "number", "integer"}
 FAMILIES: dict[str, tuple[str, ...]] = {
     "article_state.": tuple(map(str, ArticleState)),
     "lane.": tuple(map(str, Lane)),
+    "lock_reason.": get_args(LockReason),
     "area_status.": get_args(AreaStatus),
     "polarity.": get_args(get_type_hints(InterestNode)["polarity"]),
     "feed_check.": get_args(FeedRefusal),
