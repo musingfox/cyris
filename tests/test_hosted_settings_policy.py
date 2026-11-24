@@ -95,7 +95,7 @@ def test_the_page_is_worded_in_the_catalog_the_run_words_its_pages_in(case) -> N
     assert resolve(case["tag"]) == case["catalog"]
 
 
-def test_the_page_reads_every_catalog_there_is() -> None:
+def test_the_settings_routes_word_from_every_catalog_there_is() -> None:
     source = (WORKER / "hosted_settings.js").read_text("utf-8")
     imported = set(re.findall(r'from "\.\./\.\./\.\./src/cyris/locales/([\w-]+)\.json"', source))
 
@@ -121,11 +121,11 @@ def test_the_seed_names_the_policys_model() -> None:
     )
 
 
-# The Worker's own pages, each with its tokens in one `const STYLE`.
-@pytest.mark.parametrize("page", ["hosted_settings.js", "hosted_legal.js"])
-def test_the_pages_tokens_are_the_specs(page) -> None:
+# The Worker's own page, its tokens in one `const STYLE`: the legal pages. The settings page is
+# settings.html.j2's, styled by the /static/style.css every edition serves.
+def test_the_legal_pages_tokens_are_the_specs() -> None:
     declared = dict(re.findall(r"(--[\w-]+):\s*([^;}\n]+?)\s*;", TOKENS.read_text("utf-8")))
-    source = (WORKER / page).read_text("utf-8")
+    source = (WORKER / "hosted_legal.js").read_text("utf-8")
     root = source.split("const STYLE = `", 1)[1].split("}", 1)[0]
     used = {name: value.strip() for name, value in re.findall(r"(--[\w-]+):([^;}]+)", root)}
 

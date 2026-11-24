@@ -5,6 +5,7 @@ import re
 from datetime import UTC, datetime, timedelta, timezone
 from html.parser import HTMLParser
 from pathlib import Path
+from urllib.parse import urljoin
 
 import pytest
 from css_rules import parse_style_block, receipt_fixtures, text_langs
@@ -1800,6 +1801,26 @@ def test_a_hosted_tenants_pages_link_its_own_settings_page(tmp_path):
         bar = _site_bar(html)
         assert '<a class="label settings-link" href="/t/alpha/settings">Settings</a>' in bar, name
         assert 'href="/settings"' not in html, name
+
+
+def test_a_hosted_tenants_pages_link_its_archive_and_settings_within_its_site(tmp_path):
+    """Each link resolves to the path the hosted Worker serves under /t/<tenant>/: the archive the
+    run wrote, and the shared settings page (workers/app/test/hosted_shared_settings.test.js follows
+    the two from a stored page)."""
+    pages = _issue_pages(tmp_path, settings_path=tenant_settings_path("alpha"))
+    served_at = {
+        "index": "/t/alpha/",
+        "digest": "/t/alpha/2026-04-15-evening",
+        "raw": "/t/alpha/2026-04-15-evening-raw.html",
+    }
+
+    for name, html in pages.items():
+        bar = _site_bar(html)
+        archive = re.search(r'<a class="label" href="([^"]+)"[^>]*>Archive</a>', bar)
+        settings = re.search(r'<a class="label settings-link" href="([^"]+)">Settings</a>', bar)
+        assert archive and settings, name
+        assert urljoin(served_at[name], archive[1]) == "/t/alpha/index.html", name
+        assert urljoin(served_at[name], settings[1]) == "/t/alpha/settings", name
 
 
 def test_the_site_bar_can_mark_settings_as_the_current_page(tmp_path):

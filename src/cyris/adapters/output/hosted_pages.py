@@ -42,8 +42,9 @@ _UPSERT = (
 )
 
 
-# The tenant's settings page under its site, which the hosted Worker renders itself (ADR-0040).
-# `SETTINGS_PAGE` in workers/app/src/hosted_settings.js; tests/test_hosted_config.py holds them.
+# The tenant's settings page under its site: the page every edition shares, which the hosted
+# Worker serves (ADR-0043). `SHARED_PAGE` in workers/app/src/hosted_shared_settings.js;
+# tests/test_hosted_config.py holds them.
 SETTINGS_PAGE = "/settings"
 
 

@@ -4,13 +4,12 @@
 // answered over the session's tenant's object with the keys the hosted policy locks. No container
 // starts for any of it (ADR-0040). No workerd-only imports: vitest runs this under Node.
 //
-// STUB (the edition-parity plan): the page lives at /t/<tenant>/settings-next, beside the page
-// hosted_settings.js renders, which stays as it is until M3 replaces it. It saves what that page
-// saves: the keys the policy lets a tenant write, the schedule's hours and zone, which go to the
-// registry, and the tenant's RSS sources (M3a); the policy's `shared_page` locks every other key
-// for the operator, and Tracking answers read-only and empty.
+// It is the tenant's one settings page (the edition-parity plan's M3), the one its digest pages
+// link as Settings: it saves the keys the policy lets a tenant write, the schedule's hours and
+// zone, which go to the registry, and the tenant's RSS sources; the policy's `shared_page` locks
+// every other key for the operator, and Tracking answers read-only and empty.
 //
-//   GET  /t/<tenant>/settings-next   the page, in the catalog the tenant's output language reaches
+//   GET  /t/<tenant>/settings        the page, in the catalog the tenant's output language reaches
 //   GET  /static/<file>              the page's scripts, its style and its browser messages
 //   GET  /api/settings               values, fields, what is missing, `locked` and `limits`
 //   POST /api/settings/values        {values: {key: value}}: an open key is saved, a locked one refused
@@ -21,8 +20,7 @@
 //   GET  /api/topics                 STUB: read-only and empty
 //
 // The router has checked the session (hosted_router.js). The tenant is the session's: no path,
-// body or header names one, so these paths sit outside /t/<tenant>/ and its routes for the
-// hosted page, which take another body.
+// body or header names one, so these paths sit outside /t/<tenant>/.
 
 import FIELDS from "../../../src/cyris/settings_fields.json";
 import PROVIDER_DEFAULTS from "../../../src/cyris/provider_defaults.json";
@@ -35,7 +33,9 @@ import { sameOrigin } from "./hosted_session.js";
 import { DEFAULT_MAX_DIGEST_TIMES, checkSchedule, registrySchedule } from "./run_queue.js";
 import { HOSTED_TIMES, digestHours } from "./schedule.js";
 
-export const SHARED_PAGE = "/settings-next";
+// The page's path under /t/<tenant>, which the run links as Settings: `SETTINGS_PAGE` in
+// src/cyris/adapters/output/hosted_pages.py; tests/test_hosted_config.py holds them.
+export const SHARED_PAGE = "/settings";
 const SETTINGS_API = "/api/settings";
 const VALUES_API = "/api/settings/values";
 const SCHEDULE_API = "/api/settings/schedule";
@@ -71,7 +71,7 @@ const json = (body, status = 200) =>
 
 // TriageServer's refusal shape (`_refused`): the reason, and the field the page marks.
 const refused = (error, field, status = 400) => json({ ok: false, error, ...(field ? { field } : {}) }, status);
-// A refusal of hosted_settings.js's reason, worded from the catalog, for the field it names.
+// A refusal of hosted_settings_rules.js's reason, worded from the catalog, for the field it names.
 const refusedFor = (t, refusal, field = refusal.key ?? null) => refused(refusalText(t, refusal), field, STATUS[refusal.reason] ?? 400);
 
 // The keys a tenant writes somewhere: the policy's, and the schedule, which goes to the registry.
@@ -175,8 +175,7 @@ function valuesNote(t, keys) {
 
 // The schedule `previous` held with `change` put over it, written to the registry, or a refusal:
 // the hours one or two whole ones and no more than the registry's maximum, and a zone the
-// registry stores, as hosted_settings.js's save holds them. `setSchedule` writes the registry and
-// its copy in the tenant (hosted.js).
+// registry stores. `setSchedule` writes the registry and its copy in the tenant (hosted.js).
 async function writeSchedule(t, change, { row, previous, setSchedule }) {
   const schedule = { times: change.times ?? previous?.times, timeZone: change.timeZone ?? previous?.timeZone };
   const field = change.times ? SCHEDULE_KEY : TIMEZONE_KEY;
@@ -194,8 +193,8 @@ async function writeSchedule(t, change, { row, previous, setSchedule }) {
 // in its order before anything is written, the whole save or none of it. A locked key is refused
 // before its own rule is asked, as TriageServer refuses one; an open key is held to the rule
 // hosted_settings_rules.js holds it to, and written through TenantDb.saveSettings, which refuses
-// a key the policy does not let a tenant write whoever calls it. The zone is the registry's, as
-// hosted_settings.js saves it: written there first, and put back if the rows are refused or fail.
+// a key the policy does not let a tenant write whoever calls it. The zone is the registry's:
+// written there first, and put back if the rows are refused or fail.
 async function saveValues(t, values, { db, stored, locks, registryRow, setSchedule }) {
   if (values === null || typeof values !== "object" || Array.isArray(values) || !Object.keys(values).length) {
     return refused(t("settings_api.values_empty"));
@@ -312,7 +311,7 @@ function lockedSourceField(body, held) {
 
 // `POST /api/sources` in TriageServer's shape (`_handle_post_source`): one RSS source added, or the
 // one of that name rewritten, with what else its config held (its tags) kept. The rules are the
-// hosted page's own (hosted_settings_rules.js `rssSource`, `urlRefusal`), and the cap, newsletters
+// hosted policy's (hosted_settings_rules.js `rssSource`, `urlRefusal`), and the cap, newsletters
 // counted, is enforced in TenantDb.saveSource, in the one turn that writes the row, so two saves
 // at once cannot both take the last place.
 async function saveSource(t, request, db, listed, ownHosts) {

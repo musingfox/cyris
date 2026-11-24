@@ -20,6 +20,7 @@ import { SESSION_COOKIE } from "../src/hosted_session.js";
 import { tenantRegistry } from "../src/tenant_registry.js";
 import CASES from "./shared_settings_cases.json" with { type: "json" };
 import RULE_CASES from "./hosted_settings_cases.json" with { type: "json" };
+import { FakeHTMLRewriter } from "./html_rewriter.js";
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, namespace, registryNamespace, tenantDb } from "./sql_storage.js";
 
 // The shared settings page on the hosted Worker (ADR-0043): built from settings.html.j2, served
@@ -72,6 +73,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.unstubAllGlobals();
   for (const key of Object.keys(env)) delete env[key];
 });
 
@@ -104,11 +106,11 @@ const rowsOf = async (tenant) =>
   (await bound.TENANT_DB.getByName(tenant).query("SELECT key, value FROM settings ORDER BY key")).rows;
 const sha256 = (text) => `sha256-${createHash("sha256").update(text, "utf8").digest("base64")}`;
 
-describe("GET /t/<tenant>/settings-next", () => {
+describe("GET /t/<tenant>/settings", () => {
   it("is the page TriageServer renders, built per catalog, in the tenant's", async () => {
     const session = await signIn();
 
-    const response = await call("/t/alpha/settings-next", { session });
+    const response = await call("/t/alpha/settings", { session });
 
     expect(response.status).toBe(200);
     expect(response.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
@@ -120,7 +122,7 @@ describe("GET /t/<tenant>/settings-next", () => {
     const session = await signIn();
     await bound.TENANT_DB.getByName("alpha").saveSettings([["digest.output_language", "zh-Hant"]]);
 
-    const html = await (await call("/t/alpha/settings-next", { session })).text();
+    const html = await (await call("/t/alpha/settings", { session })).text();
 
     expect(html).toBe(BUILT.pages["zh-Hant"].html);
     expect(html).toContain('<html lang="zh-Hant">');
@@ -130,7 +132,7 @@ describe("GET /t/<tenant>/settings-next", () => {
   it("runs under a policy of its own: this Worker's /static/ and the hashes of its own inline blocks", async () => {
     const session = await signIn();
 
-    const response = await call("/t/alpha/settings-next", { session });
+    const response = await call("/t/alpha/settings", { session });
     const policy = response.headers.get("Content-Security-Policy");
     const html = await response.text();
 
@@ -151,21 +153,60 @@ describe("GET /t/<tenant>/settings-next", () => {
   it("is served only after the session check: none signs in first, another tenant's finds nothing", async () => {
     const session = await signIn();
 
-    const signedOut = await call("/t/alpha/settings-next");
-    const other = await call("/t/bravo/settings-next", { session });
+    const signedOut = await call("/t/alpha/settings");
+    const other = await call("/t/bravo/settings", { session });
 
     expect(signedOut.status).toBe(302);
     expect(signedOut.headers.get("Location")).toBe("/login");
     expect(other.status).toBe(404);
   });
 
-  it("leaves the hosted page beside it as it was", async () => {
+  it("is the tenant's one settings page: the stub's path and the old page's routes are gone", async () => {
+    const session = await signIn();
+    const before = await stateOf("alpha");
+    const sources = await sourceRows("alpha");
+    const old = [
+      ["/t/alpha/settings-next"],
+      ["/t/alpha/api/settings", { "digest.style_prompt": "Old route" }],
+      ["/t/alpha/api/sources", { name: "Old route", url: "https://old.example/feed" }],
+      ["/t/alpha/api/sources/delete", { name: "Hacker News" }],
+    ];
+
+    for (const [path, body] of old) {
+      // What any path under the tenant's site its run wrote no page for answers.
+      const read = await call(path, { session });
+      expect(read.status, path).toBe(404);
+      expect(await read.json(), path).toEqual({ error: `alpha has no page ${path.slice("/t/alpha/".length)}` });
+      if (body) expect((await call(path, { method: "POST", session, headers: { Origin: ORIGIN }, body })).status, path).toBe(405);
+    }
+    expect(await stateOf("alpha")).toEqual(before);
+    expect(await sourceRows("alpha")).toEqual(sources);
+  });
+
+  it("leaves the operator's /settings refused, as every path outside /t/ is to a reader", async () => {
     const session = await signIn();
 
-    const old = await call("/t/alpha/settings", { session });
+    expect((await call("/settings", { session })).status).toBe(403);
+  });
 
-    expect(old.status).toBe(200);
-    expect(await old.text()).toContain('<form class="panel" action="api/settings"');
+  // The two links of the site bar the run writes into a tenant's digest pages
+  // (tests/test_html_digest.py holds the run's pages to them): Settings, by path, and the archive.
+  it("is where a digest page's Settings link leads, beside the archive its Archive link leads to", async () => {
+    // A page served to a session carries its vote token, which workerd's HTMLRewriter puts in <head>.
+    vi.stubGlobal("HTMLRewriter", FakeHTMLRewriter);
+    const session = await signIn();
+    const db = dbOf("alpha");
+    const bar = '<a class="label" href="index.html">Archive</a><a class="label settings-link" href="/t/alpha/settings">Settings</a>';
+    const upsert = "INSERT INTO hosted_pages (path, body, content_type, updated_at) VALUES (?, ?, ?, '')";
+    await db.query(upsert, ["/2026-11-24-morning.html", `<!doctype html><html><body>${bar}</body></html>`, "text/html; charset=utf-8"]);
+    await db.query(upsert, ["/index.html", "<!doctype html><html><body>the archive</body></html>", "text/html; charset=utf-8"]);
+    const page = `${ORIGIN}/t/alpha/2026-11-24-morning`;
+    const html = await (await call(new URL(page).pathname, { session })).text();
+    const [archive, settings] = [...html.matchAll(/<a class="label[^"]*" href="([^"]+)">/g)].map(([, href]) => new URL(href, page).pathname);
+
+    expect([archive, settings]).toEqual(["/t/alpha/index.html", "/t/alpha/settings"]);
+    expect(await (await call(archive, { session })).text()).toContain("the archive");
+    expect(await (await call(settings, { session })).text()).toBe(BUILT.pages.en.html);
   });
 });
 
@@ -366,7 +407,7 @@ describe("POST /api/settings/values on the hosted Worker", () => {
     await holdsTo(session, await save(session, written.body), written, before);
   });
 
-  it.each(RULE_CASES.settings.accepted)("takes $key = $value, as the hosted page does", async ({ key, value }) => {
+  it.each(RULE_CASES.settings.accepted)("takes $key = $value, as the hosted rules do", async ({ key, value }) => {
     const session = await signIn();
 
     const response = await save(session, { values: { [key]: value } });
@@ -376,7 +417,7 @@ describe("POST /api/settings/values on the hosted Worker", () => {
   });
 
   it.each(RULE_CASES.settings.refused.filter(({ key }) => POLICY.writable_settings.includes(key)))(
-    "refuses $key = $value, as the hosted page does, in its words",
+    "refuses $key = $value, as the hosted rules do, in their words",
     async ({ key, value, reason }) => {
       const session = await signIn();
       const before = await rowsOf("alpha");
@@ -410,7 +451,26 @@ describe("POST /api/settings/values on the hosted Worker", () => {
     expect((await response.json()).error).toBe(`${EN["settings_field.digest.max_articles_per_digest"]} is a whole number from 1 to ${POLICY.max_articles_per_digest}.`);
   });
 
-  it.each(["__proto__", "constructor", "hasOwnProperty", "toString", "valueOf", "max_digest_times", "daily_run_cap", "monthly_ai_budget_usd"])(
+  // The keys a tenant may never set, each locked for the operator: the provider, the model and the
+  // notify targets.
+  it.each(["llm_provider.provider", "llm_provider.model", "notify.email_to", "notify.discord_webhook_url"])(
+    "refuses %s as locked for the operator, writing nothing",
+    async (key) => {
+      const session = await signIn();
+      const before = await stateOf("alpha");
+      const value = key === "llm_provider.provider" ? "gemini" : key.startsWith("notify.") ? "https://changed.example/x" : "changed-model";
+
+      const response = await save(session, { values: { "digest.style_prompt": "x", [key]: value } });
+
+      expect(response.status).toBe(400);
+      const label = EN[`settings_field.${key}`];
+      const error = EN["settings_api.locked"].replace("{$label}", label).replace("{$reason}", EN["lock_reason.operator-set"]);
+      expect(await response.json()).toEqual({ ok: false, field: key, error });
+      expect(await stateOf("alpha")).toEqual(before);
+    },
+  );
+
+  it.each(["digest.colour", "__proto__", "constructor", "hasOwnProperty", "toString", "valueOf", "max_digest_times", "daily_run_cap", "monthly_ai_budget_usd"])(
     "refuses %s as no setting, writing nothing",
     async (key) => {
       const session = await signIn();
@@ -494,7 +554,7 @@ describe("POST /api/settings/values on the hosted Worker", () => {
 
     await save(session, { values: { "digest.output_language": "zh-Hant" } });
 
-    expect(await (await call("/t/alpha/settings-next", { session })).text()).toBe(BUILT.pages["zh-Hant"].html);
+    expect(await (await call("/t/alpha/settings", { session })).text()).toBe(BUILT.pages["zh-Hant"].html);
   });
 
   it("refuses a write from no page of this origin, and one with no session", async () => {
@@ -817,7 +877,7 @@ describe("the Sources tab: what a hosted tenant is held to", () => {
     expect(await sourceRows("bravo")).toEqual(bravo);
   });
 
-  it.each(RULE_CASES.sources.written)("writes $body.name as the hosted page writes it", async ({ body, row }) => {
+  it.each(RULE_CASES.sources.written)("writes $body.name as the hosted rules make its row", async ({ body, row }) => {
     const session = await signIn();
 
     const answer = await sourceCall(session, "POST", "/api/sources", body);
@@ -827,7 +887,7 @@ describe("the Sources tab: what a hosted tenant is held to", () => {
     expect({ ...kept, config: JSON.parse(kept.config) }).toEqual(row);
   });
 
-  it.each(RULE_CASES.sources.refused)("refuses $body.name as $reason, as the hosted page does", async ({ body, reason }) => {
+  it.each(RULE_CASES.sources.refused)("refuses $body.name as $reason, as the hosted rules do", async ({ body, reason }) => {
     const session = await signIn();
     const before = await sourceRows("alpha");
 

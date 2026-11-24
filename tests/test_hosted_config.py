@@ -291,8 +291,8 @@ def test_the_tenants_site_path_is_one_shape_on_both_sides() -> None:
 
 
 def test_a_tenants_settings_link_is_the_path_the_worker_serves_its_settings_page_at() -> None:
-    settings = _js("hosted_settings.js")
-    [page] = re.findall(r'^export const SETTINGS_PAGE = "([^"]+)";', settings, re.M)
+    settings = _js("hosted_shared_settings.js")
+    [page] = re.findall(r'^export const SHARED_PAGE = "([^"]+)";', settings, re.M)
     [route] = re.findall(r"^export const SITE_ROUTE = /(.+)/;", _js("hosted_pages.js"), re.M)
 
     assert page == SETTINGS_PAGE
