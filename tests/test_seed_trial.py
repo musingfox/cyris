@@ -216,7 +216,6 @@ def test_the_dry_run_writes_nothing_and_prints_rows_now_and_in_the_seed(seed, se
     n = len(seed.CLEARED)
     shown = dict(re.fullmatch(r"  (\w+)\s+(\S+ -> \d+)", line).groups() for line in out[1 : 1 + n])
     assert shown["sources"] == "1 -> 2"
-    assert shown["areas"] == "2 -> 2"
     assert out[-1].startswith("Dry run: nothing was written")
 
 

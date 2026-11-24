@@ -55,7 +55,20 @@ IMAGE_URL_STEP = Step(
     Requires("stored_articles", "image_url", present=False),
 )
 
-MIGRATIONS: tuple[Step, ...] = (LANE_STEP, IMAGE_URL_STEP)
+# The area skeleton is gone (ADR-0046): a source's `area_id` key first, then the two tables.
+# Every statement is a no-op on a database that never had them, so the step needs no
+# precondition, and one cut short is finished by the next boot.
+DROP_AREAS_STEP = Step(
+    "0003_drop_areas",
+    (
+        "UPDATE sources SET config = json_remove(config, '$.area_id') "
+        "WHERE CASE WHEN json_valid(config) THEN json_type(config, '$.area_id') END IS NOT NULL",
+        "DROP TABLE IF EXISTS area_birth_threshold",
+        "DROP TABLE IF EXISTS areas",
+    ),
+)
+
+MIGRATIONS: tuple[Step, ...] = (LANE_STEP, IMAGE_URL_STEP, DROP_AREAS_STEP)
 
 
 def _holds(client: D1Queryable, requires: Requires) -> bool:

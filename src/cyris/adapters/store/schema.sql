@@ -88,31 +88,6 @@ CREATE TABLE IF NOT EXISTS tracked_topics (
   model       TEXT NOT NULL
 );
 
--- Reader-facing areas (grade D in docs/architecture.md §5), written by /settings.
--- `proposed` rows are the model's suggestions awaiting a human verdict, and carry
--- the counts that decide whether they meet the birth threshold; `merged` rows keep
--- their name resolving to `merged_into`. Names are unique across every status,
--- case-insensitively, so a suggestion can never name two rows.
-CREATE TABLE IF NOT EXISTS areas (
-  id                INTEGER PRIMARY KEY AUTOINCREMENT,
-  name              TEXT NOT NULL UNIQUE COLLATE NOCASE,
-  position          INTEGER NOT NULL DEFAULT 0,
-  status            TEXT NOT NULL CHECK (status IN ('proposed', 'active', 'dismissed', 'merged')),
-  merged_into       INTEGER REFERENCES areas(id),
-  proposal_articles INTEGER NOT NULL DEFAULT 0,
-  proposal_issues   INTEGER NOT NULL DEFAULT 0,
-  last_proposed_run TEXT
-);
-
--- The two numbers a proposal must reach to be marked as meeting the birth
--- threshold on /settings. One row at most; no row is an unset threshold, and no
--- run reads it.
-CREATE TABLE IF NOT EXISTS area_birth_threshold (
-  id       INTEGER PRIMARY KEY CHECK (id = 1),
-  articles INTEGER NOT NULL,
-  issues   INTEGER NOT NULL
-);
-
 -- Runtime-mutable settings (grade D in docs/architecture.md §5), so changing the
 -- LLM provider or the digest times is a write rather than an image rebuild.
 -- `cyris.toml` is baked into the image and mounted `:ro` in the container, which

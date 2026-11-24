@@ -356,11 +356,14 @@ EXPECTED_D1 = [
     "schema",
     # The lane step and the image step are pending on a first boot, so the runner reads
     # each one's precondition and records it; neither runs on a database `schema.sql`
-    # built, which never had the renamed column and already has `image_url`.
+    # built, which never had the renamed column and already has `image_url`. The area
+    # drop has no precondition: it runs, a no-op on such a database, and is recorded.
     "SELECT schema_migrations",
     "PRAGMA table_info",
     "INSERT OR IGNORE INTO schema_migrations",
     "PRAGMA table_info",
+    "INSERT OR IGNORE INTO schema_migrations",
+    "UPDATE sources SET config",
     "INSERT OR IGNORE INTO schema_migrations",
     "SELECT settings",
     "SELECT sources",
