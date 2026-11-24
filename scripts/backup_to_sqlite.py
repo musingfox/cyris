@@ -2,7 +2,7 @@
 
     python3 scripts/backup_to_sqlite.py EXPORT.jsonl.gz OUT.sqlite3
 
-EXPORT is one file the hosted Worker's daily backup wrote, from the R2 bucket or the B2 copy
+EXPORT is one file the hosted Worker's daily backup wrote, from the R2 bucket
 (`<YYYY-MM-DD>/<tenant>.jsonl.gz`, or `_registry.jsonl.gz`); its format is ADR-0041's and
 `workers/app/src/sqlite_dump.js`'s. OUT must not exist. The result is an ordinary SQLite file
 holding every table, row, index, trigger and view the export carries, for reading the registry

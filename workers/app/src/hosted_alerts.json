@@ -8,8 +8,6 @@
   "backup_export_failed": "Daily backup export failed: no copy written",
   "backup_r2_failed": "Daily backup not written to R2",
   "backup_r2_unbound": "Daily backup has no R2 bucket bound: no R2 copy written",
-  "backup_b2_failed": "Daily backup not copied to B2, the off-Cloudflare copy",
-  "backup_b2_unset": "Daily backup has no off-Cloudflare copy: B2 is not configured",
   "backup_missing": "Daily backup not confirmed: the registry's export, written last, is not in R2, so the backup did not run, did not finish, or that export failed",
   "backup_check_failed": "Daily backup could not be checked: R2 did not answer its lookup"
 }

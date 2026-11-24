@@ -6,6 +6,12 @@ decision-makers: ""
 
 # The hosted databases are exported daily to R2, and copied to B2 outside Cloudflare
 
+> Superseded in part by [ADR-0045](0045-the-hosted-backup-is-r2-only.md) (2026-11-24). The B2
+> copy below, its SigV4 signer, its four `CYRIS_HOSTED_B2_*` settings, its upload timeout and its
+> two alerts are history: the daily backup is written to R2 only, and where a second copy goes
+> is left to a separate evaluation. The export format, the schedule, the R2 copy, the check, the
+> alerts for R2 and for an export, and the restore still stand.
+
 ## Context and Problem Statement
 
 Each hosted tenant's data lives in its own SQLite Durable Object, `TenantDb`
