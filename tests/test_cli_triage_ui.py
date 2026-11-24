@@ -6,7 +6,9 @@ inside the loop pytest-asyncio would give an `async def` test.
 
 import asyncio
 import json
+import os
 import signal
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
 
@@ -139,6 +141,35 @@ def test_a_sqlite_ui_role_wires_every_store_and_builds_no_run_store(
     assert kwargs["run_log"] is not None
     assert kwargs["interest_reader"] is not None
     assert kwargs["start_run"] is not None
+
+
+def test_a_sqlite_ui_reads_the_feed_health_cyris_ingest_writes_to_the_same_file(
+    config: tuple[Path, Path],
+) -> None:
+    """The Sources tab's reader is the local file's, so a poll `cyris ingest` recorded shows."""
+    from cyris.adapters.store.d1 import apply_schema
+    from cyris.adapters.store.feed_health import D1FeedHealthWriter
+    from cyris.adapters.store.local_d1 import LocalD1Client
+    from cyris.adapters.store.source_store import D1SourceStore
+    from cyris.domain.models import SourceConfig
+
+    result = _run(config)
+    assert result.exit_code == 0, result.output
+    [(_, kwargs)] = FakeServer.calls
+
+    ingest_side = LocalD1Client(Path(os.environ["CYRIS_STORE_SQLITE_PATH"]))
+    apply_schema(ingest_side)
+    D1SourceStore(ingest_side).upsert(SourceConfig(name="Blog", url="https://blog.test/feed"))
+    D1FeedHealthWriter(ingest_side).record(
+        [("Blog", "HTTP 503")], datetime(2026, 11, 20, 1, tzinfo=UTC)
+    )
+
+    health = kwargs["feed_health"].read()["Blog"]
+    assert (health.consecutive_failures, health.last_error, health.last_failed_at) == (
+        1,
+        "HTTP 503",
+        "2026-11-20T01:00:00.000Z",
+    )
 
 
 def test_an_empty_d1_starts_the_page_with_only_the_defaulted_effort(

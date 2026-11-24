@@ -608,7 +608,8 @@ def _check_feed_health(cfg: Config) -> Check:
 
     Never a failure: the run still digests every other source, and a feed can be
     quiet for reasons of its own. Until this existed a failing feed was one
-    `console.warn` an hour in Workers Logs, gone after 7 days.
+    `console.warn` an hour in Workers Logs, gone after 7 days. `workers/rss` writes the
+    table on D1, `cyris ingest` on a local install's file.
     """
     from datetime import UTC, datetime
 
@@ -616,15 +617,15 @@ def _check_feed_health(cfg: Config) -> Check:
     from cyris.adapters.store.feed_health import D1FeedHealth
 
     name = "feed health"
-    if not cfg.app.store.is_cloudflare:
-        # workers/rss writes the table; a local install polls no Worker and keeps none.
-        return Check(name, "skip", "not recorded in the SQLite store: no rss Worker writes it")
+    # Reading would create the file, which only `_check_store` reports.
+    if cfg.app.store.sqlite_not_created:
+        return Check(name, "skip", "no feed polled: the SQLite store is not created yet")
     try:
         feeds = D1FeedHealth(bootstrap.build_d1_client(cfg)).read()
     except Exception as e:  # noqa: BLE001 - unreadable health is unknown, not broken
         return Check(name, "warn", f"could not read feed_health — {e}")
     if not feeds:
-        return Check(name, "skip", "no RSS feed in D1 sources")
+        return Check(name, "skip", f"no RSS feed in {cfg.app.store.sql_home} sources")
     now = datetime.now(UTC)
     unhealthy = {n: problems for n, h in feeds.items() if (problems := h.problems(now))}
     if not unhealthy:

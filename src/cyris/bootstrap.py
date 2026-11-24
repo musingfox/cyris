@@ -19,6 +19,7 @@ from cyris.adapters.notify import send_discord, send_discord_alert
 from cyris.adapters.openai_client import OpenAIClient
 from cyris.adapters.output.usage_log import append_usage_d1
 from cyris.adapters.promotions import SyncResult, sync_promotions
+from cyris.adapters.store.feed_health import FeedOutcome
 from cyris.adapters.workers_ai_client import WorkersAIClient
 from cyris.config import Config, LLMProviderConfig
 from cyris.domain.models import Article
@@ -491,7 +492,11 @@ def build_promotion_sync(
     return partial(sync_promotions, promote.worker_url, promote.token, store, topics)
 
 
-def build_rss_source(cfg: Config, d1: Any | None = None) -> FetchSource:
+def build_rss_source(
+    cfg: Config,
+    d1: Any | None = None,
+    record_health: Callable[[list[FeedOutcome], datetime], None] | None = None,
+) -> FetchSource:
     """The run's RSS edge: an hourly buffer, else direct polling.
 
     Direct polling is the fallback — correct only for feeds whose snapshot
@@ -501,6 +506,9 @@ def build_rss_source(cfg: Config, d1: Any | None = None) -> FetchSource:
     A hosted tenant reads its own buffer, which the hosted Worker polls into its
     Durable Object hourly, through `d1` or a gateway client of its own (ADR-0031);
     the rss Worker's buffer is another deployment's.
+
+    `record_health` is for the direct poll only, which `cyris ingest` gives the store's
+    `feed_health` writer (`build_feed_health_writer`); the Worker paths record their own.
     """
     if cfg.app.store.is_hosted:
         from cyris.adapters.fetch.rss_worker_source import TenantRssSource
@@ -514,7 +522,14 @@ def build_rss_source(cfg: Config, d1: Any | None = None) -> FetchSource:
 
     from cyris.adapters.fetch.rss_source import RssSource
 
-    return RssSource()
+    return RssSource(record_health=record_health)
+
+
+def build_feed_health_writer(cfg: Config, d1: Any | None = None) -> Any:
+    """The store's `feed_health` writer, on `d1` or a client of its own."""
+    from cyris.adapters.store.feed_health import D1FeedHealthWriter
+
+    return D1FeedHealthWriter(d1 or build_d1_client(cfg))
 
 
 def build_onboarding_articles(cfg: Config) -> Any:

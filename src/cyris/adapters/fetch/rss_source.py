@@ -14,16 +14,18 @@ import html
 import io
 import logging
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
 import feedparser
+import httpx
 
 from cyris.adapters.fetch.email_parser import is_web_url, strip_tracking_params
 from cyris.adapters.fetch.html_text import plain_text
 from cyris.adapters.http_client import HttpClient
+from cyris.adapters.store.feed_health import FeedOutcome
 from cyris.domain.models import Article, Lane, SourceConfig
 
 logger = logging.getLogger(__name__)
@@ -111,11 +113,26 @@ def _articles_from_feed(
     return articles
 
 
+def _poll_error(error: BaseException) -> str:
+    """A failed poll as `feed_health.last_error` words it: `HTTP 503`, as the Worker does."""
+    if isinstance(error, httpx.HTTPStatusError):
+        return f"HTTP {error.response.status_code}"
+    return str(error) or type(error).__name__
+
+
 class RssSource:
     """FetchSource that fetches and parses feed URLs from sources.yaml."""
 
-    def __init__(self, http_client: HttpClient | None = None) -> None:
+    def __init__(
+        self,
+        http_client: HttpClient | None = None,
+        record_health: Callable[[list[FeedOutcome], datetime], None] | None = None,
+    ) -> None:
         self._http = http_client or HttpClient()
+        # Given each poll's outcome per feed and when the poll began. `cyris ingest` passes the
+        # `feed_health` writer; a digest-time poll passes none. A failure to record never
+        # fails the poll (workers/rss/src/buffer.js's rule).
+        self._record_health = record_health
 
     async def fetch_articles(
         self,
@@ -128,6 +145,7 @@ class RssSource:
         if not feeds:
             return []
 
+        polled_at = datetime.now(UTC)
         semaphore = asyncio.Semaphore(MAX_CONCURRENT_FEEDS)
 
         async def one(source: SourceConfig) -> list[Article]:
@@ -136,6 +154,7 @@ class RssSource:
 
         results = await asyncio.gather(*(one(s) for s in feeds), return_exceptions=True)
 
+        self._record(feeds, results, polled_at)
         articles: list[Article] = []
         failed: list[str] = []
         for source, result in zip(feeds, results, strict=True):
@@ -151,6 +170,18 @@ class RssSource:
 
         logger.info("Fetched %d entries from %d feeds", len(articles), len(feeds))
         return articles
+
+    def _record(self, feeds: list[SourceConfig], results: list[Any], polled_at: datetime) -> None:
+        if self._record_health is None:
+            return
+        outcomes = [
+            (s.name, _poll_error(r) if isinstance(r, BaseException) else None)
+            for s, r in zip(feeds, results, strict=True)
+        ]
+        try:
+            self._record_health(outcomes, polled_at)
+        except Exception:
+            logger.warning("Could not record feed_health", exc_info=True)
 
     async def _fetch_feed(
         self,
