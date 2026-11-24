@@ -1028,6 +1028,7 @@
   "site.nav": {"text": "網站導覽", "source": "Site"},
   "site.settings": {"text": "設定", "source": "Settings"},
   "site.sign_in": {"text": "登入", "source": "Sign in"},
+  "site.sign_out": {"text": "登出", "source": "Sign out"},
   "source_type.newsletter": {"text": "電子報", "source": "Newsletter"},
   "source_type.rss": {"text": "RSS", "source": "RSS"},
   "vote.access_not_set_up": {"text": "本站還沒設定 Access。請管理員完成 Cloudflare Access 設定後，重新載入頁面。", "source": "Access is not set up for this deployment. Ask the operator to finish the Cloudflare Access setup, then reload the page."},

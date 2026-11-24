@@ -1780,6 +1780,7 @@ SITE_BAR_ON_THE_ARCHIVE = "\n".join(
         '                <a class="label" href="index.html" aria-current="page">Archive</a>',
         '                <a class="label settings-link" href="/settings">Settings</a>',
         '                <a class="label signin-link" href="/login" hidden>Sign in</a>',
+        '                <a class="label signout-link" href="/logout" hidden>Sign out</a>',
         "            </nav>",
         "        </div>",
         "    </header>",
@@ -1860,6 +1861,19 @@ def test_the_probe_links_sign_in_to_login_with_this_page_as_next(tmp_path):
     assert '<a class="label signin-link" href="/login" hidden>Sign in</a>' in html
     assert "encodeURIComponent(location.pathname + location.search)" in html
     assert "a.href = '/login?next=' + next;" in html
+
+
+def test_every_page_carries_a_hidden_sign_out_the_hosted_probe_opens(tmp_path):
+    """A hosted reader signs out from any page; the link to the Worker's /logout ships hidden, and
+    only the hosted answer, `settings_link: true`, opens it (tests/test_local_pages.py runs it)."""
+    pages = _issue_pages(tmp_path, settings_path=tenant_settings_path("alpha"))
+
+    for name, html in pages.items():
+        bar = _site_bar(html)
+        assert '<a class="label signout-link" href="/logout" hidden>Sign out</a>' in bar, name
+    probe = HtmlDigestWriter(tmp_path).env.get_template("_probe_script.html.j2").render()
+    opened = probe.split("if (data.settings_link === true) {", 1)[1].split("}", 1)[0]
+    assert "document.querySelectorAll('.signout-link').forEach((a) => a.hidden = false);" in opened
 
 
 def test_the_probe_checks_the_access_redirect_before_it_parses_an_answer(tmp_path):

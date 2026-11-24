@@ -207,6 +207,24 @@ describe("GET /t/<tenant>/settings", () => {
     expect(await sourceRows("alpha")).toEqual(sources);
   });
 
+  // The page's Sign out, which the probe opens for a signed-in hosted reader
+  // (tests/test_local_pages.py runs the probe on this Worker's answer).
+  it("links Sign out to the sign-out, which ends the session the page was served to", async () => {
+    const session = await signIn();
+    const page = `${ORIGIN}/t/alpha/settings`;
+    const html = await (await call("/t/alpha/settings", { session })).text();
+
+    const [, href, words] = /<a class="label signout-link" href="([^"]+)" hidden>([^<]+)<\/a>/.exec(html) ?? [];
+    expect(words).toBe(EN["site.sign_out"]);
+    const out = new URL(href, page).pathname;
+    expect(await (await call(out, { session })).text()).toContain('<form method="post" action="/logout">');
+    const ended = await call(out, { method: "POST", session, headers: { Origin: ORIGIN } });
+
+    expect(ended.status).toBe(303);
+    expect(ended.headers.get("Location")).toBe("/login");
+    expect((await call("/t/alpha/settings", { session })).headers.get("Location")).toBe("/login");
+  });
+
   it("leaves the operator's /settings refused, as every path outside /t/ is to a reader", async () => {
     const session = await signIn();
 

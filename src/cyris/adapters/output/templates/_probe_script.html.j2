@@ -12,7 +12,8 @@
     //   own settings page, but no interest page) → the vote buttons, the Settings link and the
     //   Archive link show, as they do for every signed-in reader (the owner's rule, 2026-11-24);
     //   the gated controls stay closed. Only `settings === false` closes them, and only
-    //   `settings_link === true` opens the Settings and Archive links without them. The hosted
+    //   `settings_link === true` opens the Settings and Archive links without them, and Sign out,
+    //   which only the hosted Worker's readers have: its /logout ends their session. The hosted
     //   Worker answers a request carrying the page's vote token (its <meta name="cyris-vote-token">,
     //   which it puts in every page it serves a session, its settings page too) and refuses one
     //   without.
@@ -37,6 +38,9 @@
                 document.querySelectorAll('.settings-link').forEach((s) => s.style.display = 'inline');
                 document.querySelectorAll('.archive-link').forEach((a) => a.hidden = false);
                 document.querySelectorAll('[data-gated-href]').forEach((a) => a.href = a.dataset.gatedHref);
+            }
+            if (data.settings_link === true) {
+                document.querySelectorAll('.signout-link').forEach((a) => a.hidden = false);
             }
             // This server takes no vote: leave the vote buttons and the gated controls closed
             if (data.votes === false) return;

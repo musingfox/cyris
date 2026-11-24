@@ -602,6 +602,7 @@
   "site.nav": "Site",
   "site.settings": "Settings",
   "site.sign_in": "Sign in",
+  "site.sign_out": "Sign out",
   "source_type.newsletter": "Newsletter",
   "source_type.rss": "RSS",
   "vote.access_not_set_up": "Access is not set up for this deployment. Ask the operator to finish the Cloudflare Access setup, then reload the page.",
