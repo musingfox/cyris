@@ -1,13 +1,14 @@
 """Each polled RSS feed's health, for `cyris doctor` and `/settings`.
 
-`workers/rss` writes `feed_health` on every poll; how long a feed has gone
-without output needs no state of its own, because `stored_articles` already
-says when each source's newest article arrived. A feed with no `feed_health`
-row has never been polled.
+`workers/rss` writes `feed_health` on every poll, and `cyris ingest` writes it on a local
+install (`D1FeedHealthWriter`); how long a feed has gone without output needs no state of
+its own, because `stored_articles` already says when each source's newest article arrived.
+A feed with no `feed_health` row has never been polled.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal
@@ -103,3 +104,42 @@ class D1FeedHealth:
             )
             for row in self._db.query(_READ).rows
         }
+
+
+# One polled feed's outcome: its source name and the error that failed the poll, None when it
+# succeeded. `workers/rss/src/buffer.js` records the same pair.
+FeedOutcome = tuple[str, str | None]
+
+# The two upserts of `recordHealth` in workers/rss/src/buffer.js. The shared cases in
+# workers/rss/test/feed_health_cases.json hold the rows they leave equal.
+_RECORD_OK = """
+INSERT INTO feed_health (name, consecutive_failures, last_ok_at) VALUES (?, 0, ?)
+ON CONFLICT(name) DO UPDATE SET consecutive_failures = 0, last_ok_at = excluded.last_ok_at
+"""
+_RECORD_FAILED = """
+INSERT INTO feed_health (name, consecutive_failures, last_error, last_failed_at)
+VALUES (?, 1, ?, ?)
+ON CONFLICT(name) DO UPDATE SET
+  consecutive_failures = feed_health.consecutive_failures + 1,
+  last_error = excluded.last_error,
+  last_failed_at = excluded.last_failed_at
+"""
+
+
+class D1FeedHealthWriter:
+    """Upserts one `feed_health` row per polled feed, by the rss Worker's rules.
+
+    A success resets the streak and sets `last_ok_at`, keeping the last error and its time;
+    a failure adds one to the streak and sets the error and `last_failed_at`.
+    """
+
+    def __init__(self, client: D1Queryable) -> None:
+        self._db = client
+
+    def record(self, outcomes: Sequence[FeedOutcome], at: datetime) -> None:
+        stamp = at.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        for name, error in outcomes:
+            if error is None:
+                self._db.query(_RECORD_OK, [name, stamp])
+            else:
+                self._db.query(_RECORD_FAILED, [name, error, stamp])

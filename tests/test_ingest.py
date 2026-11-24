@@ -166,7 +166,7 @@ def test_cli_exits_non_zero_when_the_fetch_failed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     config_path, sources_path = write_config(tmp_path)
-    monkeypatch.setattr("cyris.bootstrap.build_rss_source", lambda cfg: BrokenSource())
+    monkeypatch.setattr("cyris.bootstrap.build_rss_source", lambda cfg, **_: BrokenSource())
 
     result = CliRunner().invoke(
         app, ["ingest", "--config", str(config_path), "--sources", str(sources_path)]
@@ -177,7 +177,9 @@ def test_cli_exits_non_zero_when_the_fetch_failed(
 
 def test_cli_stores_what_the_feed_holds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config_path, sources_path = write_config(tmp_path)
-    monkeypatch.setattr("cyris.bootstrap.build_rss_source", lambda cfg: FakeSource([article(1)]))
+    monkeypatch.setattr(
+        "cyris.bootstrap.build_rss_source", lambda cfg, **_: FakeSource([article(1)])
+    )
 
     result = CliRunner().invoke(
         app, ["ingest", "--config", str(config_path), "--sources", str(sources_path)]
@@ -197,7 +199,9 @@ def test_cli_polls_without_the_llm_key(tmp_path: Path, monkeypatch: pytest.Monke
         **{"llm_provider.provider": "anthropic", "llm_provider.model": "claude-haiku-5-5"},
     )
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    monkeypatch.setattr("cyris.bootstrap.build_rss_source", lambda cfg: FakeSource([article(1)]))
+    monkeypatch.setattr(
+        "cyris.bootstrap.build_rss_source", lambda cfg, **_: FakeSource([article(1)])
+    )
 
     result = CliRunner().invoke(
         app, ["ingest", "--config", str(config_path), "--sources", str(sources_path)]

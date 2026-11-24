@@ -1,0 +1,62 @@
+{
+  "about": "Sequences of poll outcomes and the feed_health rows they leave. Both sides read this file: workers/rss/test/feed-health-cases.test.js runs it against buffer.js's recordHealth, tests/test_feed_health_cases.py against D1FeedHealthWriter. A poll is {at, outcomes}; an outcome's error is null for a feed that polled OK, else the text that failed it. `rows` is every feed_health row after the last poll, by name.",
+  "cases": [
+    {
+      "name": "a first failed poll starts a streak of one",
+      "polls": [{ "at": "2026-11-20T01:00:00.000Z", "outcomes": [{ "name": "a", "error": "HTTP 503" }] }],
+      "rows": {
+        "a": { "consecutive_failures": 1, "last_error": "HTTP 503", "last_failed_at": "2026-11-20T01:00:00.000Z", "last_ok_at": null }
+      }
+    },
+    {
+      "name": "a first OK poll writes a row with no error",
+      "polls": [{ "at": "2026-11-20T01:00:00.000Z", "outcomes": [{ "name": "a", "error": null }] }],
+      "rows": {
+        "a": { "consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": "2026-11-20T01:00:00.000Z" }
+      }
+    },
+    {
+      "name": "each failed poll grows the streak and replaces the error",
+      "polls": [
+        { "at": "2026-11-20T01:00:00.000Z", "outcomes": [{ "name": "a", "error": "HTTP 503" }] },
+        { "at": "2026-11-20T02:00:00.000Z", "outcomes": [{ "name": "a", "error": "HTTP 429" }] },
+        { "at": "2026-11-20T03:00:00.000Z", "outcomes": [{ "name": "a", "error": "HTTP 429" }] }
+      ],
+      "rows": {
+        "a": { "consecutive_failures": 3, "last_error": "HTTP 429", "last_failed_at": "2026-11-20T03:00:00.000Z", "last_ok_at": null }
+      }
+    },
+    {
+      "name": "an OK poll resets the streak and keeps the last error and its time",
+      "polls": [
+        { "at": "2026-11-20T01:00:00.000Z", "outcomes": [{ "name": "a", "error": "HTTP 503" }] },
+        { "at": "2026-11-20T02:00:00.000Z", "outcomes": [{ "name": "a", "error": "HTTP 503" }] },
+        { "at": "2026-11-20T03:00:00.000Z", "outcomes": [{ "name": "a", "error": null }] }
+      ],
+      "rows": {
+        "a": { "consecutive_failures": 0, "last_error": "HTTP 503", "last_failed_at": "2026-11-20T02:00:00.000Z", "last_ok_at": "2026-11-20T03:00:00.000Z" }
+      }
+    },
+    {
+      "name": "a failure after an OK poll starts a new streak and keeps last_ok_at",
+      "polls": [
+        { "at": "2026-11-20T01:00:00.000Z", "outcomes": [{ "name": "a", "error": null }] },
+        { "at": "2026-11-20T02:00:00.000Z", "outcomes": [{ "name": "a", "error": "HTTP 500" }] }
+      ],
+      "rows": {
+        "a": { "consecutive_failures": 1, "last_error": "HTTP 500", "last_failed_at": "2026-11-20T02:00:00.000Z", "last_ok_at": "2026-11-20T01:00:00.000Z" }
+      }
+    },
+    {
+      "name": "feeds in one poll are recorded apart, and a feed a poll leaves out keeps its row",
+      "polls": [
+        { "at": "2026-11-20T01:00:00.000Z", "outcomes": [{ "name": "a", "error": "HTTP 503" }, { "name": "b", "error": null }] },
+        { "at": "2026-11-20T02:00:00.000Z", "outcomes": [{ "name": "b", "error": "HTTP 404" }] }
+      ],
+      "rows": {
+        "a": { "consecutive_failures": 1, "last_error": "HTTP 503", "last_failed_at": "2026-11-20T01:00:00.000Z", "last_ok_at": null },
+        "b": { "consecutive_failures": 1, "last_error": "HTTP 404", "last_failed_at": "2026-11-20T02:00:00.000Z", "last_ok_at": "2026-11-20T01:00:00.000Z" }
+      }
+    }
+  ]
+}

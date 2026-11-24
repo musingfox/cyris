@@ -712,7 +712,13 @@ def ingest_command(
     _setup_logging(verbose)
 
     from cyris.adapters.fetch.rss_worker_source import CloudflareRssSource, TenantRssSource
-    from cyris.bootstrap import build_rss_source, build_store, load_effective_config
+    from cyris.bootstrap import (
+        build_d1_client,
+        build_feed_health_writer,
+        build_rss_source,
+        build_store,
+        load_effective_config,
+    )
     from cyris.service_layer.ingest import ingest
 
     try:
@@ -731,12 +737,15 @@ def ingest_command(
         logger.info("%s", cfg.onboarding_wait())
         return
 
-    source = build_rss_source(cfg)
+    # A local install's poll records each feed's health in its file; on D1 the rss Worker does.
+    d1 = None if cfg.app.store.is_cloudflare else build_d1_client(cfg)
+    record_health = build_feed_health_writer(cfg, d1).record if d1 else None
+    source = build_rss_source(cfg, record_health=record_health)
     if isinstance(source, CloudflareRssSource | TenantRssSource):
         typer.echo("The RSS buffer Worker already polls hourly; nothing to ingest.")
         return
 
-    report = asyncio.run(ingest(cfg, build_store(cfg), [source]))
+    report = asyncio.run(ingest(cfg, build_store(cfg, d1), [source]))
     typer.echo(f"Stored {report.saved} new article(s), {report.skipped} already stored.")
     if report.status != "ok":
         typer.echo(f"Fetch failed for: {', '.join(report.failed_sources)}", err=True)

@@ -70,7 +70,7 @@ async function fetchFeed(feed, held) {
 
 // One upsert per polled feed, so a feed that keeps failing outlives Workers Logs'
 // 7 days. A success resets the streak but keeps the last error and its time.
-async function recordHealth(db, outcomes, now) {
+export async function recordHealth(db, outcomes, now) {
   if (!outcomes.length) return;
   const ok = db.prepare(
     `INSERT INTO feed_health (name, consecutive_failures, last_ok_at) VALUES (?, 0, ?)
