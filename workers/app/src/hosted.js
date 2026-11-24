@@ -25,6 +25,7 @@ import SEED from "./hosted_seed.json";
 import { receiveInbound } from "./hosted_inbound.js";
 import { handleHostedRequest } from "./hosted_router.js";
 import { handleTenantSettings } from "./hosted_settings.js";
+import { handleSharedSettings } from "./hosted_shared_settings.js";
 import { createSitePage } from "./hosted_site.js";
 import { addNewsletterSource, seedSchedule, seedTenant, tenantReport, writeSchedule } from "./hosted_seed.js";
 import { registrySchedule } from "./run_queue.js";
@@ -171,6 +172,8 @@ const hosted = {
           },
           ownHosts: [env[HOSTED_DOMAIN]].filter(Boolean),
         }),
+      sharedSettings: (request, tenant, path) =>
+        handleSharedSettings(request, { path, db: tenantDb(env, tenant), registryRow: () => registry().tenant(tenant) }),
       invite: (tenant, email) => registry().invite(tenant, email),
       revoke: (tenant, email) => registry().revoke(tenant, email),
       members: (tenant) => registry().members(tenant),

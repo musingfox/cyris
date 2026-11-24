@@ -98,12 +98,12 @@ const REFUSALS = {
 export const REFUSAL_REASONS = Object.freeze(Object.keys(REFUSALS));
 
 // A refusal's words: a value's refusal names the field by its label, a key's by the key itself.
-function refusalText(t, { reason, key, ...values }) {
+export function refusalText(t, { reason, key, ...values }) {
   const label = key && `settings_field.${key}` in EN ? t(`settings_field.${key}`) : key;
   return REFUSALS[reason](t, { ...values, ...(key ? { key, label } : {}) });
 }
 
-const STATUS = {
+export const STATUS = {
   cross_origin: 403,
   too_large: 413,
   not_seeded: 409,
@@ -123,7 +123,7 @@ const refused = (t, refusal) =>
   json({ ok: false, error: refusalText(t, refusal), reason: refusal.reason }, STATUS[refusal.reason] ?? 400);
 
 // The body's JSON, or a refusal: past `max_body_bytes` unread (hosted_vote.js `boundedText`).
-async function bodyOf(request) {
+export async function bodyOf(request) {
   let text;
   try {
     text = await boundedText(request, POLICY.max_body_bytes);

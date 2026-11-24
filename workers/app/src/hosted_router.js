@@ -33,6 +33,10 @@
 //   GET  /t/<tenant>/...                                    the tenant's pages (hosted_pages.js), to its session
 //   /t/<tenant>/settings, /t/<tenant>/api/{settings,sources,sources/delete}
 //                                                           its settings and sources (hosted_settings.js), to its session
+//   GET  /t/<tenant>/settings-next                          STUB: the settings page every edition shares, to its session
+//   /api/settings, /api/settings/values, /api/{sources,topics,areas}, /static/...
+//                                                           that page's JSON and files, to a session, for its own tenant
+//                                                           (hosted_shared_settings.js, ADR-0043)
 //   /login, /login/confirm, /logout                         the sign-in (hosted_login.js)
 //   GET  /privacy, /terms                                   the privacy policy and terms, to anyone (hosted_legal.js)
 //   POST /api/vote   {url, vote}                            a reader's vote, by a vote token (hosted_vote.js)
@@ -42,6 +46,7 @@ import { LOGIN_PATHS, handleLogin } from "./hosted_login.js";
 import { admitOperator, unsetOperators } from "./hosted_operators.js";
 import { PRIVATE_HEADERS, SITE_ROUTE, VOTE_PATH, privateHeaders, siteHeaders } from "./hosted_pages.js";
 import { isSettingsPath } from "./hosted_settings.js";
+import { SHARED_PAGE, isSharedPath } from "./hosted_shared_settings.js";
 import { handleVote } from "./hosted_vote.js";
 import { clearedSessionCookie, crossSite, sessionToken, tokenHash } from "./hosted_session.js";
 import { MONTH } from "./ai_budget.js";
@@ -117,21 +122,36 @@ function signInFirst(request, stale) {
   return new Response(JSON.stringify({ error: "sign in first" }), { status: 401, headers });
 }
 
-// A request under /t/<tenant>: served only to a live session whose tenant is the path's. The
-// session is the registry's answer for this request, never a cached one, and its tenant is the
+// The registry's live session for this request, never a cached one, or none; its tenant is the
 // one the registry bound it to, never one the request names.
-async function siteRequest(request, tenant, rest, deps) {
+async function liveSession(request, deps) {
   const token = sessionToken(request);
   const sessionHash = token ? await tokenHash(token) : null;
   const session = token ? await deps.session(sessionHash) : null;
+  return { token, sessionHash, session };
+}
+
+// A request under /t/<tenant>: served only to a live session whose tenant is the path's.
+async function siteRequest(request, tenant, rest, deps) {
+  const { token, sessionHash, session } = await liveSession(request, deps);
   if (!session) return signInFirst(request, token !== null);
   if (session.tenant_id !== tenant) return siteHeaders(json(NOT_FOUND, 404));
-  // The tenant's settings page and its routes are the Worker's own (hosted_settings.js, ADR-0040),
-  // not pages its run wrote; a paused tenant may still change them.
+  // The tenant's settings pages and their routes are the Worker's own (hosted_settings.js,
+  // ADR-0040; the shared page, ADR-0043), not pages its run wrote; a paused tenant may still
+  // change them.
+  if (rest === SHARED_PAGE) return siteHeaders(await deps.sharedSettings(request, tenant, rest));
   if (isSettingsPath(rest)) return siteHeaders(await deps.settings(request, tenant, rest));
   // A paused tenant's pages stay readable; only its runs stop. The page carries a vote token for
   // this session, made only if the page is one that is served.
   return siteHeaders(await deps.page(request, tenant, rest, () => deps.voteToken(sessionHash)));
+}
+
+// The shared settings page's JSON and /static/ files (ADR-0043): to a live session, for the
+// session's own tenant, which nothing in the request names.
+async function sharedRequest(request, path, deps) {
+  const { token, session } = await liveSession(request, deps);
+  if (!session) return signInFirst(request, token !== null);
+  return deps.sharedSettings(request, session.tenant_id, path);
 }
 
 // The address in an operator route's JSON body, `{"email": ...}`: in the body, so it is in no URL
@@ -162,7 +182,8 @@ async function bodyEmail(request) {
 // restoreExport does, and `backup()`, today's backup's summary. For readers:
 // `session(sessionHash)`, the registry's live session or null,
 // `settings(request, tenant, rest)`, which answers the tenant's settings page and routes
-// (hosted_settings.js `handleTenantSettings`),
+// (hosted_settings.js `handleTenantSettings`), `sharedSettings(request, tenant, path)`, which
+// answers the shared settings page, its JSON and its files (hosted_shared_settings.js),
 // `voteToken(sessionHash)`, the token that session's pages vote with, `voteSession(token)`, the
 // live session a vote token names or null, `recordVote(tenant, {url, vote})`, which queues the
 // vote in that tenant's object and answers `{queued}` or `{refused, status}`, and `login`, what
@@ -176,6 +197,7 @@ async function route(request, env, deps) {
   const url = new URL(request.url);
   const site = SITE_ROUTE.exec(url.pathname);
   if (site) return siteRequest(request, site[1], site[2] ?? "", deps);
+  if (isSharedPath(url.pathname)) return sharedRequest(request, url.pathname, deps);
   if (LOGIN_PATHS.has(url.pathname)) return handleLogin(request, deps.login);
   // The privacy policy and terms take no credential at all: a reader reads them before signing in.
   if (LEGAL_PATHS.has(url.pathname)) return handleLegal(request);
