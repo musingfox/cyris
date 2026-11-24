@@ -6,9 +6,8 @@
 # that reaches Cloudflare through wrangler, and is never stored or read from the environment,
 # so neither an exported variable nor an old file can pick the account. deploy, secrets and
 # delete also print the account's name and do nothing until you type "yes". The secrets (the
-# Anthropic key, the operator's webhook, the B2 key id and application key, the Access service
-# token's secret) are read without echo each time, never
-# written down, and reach wrangler and curl on stdin, never in argv, where `ps` would show them.
+# Anthropic key, the operator's webhook, the Access service token's secret) are read without echo
+# each time, never written down, and reach wrangler and curl on stdin, never in argv, where `ps` would show them.
 # HOSTED_URL, which deploy prints, is the one value kept, in .env.hosted (gitignored, mode 600).
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -50,13 +49,6 @@ ask() {
     read -rp "$prompt: " value
   fi
   [[ -n "$value" ]] || { echo "$name is required" >&2; exit 1; }
-  printf -v "$name" '%s' "$value"
-}
-
-# ask_optional NAME PROMPT: as ask, but blank (or no input at all) leaves NAME empty.
-ask_optional() {
-  local name=$1 prompt=$2 value=
-  read -rp "$prompt: " value || true
   printf -v "$name" '%s' "$value"
 }
 
@@ -200,19 +192,6 @@ case "${1:-}" in
     ask OPERATOR_WEBHOOK "CYRIS_HOSTED_OPERATOR_WEBHOOK, the operator's Discord webhook URL" secret
     [[ "$OPERATOR_WEBHOOK" == https://* ]] || { echo "CYRIS_HOSTED_OPERATOR_WEBHOOK must be an https:// URL" >&2; exit 1; }
     ask MAIL_FROM "CYRIS_HOSTED_MAIL_FROM, the sign-in mail's sender, on a domain onboarded to Email Sending (cyris@yourdomain.com)"
-    # The daily backup's off-Cloudflare copy in Backblaze B2 (ADR-0041). Blank skips all four: the
-    # backup still writes R2, and the Worker alerts once a day that there is no B2 copy. The key id
-    # and the application key are the credential, so both are read without echo.
-    ask_optional B2_ENDPOINT "CYRIS_HOSTED_B2_ENDPOINT, the B2 bucket's S3 endpoint (https://s3.<region>.backblazeb2.com), blank for no B2 copy"
-    if [[ -n "$B2_ENDPOINT" ]]; then
-      [[ "$B2_ENDPOINT" =~ ^https://s3\.[a-z0-9-]+\.backblazeb2\.com$ ]] || {
-        echo "CYRIS_HOSTED_B2_ENDPOINT must be https://s3.<region>.backblazeb2.com" >&2
-        exit 1
-      }
-      ask B2_BUCKET "CYRIS_HOSTED_B2_BUCKET, the B2 bucket's name"
-      ask B2_KEY_ID "CYRIS_HOSTED_B2_KEY_ID, the keyID of a writeFiles-only application key limited to that bucket" secret
-      ask B2_APPLICATION_KEY "CYRIS_HOSTED_B2_APPLICATION_KEY, that application key" secret
-    fi
     put_secret CYRIS_ACCESS_TEAM_DOMAIN "$TEAM_DOMAIN"
     put_secret CYRIS_ACCESS_AUD "$AUD"
     put_secret CYRIS_HOSTED_OPERATORS "$OPERATORS"
@@ -223,14 +202,6 @@ case "${1:-}" in
     # The host deploy kept, which every tenant's links point at (ADR-0029). Not a secret, but
     # `secret put` is how wrangler sets one value without editing wrangler.hosted.toml.
     put_secret CYRIS_STORE_HOSTED_DOMAIN "${HOSTED_URL#https://}"
-    if [[ -n "$B2_ENDPOINT" ]]; then
-      # The endpoint and bucket are not secrets; set the same way, so wrangler.hosted.toml names
-      # no deployment's bucket.
-      put_secret CYRIS_HOSTED_B2_ENDPOINT "$B2_ENDPOINT"
-      put_secret CYRIS_HOSTED_B2_BUCKET "$B2_BUCKET"
-      put_secret CYRIS_HOSTED_B2_KEY_ID "$B2_KEY_ID"
-      put_secret CYRIS_HOSTED_B2_APPLICATION_KEY "$B2_APPLICATION_KEY"
-    fi
     ;;
   containers)
     ask_account

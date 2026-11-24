@@ -1,16 +1,13 @@
 // The hosted Worker's daily backup (hosted_backup.js) through its entry, hosted.js: at
-// BACKUP_HOUR_UTC the tick exports every registered tenant and the registry to R2 and copies each
-// export to B2, tells the operator of each copy that failed, and the operator restores one export
-// into a new tenant id. Over real SQLite; R2 is a map, and B2, the feeds and the operator's
-// webhook are a stub fetch.
+// BACKUP_HOUR_UTC the tick exports every registered tenant and the registry to R2, tells the
+// operator of each copy that failed, and the operator restores one export into a new tenant id.
+// Over real SQLite; R2 is a map, and the feeds and the operator's webhook are a stub fetch.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { env } from "cloudflare:workers";
 import worker from "../src/hosted.js";
 import WORDING from "../src/hosted_alerts.json" with { type: "json" };
 import { OPERATOR_WEBHOOK } from "../src/hosted_alerts.js";
 import {
-  B2_PUT_TIMEOUT_MS,
-  B2_SETTINGS,
   BACKUP_CHECK_HOURS,
   BACKUP_HOUR_UTC,
   REGISTRY_EXPORT,
@@ -22,12 +19,6 @@ import { REGISTRY_NAME, tenantRegistry } from "../src/tenant_registry.js";
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, drainAlarms, namespace, registryNamespace, tenantDb } from "./sql_storage.js";
 
 const HOOK = "https://discord.com/api/webhooks/1/operator";
-const B2 = {
-  [B2_SETTINGS.endpoint]: "https://s3.us-west-004.backblazeb2.com",
-  [B2_SETTINGS.bucket]: "cyris-backup",
-  [B2_SETTINGS.keyId]: "004keyid",
-  [B2_SETTINGS.applicationKey]: "K004-application-SECRET",
-};
 const DAY = "2026-11-22";
 const BACKUP_TIME = new Date(`${DAY}T0${BACKUP_HOUR_UTC}:00:00Z`);
 const STAMP = "2026-11-21T00:00:00+00:00";
@@ -54,23 +45,15 @@ function r2({ refuse = () => false, log = [] } = {}) {
   };
 }
 
-// The one fetch every edge goes through: a feed, the operator's webhook, or B2, each recorded.
-// `b2Status(key)` is the status B2 answers that key's PUT with.
-function network({ b2Status = () => 200, log = [] } = {}) {
-  const sent = { alerts: [], b2: [], feeds: [] };
+// The one fetch every edge goes through: a feed or the operator's webhook, each recorded.
+function network({ log = [] } = {}) {
+  const sent = { alerts: [], feeds: [] };
   const fetch = async (input, init = {}) => {
     const request = input instanceof Request ? input : new Request(input, init);
     const url = new URL(request.url);
     if (request.url === HOOK) {
       sent.alerts.push(JSON.parse(await request.text()).content);
       return new Response(null, { status: 204 });
-    }
-    if (url.hostname.endsWith(".backblazeb2.com")) {
-      const key = url.pathname.split("/").slice(2).join("/");
-      log.push(`b2 ${key}`);
-      sent.b2.push({ url: request.url, key, headers: Object.fromEntries(request.headers), signal: init.signal, bytes: new Uint8Array(await request.arrayBuffer()) });
-      const status = b2Status(key);
-      return new Response(status === 200 ? "" : "<Error><Code>AccessDenied</Code></Error>", { status });
     }
     log.push(`feed ${url.hostname}`);
     sent.feeds.push(request.url);
@@ -82,7 +65,7 @@ function network({ b2Status = () => 200, log = [] } = {}) {
 function bindings({ BACKUP = r2(), make } = {}) {
   const TENANT_DB = namespace(make);
   const TENANT_RUN = { getByName: () => ({ startRun: async () => ({ started: true }) }) };
-  const bound = { TENANT_DB, TENANT_RUN, BACKUP, [OPERATOR_WEBHOOK]: HOOK, ...B2 };
+  const bound = { TENANT_DB, TENANT_RUN, BACKUP, [OPERATOR_WEBHOOK]: HOOK };
   bound.REGISTRY = registryNamespace(bound);
   return bound;
 }
@@ -136,7 +119,7 @@ describe("the hosted Worker's daily backup", () => {
     for (const key of Object.keys(env)) delete env[key];
   });
 
-  it("at its hour writes every registered tenant, paused too, and the registry to R2 and the same keys to B2", async () => {
+  it("at its hour writes every registered tenant, paused too, and the registry to R2, and sends no alert", async () => {
     start();
     const alpha = await tenant(bound, "alpha");
     const paused = await tenant(bound, "paused", { status: "paused" });
@@ -145,14 +128,10 @@ describe("the hosted Worker's daily backup", () => {
 
     const keys = [`${DAY}/alpha.jsonl.gz`, `${DAY}/paused.jsonl.gz`, `${DAY}/_registry.jsonl.gz`];
     expect([...bound.BACKUP.objects.keys()]).toEqual(keys);
-    expect(net.sent.b2.map((put) => put.url)).toEqual(keys.map((key) => `https://s3.us-west-004.backblazeb2.com/cyris-backup/${key}`));
-    for (const put of net.sent.b2) {
-      const object = bound.BACKUP.objects.get(put.key);
-      expect(put.bytes).toEqual(object.bytes);
-      expect(put.headers["x-amz-content-sha256"]).toBe(object.options.sha256);
-      expect(put.headers.authorization).toMatch(/^AWS4-HMAC-SHA256 Credential=004keyid\/20261122\/us-west-004\/s3\/aws4_request, /);
-      expect(put.headers["content-type"]).toBe("application/gzip");
-      expect(put.signal).toBeInstanceOf(AbortSignal);
+    for (const [key, object] of bound.BACKUP.objects) {
+      expect(object.options.sha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(object.options.httpMetadata).toEqual({ contentType: "application/gzip" });
+      expect(key).toMatch(/\.jsonl\.gz$/);
     }
     expect(tableRows(await restoredFrom(bound.BACKUP.objects.get(`${DAY}/alpha.jsonl.gz`).bytes))).toEqual(tableRows(alpha));
     expect(tableRows(await restoredFrom(bound.BACKUP.objects.get(`${DAY}/paused.jsonl.gz`).bytes))).toEqual(tableRows(paused));
@@ -163,9 +142,8 @@ describe("the hosted Worker's daily backup", () => {
     ]);
     expect(net.sent.alerts).toEqual([]);
     const [, measure] = logs.find(([line]) => line === "hosted backup");
-    expect(measure).toMatchObject({ date: DAY, exports: 3, r2: 3, b2: 3, failed: [] });
-    // No secret of the B2 copy is in any request's URL or any log line.
-    expect(JSON.stringify([logs, net.sent.b2.map((put) => put.url)])).not.toContain(B2[B2_SETTINGS.applicationKey]);
+    expect(measure).toMatchObject({ date: DAY, exports: 3, r2: 3, failed: [] });
+    expect(measure).not.toHaveProperty("b2");
   });
 
   it("runs only in the tick of its own UTC hour", async () => {
@@ -179,7 +157,6 @@ describe("the hosted Worker's daily backup", () => {
     }
 
     expect(bound.BACKUP.objects.size).toBe(0);
-    expect(net.sent.b2).toEqual([]);
   });
 
   it("starts once the tick has polled every tenant and queued its run, and runs when the tick fails", async () => {
@@ -201,7 +178,7 @@ describe("the hosted Worker's daily backup", () => {
     await worker.scheduled({ scheduledTime: BACKUP_TIME.getTime() });
     await drainAlarms(registry);
 
-    const firstBackup = log.findIndex((line) => line.startsWith("r2 ") || line.startsWith("b2 "));
+    const firstBackup = log.findIndex((line) => line.startsWith("r2 "));
     expect(log.slice(0, firstBackup).sort()).toEqual(["feed alpha.test", "feed bravo.test"]);
     expect(queuedAtFirstPut).toEqual([1, 1]);
     expect(logs.findIndex(([line]) => line === "hosted tick")).toBeLessThan(logs.findIndex(([line]) => line === "hosted backup"));
@@ -233,7 +210,7 @@ describe("the hosted Worker's daily backup", () => {
       };
       return db;
     };
-    start({ BACKUP: r2({ refuse: (key) => key.endsWith("/charlie.jsonl.gz") }), make: () => tenantDb().db }, { b2Status: (key) => (key.endsWith("/alpha.jsonl.gz") ? 403 : 200) });
+    start({ BACKUP: r2({ refuse: (key) => key.endsWith("/charlie.jsonl.gz") }), make: () => tenantDb().db });
     await tenant(bound, "alpha");
     await tenantRegistry(env).register("bravo");
     bound.TENANT_DB.objects.set("bravo", failingExport());
@@ -243,19 +220,14 @@ describe("the hosted Worker's daily backup", () => {
     const done = await backupAll(env, { now: BACKUP_TIME });
 
     expect(net.sent.alerts).toEqual([
-      expect.stringMatching(new RegExp(`^\\[alpha\\] ${WORDING.backup_b2_failed}\n\`\`\`\nbucket=cyris-backup key=${DAY}/alpha.jsonl.gz\nHTTP 403: <Error><Code>AccessDenied`)),
       expect.stringMatching(new RegExp(`^\\[bravo\\] ${WORDING.backup_export_failed}\n\`\`\`\nkey=${DAY}/bravo.jsonl.gz\nDurable Object reset`)),
       expect.stringMatching(new RegExp(`^\\[charlie\\] ${WORDING.backup_r2_failed}\n\`\`\`\nkey=${DAY}/charlie.jsonl.gz\nR2 put failed`)),
     ]);
     expect(done.failed).toEqual([
-      { name: "alpha", copy: "b2" },
       { name: "bravo", copy: "export" },
       { name: "charlie", copy: "r2" },
     ]);
     expect([...bound.BACKUP.objects.keys()]).toEqual(["alpha", "delta", REGISTRY_EXPORT].map((name) => `${DAY}/${name}.jsonl.gz`));
-    expect(net.sent.b2.filter((put) => put.key.startsWith(DAY)).map((put) => put.key)).toEqual(
-      ["alpha", "charlie", "delta", REGISTRY_EXPORT].map((name) => `${DAY}/${name}.jsonl.gz`),
-    );
   });
 
   it("says no tenant was exported when the list cannot be read, which holds when the registry's export fails too", async () => {
@@ -276,61 +248,6 @@ describe("the hosted Worker's daily backup", () => {
       `[${REGISTRY_EXPORT}] Daily backup could not list the tenants: no tenant was exported`,
       `[${REGISTRY_EXPORT}] ${WORDING.backup_export_failed}`,
     ]);
-  });
-
-  it("still writes R2 without B2's settings, and tells the operator once that there is no off-Cloudflare copy", async () => {
-    for (const unset of [[B2_SETTINGS.applicationKey], Object.values(B2_SETTINGS)]) {
-      start();
-      for (const name of unset) delete env[name];
-      await tenant(bound, "alpha");
-      await tenant(bound, "bravo");
-
-      await worker.scheduled({ scheduledTime: BACKUP_TIME.getTime() });
-
-      expect(bound.BACKUP.objects.size).toBe(3);
-      expect(net.sent.b2).toEqual([]);
-      expect(net.sent.alerts).toEqual([
-        `[${WORDING.backup_every_export}] ${WORDING.backup_b2_unset}\n\`\`\`\nnot set: ${unset.join(", ")}\n\`\`\``,
-      ]);
-      for (const key of Object.keys(env)) delete env[key];
-    }
-  });
-
-  it("puts nothing to an endpoint that is not B2's, and says why there is no off-Cloudflare copy", async () => {
-    start();
-    env[B2_SETTINGS.endpoint] = "https://attacker.example";
-    await tenant(bound, "alpha");
-
-    await backupAll(env, { now: BACKUP_TIME });
-
-    expect(net.sent.b2).toEqual([]);
-    expect(net.sent.alerts).toEqual([expect.stringContaining(`${B2_SETTINGS.endpoint} is not https://s3.<region>.backblazeb2.com`)]);
-    expect(bound.BACKUP.objects.size).toBe(2);
-  });
-
-  it("gives up a B2 upload that does not answer in time, and tells the operator", async () => {
-    start();
-    await tenant(bound, "alpha");
-    const timeouts = [];
-    vi.spyOn(AbortSignal, "timeout").mockImplementation((ms) => {
-      timeouts.push(ms);
-      return AbortSignal.abort(new DOMException("The operation timed out.", "TimeoutError"));
-    });
-    const answer = net.fetch;
-    vi.stubGlobal("fetch", async (input, init = {}) => {
-      if (init.signal?.aborted) throw init.signal.reason;
-      return answer(input, init);
-    });
-
-    const done = await backupAll(env, { now: BACKUP_TIME });
-
-    expect(timeouts).toEqual([B2_PUT_TIMEOUT_MS, B2_PUT_TIMEOUT_MS]);
-    expect(done.failed).toEqual([
-      { name: "alpha", copy: "b2" },
-      { name: REGISTRY_EXPORT, copy: "b2" },
-    ]);
-    expect(net.sent.alerts[0]).toMatch(new RegExp(`^\\[alpha\\] ${WORDING.backup_b2_failed}\n[^]*The operation timed out`));
-    expect(bound.BACKUP.objects.size).toBe(2);
   });
 });
 
@@ -414,7 +331,6 @@ describe("the operator's restore of one export", () => {
     vi.spyOn(console, "log").mockImplementation(() => {});
     bound = bindings();
     delete bound[OPERATOR_WEBHOOK];
-    for (const name of Object.values(B2_SETTINGS)) delete bound[name];
     Object.assign(env, bound);
   });
   afterEach(() => {

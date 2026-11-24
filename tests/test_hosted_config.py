@@ -145,30 +145,21 @@ def test_the_backup_runs_from_the_hourly_tick_and_never_a_second_cron() -> None:
     assert "dailyBackup(env, { now: at })" in _js("hosted.js")
 
 
-def test_the_b2_settings_are_set_by_the_runbook_and_never_handed_to_a_container() -> None:
-    [block] = re.findall(r"export const B2_SETTINGS = \{(.*?)\};", _js("hosted_backup.js"), re.S)
-    names = re.findall(r'"(CYRIS_HOSTED_B2_\w+)"', block)
-    [handed] = re.findall(r"const HOSTED_SECRETS = \[(.*?)\];", _js("hosted_container.js"), re.S)
-    script = (ROOT / "scripts/hosted.sh").read_text(encoding="utf-8")
+def test_the_backup_has_no_b2_copy_left_in_the_worker_or_the_runbook_script() -> None:
+    """ADR-0045: the daily backup is R2 only, so no code, secret or alert names B2."""
+    sources = {
+        name: (ROOT / name).read_text(encoding="utf-8")
+        for name in (
+            "scripts/hosted.sh",
+            "wrangler.hosted.toml",
+            "workers/app/src/hosted_backup.js",
+            "workers/app/src/hosted_alerts.json",
+        )
+    }
 
-    assert len(names) == 4
-    for name in names:
-        assert name not in handed
-        assert f"put_secret {name} " in script
-
-
-def test_the_b2_key_the_runbook_asks_for_only_writes_as_the_worker_only_puts() -> None:
-    """The registry's export holds the vote key and live session hashes (ADR-0041), so the B2
-    key in the Worker's secrets is writeFiles only: enough while the Worker's one B2 request is
-    a single-part PUT, with no listing, read or multipart upload."""
-    sigv4 = _js("s3_sigv4.js")
-    runbook = (ROOT / "docs/hosted-tenants.md").read_text(encoding="utf-8")
-    [step] = re.findall(r"^3\. Add an application key.*?(?=^### )", runbook, re.M | re.S)
-
-    assert set(re.findall(r'method: "(\w+)"', sigv4)) == {"PUT"}
-    assert "uploads" not in sigv4 + _js("hosted_backup.js")
-    assert "`writeFiles`" in step
-    assert "Read and Write" not in step
+    for name, text in sources.items():
+        assert not re.search(r"\bB2\b|backblaze|b2_", text, re.I), name
+    assert not (ROOT / "workers/app/src/s3_sigv4.js").exists()
 
 
 def test_the_hosted_file_runs_the_same_image_on_the_same_runtime() -> None:
