@@ -93,6 +93,10 @@ prototype opened every settings form, sources, tracked topics and votes with `se
   equivalent.
 * Neutral, because the local server still has no sign-in. Its Host and Origin check stops other
   pages in the reader's browser, and it answers only on loopback. Phone access is a separate decision.
+  Amended by [ADR-0044](0044-a-local-install-takes-votes.md): the local server now takes the
+  digest and raw pages' votes itself, on the cloud edition's `/api/vote` contract, and that same
+  check is the only gate on them; anything on the machine that sends no `Origin` may vote, as it
+  may already change the settings.
 
 ### Confirmation
 
