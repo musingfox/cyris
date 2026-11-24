@@ -1960,6 +1960,7 @@ on main after the change lands, citing the hash it landed as.
 | 2026-11-22 | `715e6129` | Two cards land on `cyris-hosted` (§4, §5, §6): a signed-in reader edits the tenant's allowlisted settings, publish hours and RSS feeds on a page the hosted Worker renders at `/t/<tenant>/settings`, under caps in `hosted_settings_policy.json`, with the run pinning the model and blanking the notify targets and every poll checking each redirect hop and capping the body (ADR-0040); and every tenant's database and the registry are exported daily to R2 and to Backblaze B2, with an operator restore into a new tenant id (ADR-0041). |
 | 2026-11-24 | `e66ae99f` | A hosted tenant makes one digest a day by default (§3, §4, §5, §6): the registry keeps each tenant's maximum digest-time count, a single issue is stored as `morning`, new tenants' hours are spread by tenant id away from the backup hours, and four runs share the container at once; self-host keeps two digest times (ADR-0042). |
 | 2026-11-24 | `6cb09a80` | The hosted Worker serves a privacy policy and terms at `/privacy` and `/terms` without a sign-in (§6), zh-Hant authoritative with English, linked from the sign-in pages and mail; the promises the operator keeps by hand are data in `workers/app/src/hosted_legal.json` (§5). |
+| 2026-11-24 | `17e93530` | The hosted daily backup is R2 only (§4, §5): the B2 copy, its alert and its four secrets are gone, and where a second copy goes is left to a later decision (ADR 0045, superseding part of ADR-0041). |
 
 ## 8. Where the core never changes
 
