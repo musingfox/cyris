@@ -35,6 +35,10 @@ const HOSTED_SECRETS = [
   "CLOUDFLARE_AIG_TOKEN",
 ];
 
+// The names of HOSTED_SECRETS the operator set, which every run container is handed; the shared
+// settings page names a provider's key ready only when its are among them.
+export const handedSecrets = (env) => HOSTED_SECRETS.filter((name) => env[name] != null && env[name] !== "");
+
 // The hosted Worker's hostname, which a tenant's links point at (ADR-0029). The operator sets it
 // once (`scripts/hosted.sh secrets`), and every container gets it under the same name.
 export const HOSTED_DOMAIN = "CYRIS_STORE_HOSTED_DOMAIN";
@@ -63,9 +67,7 @@ const sameRun = (a, b) => Boolean(a && b && a.id === b.id && a.attempt === b.att
 // domain a run would have no link to give, so it is not started.
 export function hostedContainerEnv(env, tenant) {
   if (!env[HOSTED_DOMAIN]) throw new Error(`${HOSTED_DOMAIN} is not set; run: scripts/hosted.sh secrets`);
-  const secrets = Object.fromEntries(
-    HOSTED_SECRETS.filter((name) => env[name] != null && env[name] !== "").map((name) => [name, env[name]]),
-  );
+  const secrets = Object.fromEntries(handedSecrets(env).map((name) => [name, env[name]]));
   return {
     ...secrets,
     CYRIS_ROLE: "run",

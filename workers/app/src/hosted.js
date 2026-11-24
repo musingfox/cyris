@@ -18,7 +18,7 @@ import SCHEMA_SQL from "../../../src/cyris/adapters/store/schema.sql";
 import FEED_CATALOG from "../../../src/cyris/onboarding_feeds.json";
 import STARTING_VALUES from "../../../src/cyris/settings_starting_values.json";
 import { accessKeys } from "./access_keys.js";
-import { HOSTED_DOMAIN } from "./hosted_container.js";
+import { HOSTED_DOMAIN, handedSecrets } from "./hosted_container.js";
 import { backupAll, backupHours, dailyBackup, restoreExport } from "./hosted_backup.js";
 import { createSignIn } from "./hosted_login.js";
 import SEED from "./hosted_seed.json";
@@ -102,6 +102,13 @@ const sitePage = createSitePage(env);
 const hosted = {
   async fetch(request, _env, ctx) {
     const registry = () => tenantRegistry(env);
+    // The schedule a reader saves goes through the registry, as the operator's does, never as a
+    // settings row of the tenant's; it names no run cap, so the operator's is kept.
+    const readerSchedule = (tenant) => async (schedule) => {
+      const answer = await registry().setSchedule(tenant, schedule);
+      if (!answer.refused) await copySchedule(tenant);
+      return answer;
+    };
     // The sign-in mail goes through the Email Service binding, from the operator's sender, with
     // links on the hosted domain: never the request's own Host.
     const signIn = createSignIn({
@@ -158,22 +165,23 @@ const hosted = {
       revokeAddress: (tenant) => tenantRegistry(env).revokeInboundAddress(tenant),
       addNewsletterSource: (tenant, params) => addNewsletterSource({ db: tenantDb(env, tenant), params }),
       page: sitePage,
-      // The schedule a reader saves goes through the registry, as the operator's does, never as a
-      // settings row of the tenant's; it names no run cap, so the operator's is kept.
       settings: (request, tenant, rest) =>
         handleTenantSettings(request, {
           rest,
           db: tenantDb(env, tenant),
           registryRow: () => registry().tenant(tenant),
-          setSchedule: async (schedule) => {
-            const answer = await registry().setSchedule(tenant, schedule);
-            if (!answer.refused) await copySchedule(tenant);
-            return answer;
-          },
+          setSchedule: readerSchedule(tenant),
           ownHosts: [env[HOSTED_DOMAIN]].filter(Boolean),
         }),
+      // A provider's key is ready on the shared page when the operator set what its run is handed.
       sharedSettings: (request, tenant, path) =>
-        handleSharedSettings(request, { path, db: tenantDb(env, tenant), registryRow: () => registry().tenant(tenant) }),
+        handleSharedSettings(request, {
+          path,
+          db: tenantDb(env, tenant),
+          registryRow: () => registry().tenant(tenant),
+          setSchedule: readerSchedule(tenant),
+          secrets: new Set(handedSecrets(env)),
+        }),
       invite: (tenant, email) => registry().invite(tenant, email),
       revoke: (tenant, email) => registry().revoke(tenant, email),
       members: (tenant) => registry().members(tenant),

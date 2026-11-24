@@ -1,10 +1,11 @@
 {
-  "_comment": "One settings page for every edition; an edition locks keys (docs/decisions/0043-one-settings-page-an-edition-locks-a-key.md). Run by workers/app/test/hosted_shared_settings.test.js against the hosted Worker and by tests/test_shared_settings_cases.py against TriageServer. `answer_keys` and the entry keys are GET /api/settings' shape on both. `editions` is what each answers for `locked`: TriageServer as `cyris triage-ui` starts it, and the hosted Worker as its policy file computes them. `writes` go to POST /api/settings/values on the hosted Worker, and on a TriageServer given the hosted edition's locks, and each gets the same status and answer from both; a refused one writes nothing. `pins` are the values a hosted run takes from a tenant's rows, held by vitest to the Worker's `hostedValues` and by pytest to `pin_tenant_settings`.",
+  "_comment": "One settings page for every edition; an edition locks keys (docs/decisions/0043-one-settings-page-an-edition-locks-a-key.md). Run by workers/app/test/hosted_shared_settings.test.js against the hosted Worker and by tests/test_shared_settings_cases.py against TriageServer. `answer_keys` and the entry keys are GET /api/settings' shape on both. `editions` is what each answers for `locked` and `limits`: TriageServer as `cyris triage-ui` starts it, which answers its own limits whatever it locks, and the hosted Worker as its policy file computes them, for a tenant the registry allows one digest time. `writes` go to POST /api/settings/values and `schedules` to POST /api/settings/schedule, on the hosted Worker and on a TriageServer given the hosted edition's locks; `max_digest_times` is the tenant's maximum in the registry, which TriageServer has no part in. Each case's `status` and `answer` are both servers' answer, or `self_hosted` is TriageServer's where the editions' own limits differ; `refuses` in place of `answer` names the field a 400 is about, worded by each server's own rule. A refused write writes nothing; a saved one `reads_back` from GET /api/settings. `route_locks` are a route that saves several keys, on a server locking `locked` and holding `stored`: it refuses only a change to a locked key, run on TriageServer for each route and on the hosted Worker for the routes it answers. `pins` are the values a hosted run takes from a tenant's rows, held by vitest to the Worker's `hostedValues` and by pytest to `pin_tenant_settings`.",
   "answer_keys": [
     "clef_ready",
     "embedding_providers",
     "fields",
     "languages",
+    "limits",
     "locked",
     "missing",
     "providers",
@@ -17,7 +18,8 @@
   "field_keys": ["controls", "label", "route", "tab"],
   "editions": {
     "self_hosted": {
-      "locked": {}
+      "locked": {},
+      "limits": {"digest_times_max": 2, "max_articles_per_digest_max": null}
     },
     "hosted": {
       "locked": {
@@ -27,18 +29,9 @@
         "vote_similarity.model": {"reason": "operator-set"},
         "vote_similarity.enabled": {"reason": "operator-set"},
         "vote_similarity.max_seeds": {"reason": "operator-set"},
-        "general.digest_schedule": {"reason": "operator-set"},
-        "general.timezone": {"reason": "operator-set"},
-        "digest.style_prompt": {"reason": "operator-set"},
-        "digest.type_scale": {"reason": "operator-set"},
-        "digest.rank_by_preference": {"reason": "operator-set"},
         "digest.preference_source": {"reason": "operator-set"},
-        "digest.summarize_follow": {"reason": "operator-set"},
         "digest.vote_half_life_days": {"reason": "operator-set"},
         "digest.topic_lifetime_days": {"reason": "operator-set"},
-        "general.digest_window_hours": {"reason": "operator-set"},
-        "digest.max_articles_per_digest": {"reason": "operator-set"},
-        "routing.score_threshold": {"reason": "operator-set"},
         "digest.scoring_snippet_length": {"reason": "operator-set"},
         "digest.summarize_snippet_length": {"reason": "operator-set"},
         "digest.filter_snippet_length": {"reason": "operator-set"},
@@ -46,22 +39,151 @@
         "notify.discord_webhook_url": {"reason": "operator-set"},
         "notify.email_to": {"reason": "operator-set"},
         "notify.email_from": {"reason": "operator-set"}
-      }
+      },
+      "limits": {"digest_times_max": 1, "max_articles_per_digest_max": 400}
     }
   },
   "writes": [
     {
-      "name": "an open key is saved",
+      "name": "the output language is saved",
       "body": {"values": {"digest.output_language": "zh-Hant"}},
       "status": 200,
       "answer": {"ok": true, "values": {"digest.output_language": "zh-Hant"}, "note": "Effective next run.", "ui_lang": "zh-Hant"},
       "reads_back": {"digest.output_language": "zh-Hant"}
     },
     {
-      "name": "a key the stub locks is refused",
+      "name": "the style is saved",
       "body": {"values": {"digest.style_prompt": "Short."}},
+      "status": 200,
+      "answer": {"ok": true, "values": {"digest.style_prompt": "Short."}, "note": "Effective next run.", "ui_lang": "en"},
+      "reads_back": {"digest.style_prompt": "Short."}
+    },
+    {
+      "name": "the type size is saved, and reaches the pages within a minute",
+      "body": {"values": {"digest.type_scale": 1.125}},
+      "status": 200,
+      "answer": {"ok": true, "values": {"digest.type_scale": 1.125}, "note": "Pages show it within a minute.", "ui_lang": "en"},
+      "reads_back": {"digest.type_scale": 1.125}
+    },
+    {
+      "name": "an article cap of 400 is saved",
+      "body": {"values": {"digest.max_articles_per_digest": 400}},
+      "status": 200,
+      "answer": {"ok": true, "values": {"digest.max_articles_per_digest": 400}, "note": "Effective next run.", "ui_lang": "en"},
+      "reads_back": {"digest.max_articles_per_digest": 400}
+    },
+    {
+      "name": "the window is saved",
+      "body": {"values": {"general.digest_window_hours": 24}},
+      "status": 200,
+      "answer": {"ok": true, "values": {"general.digest_window_hours": 24}, "note": "Effective next run.", "ui_lang": "en"},
+      "reads_back": {"general.digest_window_hours": 24}
+    },
+    {
+      "name": "ranking by preference is saved",
+      "body": {"values": {"digest.rank_by_preference": true}},
+      "status": 200,
+      "answer": {"ok": true, "values": {"digest.rank_by_preference": true}, "note": "Effective next run.", "ui_lang": "en"},
+      "reads_back": {"digest.rank_by_preference": true}
+    },
+    {
+      "name": "summarizing follow articles is saved",
+      "body": {"values": {"digest.summarize_follow": false}},
+      "status": 200,
+      "answer": {"ok": true, "values": {"digest.summarize_follow": false}, "note": "Effective next run.", "ui_lang": "en"},
+      "reads_back": {"digest.summarize_follow": false}
+    },
+    {
+      "name": "the top story score is saved",
+      "body": {"values": {"routing.score_threshold": 50}},
+      "status": 200,
+      "answer": {"ok": true, "values": {"routing.score_threshold": 50}, "note": "Effective next run.", "ui_lang": "en"},
+      "reads_back": {"routing.score_threshold": 50}
+    },
+    {
+      "name": "the time zone is saved",
+      "body": {"values": {"general.timezone": "Europe/Paris"}},
+      "status": 200,
+      "answer": {"ok": true, "values": {"general.timezone": "Europe/Paris"}, "note": "Effective next run.", "ui_lang": "en"},
+      "reads_back": {"general.timezone": "Europe/Paris"}
+    },
+    {
+      "name": "the time zone and a key are saved together",
+      "body": {"values": {"digest.style_prompt": "Short.", "general.timezone": "Europe/Paris"}},
+      "status": 200,
+      "answer": {"ok": true, "values": {"digest.style_prompt": "Short.", "general.timezone": "Europe/Paris"}, "note": "Effective next run.", "ui_lang": "en"},
+      "reads_back": {"digest.style_prompt": "Short.", "general.timezone": "Europe/Paris"}
+    },
+    {
+      "name": "a blank output language is refused",
+      "body": {"values": {"digest.output_language": "  "}},
       "status": 400,
-      "answer": {"ok": false, "field": "digest.style_prompt", "error": "Style is locked here. Set by the service's operator."}
+      "refuses": "digest.output_language"
+    },
+    {
+      "name": "a style that is not text is refused",
+      "body": {"values": {"digest.style_prompt": 5}},
+      "status": 400,
+      "refuses": "digest.style_prompt"
+    },
+    {
+      "name": "a type size off its steps is refused",
+      "body": {"values": {"digest.type_scale": 2}},
+      "status": 400,
+      "refuses": "digest.type_scale"
+    },
+    {
+      "name": "an article cap of none is refused",
+      "body": {"values": {"digest.max_articles_per_digest": 0}},
+      "status": 400,
+      "refuses": "digest.max_articles_per_digest"
+    },
+    {
+      "name": "an article cap past the hosted policy's 400 is refused there, and saved on a self-hosted server",
+      "body": {"values": {"digest.max_articles_per_digest": 401}},
+      "status": 400,
+      "refuses": "digest.max_articles_per_digest",
+      "self_hosted": {
+        "status": 200,
+        "answer": {"ok": true, "values": {"digest.max_articles_per_digest": 401}, "note": "Effective next run.", "ui_lang": "en"},
+        "reads_back": {"digest.max_articles_per_digest": 401}
+      }
+    },
+    {
+      "name": "a window past a week is refused",
+      "body": {"values": {"general.digest_window_hours": 169}},
+      "status": 400,
+      "refuses": "general.digest_window_hours"
+    },
+    {
+      "name": "ranking by preference that is neither on nor off is refused",
+      "body": {"values": {"digest.rank_by_preference": "maybe"}},
+      "status": 400,
+      "refuses": "digest.rank_by_preference"
+    },
+    {
+      "name": "summarizing follow articles that is neither on nor off is refused",
+      "body": {"values": {"digest.summarize_follow": "maybe"}},
+      "status": 400,
+      "refuses": "digest.summarize_follow"
+    },
+    {
+      "name": "a top story score past 100 is refused",
+      "body": {"values": {"routing.score_threshold": 101}},
+      "status": 400,
+      "refuses": "routing.score_threshold"
+    },
+    {
+      "name": "a time zone no one keeps is refused",
+      "body": {"values": {"general.timezone": "Mars/Olympus"}},
+      "status": 400,
+      "refuses": "general.timezone"
+    },
+    {
+      "name": "a key the operator sets is refused as locked",
+      "body": {"values": {"digest.vote_half_life_days": 7}},
+      "status": 400,
+      "answer": {"ok": false, "field": "digest.vote_half_life_days", "error": "Vote half-life (days) is locked here. Set by the service's operator."}
     },
     {
       "name": "a key the operator sets is refused as locked before its own form is named",
@@ -71,9 +193,21 @@
     },
     {
       "name": "one locked key refuses the whole save, the open key with it",
-      "body": {"values": {"digest.output_language": "zh-Hant", "routing.score_threshold": 50}},
+      "body": {"values": {"digest.output_language": "zh-Hant", "digest.preference_source": "votes"}},
       "status": 400,
-      "answer": {"ok": false, "field": "routing.score_threshold", "error": "Top story score is locked here. Set by the service's operator."}
+      "answer": {"ok": false, "field": "digest.preference_source", "error": "Order judged by is locked here. Set by the service's operator."}
+    },
+    {
+      "name": "one bad value refuses the whole save, the good key with it",
+      "body": {"values": {"digest.style_prompt": "Short.", "general.timezone": "Europe/Paris", "routing.score_threshold": 101}},
+      "status": 400,
+      "refuses": "routing.score_threshold"
+    },
+    {
+      "name": "the schedule is refused here, as saved from its own form",
+      "body": {"values": {"general.digest_schedule": ["07:00"]}},
+      "status": 400,
+      "answer": {"ok": false, "field": "general.digest_schedule", "error": "Publish hours is saved from its own form"}
     },
     {
       "name": "a key that is no setting is refused",
@@ -86,6 +220,139 @@
       "body": {"values": {}},
       "status": 400,
       "answer": {"ok": false, "error": "values must name at least one setting"}
+    }
+  ],
+  "schedules": [
+    {
+      "name": "one hour is saved for a tenant allowed one, and refused on a self-hosted server, which publishes two",
+      "max_digest_times": 1,
+      "body": {"times": ["06:00"]},
+      "status": 200,
+      "answer": {"ok": true, "times": ["06:00"], "note": "Effective next tick."},
+      "reads_back": {"general.digest_schedule": ["06:00"]},
+      "self_hosted": {"status": 400, "refuses": "general.digest_schedule"}
+    },
+    {
+      "name": "two hours are refused from a tenant allowed one, and saved on a self-hosted server",
+      "max_digest_times": 1,
+      "body": {"times": ["06:00", "18:00"]},
+      "status": 400,
+      "answer": {"ok": false, "field": "general.digest_schedule", "error": "Your digest is published once a day: choose one publish hour."},
+      "self_hosted": {
+        "status": 200,
+        "answer": {"ok": true, "times": ["06:00", "18:00"], "note": "Effective next tick."},
+        "reads_back": {"general.digest_schedule": ["06:00", "18:00"]}
+      }
+    },
+    {
+      "name": "two hours are saved, earliest first, for a tenant allowed two",
+      "max_digest_times": 2,
+      "body": {"times": ["18:00", "06:00"]},
+      "status": 200,
+      "answer": {"ok": true, "times": ["06:00", "18:00"], "note": "Effective next tick."},
+      "reads_back": {"general.digest_schedule": ["06:00", "18:00"]}
+    },
+    {
+      "name": "a half hour is refused",
+      "max_digest_times": 2,
+      "body": {"times": ["06:30", "18:00"]},
+      "status": 400,
+      "refuses": "general.digest_schedule"
+    },
+    {
+      "name": "three hours are refused",
+      "max_digest_times": 2,
+      "body": {"times": ["06:00", "12:00", "18:00"]},
+      "status": 400,
+      "refuses": "general.digest_schedule"
+    }
+  ],
+  "route_locks": [
+    {
+      "name": "the locked hours sent as they are held are saved",
+      "path": "/api/settings/schedule",
+      "locked": {"general.digest_schedule": "operator-set"},
+      "stored": {"general.digest_schedule": ["07:00", "19:00"]},
+      "body": {"times": ["07:00", "19:00"]},
+      "status": 200,
+      "answer": {"ok": true, "times": ["07:00", "19:00"], "note": "Effective next tick."}
+    },
+    {
+      "name": "the locked hours changed are refused",
+      "path": "/api/settings/schedule",
+      "locked": {"general.digest_schedule": "operator-set"},
+      "stored": {"general.digest_schedule": ["07:00", "19:00"]},
+      "body": {"times": ["08:00", "19:00"]},
+      "status": 400,
+      "answer": {"ok": false, "field": "general.digest_schedule", "error": "Publish hours is locked here. Set by the service's operator."}
+    },
+    {
+      "name": "the locked provider sent as it is held leaves the model writable",
+      "path": "/api/settings",
+      "locked": {"llm_provider.provider": "operator-set"},
+      "stored": {"llm_provider.provider": "none", "llm_provider.model": ""},
+      "body": {"provider": "none", "model": ""},
+      "status": 200,
+      "answer": {"ok": true, "provider": "none", "model": "", "detail": "No model is called.", "note": "Saved. The next digest run picks this up."}
+    },
+    {
+      "name": "the locked provider changed is refused",
+      "path": "/api/settings",
+      "locked": {"llm_provider.provider": "operator-set"},
+      "stored": {"llm_provider.provider": "none", "llm_provider.model": ""},
+      "body": {"provider": "gemini", "model": ""},
+      "status": 400,
+      "answer": {"ok": false, "field": "llm_provider.provider", "error": "Provider is locked here. Set by the service's operator."}
+    },
+    {
+      "name": "the locked embedder sent as it is held leaves vote similarity's other keys writable",
+      "path": "/api/settings/vote-similarity",
+      "locked": {"vote_similarity.provider": "plan-limit"},
+      "stored": {"vote_similarity.provider": "workers_ai", "vote_similarity.model": "", "vote_similarity.enabled": false, "vote_similarity.max_seeds": 100},
+      "body": {"enabled": false, "provider": "workers_ai", "model": "", "max_seeds": 200},
+      "status": 200,
+      "answer": {
+        "ok": true,
+        "values": {"vote_similarity.enabled": false, "vote_similarity.provider": "workers_ai", "vote_similarity.model": "", "vote_similarity.max_seeds": 200},
+        "detail": "Not checked: vote similarity is off. Turning it on checks the embedder first.",
+        "note": "Saved. The next digest run picks this up."
+      }
+    },
+    {
+      "name": "the locked embedder changed is refused",
+      "path": "/api/settings/vote-similarity",
+      "locked": {"vote_similarity.provider": "plan-limit"},
+      "stored": {"vote_similarity.provider": "workers_ai", "vote_similarity.model": "", "vote_similarity.enabled": false, "vote_similarity.max_seeds": 100},
+      "body": {"enabled": false, "provider": "gemini", "model": "", "max_seeds": 100},
+      "status": 400,
+      "answer": {"ok": false, "field": "vote_similarity.provider", "error": "Embedding provider is locked here. Not included in your plan."}
+    },
+    {
+      "name": "the locked webhook turned off as it is held is saved",
+      "path": "/api/settings/notify",
+      "locked": {"notify.discord_webhook_url": "operator-set"},
+      "stored": {"notify.discord_webhook_url": ""},
+      "body": {"off": true},
+      "status": 200,
+      "answer": {"ok": true, "discord_webhook_url": "", "note": "Turned off."}
+    },
+    {
+      "name": "the locked sender sent as it is held leaves the recipient writable",
+      "path": "/api/settings/email",
+      "locked": {"notify.email_from": "operator-set"},
+      "stored": {"notify.email_to": "reader@example.org", "notify.email_from": "digest@example.org"},
+      "body": {"email_to": "", "email_from": "digest@example.org"},
+      "status": 200,
+      "answer": {"ok": true, "notify.email_to": "", "notify.email_from": "digest@example.org", "note": "Mail is off."}
+    },
+    {
+      "name": "the locked sender changed is refused",
+      "path": "/api/settings/email",
+      "locked": {"notify.email_from": "operator-set"},
+      "stored": {"notify.email_to": "reader@example.org", "notify.email_from": "digest@example.org"},
+      "body": {"email_to": "", "email_from": "other@example.org"},
+      "status": 400,
+      "answer": {"ok": false, "field": "notify.email_from", "error": "Email from is locked here. Set by the service's operator."}
     }
   ],
   "pins": [

@@ -92,6 +92,10 @@ async def test_the_contract_parts_only_python_answers_are_triageservers(built) -
 
     assert built["sent_as_shown"] == answer["sent_as_shown"]
     assert built["languages"] == answer["languages"]
+    # Each provider's key is named by the first variable the build lists for it.
+    for part in ("providers", "embedding_providers"):
+        named = {p["name"]: p["env_var"] for p in answer[part] if p["name"] != "none"}
+        assert {name: env[0] for name, env in built["key_env"][part].items()} == named
 
 
 def test_no_file_outside_static_is_built() -> None:

@@ -17,7 +17,8 @@ What the file holds, so the Worker serves the page exactly as the local edition 
   ETag; and each catalog's browser messages, `/static/i18n/<tag>.json`, as `TriageServer` serves
   them.
 * `sent_as_shown` and `languages`: the two parts of `GET /api/settings` that only the Python side
-  can answer, as `TriageServer` answers them.
+  can answer, as `TriageServer` answers them; and `key_env`, the variables each provider's key is
+  read from, which the Worker checks against the keys its operator set to answer `configured`.
 
 Usage: `uv run python scripts/build_shared_settings.py [--out PATH]`.
 """
@@ -33,6 +34,7 @@ from pathlib import Path, PurePosixPath
 from cyris.entrypoints.triage_server import (
     BROWSER_MESSAGES,
     STATIC_DIR,
+    key_env,
     render_settings_page,
     sent_as_shown,
 )
@@ -118,6 +120,7 @@ def build() -> dict:
         "files": dict(sorted(files.items())),
         "sent_as_shown": sent_as_shown(),
         "languages": [{"tag": tag, "name": name} for tag, name in _language_names().items()],
+        "key_env": key_env(),
     }
 
 

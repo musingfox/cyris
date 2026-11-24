@@ -72,13 +72,10 @@ def test_every_writable_key_is_a_settings_key_and_none_is_the_operators() -> Non
     assert not any(key.startswith("notify.") for key in writable)
 
 
-def test_the_shared_page_opens_only_keys_a_tenant_writes_and_locks_for_the_two_reasons() -> None:
-    """The stub the shared settings page is locked by (ADR-0043): what it opens, a tenant
-    already writes, and each reason is one the page words."""
-    page = POLICY["shared_page"]
-
-    assert set(page["open"]) <= set(POLICY["writable_settings"])
-    assert {page["operator_reason"], page["stub_reason"]} <= set(get_args(LockReason))
+def test_the_shared_page_locks_for_one_of_the_two_reasons() -> None:
+    """The shared settings page locks every key a tenant does not write (ADR-0043), for a reason
+    the page words."""
+    assert POLICY["shared_page"]["operator_reason"] in get_args(LockReason)
 
 
 @pytest.mark.parametrize("case", CASES["sources"]["written"], ids=lambda c: c["row"]["name"])

@@ -97,5 +97,35 @@
    "tag": "es",
    "name": "español (Spanish)"
   }
- ]
+ ],
+ "key_env": {
+  "providers": {
+   "anthropic": [
+    "ANTHROPIC_API_KEY"
+   ],
+   "gemini": [
+    "GEMINI_API_KEY"
+   ],
+   "openai": [
+    "OPENAI_API_KEY"
+   ],
+   "workers_ai": [
+    "CLOUDFLARE_AI_TOKEN",
+    "CLOUDFLARE_ACCOUNT_ID"
+   ],
+   "ai_gateway": [
+    "CLOUDFLARE_AIG_TOKEN",
+    "CLOUDFLARE_ACCOUNT_ID"
+   ]
+  },
+  "embedding_providers": {
+   "workers_ai": [
+    "CLOUDFLARE_EMBEDDING_API_TOKEN",
+    "CLOUDFLARE_ACCOUNT_ID"
+   ],
+   "gemini": [
+    "GEMINI_API_KEY"
+   ]
+  }
+ }
 }
