@@ -6,6 +6,11 @@ decision-makers: ""
 
 # One settings page for every edition; an edition locks a key
 
+> Amended by [ADR-0047](0047-a-route-refuses-a-change-to-a-locked-key.md) (2026-11-24). A write
+> route refuses a write that changes a locked key, not one that names it; `GET /api/settings`
+> answers `limits`; and the shared page opens the keys a tenant writes and the schedule, so the
+> policy's `shared_page` stub is gone. The rest of this ADR still stands.
+
 ## Context and Problem Statement
 
 Cyris had two settings pages. A local or cloud deployment's is TriageServer's `/settings`
