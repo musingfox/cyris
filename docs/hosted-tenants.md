@@ -54,7 +54,10 @@ Every command runs, as pasted, from the root of a checkout of this repository. `
 - `CF-Access-Client-Id` and `CF-Access-Client-Secret`: a service token the step-2 application
   allows. The seed, run and check steps sign in with it.
 - `CYRIS_HOSTED_MAIL_FROM`: the address the readers' sign-in mail is sent from. It must be on the
-  domain you onboard to Email Sending in step 0.
+  domain you onboard to Email Sending in step 0. Use a subdomain that only sends, so its bounce MX
+  and DMARC stay apart from the readers' domain: readcyris.com sends from
+  `signin@mail.readcyris.com`, and its `privacy@`, `support@` and `security@` addresses
+  (`workers/app/src/hosted_legal.json`) are Email Routing rules on the apex.
 - `CYRIS_HOSTED_B2_ENDPOINT`, `CYRIS_HOSTED_B2_BUCKET`, `CYRIS_HOSTED_B2_KEY_ID` and
   `CYRIS_HOSTED_B2_APPLICATION_KEY`: the daily backup's copy outside Cloudflare, in a Backblaze B2
   bucket (step 11). Leave the endpoint blank to skip all four until you have the bucket.
