@@ -227,9 +227,14 @@ function render() {
   if (values["vote_similarity.max_seeds"] != null) {
     $("vote-seeds").value = values["vote_similarity.max_seeds"];
   }
-  const [m, e] = values["general.digest_schedule"] || [];
-  if (m) $("morning").value = parseInt(m, 10);
-  if (e) $("evening").value = parseInt(e, 10);
+  // An hour the schedule does not hold says "Not set", as a select with no value does.
+  const times = values["general.digest_schedule"] || [];
+  HOURS.forEach((select, i) => {
+    if (times[i]) select.value = String(parseInt(times[i], 10));
+    else select.prepend(new Option(t("settings.not_set"), "", true, true));
+  });
+  const cap = state.limits.max_articles_per_digest_max;
+  if (cap != null) $("max-articles").max = String(cap);
   fillLanguages($("output-language"), state.languages, values["digest.output_language"]);
   fillTimezones($("timezone"), values["general.timezone"]);
   // A select would otherwise show its first option for a missing value. A missing
@@ -257,7 +262,25 @@ function render() {
     });
   }
   updateDependencies();
+  markPlanHours();
   markLocked();
+}
+
+// The hours the reader's plan holds: an hour past `limits.digest_times_max` is disabled, with the
+// plan-limit line as a locked key's, and no save sends it.
+const planHours = () => HOURS.slice(0, state.limits.digest_times_max);
+
+function markPlanHours() {
+  for (const select of HOURS.filter((hour) => !planHours().includes(hour))) {
+    const line = document.createElement("p");
+    line.className = "small";
+    line.id = `${select.id}-locked`;
+    line.dataset.lock = "plan-limit";
+    line.textContent = t("lock_reason.plan-limit");
+    select.before(line);
+    select.disabled = true;
+    describe(select, line.id, true);
+  }
 }
 
 // Each locked key's controls are disabled, with one line in the small role below the help saying
@@ -301,7 +324,10 @@ function updateHint() {
   $("model-input").dataset.placeholder = p && !none
     ? t("settings_option.model_default", {model: p.default_model}) : "";
   applyPlaceholder($("model-input"));
-  $("model-hint").textContent = !p ? t("settings.model_hint_pick")
+  // A locked choice makes no call, so it promises none; its lock line says why.
+  const locked = isLocked("llm_provider.provider") || isLocked("llm_provider.model");
+  $("model-hint").hidden = locked;
+  $("model-hint").textContent = locked ? "" : !p ? t("settings.model_hint_pick")
     : none ? t("settings.model_hint_none")
     : t("settings.model_hint_call");
 }
@@ -461,22 +487,30 @@ $("model-form").addEventListener("submit", async (e) => {
   show(failed ? "err" : "ok", lines.join("\n"), "model-result");
 });
 
+// A refusal of the request itself, before any setting is read: shown as it stands.
+const refusal = (text) => Object.assign(new Error(text), {refusal: true});
 // Access answers a reader it does not admit with a redirect the page cannot follow
 // (opaqueredirect). Reloading /settings then serves the sign-in again.
-const SESSION_EXPIRED = new Error(t("settings.session_expired"));
-// The app Worker answers 403 when Cloudflare Access has not been configured here.
-const ACCESS_NOT_SET_UP = new Error(t("settings.access_not_set_up"));
-const REFUSALS = [SESSION_EXPIRED, ACCESS_NOT_SET_UP];
+const SESSION_EXPIRED = refusal(t("settings.session_expired"));
+// The app Worker answers 403 with no `ok` when Cloudflare Access has not been configured here.
+const ACCESS_NOT_SET_UP = refusal(t("settings.access_not_set_up"));
+// A server answers a write from no page of its own 403 with `reason` `cross_origin`.
+const CROSS_ORIGIN = refusal(t("settings.cross_origin"));
 
-function refusalOf(res) {
+// A 403 says why in its body: a write from another page, in this page's words; any other the
+// server's own refusal, as it words it; Access's names no `ok`, and means it is not set up here.
+async function refusalOf(res) {
   if (res.type === "opaqueredirect") return SESSION_EXPIRED;
-  if (res.status === 403) return ACCESS_NOT_SET_UP;
-  return null;
+  if (res.status !== 403) return null;
+  const data = await res.clone().json().catch(() => ({}));
+  if (data.reason === "cross_origin") return CROSS_ORIGIN;
+  if (data.ok === false && typeof data.error === "string" && data.error) return refusal(data.error);
+  return ACCESS_NOT_SET_UP;
 }
 
 async function parseAnswer(res) {
-  const refusal = refusalOf(res);
-  if (refusal) throw refusal;
+  const refused = await refusalOf(res);
+  if (refused) throw refused;
   return res.json();
 }
 
@@ -498,8 +532,8 @@ async function post(url, body, method = "POST") {
   } catch (err) {
     throw new Error(t("settings.unreachable", {error: err.message}));
   }
-  const refusal = refusalOf(res);
-  if (refusal) throw refusal;
+  const refused = await refusalOf(res);
+  if (refused) throw refused;
   const data = await res.json().catch(() => ({}));
   if (data.ok) return data;
   const err = new Error(data.error || t("settings.answered_without_reason", {status: String(res.status)}));
@@ -559,9 +593,9 @@ async function savePlain(form, stored) {
 const HOURS = [$("morning"), $("evening")];
 
 // An empty hour is refused here: padded, it would reach the server as 00:00.
-// Returns the reason shown beside the hours, or null when both are filled.
+// Returns the reason shown beside the hours, or null when each the plan holds is filled.
 function emptyHours() {
-  const empty = HOURS.filter((input) => input.value === "");
+  const empty = planHours().filter((input) => input.value === "");
   if (!empty.length) return null;
   const names = listJoin(empty.map((input) => input.labels[0].textContent));
   const reason = t("settings.hours_need", {names, count: empty.length});
@@ -588,11 +622,14 @@ $("digest-form").addEventListener("submit", async (e) => {
     failed = true;
     lines.push(t("settings.hours_not_saved", {error: empty}));
   } else if (hoursChanged) {
-    const times = [morning, evening].map((h) => `${String(h).padStart(2, "0")}:00`);
+    const times = planHours().map((hour) => `${hour.value.padStart(2, "0")}:00`);
     try {
       const data = await post("/api/settings/schedule", {times});
       const [savedMorning, savedEvening] = data.times;
-      lines.push(t("settings.hours_saved", {morning: savedMorning, evening: savedEvening, note: data.note}));
+      lines.push(savedEvening === undefined
+        ? t("settings.hour_saved", {morning: savedMorning, note: data.note})
+        : t("settings.hours_saved", {morning: savedMorning, evening: savedEvening, note: data.note}));
+      planHours().forEach((hour) => hour.querySelector('option[value=""]')?.remove());
       Object.assign(stored, {morning, evening});
       markSet(keysSavedBy("schedule"));
     } catch (err) {
@@ -975,7 +1012,7 @@ const loadSources = () =>
     .catch((e) => {
       $("src-body").querySelector("[data-loading]")?.remove();
       $("add-source").disabled = true;
-      show("err", REFUSALS.includes(e) ? e.message
+      show("err", e.refusal ? e.message
         : t("settings.load_sources_failed", {error: String(e)}), "sources-notice");
     });
 
@@ -1157,7 +1194,7 @@ const loadTopics = () =>
     .catch((e) => {
       $("topic-body").querySelector("[data-loading]")?.remove();
       $("add-topic").disabled = true;
-      show("err", REFUSALS.includes(e) ? e.message
+      show("err", e.refusal ? e.message
         : t("settings.load_topics_failed", {error: String(e)}), "topics-notice");
     });
 
@@ -1168,7 +1205,7 @@ fetch("/api/settings", {redirect: "manual"})
   .then((d) => { state = d; render(); })
   .catch((e) => {
     // Every Save stays disabled: tracking only starts once the values are known.
-    const text = REFUSALS.includes(e) ? e.message
+    const text = e.refusal ? e.message
       : t("settings.load_settings_failed", {error: String(e)});
     SETTINGS_NOTICES.forEach((id) => show("err", text, id));
   })

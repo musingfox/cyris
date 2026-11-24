@@ -1420,6 +1420,7 @@ CHECKS: list[Check] = [
         path="/settings#digest",
         act="""
             await settingsLoaded();
+            offer($("#morning"), "25");
             setValue($("#morning"), "25");
             saveOf("digest").click();
             await waitFor(() => settled(noticeOf("digest")), "the notice");
@@ -1843,6 +1844,7 @@ CHECKS: list[Check] = [
         path="/settings#digest",
         act="""
             await settingsLoaded();
+            offer($("#morning"), "25");
             setValue($("#morning"), "25");
             setValue($("#style-prompt"), "Short");
             saveOf("digest").click();
@@ -3626,6 +3628,170 @@ CHECKS += [
         """,
         # The unset key arrives unlocked, so the page marks it missing, as if it ignored `locked`.
         sabotage_preload=answer_settings("data.locked = {};"),
+    ),
+]
+# The hours are two selects of whole hours, and an edition's limits reach the page from
+# `GET /api/settings`: an hour past `digest_times_max` is disabled with the plan-limit line and
+# never sent, and the article cap's input takes the edition's most.
+ONE_HOUR_PLAN = answer_settings(
+    "data.limits = {...data.limits, digest_times_max: 1};"
+    ' data.values["general.digest_schedule"] = ["08:00"];'
+)
+# Each schedule the page posts, recorded and answered as a server allowing it answers.
+RECORD_HOURS = (
+    "{"
+    + answer_post(
+        "/api/settings/schedule",
+        """(window.__hours = JSON.parse(init.body).times, Promise.resolve(new Response(
+          JSON.stringify({ok: true, times: window.__hours, note: "Effective next tick."}),
+          {headers: {"Content-Type": "application/json"}})))""",
+    )
+    + "}"
+)
+
+
+def refused_403(path: str, body: str) -> str:
+    """A preload under which the page's POST to `path` is answered 403 with `body`, a JS object."""
+    return answer_post(
+        path,
+        f"Promise.resolve(new Response(JSON.stringify({body}), "
+        '{status: 403, headers: {"Content-Type": "application/json"}}))',
+    )
+
+
+# The hosted Worker's refusal of a write from no page of its own, which TriageServer marks too.
+CROSS_ORIGIN_403 = (
+    f"{{ok: false, error: {json.dumps(PAGE('hosted_settings.refused_cross_origin'))},"
+    ' reason: "cross_origin"}'
+)
+# Any other refusal a server words itself, such as TriageServer's of a foreign Host.
+SERVER_403 = '{ok: false, error: "cyris-probe: refused by this server"}'
+CHECKS += [
+    Check(
+        id="hours-are-whole-hour-selects",
+        fixture="writable",
+        path="/settings#digest",
+        act="await settingsLoaded();",
+        script="""
+            const hours = Array.from({length: 24}, (_, hour) => String(hour));
+            for (const id of ["morning", "evening"]) {
+              const select = $(`#${id}`);
+              expect(select.tagName === "SELECT", `${id} is a ${select.tagName}`);
+              const offered = [...select.options].map((option) => option.value);
+              expect(same(offered, hours), `${id} offers ${offered}`);
+            }
+            expect($("#morning").value === "8" && $("#evening").value === "20",
+              `shown: ${$("#morning").value}, ${$("#evening").value}`);
+        """,
+        sabotage="""
+            const input = Object.assign(document.createElement("input"),
+              {id: "evening", type: "number", className: "input narrow", value: "20"});
+            $("#evening").replaceWith(input);
+        """,
+    ),
+    Check(
+        id="second-hour-locked-by-plan",
+        fixture="writable",
+        path="/settings#digest",
+        preload=ONE_HOUR_PLAN + RECORD_HOURS,
+        act="""
+            await settingsLoaded();
+            setValue($("#morning"), "9");
+            saveOf("digest").click();
+            await waitFor(() => settled(noticeOf("digest")), "the save");
+        """,
+        script=f"""
+            const evening = $("#evening");
+            expect(evening.disabled, "the second hour can be chosen");
+            expect(!$("#morning").disabled, "the first hour is disabled");
+            const line = $('[data-lock="plan-limit"]', evening.closest(".field"));
+            const want = {json.dumps(PAGE("lock_reason.plan-limit"))};
+            expect(line && visible(line) && line.textContent === want,
+              `line: ${{line?.textContent}}`);
+            const ids = (evening.getAttribute("aria-describedby") || "").split(" ");
+            expect(ids.includes(line.id), `described by: ${{ids}}`);
+            expect(same(window.__hours || [], ["09:00"]), `sent: ${{window.__hours}}`);
+            const notice = noticeOf("digest").textContent;
+            expect(notice.startsWith("Digest hour: 09:00."), `notice: ${{notice}}`);
+        """,
+        # Installed after the preload, so it rewrites its answer: the plan holds two hours.
+        sabotage_preload=answer_settings("data.limits = {...data.limits, digest_times_max: 2};"),
+    ),
+    Check(
+        id="article-cap-takes-the-editions-most",
+        fixture="writable",
+        path="/settings#pipeline",
+        preload=answer_settings(
+            "data.limits = {...data.limits, max_articles_per_digest_max: 400};"
+        ),
+        act="await settingsLoaded();",
+        script="""
+            const cap = $("#max-articles");
+            expect(cap.max === "400", `max: ${cap.max}`);
+        """,
+        sabotage_preload=answer_settings(
+            "data.limits = {...data.limits, max_articles_per_digest_max: null};"
+        ),
+    ),
+    Check(
+        id="article-cap-unbounded-self-hosted",
+        fixture="writable",
+        path="/settings#pipeline",
+        act="await settingsLoaded();",
+        script="""
+            const cap = $("#max-articles");
+            expect(!cap.hasAttribute("max"), `max: ${cap.max}`);
+        """,
+        sabotage="""$("#max-articles").max = "400";""",
+    ),
+    Check(
+        id="locked-model-promises-no-call",
+        fixture="writable",
+        path="/settings#model",
+        preload=answer_settings(LOCK_MODEL),
+        act="await settingsLoaded();",
+        script=f"""
+            const call = {json.dumps(PAGE("settings.model_hint_call"))};
+            const hint = $("#model-hint");
+            expect(!visible(hint) || hint.textContent === "", `hint: ${{hint.textContent}}`);
+            const tab = $('form.tab[data-tab="model"]');
+            expect(!tab.textContent.includes(call), "a locked model promises a call");
+        """,
+        # Installed after the preload, so it rewrites its answer: the model is not locked.
+        sabotage_preload=answer_settings("data.locked = {};"),
+    ),
+    Check(
+        id="cross-origin-refusal-in-the-pages-words",
+        fixture="writable",
+        path="/settings#digest",
+        preload=refused_403("/api/settings/values", CROSS_ORIGIN_403),
+        act=SAVE_STYLE.replace(' && saveOf("digest").disabled', ""),
+        script=f"""
+            const notice = noticeOf("digest").textContent;
+            const want = {json.dumps(PAGE("settings.cross_origin"))};
+            expect(notice.includes(want), `notice: ${{notice}}`);
+            expect(!notice.includes({json.dumps(ACCESS_NOT_SET_UP)}), `notice: ${{notice}}`);
+        """,
+        # The refusal arrives without its reason, so only the server's own words can be shown.
+        sabotage_preload=refused_403(
+            "/api/settings/values", '{ok: false, error: "Settings are saved elsewhere."}'
+        ),
+        receipt=_calls([]),
+    ),
+    Check(
+        id="server-403-shows-its-reason",
+        fixture="writable",
+        path="/settings#digest",
+        preload=refused_403("/api/settings/values", SERVER_403),
+        act=SAVE_STYLE.replace(' && saveOf("digest").disabled', ""),
+        script=f"""
+            const notice = noticeOf("digest").textContent;
+            expect(notice.includes("cyris-probe: refused by this server"), `notice: ${{notice}}`);
+            expect(!notice.includes({json.dumps(ACCESS_NOT_SET_UP)}), `notice: ${{notice}}`);
+        """,
+        # Access's own 403 names no reason, which the page words as Access not set up.
+        sabotage_preload=refused_403("/api/settings/values", '{error: "forbidden"}'),
+        receipt=_calls([]),
     ),
 ]
 # Every tap target takes taps over 44 x 44 on a phone, and none covers another.
