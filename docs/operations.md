@@ -389,5 +389,5 @@ the step or receipt, and the last browser console errors.
   being the missed issue's, which the Worker takes when it is today or yesterday.
 - **One failing feed** sends no alert while other sources still deliver. `cyris doctor` warns
   about each RSS feed that has failed three polls in a row or stored no article in 30 days,
-  from D1 `feed_health` and `stored_articles`, and `/settings` shows the same reason under
+  from `feed_health` and `stored_articles` (D1's, or a local install's file, which `cyris ingest` writes), and `/settings` shows the same reason under
   that source's name.

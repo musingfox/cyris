@@ -106,7 +106,9 @@ says that afterwards, the command is looking in another directory.
 There is nothing to set up. Both ways run hourly, on the hour: `cyris ingest` stores what the feeds
 hold, then `cyris run --if-due` does nothing except on the hours you chose and picks `--period` from
 which hour it is, then `cyris promote-sync` runs. A feed keeps only a few hours of entries, so without
-the hourly `ingest` a digest misses what a busy feed dropped since the last one.
+the hourly `ingest` a digest misses what a busy feed dropped since the last one. Each `ingest` also
+records whether each feed answered, so `cyris doctor` and `/settings` name a feed that has failed three
+polls in a row or stored no article in 30 days.
 
 **The schedule runs only while the server or its container runs. A machine or a server that is off
 fetches nothing**, and an hour it misses is not made up: what a feed dropped meanwhile is gone, and a
