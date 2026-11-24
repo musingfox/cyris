@@ -199,6 +199,20 @@ class TestAVoteOnTheFile:
         votes = _read(path, "SELECT topic_id, direction FROM topic_votes")
         assert votes == [{"topic_id": "t-sand", "direction": 1}]
 
+    async def test_the_stamp_and_the_topic_vote_are_the_servers_clock(self, db):
+        client, path = db
+        _save(client, {STORED: "A stored article"})
+        D1TopicStore(client).save_topics(
+            DATE, PERIOD, [TopicRecord(id="t-a", name="A", urls=[STORED])], datetime.now(UTC)
+        )
+        clicked = datetime(2026, 11, 24, 9, 30, tzinfo=UTC)
+
+        await _vote(_server(client, clock=lambda: clicked), STORED, "up")
+
+        stamp = "2026-11-24T09:30:00.000000+00:00"
+        assert _row(path, STORED)["triaged_at"] == stamp
+        assert _read(path, "SELECT clicked_at FROM topic_votes") == [{"clicked_at": stamp}]
+
     async def test_a_url_no_topic_holds_is_stamped_and_writes_no_topic_vote(self, db):
         client, path = db
         _save(client, {STORED: "A raw-page article"})

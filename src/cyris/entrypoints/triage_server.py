@@ -2454,15 +2454,19 @@ class TriageServer:
         if vote not in PAGE_VOTES:
             return web.json_response({"error": "bad vote"}, status=400)
         digest_date = body.get("digest_date")
+        # The click's time, as the promote Worker stamps its queue entry with its own clock,
+        # and the `triaged_at` stamp's, which a sync would put at the sync's time.
+        clicked = self._clock()
         promotion = PromotedArticle(
             url=url,
             vote=vote,
             digest_date=digest_date if isinstance(digest_date, str) else None,
-            # The click's time, as the promote Worker stamps its queue entry with its own clock.
-            ts=datetime.now(UTC).isoformat(),
+            ts=clicked.isoformat(),
         )
         try:
-            result = apply_promotions([promotion], self._article_store, self._issue_topics)
+            result = apply_promotions(
+                [promotion], self._article_store, self._issue_topics, at=clicked
+            )
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             logger.warning("Vote for %s not recorded: %s", url, e)
             return web.json_response({"error": str(e)}, status=500)
