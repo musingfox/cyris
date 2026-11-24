@@ -29,7 +29,6 @@ from pydantic import (
     model_validator,
 )
 
-from cyris.domain.areas import Area
 from cyris.domain.models import SourceConfig, TrackedTopic
 from cyris.service_layer.schedule import schedule_counts, validate_schedule
 
@@ -735,8 +734,6 @@ class Config(BaseModel):
     # Optional, unlike every required grade-D key: an empty list tracks nothing and stops
     # nothing. From the store's `tracked_topics` table.
     tracked_topics: list[TrackedTopic] = Field(default_factory=list)
-    # From the store's `areas` table.
-    areas: list[Area] = Field(default_factory=list)
     # Grade-D keys this deployment's one home does not hold. Never raises at load:
     # the commands that fill the home have to start while it is empty.
     missing_settings: list[str] = Field(default_factory=list)

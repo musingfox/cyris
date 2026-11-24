@@ -106,27 +106,6 @@ def layer_by_lane(content: DigestContent) -> Layers:
         for item in content.filtered_headlines
     ]
 
-    # An issue stored with news paragraphs: each cited unit takes the layer its URL count
-    # gives it, and the paragraph's text rides on its first unit, so none of it is lost.
-    for paragraph in content.news_paragraphs:
-        for n, unit in enumerate(paragraph.units):
-            text = paragraph.text if n == 0 else unit.summary
-            if len(unit.urls) >= 2:
-                sand.append(
-                    Sand(
-                        heading=unit.title,
-                        line=text,
-                        line_untranslated=paragraph.passed_through,
-                        members=tuple(_members_of(unit)),
-                        vote=unit,
-                        tags=tuple(unit.tags),
-                        story_id=None,
-                    )
-                )
-            else:
-                item = unit.model_copy(update={"summary": text})
-                water.append(Water(item, tuple(unit.tags), None, paragraph.passed_through))
-
     return Layers(
         pebbles=tuple(pebbles),
         sand=tuple(sand),

@@ -170,6 +170,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 
+- Areas are gone: the Areas tab of `/settings`, the Area field and Suggest in the source
+  editor, the model's area proposals and the birth threshold. No page, mail or Discord message
+  drew areas any more, so they look the same; scoring no longer offers your area names to the model. The next boot of any store, a SQLite file, D1 or a hosted
+  tenant's, drops the `areas` and `area_birth_threshold` tables and removes each source's
+  `area_id`, for good: the area names, their order, the proposals and the source assignments
+  cannot be brought back. An issue stored from 2026-10-27 to 10-29 keeps its news only as
+  paragraphs, which nothing reads now, so regenerating it draws none of that news; its published
+  page is unaffected.
 - The `json` store, and `cyris store migrate` and `cyris store diff` with it. `[store] backend`
   is `sqlite` or `d1`, and a config or environment that still says `json` stops every command
   with one line saying what to delete. A json install's way across is to run

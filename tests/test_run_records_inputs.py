@@ -44,7 +44,6 @@ def _scores(articles: list[Article]) -> str:
 
 def _deps(tmp_path: Path, articles: list[Article]):
     deps, _ = make_deps(tmp_path, FakeLLM([_scores(articles)]), FakeSource(articles))
-    deps.cfg.areas = []
     deps.cfg.sources = {}
     return deps
 

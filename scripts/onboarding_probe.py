@@ -998,8 +998,7 @@ def _sources(*wanted: dict) -> Callable[[Fixture], str | None]:
     """A receipt: the table stored exactly these list entries, field for field, in order.
 
     Each stored row is read back in the entry's own fields but `topics`, which
-    is the list's and not a source's, so a tag or a lane the page changed shows,
-    and with no area, which the list cannot know.
+    is the list's and not a source's, so a tag or a lane the page changed shows.
     """
     wanted = tuple(as_posted(entry) for entry in wanted)
 
@@ -1008,9 +1007,7 @@ def _sources(*wanted: dict) -> Callable[[Fixture], str | None]:
         if len(rows) == len(wanted) and fixture.calls == []:
             pairs = zip(rows, wanted, strict=True)
             if all(
-                row.model_dump(mode="json", include=set(entry)) == entry
-                and row.area_id is None
-                and row.type == "rss"
+                row.model_dump(mode="json", include=set(entry)) == entry and row.type == "rss"
                 for row, entry in pairs
             ):
                 return None

@@ -332,7 +332,6 @@ def load_effective_config(
     reports (`if_created`) leaves a file that is not there uncreated, and one that
     writes elsewhere (`never`) leaves it alone: either gets the store as empty.
     """
-    from cyris.adapters.store.areas import D1AreaStore
     from cyris.adapters.store.d1 import apply_schema
     from cyris.adapters.store.source_store import D1SourceStore
     from cyris.adapters.store.tracked_topics import D1TrackedTopicStore
@@ -369,7 +368,6 @@ def load_effective_config(
     # The table alone, empty included: sources.yaml is not a run's list.
     cfg.sources = D1SourceStore(d1).list_sources()
     cfg.tracked_topics = D1TrackedTopicStore(d1).list_topics()
-    cfg.areas = D1AreaStore(d1).list_areas()
     return cfg
 
 
@@ -416,8 +414,6 @@ class Deps:
     # The model `embedder` embeds with, resolved: a tracked topic set for any
     # other model is skipped.
     embedding_model: str = ""
-    # The reader's areas: where a run's and an articles score's suggestions are counted.
-    area_store: Any | None = None
     # Takes the final `run_summary` dict.
     record_run: Callable[[dict], None] | None = None
     # Takes (run_at, period, verdicts) after a vote-similarity pass that embedded.
@@ -596,7 +592,6 @@ def build_deps(
     hosted Worker (ADR-0029).
     """
     from cyris.adapters.store.archive_meta import D1ArchiveMeta
-    from cyris.adapters.store.areas import D1AreaStore
     from cyris.adapters.store.digest_inputs import D1DigestInputStore
     from cyris.adapters.store.digests import D1DigestStore
     from cyris.adapters.store.runs import D1RunLog
@@ -764,7 +759,6 @@ def build_deps(
         embedding_model=embedding_model(
             cfg.app.vote_similarity.provider, cfg.app.vote_similarity.model
         ),
-        area_store=D1AreaStore(d1),
         record_run=D1RunLog(d1, os.environ.get("CYRIS_GIT_SHA", "")).record,
         record_similarity=D1SimilarityShadow(d1, embedding_model(vote.provider, vote.model)).record,
         suppressions=D1Suppressions(d1, embedding_model(vote.provider, vote.model)),

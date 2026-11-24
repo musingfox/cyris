@@ -31,7 +31,6 @@ from messageformat2.datamodel import (
 import cyris
 from cyris.adapters.fetch.feed_check import FeedRefusal
 from cyris.config import SETTINGS_FIELDS
-from cyris.domain.areas import AreaStatus
 from cyris.domain.interest_graph import InterestNode
 from cyris.domain.models import ArticleState, Lane, SourceType
 from cyris.entrypoints.triage_server import (
@@ -60,7 +59,6 @@ FAMILIES: dict[str, tuple[str, ...]] = {
     "article_state.": tuple(map(str, ArticleState)),
     "lane.": tuple(map(str, Lane)),
     "lock_reason.": get_args(LockReason),
-    "area_status.": get_args(AreaStatus),
     "polarity.": get_args(get_type_hints(InterestNode)["polarity"]),
     "feed_check.": get_args(FeedRefusal),
     "onboarding_topic.": tuple(topic["id"] for topic in load_onboarding_topics()),
@@ -463,12 +461,12 @@ def test_a_catalog_words_all_of_a_file_or_none_of_it(tag) -> None:
 
 def test_a_family_value_left_out_of_a_translated_file_is_found() -> None:
     keys_by_file = {
-        "page.js": {"settings.closed_status", "area_status.active"},
-        "english.js": {"area_status.merged"},
+        "page.js": {"settings.item_saved", "lane.read"},
+        "english.js": {"lane.skim"},
     }
-    catalog = {"settings.closed_status": {"text": "{$name}（{$status}）"}}
+    catalog = {"settings.item_saved": {"text": "{$name}：{$note}"}}
 
-    assert _untranslated_in(catalog, keys_by_file) == {"page.js": ["area_status.active"]}
+    assert _untranslated_in(catalog, keys_by_file) == {"page.js": ["lane.read"]}
 
 
 @pytest.mark.parametrize("tag", sorted(_catalogs()))

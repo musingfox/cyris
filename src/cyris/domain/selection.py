@@ -155,7 +155,6 @@ def _iter_digest_items(content: DigestContent) -> list[DigestItem]:
         for section in sections:
             items.extend(section.items)
     items.extend(content.filtered_headlines)
-    items.extend(unit for paragraph in content.news_paragraphs for unit in paragraph.units)
     return items
 
 

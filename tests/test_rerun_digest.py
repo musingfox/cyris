@@ -15,7 +15,6 @@ from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.adapters.store.digest_inputs import D1DigestInputStore
 from cyris.adapters.store.digests import D1DigestStore
 from cyris.adapters.store.runs import D1RunLog
-from cyris.domain.areas import Area
 from cyris.domain.models import Article, Lane
 from cyris.service_layer.run_digest import RunOptions, run_digest
 
@@ -37,9 +36,9 @@ def _article(i: int, *, title: str | None = None) -> Article:
     )
 
 
-def _scores(articles: list[Article], **extra) -> str:
+def _scores(articles: list[Article]) -> str:
     entries = [
-        {"id": position, "score": 80, "language": "en", "tags": ["s"], **extra}
+        {"id": position, "score": 80, "language": "en", "tags": ["s"]}
         for position, _ in enumerate(articles)
     ]
     return json.dumps({"scores": entries})
@@ -61,19 +60,6 @@ def _items(content) -> list:
         for section in getattr(content, name):
             items.extend(section.items)
     return items
-
-
-def _area(area_id: int, name: str) -> Area:
-    return Area(
-        id=area_id,
-        name=name,
-        position=area_id - 1,
-        status="active",
-        merged_into=None,
-        proposal_articles=0,
-        proposal_issues=0,
-        last_proposed_run=None,
-    )
 
 
 class _Tripwire:
@@ -178,30 +164,6 @@ async def test_a_record_whose_rows_are_all_gone_stops_before_the_llm(tmp_path: P
 
     assert report.status == "no_inputs"
     assert deps.llm.calls == []
-
-
-async def test_a_rerun_rescored_into_another_area_is_placed_there(tmp_path: Path) -> None:
-    a = _article(1)
-    deps, _ = _deps(
-        tmp_path,
-        replies=[_scores([a], area="Space"), _sections(a)],
-        record=[a.url],
-        rows=[a],
-    )
-    deps.cfg.areas = [_area(1, "Tech"), _area(2, "Space")]
-    rendered: list = []
-    original = deps.html_writer.render
-
-    def spy(content, **kwargs):
-        rendered.append(content)
-        return original(content, **kwargs)
-
-    deps.html_writer.render = spy
-
-    await run_digest(deps, RunOptions(dry_run=True, rerun_of=RERUN))
-
-    [item] = [i for i in _items(rendered[-1]) if a.url in i.urls]
-    assert item.area == "Space"
 
 
 async def test_a_dry_rerun_writes_only_its_run_record_and_keeps_scores(tmp_path: Path) -> None:

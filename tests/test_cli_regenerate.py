@@ -35,7 +35,6 @@ def _content(date: str, period: str) -> DigestContent:
         articles_received=1,
         articles_included=1,
         usage=UsageStats(api_calls=1),
-        area_order=["Tech"],
     )
 
 

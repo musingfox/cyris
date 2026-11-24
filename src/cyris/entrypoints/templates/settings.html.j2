@@ -51,22 +51,7 @@
     .editor-title { margin-bottom: var(--s-4); }
     .editor-foot { display: flex; justify-content: space-between; gap: var(--s-4); flex-wrap: wrap; margin-top: var(--s-5); }
     table.src .target { font-family: var(--font-mono); font-size: calc(14px * var(--type-scale)); color: var(--text-dim); word-break: break-all; }
-    table.src.assign { min-width: 0; }
-    table.src .name .areas-note { display: block; margin-top: var(--s-1); font-weight: 400; white-space: normal; }
-    table.src td.areas-pos-cell { width: 1%; }
-    .areas-pos { width: 96px; }
-    .areas-cell { display: flex; align-items: center; gap: var(--s-3); }
-    .areas-cell .select { flex: 0 1 320px; min-width: 0; }
-    .areas-foot, .areas-foot .actions-line { align-items: flex-end; }
-    .areas-merge .select { width: 200px; }
-    .areas-part { margin-top: var(--s-12); }
-    .tab-head + .areas-part { margin-top: 0; }
-    .areas-part-head { display: flex; justify-content: space-between; align-items: center; gap: var(--s-4); flex-wrap: wrap; min-height: 44px; margin-bottom: var(--s-3); }
-    .areas-save { margin-top: var(--s-4); }
-    table.src.areas-table, table.src.assign { min-width: 0; }
-    .areas-threshold { display: flex; flex-wrap: wrap; }
     @media (max-width: 720px) {
-      .areas-part { margin-top: var(--s-8); }
       .page { padding-top: var(--s-8); }
       .settings { grid-template-columns: minmax(0, 1fr); gap: var(--s-6); }
       .settings-nav { position: static; display: flex; overflow-x: auto; overflow-y: hidden; border-left: 0; border-bottom: 1px solid var(--border); }
@@ -75,12 +60,6 @@
       .settings-nav a[aria-current="page"] { border-bottom-color: var(--accent); }
       .settings-nav::before { content: "›" / ""; order: 1; position: sticky; right: 0; pointer-events: none; flex: 0 0 var(--s-8); display: flex; align-items: center; justify-content: flex-end; padding-right: var(--s-2); background: linear-gradient(to right, transparent, var(--bg) var(--s-4)); font-family: var(--font-mono); font-size: calc(12px * var(--type-scale)); color: var(--text-dim); }
       .settings-nav::after { content: ""; order: 2; position: relative; flex: 0 0 var(--s-8); margin-left: calc(-1 * var(--s-8)); background: var(--bg); }
-      table.src.assign thead { display: none; }
-      table.src.assign, table.src.assign tbody, table.src.assign tr, table.src.assign td { display: block; }
-      table.src.assign td.name { white-space: normal; border-bottom: 0; padding-bottom: var(--s-2); }
-      table.src.assign td + td { padding-top: 0; }
-      .areas-cell { flex-wrap: wrap; }
-      .areas-cell .select { flex-basis: 100%; }
     }
   </style>
 </head>
@@ -99,7 +78,6 @@
         <a class="label" href="#pipeline" data-tab="pipeline">{{ t("settings.tab_pipeline") }} <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
         <a class="label" href="#notifications" data-tab="notifications">{{ t("settings.tab_notifications") }} <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
         <a class="label" href="#sources" data-tab="sources">{{ t("settings.tab_sources") }} <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
-        <a class="label" href="#areas" data-tab="areas">{{ t("settings.tab_areas") }} <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
         <a class="label" href="#tracking" data-tab="tracking">{{ t("settings.tab_tracking") }} <span class="nav-dots"><span class="missing-dot"></span><span class="dirty-dot"></span></span></a>
       </nav>
 
@@ -320,69 +298,6 @@
           </div>
         </div>
 
-        <div class="tab" data-tab="areas" hidden>
-          <div class="tab-head">
-            <h2 class="heading">{{ t("settings.tab_areas") }}</h2>
-            <p class="small">{{ t("settings.areas_intro") }}</p>
-          </div>
-          <section class="areas-part" aria-labelledby="areas-active-h">
-            <div class="areas-part-head"><h3 class="label" id="areas-active-h">{{ t("settings.tab_areas") }}</h3></div>
-            <div class="table-wrap">
-              <table class="src areas-table">
-                <thead><tr><th class="label">{{ t("settings.col_name") }}</th><th class="label">{{ t("settings.col_position") }}</th></tr></thead>
-                <tbody id="area-body"><tr data-loading><td colspan="2" class="small">{{ t("settings.loading_areas") }}</td></tr></tbody>
-              </table>
-            </div>
-            <div class="actions-line areas-save">
-              <button class="btn primary" type="button" id="save-order" disabled>{{ t("settings.save_order") }}</button>
-              <div class="notice" id="order-result" role="status" hidden></div>
-            </div>
-          </section>
-          <section class="areas-part" aria-labelledby="areas-proposed-h">
-            <div class="areas-part-head"><h3 class="label" id="areas-proposed-h">{{ t("settings.proposed") }}</h3></div>
-            <div class="table-wrap">
-              <table class="src areas-table">
-                <thead><tr><th class="label">{{ t("settings.col_name") }}</th><th class="label">{{ t("settings.col_counts") }}</th></tr></thead>
-                <tbody id="proposed-body"></tbody>
-              </table>
-            </div>
-          </section>
-          <section class="areas-part" aria-labelledby="areas-sources-h">
-            <div class="areas-part-head">
-              <h3 class="label" id="areas-sources-h">{{ t("settings.tab_sources") }}</h3>
-              <div class="actions-line">
-                <div class="notice" id="areas-notice" role="status" hidden></div>
-                <button class="btn primary" type="button" id="propose-areas" disabled>{{ t("settings.propose_areas") }}</button>
-              </div>
-            </div>
-            <div class="table-wrap">
-              <table class="src assign">
-                <thead><tr><th class="label">{{ t("settings.col_source") }}</th><th class="label">{{ t("settings.col_area") }}</th></tr></thead>
-                <tbody id="assign-body"><tr data-loading><td colspan="2" class="small">{{ t("settings.loading_sources") }}</td></tr></tbody>
-              </table>
-            </div>
-            <div class="actions-line areas-save">
-              <button class="btn primary" type="button" id="save-assign" disabled>{{ t("settings.save_assignments") }}</button>
-              <div class="notice" id="assign-result" role="status" hidden></div>
-            </div>
-          </section>
-          <section class="areas-part" id="threshold-block" aria-labelledby="areas-threshold-h">
-            <div class="areas-part-head"><h3 class="label" id="areas-threshold-h">{{ t("settings.birth_threshold") }}</h3></div>
-            <div class="field-row areas-threshold">
-              <div class="field"><label class="label" for="th-articles">{{ t("settings.threshold_articles") }}</label><input class="input narrow" id="th-articles" type="number" min="1" step="1" autocomplete="off" disabled></div>
-              <div class="field"><label class="label" for="th-issues">{{ t("settings.threshold_issues") }}</label><input class="input narrow" id="th-issues" type="number" min="1" step="1" autocomplete="off" disabled></div>
-            </div>
-            <div class="actions-line areas-save">
-              <button class="btn primary" type="button" id="save-threshold" disabled>{{ t("settings.save") }}</button>
-              <div class="notice" id="threshold-result" role="status" hidden></div>
-              <p class="small" id="threshold-hint" hidden>{{ t("settings.threshold_unset") }}</p>
-            </div>
-          </section>
-          <details class="more areas-part"><summary>{{ t("settings.closed") }}</summary>
-            <ul class="small" id="closed-list"></ul>
-          </details>
-        </div>
-
         <div class="tab" data-tab="tracking" hidden>
           <div class="tab-head">
             <h2 class="heading">{{ t("settings.tab_tracking") }}</h2>
@@ -422,14 +337,6 @@
           <input class="input" id="e-email" name="email_match" type="text" placeholder="from:hi@example.com" autocomplete="off"></div>
         <div class="field" data-for="newsletter"><label class="label" for="e-home">{{ t("settings.homepage") }}</label><input class="input" id="e-home" name="homepage" type="text" autocomplete="off"></div>
         <div class="field"><label class="label" for="e-tags">{{ t("settings.col_tags") }}</label><input class="input" id="e-tags" name="tags" type="text" placeholder="{{ t("settings.tags_placeholder") }}" autocomplete="off"></div>
-        <div class="field-row">
-          <div class="field"><label class="label" for="e-area">{{ t("settings.col_area") }}</label>
-            <select class="select" id="e-area" name="area_id"><option value="">{{ t("settings.area_none") }}</option></select>
-            <span class="pill" data-suggested hidden>{{ t("settings.suggested") }}</span>
-          </div>
-          <div class="field"><button class="btn secondary" type="button" data-act="suggest">{{ t("settings.suggest") }}</button></div>
-        </div>
-        <p class="small" data-suggest-note hidden></p>
       </div>
       <div class="editor-foot">
         <div class="actions-line">
@@ -440,28 +347,6 @@
         <div class="actions-line">
           <button class="btn danger" type="button" data-act="retire">{{ t("settings.retire") }}</button>
           <div class="notice" role="status" hidden></div>
-        </div>
-      </div>
-    </div></td></tr>
-  </template>
-
-  <template id="area-editor-tpl">
-    <tr class="editor"><td colspan="2"><div class="editor-body">
-      <h3 class="label editor-title"></h3>
-      <div class="form">
-        <div class="field"><label class="label" for="a-name">{{ t("settings.col_name") }}</label><input class="input" id="a-name" name="name" type="text" autocomplete="off"></div>
-      </div>
-      <div class="editor-foot areas-foot">
-        <div class="actions-line">
-          <button class="btn primary" type="button" data-act="activate" data-proposed hidden>{{ t("settings.activate") }}</button>
-          <button class="btn secondary" type="button" data-act="save" disabled>{{ t("settings.save_name") }}</button>
-          <button class="btn secondary" type="button" data-act="cancel">{{ t("settings.cancel") }}</button>
-          <div class="notice" role="status" hidden></div>
-        </div>
-        <div class="actions-line" data-proposed hidden>
-          <button class="btn danger" type="button" data-act="dismiss">{{ t("settings.dismiss") }}</button>
-          <div class="field areas-merge"><label class="label" for="a-into">{{ t("settings.merge_into") }}</label><select class="select" id="a-into" name="into"></select></div>
-          <button class="btn danger" type="button" data-act="merge">{{ t("settings.merge") }}</button>
         </div>
       </div>
     </div></td></tr>

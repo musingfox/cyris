@@ -1,10 +1,9 @@
 {
-  "_comment": "One settings page for every edition; an edition locks keys (docs/decisions/0043-one-settings-page-an-edition-locks-a-key.md). Run by workers/app/test/hosted_shared_settings.test.js against the hosted Worker and by tests/test_shared_settings_cases.py against TriageServer. `answer_keys` and the entry keys are GET /api/settings' shape on both. `editions` is what each answers for `locked` and `hidden_tabs`: TriageServer as `cyris triage-ui` starts it, and the hosted Worker as its policy file computes them. `writes` go to POST /api/settings/values on the hosted Worker, and on a TriageServer given the hosted edition's locks, and each gets the same status and answer from both; a refused one writes nothing. `pins` are the values a hosted run takes from a tenant's rows, held by vitest to the Worker's `hostedValues` and by pytest to `pin_tenant_settings`.",
+  "_comment": "One settings page for every edition; an edition locks keys (docs/decisions/0043-one-settings-page-an-edition-locks-a-key.md). Run by workers/app/test/hosted_shared_settings.test.js against the hosted Worker and by tests/test_shared_settings_cases.py against TriageServer. `answer_keys` and the entry keys are GET /api/settings' shape on both. `editions` is what each answers for `locked`: TriageServer as `cyris triage-ui` starts it, and the hosted Worker as its policy file computes them. `writes` go to POST /api/settings/values on the hosted Worker, and on a TriageServer given the hosted edition's locks, and each gets the same status and answer from both; a refused one writes nothing. `pins` are the values a hosted run takes from a tenant's rows, held by vitest to the Worker's `hostedValues` and by pytest to `pin_tenant_settings`.",
   "answer_keys": [
     "clef_ready",
     "embedding_providers",
     "fields",
-    "hidden_tabs",
     "languages",
     "locked",
     "missing",
@@ -18,8 +17,7 @@
   "field_keys": ["controls", "label", "route", "tab"],
   "editions": {
     "self_hosted": {
-      "locked": {},
-      "hidden_tabs": []
+      "locked": {}
     },
     "hosted": {
       "locked": {
@@ -48,8 +46,7 @@
         "notify.discord_webhook_url": {"reason": "operator-set"},
         "notify.email_to": {"reason": "operator-set"},
         "notify.email_from": {"reason": "operator-set"}
-      },
-      "hidden_tabs": ["areas"]
+      }
     }
   },
   "writes": [

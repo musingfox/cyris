@@ -220,7 +220,7 @@ class TestOrigin:
     @pytest.mark.parametrize(
         ("method", "path"),
         [
-            ("PUT", "/api/areas/order"),
+            ("PUT", "/api/topics/one"),
             ("DELETE", "/api/sources/one"),
             ("PATCH", "/api/settings"),
             ("post", PROBE),

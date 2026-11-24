@@ -41,7 +41,7 @@ READER = {
     "vote_similarity.enabled": True,
 }
 # Columns whose CHECK refuses the filler value.
-FILL = {("areas", "status"): "active", ("topic_tags", "kind"): "entity"}
+FILL = {("topic_tags", "kind"): "entity"}
 
 
 def _rss_ddl() -> list[str]:
@@ -81,7 +81,6 @@ class FakeWrangler:
             ]
             marks = ", ".join("?" * len(names))
             self.db.execute(f"INSERT INTO {table} ({', '.join(names)}) VALUES ({marks})", values)
-        self.db.execute("INSERT INTO areas (name, status, merged_into) VALUES ('b', 'merged', 1)")
         for key, value in (LLM | READER).items():
             self.db.execute(
                 "INSERT INTO settings VALUES (?, ?, '2026-10-01T00:00:00+00:00')",
@@ -251,7 +250,7 @@ def test_the_dry_run_prints_every_table_count_before_anything(reset) -> None:
 
     n = len(reset.CLEARED)
     counts = dict(re.fullmatch(r"  (\w+)\s+(\d+)", line).groups() for line in out[1 : 1 + n])
-    assert counts == {t: "2" if t in ("sources", "areas") else "1" for t in reset.CLEARED}
+    assert counts == {t: "2" if t == "sources" else "1" for t in reset.CLEARED}
     assert "KV PROMOTIONS" in out[n + 9] and "2 pending votes" in out[n + 9]
 
 
@@ -320,14 +319,11 @@ def test_the_write_is_one_d1_call_then_one_kv_delete(reset) -> None:
     statements = d1_write[d1_write.index("--command") + 1].split("; ")
     deletes = [s.removeprefix("DELETE FROM ") for s in statements if s.startswith("DELETE")]
     assert deletes == list(reset.CLEARED)
-    assert statements.index("UPDATE areas SET merged_into = NULL") < statements.index(
-        "DELETE FROM areas"
-    )
     upserts = [s for s in statements if s.startswith("INSERT INTO settings")]
     assert [re.search(r"VALUES \('([^']+)'", s).group(1) for s in upserts] == list(
         reset.ONBOARDING_KEYS
     )
-    assert len(statements) == len(deletes) + 1 + len(upserts)
+    assert len(statements) == len(deletes) + len(upserts)
     assert kv_delete[2:5] == ["kv", "bulk", "delete"] and "--force" in kv_delete
 
 

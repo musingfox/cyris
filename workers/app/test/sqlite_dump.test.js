@@ -43,9 +43,10 @@ function seededTenant() {
   db.query(HOSTED_SCHEMA_SQL);
   db.query("INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)", ["general.timezone", '"Asia/Taipei"', STAMP]);
   db.query("INSERT INTO sources (name, url, type, config) VALUES (?, ?, 'rss', '{}')", ["A news", "https://a.test/feed"]);
-  // An area merged into one with a later id: its foreign key names a row the restore inserts after it.
-  db.query("INSERT INTO areas (id, name, status) VALUES (2, 'New', 'active')");
-  db.query("INSERT INTO areas (id, name, status, merged_into) VALUES (1, 'Old', 'merged', 2)");
+  // A row whose foreign key names one with a later id, which the restore inserts after it.
+  db.query("CREATE TABLE parents (id INTEGER PRIMARY KEY, name TEXT NOT NULL, parent INTEGER REFERENCES parents(id))");
+  db.query("INSERT INTO parents (id, name) VALUES (2, 'New')");
+  db.query("INSERT INTO parents (id, name, parent) VALUES (1, 'Old', 2)");
   const page = `<html><body>${"一則新聞 \"quoted\" \n".repeat(4000)}</body></html>`;
   db.query("INSERT INTO hosted_pages (path, body, content_type, updated_at) VALUES (?, ?, ?, ?)", [
     "/2026-11-22-morning.html",

@@ -749,7 +749,6 @@ SETTINGS_HASHES = [
     "#pipeline",
     "#notifications",
     "#sources",
-    "#areas",
     "#tracking",
 ]
 
@@ -1552,8 +1551,6 @@ def test_a_fields_help_precedes_its_control(page: str) -> None:
 
 
 FORM_CONTROLS = {"input", "select", "textarea", "button"}
-# The one fold that holds no control: Areas' list of closed areas, which only reports.
-READ_ONLY_FOLDS = {"Closed"}
 
 
 class _Folds(HTMLParser):
@@ -1594,7 +1591,7 @@ def _folds_off_spec(html: str) -> list[str]:
     return [
         summary
         for summary, controls in parser.folds
-        if summary not in READ_ONLY_FOLDS and (not controls or summary.casefold() == "more")
+        if not controls or summary.casefold() == "more"
     ]
 
 
@@ -1605,7 +1602,6 @@ def test_a_fold_of_help_or_a_bare_more_is_reported() -> None:
         '<details class="more"><summary>Advanced: retry limits</summary>'
         '<div class="field"><input id="b"></div></details>'
         '<details class="more"><summary>Notes</summary><p class="small">Why.</p></details>'
-        '<details class="more"><summary>Closed</summary><ul class="small"></ul></details>'
     )
     assert _folds_off_spec(planted) == ["More", "More", "Notes"]
 

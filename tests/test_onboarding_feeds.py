@@ -65,13 +65,6 @@ def test_catalog_has_both_zh_and_en_entries() -> None:
     assert "en" in languages
 
 
-def test_no_area_is_pre_assigned() -> None:
-    """area_id points at a reader's own `areas` row; the catalog cannot know it in advance."""
-    for entry in _raw_feeds():
-        source = SourceConfig.model_validate(entry)
-        assert source.area_id is None, f"{source.name}: area_id set"
-
-
 def test_names_are_unique() -> None:
     names = [SourceConfig.model_validate(entry).name for entry in _raw_feeds()]
     assert len(names) == len(set(names)), "duplicate source name"

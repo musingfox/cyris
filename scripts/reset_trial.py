@@ -70,8 +70,6 @@ CLEARED = (
     "topic_votes",
     "tags",
     "article_tags",
-    "areas",
-    "area_birth_threshold",
     "tracked_topics",
     "blind_labels",
     "vote_similarity_shadow",
@@ -143,19 +141,8 @@ def settings_sql() -> str:
 
 
 def clear_sql(present: list[str]) -> list[str]:
-    """One DELETE per present table, in CLEARED's order.
-
-    `areas.merged_into` points at another `areas` row, so it is emptied before the
-    rows go; D1 enforces foreign keys.
-    """
-    statements = []
-    for table in CLEARED:
-        if table not in present:
-            continue
-        if table == "areas":
-            statements.append("UPDATE areas SET merged_into = NULL")
-        statements.append(f"DELETE FROM {table}")
-    return statements
+    """One DELETE per present table, in CLEARED's order."""
+    return [f"DELETE FROM {table}" for table in CLEARED if table in present]
 
 
 def reset_sql(present: list[str], defaults: dict[str, object], now: str) -> list[str]:

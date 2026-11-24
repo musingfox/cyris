@@ -178,13 +178,13 @@ describe("TenantDb's settings and sources", () => {
 
   it("keeps what else a rewritten source's config held, its tags too", async () => {
     const db = await seeded();
-    db.query("INSERT INTO sources (name, url, type, config) VALUES (?, ?, 'rss', ?)", ["Kept", "https://kept.example/feed", '{"lane":"skim","tags":["x"],"area_id":3}']);
+    db.query("INSERT INTO sources (name, url, type, config) VALUES (?, ?, 'rss', ?)", ["Kept", "https://kept.example/feed", '{"lane":"skim","tags":["x"],"language":"en"}']);
 
     db.saveSource(rssSource({ name: "Kept", url: "https://kept.example/new", lane: "read" }).row, POLICY.max_sources);
 
     expect(db.query("SELECT url, config FROM sources WHERE name = 'Kept'").rows[0]).toEqual({
       url: "https://kept.example/new",
-      config: JSON.stringify({ lane: "read", tags: ["x"], area_id: 3 }),
+      config: JSON.stringify({ lane: "read", tags: ["x"], language: "en" }),
     });
   });
 
