@@ -8,17 +8,21 @@ A feed with no `feed_health` row has never been polled.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from importlib.resources import files
 from typing import Literal
 
 from cyris.adapters.store.d1 import D1Queryable
 
+# Both numbers live in feed_health_rules.json, which the hosted Worker's sources list reads too.
+_RULES = json.loads((files("cyris") / "feed_health_rules.json").read_text(encoding="utf-8"))
 # One Substack 429 is routine; three hourly polls failing in a row is not.
-UNHEALTHY_FAILURE_STREAK = 3
+UNHEALTHY_FAILURE_STREAK: int = _RULES["unhealthy_failure_streak"]
 # Feeds publish weekly or monthly, so a shorter silence is noise.
-QUIET_DAYS = 30
+QUIET_DAYS: int = _RULES["quiet_days"]
 
 # The feeds the Worker polls are exactly the ones its own query selects
 # (workers/rss/src/feeds.js), so this reads the same set.
