@@ -142,7 +142,9 @@ schedule leaves the stub, and the hosted page ADR-0040 built keeps its one selec
 * `tests/test_settings_fields.py` holds `settings.js` to disabling each locked key's controls with
   its reason as their description and never marking it missing; `scripts/settings_probe.py`'s
   `model-locked-with-its-reason`, `locked-key-not-marked-missing` and
-  `hidden-tab-not-listed-nor-opened` check it in Chromium, each with its sabotage.
+  `hidden-tab-not-listed-nor-opened` check it in Chromium, each with a sabotage that rewrites the
+  answer after the check's own preload so its check fails: the model unlocked, no key locked, no
+  tab hidden (`--self-test`).
 * `tests/test_build_shared_settings.py`: each catalog's page is `render_settings_page`'s, each inline
   block's hash is named and no other, each file is what a bare TriageServer serves at its path,
   `sent_as_shown` and `languages` are TriageServer's, and the committed file is what the script
