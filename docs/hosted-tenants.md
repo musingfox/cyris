@@ -732,8 +732,11 @@ The pages also make promises that only you keep; nothing in the code does it for
   one, but the policy says each digest has one reader.
 - **A tenant id is not the reader.** The policy says what stays after a deletion is kept under the
   digest's id and holds no email address, so never name a tenant after its reader's name or address.
-- **A change is mailed first.** Before a change to either page takes effect, mail it to every
-  reader at least `notice_days` (7) days ahead, then publish it with a new `updated`.
+- **A change that affects readers is mailed first.** Before a change to either page that touches a
+  reader's rights or obligations, or how their data is collected, processed or used (what is
+  collected, who receives it), takes effect, mail it to every reader
+  at least `notice_days` (7) days ahead. Publish every change with a new `updated`; a wording fix
+  that changes no one's rights needs no mail.
 - **An incident is mailed.** Once you learn that a reader's data was stolen, altered,
   damaged, lost or leaked, mail that reader at the address they sign in with.
 - **Requests are answered in time.** A request to see or copy data is answered within 15 days and

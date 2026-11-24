@@ -213,7 +213,8 @@ export async function handleLogin(request, deps) {
     if (method === "GET") {
       const body =
         `<form id="confirm" method="post" action="/login/confirm" hidden><input id="token" name="token" type="hidden">` +
-        `<button type="submit">${escape(t("sign_in.confirm"))}</button></form>` +
+        `<button type="submit">${escape(t("sign_in.confirm"))}</button>` +
+        `<p>${escape(t("sign_in.agree"))}</p></form>` +
         `<div id="missing" hidden><p>${escape(t("sign_in.confirm_missing"))}</p>${askAgain()}</div>`;
       return page(t("sign_in.confirm_title"), body, { script: CONFIRM_SCRIPT });
     }

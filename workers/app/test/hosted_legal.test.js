@@ -292,6 +292,33 @@ describe("changes and disputes", () => {
     expect(html).toContain("the court is the one the laws of the Republic of China (Taiwan) name");
     expect(html).not.toMatch(/District Court|地方法院/);
   });
+
+  it("mails ahead only a change that affects the reader, in both pages", async () => {
+    const [privacy, terms] = [await (await call("/privacy")).text(), await (await call("/terms")).text()];
+    const days = LEGAL.notice_days;
+
+    expect(block(privacy, "en")).toContain(`If a change affects your rights, or how we collect, process or use your data, including what we collect and who receives it, we also write to the address you sign in with at least ${days} days`);
+    expect(block(privacy, "zh-Hant")).toContain("變更若影響您的權利，或影響我們蒐集、處理或利用您資料的方式");
+    expect(block(terms, "en")).toContain(`If a change affects your rights or obligations, we write to the address you sign in with at least ${days} days`);
+    expect(block(terms, "zh-Hant")).toContain("變更若影響您的權利或義務");
+  });
+
+  it("lets the operator look at a digest when the law requires it", async () => {
+    const html = await (await call("/privacy")).text();
+
+    expect(block(html, "en")).toContain("to deal with abuse, or when the law requires it.");
+    expect(block(html, "zh-Hant")).toContain("處理濫用行為，或依法律要求，才");
+  });
+
+  // A digest page contacts Google Fonts and publishers' image hosts (privacy.recipient_browser), so
+  // the cookie section speaks only for the service and points there instead of denying any tracker.
+  it("speaks for the service's own tools and points to the sites a digest page contacts", async () => {
+    const html = await (await call("/privacy")).text();
+
+    expect(block(html, "en")).toContain("uses no analytics, advertising or tracking tools. The other sites a digest page contacts");
+    expect(block(html, "zh-Hant")).toContain("也不使用分析、廣告或追蹤工具。精選摘要頁面會連線到的其他網站");
+    expect(html).not.toMatch(/no third-party trackers|沒有第三方追蹤工具/);
+  });
 });
 
 describe("the way to the legal pages", () => {
@@ -300,6 +327,14 @@ describe("the way to the legal pages", () => {
 
     expect(html).toContain('<a href="/privacy">');
     expect(html).toContain('<a href="/terms">');
+  });
+
+  // 消保法第 13 條 asks that the terms be made plain where they are agreed to: the confirm form is
+  // the step that signs a reader in.
+  it("says beside the confirm button that signing in agrees to the terms", async () => {
+    const html = await (await call("/login/confirm")).text();
+
+    expect(html).toMatch(/<button type="submit">[^<]*<\/button><p>By signing in, you agree to the Terms and have read the Privacy policy\.<\/p><\/form>/);
   });
 
   it.each(Object.keys(PAGES))("leads from %s to the other page and to the sign-in", async (path) => {

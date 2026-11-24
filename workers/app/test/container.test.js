@@ -168,7 +168,9 @@ describe("ready", () => {
 
   it("waits for the port to answer after a cold start", async () => {
     const ctx = fakeContext({ refusals: 3 });
-    await new Lifecycle(ctx, 300_000, timing).ready(ENV);
+    // The fourth ping answers whatever the clock says, so a deadline this long is never reached; the
+    // 50 ms one ran out under the full suite's parallel load and failed a run that was waiting fine.
+    await new Lifecycle(ctx, 300_000, { ...timing, deadlineMs: 60_000 }).ready(ENV);
     expect(ctx.container.pings).toEqual([PORT, PORT, PORT, PORT]);
   });
 
