@@ -56,7 +56,7 @@ nothing else imported. The measure that `backupAll` logs and answers no longer h
 A deployment that already set the four secrets leaves four unused secrets on the Worker. The
 operator can delete them with `wrangler secret delete`; nothing reads them.
 
-Where a second copy goes, if one does, is not decided here. The card `hosted-backup-evaluation`
+Where a second copy goes, if one does, is not decided here. A separate evaluation of cost and mechanism
 decides it, and a later ADR will record that decision. Until then the only copy of a hosted
 tenant's data outside its Durable Object is in R2, in the same Cloudflare account, and
 `scripts/backup_to_sqlite.py` still reads an export on any machine.
@@ -106,5 +106,4 @@ tenant's data outside its Durable Object is in R2, in the same Cloudflare accoun
 
 * `docs/architecture.md` §4 and §5 hold the backup's rows, `docs/hosted-tenants.md` §11 the
   runbook, and `docs/hosting-and-cost.md` the cost of the R2 bucket.
-* The owner's decision is dated 2026-11-24. The evaluation of a second copy is the card
-  `hosted-backup-evaluation`.
+* The owner's decision is dated 2026-11-24. A second copy is evaluated separately.

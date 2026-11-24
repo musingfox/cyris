@@ -187,7 +187,7 @@ scripts/hosted.sh secrets
 ```
 
 This asks for `CYRIS_ACCESS_TEAM_DOMAIN`, `CYRIS_ACCESS_AUD`, `CYRIS_HOSTED_OPERATORS`,
-`ANTHROPIC_API_KEY`, `CYRIS_HOSTED_OPERATOR_WEBHOOK`, `CYRIS_HOSTED_MAIL_FROM`, and sets each one as a secret of `cyris-hosted` on stdin.
+`ANTHROPIC_API_KEY`, `CYRIS_HOSTED_OPERATOR_WEBHOOK` and `CYRIS_HOSTED_MAIL_FROM`, and sets each one as a secret of `cyris-hosted` on stdin.
 `CYRIS_HOSTED_OPERATORS` is the list the Worker checks every operator request's Access identity against
 ([ADR-0037](decisions/0037-the-hosted-operator-routes-admit-only-named-identities.md)): an entry
 with an `@` is an Access email, and any other is a service token's Client ID, which Access signs
