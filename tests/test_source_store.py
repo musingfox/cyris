@@ -66,6 +66,23 @@ def test_push_is_a_replacement_not_a_merge(store: D1SourceStore) -> None:
     assert list(store.list_sources()) == ["New"]
 
 
+def test_insert_writes_a_new_name_and_never_overwrites_one(store: D1SourceStore) -> None:
+    held = SourceConfig(
+        name="Letter", type="newsletter", lane=Lane.FOLLOW, email_match="from:a@x.test"
+    )
+    store.replace_all(_sources(held))
+    other = SourceConfig(
+        name="Letter", type="newsletter", lane=Lane.READ, email_match="from:b@x.test"
+    )
+    new = SourceConfig(
+        name="b@x.test", type="newsletter", lane=Lane.READ, email_match="from:b@x.test"
+    )
+
+    assert store.insert(other) is False
+    assert store.insert(new) is True
+    assert store.list_sources() == {"Letter": held, "b@x.test": new}
+
+
 def test_push_batches_past_the_bound_parameter_limit(store: D1SourceStore) -> None:
     sources = _sources(
         *[SourceConfig(name=f"Feed {i}", url=f"https://a.test/{i}") for i in range(60)]

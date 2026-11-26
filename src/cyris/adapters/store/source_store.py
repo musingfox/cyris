@@ -39,6 +39,15 @@ class D1SourceStore:
             _columns(source),
         )
 
+    def insert(self, source: SourceConfig) -> bool:
+        """Write one source only if no row owns its name; whether a row was written."""
+        written = self._db.query(
+            "INSERT INTO sources (name, url, type, config) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(name) DO NOTHING",
+            _columns(source),
+        ).changes
+        return written > 0
+
     def delete(self, name: str) -> int:
         """Retire one source.
 
