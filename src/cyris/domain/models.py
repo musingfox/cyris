@@ -11,6 +11,21 @@ NO_LLM_MODEL = "none"
 NEWSLETTER_SOURCE_TYPE = "newsletter"
 # What a fetcher reads a source as: a feed by its URL, or mail by its sender.
 SourceType = Literal["rss", "newsletter"]
+# A source cyris made on its own, from mail no source matched, waits for the reader's decision:
+# "new" until the reader keeps it ("kept") or stops it ("declined"). A kept source reads as an
+# ordinary one everywhere; its review is what keeps `cyris sources push` from dropping its row.
+SOURCE_REVIEW_NEW = "new"
+SOURCE_REVIEW_DECLINED = "declined"
+SOURCE_REVIEW_KEPT = "kept"
+SourceReview = Literal["new", "declined", "kept"]
+# A reader's decision on a newsletter source, as the review it leaves, from whatever state it is
+# in: kept and restored are "kept". workers/app/test/source_review_cases.json holds every door
+# that takes one to the same answers (ADR-0050).
+SOURCE_DECISIONS: dict[str, SourceReview] = {
+    "keep": SOURCE_REVIEW_KEPT,
+    "stop": SOURCE_REVIEW_DECLINED,
+    "restore": SOURCE_REVIEW_KEPT,
+}
 
 
 class Lane(StrEnum):
@@ -43,6 +58,11 @@ class SourceConfig(BaseModel):
     # Where this source publishes. Its host is what makes "the sender's own domain"
     # knowable instead of guessed from link statistics.
     homepage: str | None = None
+    # None for a source a reader added, "kept" for one kept or restored. A stopped source keeps
+    # its row as "declined" rather than losing it: the row is what the sender's next mail
+    # matches, so it is acked unread instead of making the same source again, and no other table
+    # records it.
+    review: SourceReview | None = None
 
     @model_validator(mode="before")
     @classmethod
