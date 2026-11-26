@@ -21,7 +21,7 @@ pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[1]
 SLUG = "t1"
 ACCOUNT = "a" * 32
-D1_ID = "0948e71f-2374-4e4e-8f30-44890139011b"
+D1_ID = "11111111-2222-4333-8444-555555555555"
 TOKEN = "cf-token-NOT-FOR-OUTPUT"
 # Enter at the banner and at the resume notice, before the first stage reads anything.
 START = "\n\n"
@@ -53,7 +53,7 @@ case "$*" in
     echo "uv $*" >> "$HOME/push.calls"
     sources=$(sed -E 's/.*--sources ([^ ]+).*/\1/' <<<"$*")
     cp "$sources" "$HOME/pushed-sources.yaml"
-    echo "D1 database 0948e71f-2374-4e4e-8f30-44890139011b" ;;
+    echo "D1 database 11111111-2222-4333-8444-555555555555" ;;
   *"cyris sources push"*) echo "uv $*" >> "$HOME/push.calls" ;;
 esac
 """
