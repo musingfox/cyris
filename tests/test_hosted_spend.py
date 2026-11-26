@@ -29,7 +29,7 @@ from cyris import bootstrap
 from cyris.adapters import hosted_spend
 from cyris.adapters.ai_gateway_client import AIGatewayClient
 from cyris.adapters.clef import CLEF_MODEL, ClefError
-from cyris.adapters.embedding import _Usage
+from cyris.adapters.embedding import WorkersAIEmbedder, _Usage
 from cyris.adapters.gemini_client import GeminiClient, OutputBudgetSpentError
 from cyris.adapters.hosted import OPERATOR_ORIGIN
 from cyris.adapters.hosted_spend import (
@@ -37,6 +37,7 @@ from cyris.adapters.hosted_spend import (
     EMBEDDING_BYTES_PER_TOKEN,
     GEMINI_EMBEDDING_USD_PER_MTOK,
     SPEND_ORIGIN,
+    UNPRICED_EMBEDDING_USD_PER_MTOK,
     UNPRICED_USD_PER_MTOK,
     WORKERS_AI_USD_PER_KNEURON,
     MeteredClef,
@@ -287,6 +288,49 @@ async def test_gemini_embeddings_are_estimated_from_the_texts_bytes_and_workers_
     by_neurons = SpendMeter(HAIKU)
     await MeteredEmbedder(UsageEmbedder(neurons=1000.0), by_neurons, "workers_ai").embed(texts[:2])
     assert by_neurons.report()["embedding_usd"] == pytest.approx(2 * WORKERS_AI_USD_PER_KNEURON)
+
+
+async def test_a_workers_ai_answer_with_no_neurons_is_charged_as_unpriced_never_as_free() -> None:
+    """As a model with no rate card is (ADR-0038): its estimated tokens charged at the dearest
+    per-token embedding rate the meter holds and counted in `unpriced_tokens`, so the operator
+    sees the guess in `scripts/hosted.sh spend`; the batch that reported neurons is priced by
+    them."""
+    meter = SpendMeter(HAIKU)
+    embedder = MeteredEmbedder(WorkersAIEmbedder("tok", "acct"), meter, "workers_ai")
+    reported = {"success": True, "result": {"data": [[1.0, 0.0]], "meta": {"neurons": 1000.0}}}
+    silent = {"success": True, "result": {"data": [[1.0, 0.0]], "meta": {}}}
+
+    with respx.mock:
+        route = respx.post(
+            "https://api.cloudflare.com/client/v4/accounts/acct/ai/run/@cf/baai/bge-m3"
+        ).mock(side_effect=[httpx.Response(200, json=reported), httpx.Response(200, json=silent)])
+        await embedder.embed(["priced by its neurons"])
+        await embedder.embed(["台灣半導體 with no neurons"])
+
+    assert route.call_count == 2
+    tokens = estimated_embedding_tokens(["台灣半導體 with no neurons"])
+    report = meter.report()
+    assert report["unpriced_tokens"] == tokens > 0
+    assert report["embedding_usd"] == pytest.approx(
+        WORKERS_AI_USD_PER_KNEURON + tokens * UNPRICED_EMBEDDING_USD_PER_MTOK / 1_000_000
+    )
+    assert report["embedded_texts"] == 2
+    assert report["embedding_tokens_estimated"] == tokens
+
+
+async def test_an_embedder_reporting_no_neurons_at_all_is_unpriced_unless_it_is_gemini() -> None:
+    texts = ["A launch today"]
+    tokens = estimated_embedding_tokens(texts)
+
+    unpriced = SpendMeter(HAIKU)
+    await MeteredEmbedder(UsageEmbedder(), unpriced, "workers_ai").embed(texts)
+    gemini = SpendMeter(HAIKU)
+    await MeteredEmbedder(UsageEmbedder(), gemini, "gemini").embed(texts)
+
+    assert unpriced.report()["unpriced_tokens"] == tokens
+    assert unpriced.report()["embedding_usd"] > 0
+    # Gemini has its own rate card: estimated, priced, and not a guess at the rate.
+    assert gemini.report()["unpriced_tokens"] == 0
 
 
 async def test_an_embed_call_that_raised_part_way_still_counts_the_batches_it_got_embedded() -> (
@@ -666,6 +710,88 @@ async def test_a_ledger_down_all_run_tells_the_operator_once_and_a_lost_report_t
     await run_digest(deps, RunOptions(period="evening"))
     [alert] = ledger.alerts
     assert "was not added to its tenant's month" in alert["body"]
+
+
+# The operator's Workers AI account and embedding token, which `scripts/hosted.sh secrets` sets on
+# the hosted Worker and every tenant's container is handed (ADR-0049).
+OPERATOR_ACCOUNT = "0123456789abcdef0123456789abcdef"
+OPERATOR_EMBEDDING_TOKEN = "cf-operator-embedding"
+# What Workers AI reports it charged for one embedded text, in its answer's `meta`.
+NEURONS_PER_TEXT = 0.035
+
+
+def _workers_ai_answer(request: httpx.Request) -> httpx.Response:
+    texts = json.loads(request.content)["text"]
+    meta = {"neurons": NEURONS_PER_TEXT * len(texts)}
+    return httpx.Response(
+        200, json={"success": True, "result": {"data": [[1.0, 0.0] for _ in texts], "meta": meta}}
+    )
+
+
+async def test_a_tenant_that_turns_vote_similarity_on_embeds_on_the_operators_workers_ai(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The switch is the tenant's row; the embedder is the operator's, whatever embedder the rows
+    name; and its neurons reach the tenant's month as `embedding_usd`."""
+    from fakes import seed_d1_settings
+    from test_hosted_run_wiring import _files, _hosted_env, _through
+
+    _hosted_env(monkeypatch)
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", OPERATOR_ACCOUNT)
+    monkeypatch.setenv("CLOUDFLARE_EMBEDDING_API_TOKEN", OPERATOR_EMBEDDING_TOKEN)
+    monkeypatch.delenv("CLOUDFLARE_AI_TOKEN", raising=False)
+    gateway = FakeGateway("alpha")
+    apply_hosted_schema(gateway.db)
+    seed_d1_settings(
+        gateway.db,
+        **{
+            "llm_provider.provider": "anthropic",
+            "llm_provider.model": HAIKU,
+            "vote_similarity.enabled": True,
+            # Rows the tenant's own container could have written.
+            "vote_similarity.provider": "gemini",
+            "vote_similarity.model": "gemini-embedding-001",
+        },
+    )
+    gateway.db.query(
+        "INSERT INTO stored_articles (url, original_id, title, published_at, source_name, "
+        "source_lane, state, first_seen_at, triaged_at) VALUES ('https://a.test/old', 0, "
+        "'An old rumour', '2026-11-01T00:00:00.000000+00:00', 'A', 'read', 'rejected', "
+        "'2026-11-01T00:00:00.000000+00:00', '2026-11-01T01:00:00+00:00')"
+    )
+    _through(gateway, monkeypatch)
+    ledger = FakeSpendGateway("alpha")
+    ledger_through(ledger, monkeypatch)
+    llm = FakeLLM(SCORES, model=HAIKU, input_tokens=1_000, output_tokens=200)
+    monkeypatch.setattr(bootstrap, "build_llm", lambda _cfg: llm)
+
+    cfg = bootstrap.load_effective_config(*_files(tmp_path))
+    deps = replace(bootstrap.build_deps(cfg), fetch_sources=[FakeSource([_article()])])
+    with respx.mock:
+        model = bootstrap.embedding_defaults("workers_ai")["model"]
+        workers_ai = respx.post(
+            f"https://api.cloudflare.com/client/v4/accounts/{OPERATOR_ACCOUNT}/ai/run/{model}"
+        ).mock(side_effect=_workers_ai_answer)
+        anywhere = respx.route().mock(return_value=httpx.Response(500))
+        report = await run_digest(deps, RunOptions(period="morning"))
+
+    assert (cfg.app.vote_similarity.provider, cfg.app.vote_similarity.enabled) == (
+        "workers_ai",
+        True,
+    )
+    assert isinstance(deps.embedder, MeteredEmbedder)
+    assert report.status == "ok"
+    assert anywhere.call_count == 0
+    # One call for the downvote it is seeded with, one for the window's one candidate.
+    assert workers_ai.call_count == 2
+    for call in workers_ai.calls:
+        assert call.request.headers["Authorization"] == f"Bearer {OPERATOR_EMBEDDING_TOKEN}"
+    [charged] = ledger.reports
+    assert charged["embedded_texts"] == 2
+    assert charged["embedding_usd"] > 0
+    assert charged["embedding_usd"] == pytest.approx(
+        2 * NEURONS_PER_TEXT * WORKERS_AI_USD_PER_KNEURON / 1000
+    )
 
 
 def test_only_a_tenants_own_run_is_metered_never_a_self_hosted_one_or_the_operators(

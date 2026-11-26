@@ -1,5 +1,5 @@
 {
-  "_comment": "What a hosted tenant may change of its own digest, and the caps it is held to (docs/decisions/0040-a-hosted-tenant-edits-its-settings-on-the-hosted-worker.md). Read by the hosted Worker's settings routes (workers/app/src/hosted_shared_settings.js), its poll (tenant_buffer.js), and by the tenant's run container (src/cyris/adapters/hosted.py), which pins `provider`, `model` and `blank_settings` and clamps the article cap whatever the tenant's database holds. Constants: an operator-changeable cap is a later card. `writable_settings` is every settings key a tenant writes on /t/<tenant>/settings; the schedule is written through the registry, never as a settings row. `operator_keys` are what the operator alone sets, outside `settings`. `source_url` and `poll` are the rules a tenant's feed URL is held to when it is saved and at every hop of a poll; `poll.max_redirects` and `poll.max_feed_bytes` equal feed_check.py's MAX_REDIRECTS and MAX_BYTES (tests/test_hosted_settings_policy.py).",
+  "_comment": "What a hosted tenant may change of its own digest, and the caps it is held to (docs/decisions/0040-a-hosted-tenant-edits-its-settings-on-the-hosted-worker.md). Read by the hosted Worker's settings routes (workers/app/src/hosted_shared_settings.js), its poll (tenant_buffer.js), and by the tenant's run container (src/cyris/adapters/hosted.py), which pins `provider`, `model`, `embedding_provider`, `embedding_model`, `preference_source` and `blank_settings` and clamps the article cap whatever the tenant's database holds. `embedding_provider` and `embedding_model` are the embedder a tenant's vote similarity runs on, the operator's Workers AI account, whose token is the Worker's CLOUDFLARE_EMBEDDING_API_TOKEN (scripts/hosted.sh secrets) and whose spend is metered as embedding_usd (docs/decisions/0049-a-hosted-tenants-embedding-runs-on-the-operators-workers-ai.md); an empty model is the provider's default (src/cyris/provider_defaults.json), as the seed's starting value is. `preference_source` is the vote order every tenant runs, `cosine`: Clef stays out of hosted, and the run pins it because the embedding token Clef falls back to reaches every hosted container (ADR-0049). Constants: an operator-changeable cap is a later card. `writable_settings` is every settings key a tenant writes on /t/<tenant>/settings; the schedule is written through the registry, never as a settings row. `operator_keys` are what the operator alone sets, outside `settings`. `source_url` and `poll` are the rules a tenant's feed URL is held to when it is saved and at every hop of a poll; `poll.max_redirects` and `poll.max_feed_bytes` equal feed_check.py's MAX_REDIRECTS and MAX_BYTES (tests/test_hosted_settings_policy.py).",
   "writable_settings": [
     "digest.output_language",
     "digest.style_prompt",
@@ -14,11 +14,15 @@
     "vote_similarity.max_seeds",
     "digest.scoring_snippet_length",
     "digest.summarize_snippet_length",
-    "digest.filter_snippet_length"
+    "digest.filter_snippet_length",
+    "vote_similarity.enabled"
   ],
   "operator_keys": ["daily_run_cap", "max_digest_times", "monthly_ai_budget_usd"],
   "provider": "anthropic",
   "model": "claude-haiku-5-5",
+  "embedding_provider": "workers_ai",
+  "embedding_model": "",
+  "preference_source": "cosine",
   "blank_settings": ["notify.discord_webhook_url", "notify.email_from", "notify.email_to"],
   "max_articles_per_digest": 400,
   "max_sources": 30,

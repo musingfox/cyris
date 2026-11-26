@@ -95,6 +95,26 @@ async def test_workers_ai_returns_unit_vectors_and_records_what_it_charged(patch
     assert embedder.usage.requests == 1
 
 
+async def test_workers_ai_names_the_texts_whose_answer_reported_no_neurons(patched_client):
+    """An answer with no `meta.neurons` is not read as 0 neurons: its texts are named, so a
+    meter can tell them from a free call (ADR-0049)."""
+    answers = iter(
+        [
+            workers_response([[3.0, 4.0]], neurons=0.0258),
+            {"success": True, "result": {"data": [[1.0, 0.0]]}},
+        ]
+    )
+    patched_client(lambda _request: httpx.Response(200, json=next(answers)))
+    embedder = WorkersAIEmbedder("tok", "acct")
+
+    await embedder.embed(["reported"])
+    await embedder.embed(["not reported"])
+
+    assert embedder.usage.neurons == pytest.approx(0.0258)
+    assert embedder.usage.unreported == ["not reported"]
+    assert embedder.usage.embedded == 2
+
+
 async def test_a_repeated_text_is_embedded_once_per_call(patched_client):
     """No cache between calls (see the module docstring), but a run that asks for
     the same headline twice must not pay twice inside that run."""

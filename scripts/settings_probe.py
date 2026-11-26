@@ -3652,6 +3652,13 @@ LOCK_MODEL = (
     'data.locked = {"llm_provider.provider": {reason: "operator-set"},'
     ' "llm_provider.model": {reason: "operator-set"}};'
 )
+LOCK_EMBEDDER = (
+    'data.locked = {"vote_similarity.provider": {reason: "operator-set"},'
+    ' "vote_similarity.model": {reason: "operator-set"}};'
+)
+# A block, so its `realFetch` does not clash with the settings answer's.
+HOLD_VOTE_SAVE = "{" + hold_post("/api/settings/vote-similarity") + "}"
+CHECKING_EMBEDDER = json.dumps(PAGE("settings.checking_embedder"))
 LOCKED_MODEL = f"""
 const radios = $$("#providers input");
 expect(radios.length > 0 && radios.every((radio) => radio.disabled), "a provider can be picked");
@@ -3677,6 +3684,46 @@ CHECKS += [
         # Installed after the preload, so it wraps it and rewrites its answer: the model is no
         # longer locked, as on a page that locks only the first key of a field.
         sabotage_preload=answer_settings('delete data.locked["llm_provider.model"];'),
+    ),
+    # An embedder the edition locks, provider and model, is its operator's (ADR-0049): turning
+    # vote similarity on calls it for no reader, so the page promises no call and its save says
+    # Saving, not Checking the embedder.
+    Check(
+        id="locked-embedder-promises-no-call",
+        fixture="writable",
+        path="/settings#model",
+        preload=answer_settings(LOCK_EMBEDDER),
+        act="await settingsLoaded();",
+        script=f"""
+            const hint = $("#embedding-model-hint");
+            expect(!visible(hint), `the help promises a call: ${{hint.textContent}}`);
+            const field = $("#embedding-model-input").closest(".form > .field");
+            const line = $("[data-lock]", field);
+            const want = {json.dumps(PAGE("lock_reason.operator-set"))};
+            expect(line && visible(line) && line.textContent === want,
+              `line: ${{line?.textContent}}`);
+        """,
+        # Installed after the preload, so it rewrites its answer: the model is the reader's again.
+        sabotage_preload=answer_settings('delete data.locked["vote_similarity.model"];'),
+    ),
+    Check(
+        id="locked-embedder-save-checks-nothing",
+        fixture="writable",
+        path="/settings#model",
+        preload=answer_settings(LOCK_EMBEDDER) + HOLD_VOTE_SAVE,
+        act="""
+            await settingsLoaded();
+            setValue($("#vote-enabled"), "true");
+            saveOf("model").click();
+            await waitFor(() => window.__release, "the held save");
+        """,
+        script=f"""
+            const notice = noticeOf("model");
+            const want = {json.dumps(PAGE("settings.saving"))};
+            expect(visible(notice) && notice.textContent === want,
+              `notice: ${{visible(notice) && notice.textContent}}`);
+        """,
+        sabotage=f"""noticeOf("model").textContent = {CHECKING_EMBEDDER};""",
     ),
     Check(
         id="locked-key-not-marked-missing",

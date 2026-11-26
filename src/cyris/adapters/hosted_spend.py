@@ -70,6 +70,12 @@ UNPRICED_USD_PER_MTOK = (
     max(rates[0] for rates in _PRICES_PER_MTOK.values()),
     max(rates[1] for rates in _PRICES_PER_MTOK.values()),
 )
+# What an embedded text no rate card prices is charged per million estimated tokens: a Workers AI
+# answer that reported no neurons. The dearest per-token embedding rate this meter holds,
+# gemini-embedding-001's, as `UNPRICED_USD_PER_MTOK` is for an LLM; its tokens are also counted
+# in `unpriced_tokens`, so the operator sees which spend is a guess. Not 0, which would let an
+# answer with no neurons embed without limit.
+UNPRICED_EMBEDDING_USD_PER_MTOK = GEMINI_EMBEDDING_USD_PER_MTOK
 # Clef's price per million input tokens: `@cf/cloudflare/clef-flash`, the one model `ClefClient`
 # asks, on Cloudflare's Workers AI pricing page (3,455 neurons per million, read 2026-11-21). A
 # Clef answer that reports no input tokens, or a call that raised, is estimated from the bytes
@@ -100,22 +106,37 @@ class SpendMeter:
         self.embedded_texts = 0
         self.embedding_tokens = 0
         self.embedding_usd = 0.0
+        self.unpriced_embedding_tokens = 0
         self.clef_calls = 0
         self.clef_tokens = 0
 
     def count_llm(self, response: Any) -> None:
         self.llm.add(response.input_tokens, response.output_tokens, response.neurons)
 
-    def count_embedding(self, texts: list[str], provider: str, neurons: float | None) -> None:
-        """`texts` were embedded; `neurons` is what Workers AI reported for them, if it did."""
+    def count_embedding(
+        self,
+        texts: list[str],
+        provider: str,
+        neurons: float | None,
+        unreported: list[str] | None = None,
+    ) -> None:
+        """`texts` were embedded; `neurons` is what Workers AI reported for them, if it did, and
+        `unreported` those of them whose answer reported none."""
         self.embedded_texts += len(texts)
+        estimated = texts
         if neurons is not None:
             self.embedding_usd += neurons * WORKERS_AI_USD_PER_KNEURON / 1000
+            estimated = unreported or []
+        if not estimated:
             return
-        tokens = estimated_embedding_tokens(texts)
+        tokens = estimated_embedding_tokens(estimated)
         self.embedding_tokens += tokens
         if provider == "gemini":
             self.embedding_usd += tokens * GEMINI_EMBEDDING_USD_PER_MTOK / 1_000_000
+            return
+        # No rate card prices these: charged at the dearest one, and named apart.
+        self.embedding_usd += tokens * UNPRICED_EMBEDDING_USD_PER_MTOK / 1_000_000
+        self.unpriced_embedding_tokens += tokens
 
     def count_clef(self, input_tokens: int) -> None:
         self.clef_calls += 1
@@ -141,7 +162,7 @@ class SpendMeter:
             "clef_usd": round(self.clef_tokens * CLEF_FLASH_USD_PER_MTOK / 1_000_000, 8),
             "input_tokens": self.llm.input_tokens,
             "output_tokens": self.llm.output_tokens,
-            "unpriced_tokens": unpriced,
+            "unpriced_tokens": unpriced + self.unpriced_embedding_tokens,
             "llm_calls": self.llm.api_calls,
             "embedded_texts": self.embedded_texts,
             "embedding_tokens_estimated": self.embedding_tokens,
@@ -192,12 +213,14 @@ class MeteredEmbedder:
     async def embed(self, texts: list[str]) -> list[list[float]]:
         usage = self._inner.usage
         embedded, neurons = usage.embedded, usage.neurons
+        unreported = len(getattr(usage, "unreported", ()))
         try:
             return await self._inner.embed(texts)
         finally:
             done = list(dict.fromkeys(texts))[: usage.embedded - embedded]
             spent = None if usage.neurons is None else usage.neurons - (neurons or 0.0)
-            self._meter.count_embedding(done, self._provider, spent)
+            unpriced = list(getattr(usage, "unreported", ()))[unreported:]
+            self._meter.count_embedding(done, self._provider, spent, unpriced)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._inner, name)

@@ -29,7 +29,9 @@
       { "key": "digest.summarize_snippet_length", "value": 1 },
       { "key": "digest.summarize_snippet_length", "value": 20000 },
       { "key": "digest.filter_snippet_length", "value": 1 },
-      { "key": "digest.filter_snippet_length", "value": 500 }
+      { "key": "digest.filter_snippet_length", "value": 500 },
+      { "key": "vote_similarity.enabled", "value": true },
+      { "key": "vote_similarity.enabled", "value": false }
     ],
     "refused": [
       { "key": "llm_provider.provider", "value": "gemini", "reason": "operator_key" },
@@ -37,7 +39,10 @@
       { "key": "notify.discord_webhook_url", "value": "https://discord.com/api/webhooks/1/x", "reason": "operator_key" },
       { "key": "notify.email_to", "value": "reader@example.com", "reason": "operator_key" },
       { "key": "notify.email_from", "value": "digest@example.com", "reason": "operator_key" },
-      { "key": "vote_similarity.enabled", "value": true, "reason": "operator_key" },
+      { "key": "vote_similarity.provider", "value": "gemini", "reason": "operator_key" },
+      { "key": "vote_similarity.model", "value": "@cf/baai/bge-large-en-v1.5", "reason": "operator_key" },
+      { "key": "vote_similarity.enabled", "value": null, "reason": "on_off" },
+      { "key": "vote_similarity.enabled", "value": "sometimes", "reason": "on_off" },
       { "key": "digest.preference_source", "value": "clef", "reason": "operator_key" },
       { "key": "daily_run_cap", "value": 24, "reason": "operator_key" },
       { "key": "monthly_ai_budget_usd", "value": 100, "reason": "operator_key" },

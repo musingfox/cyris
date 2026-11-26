@@ -101,6 +101,9 @@ async function signIn(email = "ana@example.com") {
 // A save from the page itself: a same-origin fetch, which carries the page's Origin.
 const save = (session, body, headers = { Origin: ORIGIN }, path = "/api/settings/values") => call(path, { method: "POST", session, headers, body });
 const SEEDS = "vote_similarity.max_seeds";
+const ENABLED = "vote_similarity.enabled";
+// The keys of the vote form a tenant writes, which only its route saves.
+const VOTE_FORM = [ENABLED, SEEDS];
 const saveHours = (session, body, headers = { Origin: ORIGIN }) => call("/api/settings/schedule", { method: "POST", session, headers, body });
 const settingsOf = (tenant) => bound.TENANT_DB.getByName(tenant).settings();
 const rowsOf = async (tenant) =>
@@ -356,16 +359,22 @@ describe("GET /api/settings on the hosted Worker", () => {
     expect(set.embedding_providers[0].configured).toBe(true);
   });
 
-  it("shows the provider and model the run is pinned to, and the registry's schedule", async () => {
+  it("shows the provider, model and embedder the run is pinned to, and the registry's schedule", async () => {
     const session = await signIn();
-    // A row the tenant's own container could have written.
-    await bound.TENANT_DB.getByName("alpha").query("UPDATE settings SET value = ? WHERE key = ?", ['"gemini"', "llm_provider.provider"]);
+    // Rows the tenant's own container could have written.
+    const db = bound.TENANT_DB.getByName("alpha");
+    await db.query("UPDATE settings SET value = ? WHERE key = ?", ['"gemini"', "llm_provider.provider"]);
+    await db.query("UPDATE settings SET value = ? WHERE key = ?", ['"gemini"', "vote_similarity.provider"]);
+    await db.query("UPDATE settings SET value = ? WHERE key = ?", ['"gemini-embedding-001"', "vote_similarity.model"]);
 
-    const { values, providers } = await (await call("/api/settings", { session })).json();
+    const { values, providers, embedding_providers: embedders } = await (await call("/api/settings", { session })).json();
 
     expect(values["llm_provider.provider"]).toBe("anthropic");
     expect(values["llm_provider.model"]).toBe("claude-haiku-5-5");
     expect(providers.map((provider) => provider.name)).toEqual(["anthropic"]);
+    expect(values["vote_similarity.provider"]).toBe(POLICY.embedding_provider);
+    expect(values["vote_similarity.model"]).toBe(POLICY.embedding_model);
+    expect(embedders.map((embedder) => embedder.name)).toEqual([POLICY.embedding_provider]);
     expect(values["general.digest_schedule"]).toEqual(["07:00"]);
     expect(values["general.timezone"]).toBe("Asia/Taipei");
   });
@@ -450,7 +459,7 @@ describe("POST /api/settings/values on the hosted Worker", () => {
     await holdsTo(session, await save(session, written.body, { Origin: ORIGIN }, written.path), written, before);
   });
 
-  it.each(RULE_CASES.settings.accepted.filter(({ key }) => key !== SEEDS))("takes $key = $value, as the hosted rules do", async ({ key, value }) => {
+  it.each(RULE_CASES.settings.accepted.filter(({ key }) => !VOTE_FORM.includes(key)))("takes $key = $value, as the hosted rules do", async ({ key, value }) => {
     const session = await signIn();
 
     const response = await save(session, { values: { [key]: value } });
@@ -459,7 +468,7 @@ describe("POST /api/settings/values on the hosted Worker", () => {
     expect((await response.json()).values).toEqual({ [key]: value });
   });
 
-  it.each(RULE_CASES.settings.refused.filter(({ key }) => POLICY.writable_settings.includes(key) && key !== SEEDS))(
+  it.each(RULE_CASES.settings.refused.filter(({ key }) => POLICY.writable_settings.includes(key) && !VOTE_FORM.includes(key)))(
     "refuses $key = $value, as the hosted rules do, in their words",
     async ({ key, value, reason }) => {
       const session = await signIn();
@@ -475,27 +484,29 @@ describe("POST /api/settings/values on the hosted Worker", () => {
     },
   );
 
-  // The vote form's route, the only one that saves the seeds, held to the same rule cases: the other
-  // keys of the form sent as the seeded tenant holds them.
-  const HELD_FORM = { enabled: false, provider: STARTING_VALUES["vote_similarity.provider"], model: "", max_seeds: STARTING_VALUES[SEEDS] };
+  // The vote form's route, the only one that saves the switch and the seeds, held to the same rule
+  // cases: the other keys of the form sent as the seeded tenant holds them, the embedder the
+  // policy's, which the run is pinned to (ADR-0049).
+  const HELD_FORM = { enabled: false, provider: POLICY.embedding_provider, model: POLICY.embedding_model, max_seeds: STARTING_VALUES[SEEDS] };
   const seedsForm = (value) => ({ ...HELD_FORM, max_seeds: value });
+  const formWith = (key, value) => ({ ...HELD_FORM, [key.replace("vote_similarity.", "")]: value });
 
-  it.each(RULE_CASES.settings.accepted.filter(({ key }) => key === SEEDS))("takes the vote seeds $value from the vote form", async ({ key, value }) => {
+  it.each(RULE_CASES.settings.accepted.filter(({ key }) => VOTE_FORM.includes(key)))("takes $key = $value from the vote form", async ({ key, value }) => {
     const session = await signIn();
 
-    const response = await save(session, seedsForm(value), { Origin: ORIGIN }, "/api/settings/vote-similarity");
+    const response = await save(session, formWith(key, value), { Origin: ORIGIN }, "/api/settings/vote-similarity");
 
     expect(response.status).toBe(200);
     expect((await response.json()).values[key]).toBe(value);
     expect((await settingsOf("alpha"))[key]).toBe(value);
   });
 
-  it.each(RULE_CASES.settings.refused.filter(({ key }) => key === SEEDS))("refuses the vote seeds $value from the vote form, in the rule's words", async ({ key, value, reason }) => {
+  it.each(RULE_CASES.settings.refused.filter(({ key }) => VOTE_FORM.includes(key)))("refuses $key = $value from the vote form, in the rule's words", async ({ key, value, reason }) => {
     const session = await signIn();
     const before = await rowsOf("alpha");
     const refusal = checkSettings({ [key]: value }).refused;
 
-    const response = await save(session, seedsForm(value), { Origin: ORIGIN }, "/api/settings/vote-similarity");
+    const response = await save(session, formWith(key, value), { Origin: ORIGIN }, "/api/settings/vote-similarity");
 
     expect(refusal.reason).toBe(reason);
     expect(response.status).toBe(400);
@@ -512,11 +523,42 @@ describe("POST /api/settings/values on the hosted Worker", () => {
     expect((await response.json()).field).toBe(SEEDS);
   });
 
-  it("refuses the vote form's embedder, switch or model changed, and stores none of it", async () => {
+  it("turns vote similarity on from the vote form calling no embedder, and says whose the embedder is", async () => {
+    const session = await signIn();
+    const fetched = vi.fn(() => Promise.reject(new Error("no request leaves the Worker")));
+    vi.stubGlobal("fetch", fetched);
+
+    const response = await save(session, formWith(ENABLED, true), { Origin: ORIGIN }, "/api/settings/vote-similarity");
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      ok: true,
+      values: { ...Object.fromEntries(Object.entries(HELD_FORM).map(([field, value]) => [`vote_similarity.${field}`, value])), [ENABLED]: true },
+      detail: EN["settings_api.vote_operator_embedder"],
+      note: EN["settings_api.saved_next_run"],
+    });
+    expect(fetched).not.toHaveBeenCalled();
+    expect((await settingsOf("alpha"))[ENABLED]).toBe(true);
+  });
+
+  it("takes the vote form with the pinned embedder whatever embedder the tenant's rows name", async () => {
+    const session = await signIn();
+    // Rows the tenant's own container could have written.
+    const db = bound.TENANT_DB.getByName("alpha");
+    await db.query("UPDATE settings SET value = ? WHERE key = ?", ['"gemini"', "vote_similarity.provider"]);
+    await db.query("UPDATE settings SET value = ? WHERE key = ?", ['"gemini-embedding-001"', "vote_similarity.model"]);
+
+    const response = await save(session, formWith(ENABLED, true), { Origin: ORIGIN }, "/api/settings/vote-similarity");
+
+    expect(response.status).toBe(200);
+    expect((await settingsOf("alpha"))[ENABLED]).toBe(true);
+  });
+
+  it("refuses the vote form's embedder or model changed, and stores none of it", async () => {
     const session = await signIn();
     const before = await rowsOf("alpha");
 
-    for (const changed of [{ provider: "gemini" }, { enabled: true }, { model: "other-model" }]) {
+    for (const changed of [{ provider: "gemini" }, { model: "other-model" }, { enabled: true, provider: "gemini" }]) {
       const response = await save(session, { ...seedsForm(300), ...changed }, { Origin: ORIGIN }, "/api/settings/vote-similarity");
       expect(response.status).toBe(400);
       expect((await response.json()).error).toContain("locked");

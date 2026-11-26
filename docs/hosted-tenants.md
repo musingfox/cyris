@@ -81,7 +81,11 @@ You need:
   ([limits](https://developers.cloudflare.com/email-service/platform/limits/),
   [pricing](https://developers.cloudflare.com/email-service/platform/pricing/));
 - for step 10, an inbox outside the account that is not one of its verified destination
-  addresses, to check that a link reaches a stranger.
+  addresses, to check that a link reaches a stranger;
+- for step 3, an API token of the trial account with Workers AI Read (dashboard > Manage account
+  > Account API tokens), for the tenants' vote similarity, which embeds on the trial account's
+  Workers AI ([ADR-0049](decisions/0049-a-hosted-tenants-embedding-runs-on-the-operators-workers-ai.md)).
+  Make it for this alone, not the token wrangler logs in with.
 
 ```bash
 bun install --frozen-lockfile
@@ -187,7 +191,12 @@ scripts/hosted.sh secrets
 ```
 
 This asks for `CYRIS_ACCESS_TEAM_DOMAIN`, `CYRIS_ACCESS_AUD`, `CYRIS_HOSTED_OPERATORS`,
-`ANTHROPIC_API_KEY`, `CYRIS_HOSTED_OPERATOR_WEBHOOK` and `CYRIS_HOSTED_MAIL_FROM`, and sets each one as a secret of `cyris-hosted` on stdin.
+`ANTHROPIC_API_KEY`, `CLOUDFLARE_EMBEDDING_API_TOKEN`, `CYRIS_HOSTED_OPERATOR_WEBHOOK` and `CYRIS_HOSTED_MAIL_FROM`, and sets each one as a secret of `cyris-hosted` on stdin.
+`CLOUDFLARE_EMBEDDING_API_TOKEN` is the Workers AI token from step 0, read without echo. It sets
+`CLOUDFLARE_ACCOUNT_ID` to the account id you typed and confirmed too, since the tenants' runs
+embed on that account: a tenant that turns vote similarity on spends your Workers AI, charged to
+its month as `embedding_usd`
+([ADR-0049](decisions/0049-a-hosted-tenants-embedding-runs-on-the-operators-workers-ai.md)).
 `CYRIS_HOSTED_OPERATORS` is the list the Worker checks every operator request's Access identity against
 ([ADR-0037](decisions/0037-the-hosted-operator-routes-admit-only-named-identities.md)): an entry
 with an `@` is an Access email, and any other is a service token's Client ID, which Access signs
@@ -503,7 +512,11 @@ scripts/hosted.sh spend 2026-11
 Each tenant has one entry: its `budget_usd` (`budget_set` is false while it is the default),
 `cost_usd` (the sum of `llm_usd`, `embedding_usd` and `clef_usd`), its tokens and `runs`, the
 number of runs that reported. A Haiku 5.5 run of about 150 articles costs about 0.017 USD.
-`unpriced_tokens` above 0 means a tenant runs a model this release has no rate card for. Those
+`unpriced_tokens` above 0 means a tenant runs a model this release has no rate card for, or that
+Workers AI answered some of its embeddings without saying how many neurons they cost; a run whose
+`ai_spend` in `digest_runs.summary` has `embedding_tokens_estimated` above 0 on the `workers_ai`
+embedder is the second
+([ADR-0049](decisions/0049-a-hosted-tenants-embedding-runs-on-the-operators-workers-ai.md)). Those
 tokens are charged at the dearest rate card it has, so that tenant's allowance runs out sooner
 than its model's real price would make it; add the model's rate to `_PRICES_PER_MTOK` in
 `src/cyris/domain/models.py`.
@@ -779,15 +792,18 @@ the keys the hosted policy keeps from a tenant locked
 ([ADR-0043](decisions/0043-one-settings-page-an-edition-locks-a-key.md)); no container starts for
 it (ADR-0040). There the reader changes the tenant's output language, style, type size, articles
 per run (at most 400), window, vote order, follow summaries, Top story score, vote half-life, topic
-survival days, vote seeds, the three snippet lengths, publish hour and time zone, and adds or removes RSS feeds, 30 sources at most with newsletters counted. The page offers a
+survival days, vote similarity on or off, vote seeds, the three snippet lengths, publish hour and time zone, and adds or removes RSS feeds, 30 sources at most with newsletters counted. The page offers a
 second publish hour only to a tenant you allowed two: for a tenant allowed one, Evening is disabled
 with `Not included in your plan.`
-([ADR-0047](decisions/0047-a-route-refuses-a-change-to-a-locked-key.md)). The model, the notify
-targets, the reasoning effort, the run cap, the number of digest hours and the AI allowance stay
+([ADR-0047](decisions/0047-a-route-refuses-a-change-to-a-locked-key.md)). The model, the
+embedding provider and model, the notify targets, the reasoning effort, the run cap, the number of digest hours and the AI allowance stay
 yours (a longer snippet only spends the tenant's own monthly allowance,
 [ADR-0038](decisions/0038-a-hosted-tenants-ai-spend-is-metered-in-the-registry.md)): their controls are
 disabled with the line `Set by the service's operator.`, the routes refuse a change to them, and the
-run pins the model and blanks the notify targets whatever the tenant's rows say. A save applies from
+run pins the model and the embedder and blanks the notify targets whatever the tenant's rows say.
+Vote similarity, once on, embeds on your Workers AI account at the tenant's next run, metered into
+its month as `embedding_usd`; saving it calls no embedder
+([ADR-0049](decisions/0049-a-hosted-tenants-embedding-runs-on-the-operators-workers-ai.md)). A save applies from
 the tenant's next run, and the hours and zone from the next tick, since they go to the registry as
 your schedule route's do; a save names no run cap or maximum, so yours are kept. Tracking is empty
 and read-only. Its site bar shows Archive, Settings and Sign out to a signed-in reader, as the
@@ -803,7 +819,13 @@ To check it on a trial tenant, after a deploy that built the page:
 2. Under Provider, `anthropic` is the one choice, selected and disabled; Model reads
    `claude-haiku-5-5` and is disabled. Each has the line `Set by the service's operator.` under its
    name, no line promises a call to the provider, and Save stays disabled. `anthropic` reads `key
-   ready` only if `ANTHROPIC_API_KEY` is set on the Worker (`scripts/hosted.sh secrets`).
+   ready` only if `ANTHROPIC_API_KEY` is set on the Worker (`scripts/hosted.sh secrets`). Under
+   Embedding provider, `workers_ai` is the one choice and disabled, and the embedding model is
+   empty, showing `Empty uses @cf/baai/bge-m3`, and disabled, both with `Set by the service's
+   operator.`, and no line under the model
+   promises a call. `workers_ai` reads `key ready` only if `CLOUDFLARE_EMBEDDING_API_TOKEN` and
+   `CLOUDFLARE_ACCOUNT_ID` are both set on the Worker (`scripts/hosted.sh secrets`). Vote
+   similarity and its seeds are open.
 3. Open Digest. Morning is a select of whole hours showing alpha's publish hour; for a tenant allowed
    one, Evening is disabled with `Not included in your plan.`. Choose another morning hour and
    another output language, such as `繁體中文 (Traditional Chinese)`, and press Save: the notice
@@ -821,7 +843,15 @@ To check it on a trial tenant, after a deploy that built the page:
    address is not refused: the gap
    [ADR-0040](decisions/0040-a-hosted-tenant-edits-its-settings-on-the-hosted-worker.md) records
    under its consequences.
-8. Set the language and the hour back.
+8. On Model, set Vote similarity to On and press Save. The notice reads `Saving…` while the save
+   is out, never `Checking the embedder…`, then `Not checked here: the service's operator provides
+   the embedder.` and that the next run picks it up; nothing calls Workers AI yet. Once alpha has
+   votes, run it (`scripts/hosted.sh run`) and read its month with `scripts/hosted.sh spend`:
+   alpha's `embedding_usd` is above 0 and its `unpriced_tokens` 0, so Workers AI reported the
+   neurons it charged; above 0, it answered some batches without them, and they were charged at
+   the dearest embedding rate.
+   That is the trial's check that the per-run neuron estimate in `bootstrap.py` holds (ADR-0049).
+9. Set the language, the hour and vote similarity back.
 
 A save refused with `This save was refused: it did not come from this settings page.` means the
 browser sent the save without this Worker's `Origin`; the browser's console names any script or
