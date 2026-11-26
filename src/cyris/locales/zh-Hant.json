@@ -909,6 +909,10 @@
     "text": "投票相似度已關閉，未檢查嵌入模型。開啟時會先檢查。",
     "source": "Not checked: vote similarity is off. Turning it on checks the embedder first."
   },
+  "settings_api.vote_operator_embedder": {
+    "text": "這裡不檢查嵌入模型：它由服務的營運方提供。",
+    "source": "Not checked here: the service's operator provides the embedder."
+  },
   "settings_api.webhook_empty": {
     "text": "請貼上 Discord webhook 網址，或按「關閉通知」停止通知。",
     "source": "Paste a Discord webhook URL, or press Turn off to stop notifications."

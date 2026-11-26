@@ -16,9 +16,9 @@ Every line a hosted run writes names its tenant (`tag_output`): the container's 
 log, and every tenant's runs land in the one Workers Logs stream.
 
 What no tenant decides is pinned as its settings load (`pin_tenant_settings`): the provider, the
-model and the notify targets, and the article cap clamped, from the hosted Worker's own policy
-file. The tenant's reader writes the rest on the hosted Worker (ADR-0040), and the container can
-write any row of its own database, so the run does not take those rows from there.
+model, the embedder and the notify targets, and the article cap clamped, from the hosted Worker's
+own policy file. The tenant's reader writes the rest on the hosted Worker (ADR-0040), and the
+container can write any row of its own database, so the run does not take those rows from there.
 """
 
 from __future__ import annotations
@@ -75,8 +75,9 @@ def hosted_policy() -> dict[str, Any]:
 def pin_tenant_settings(stored: dict[str, Any]) -> dict[str, Any]:
     """`stored`, a tenant's `settings` rows, with what the tenant does not decide put back.
 
-    The provider and model are the policy's and the notify targets blank, whatever the rows say,
-    and an article cap above the policy's is the policy's. A cap the rule refuses is left as it
+    The provider and model are the policy's, the embedder the operator's Workers AI one (ADR-0049)
+    and the notify targets blank, whatever the rows say, and an article cap above the policy's is
+    the policy's. A cap the rule refuses is left as it
     is, so the load reports it as it reports any refused row.
     """
     policy = hosted_policy()
@@ -84,6 +85,8 @@ def pin_tenant_settings(stored: dict[str, Any]) -> dict[str, Any]:
         **stored,
         "llm_provider.provider": policy["provider"],
         "llm_provider.model": policy["model"],
+        "vote_similarity.provider": policy["embedding_provider"],
+        "vote_similarity.model": policy["embedding_model"],
         **dict.fromkeys(policy["blank_settings"], ""),
     }
     try:

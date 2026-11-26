@@ -458,6 +458,7 @@
   "settings_api.unknown_provider": "unknown provider {$provider}",
   "settings_api.values_empty": "values must name at least one setting",
   "settings_api.vote_not_checked": "Not checked: vote similarity is off. Turning it on checks the embedder first.",
+  "settings_api.vote_operator_embedder": "Not checked here: the service's operator provides the embedder.",
   "settings_api.webhook_empty": "Paste a Discord webhook URL, or press Turn off to stop notifications.",
   "settings_field.digest.filter_snippet_length": "Characters read (Glance and topics)",
   "settings_field.digest.max_articles_per_digest": "Articles per run",

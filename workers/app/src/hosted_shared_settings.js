@@ -13,8 +13,8 @@
 //   GET  /static/<file>              the page's scripts, its style and its browser messages
 //   GET  /api/settings               values, fields, what is missing, `locked` and `limits`
 //   POST /api/settings/values        {values: {key: value}}: an open key is saved, a locked one refused
-//   POST /api/settings/vote-similarity  {enabled, provider, model, max_seeds}: the seeds saved, the
-//                                    embedder as it is held (the page's one form for the four)
+//   POST /api/settings/vote-similarity  {enabled, provider, model, max_seeds}: the switch and the
+//                                    seeds saved, the embedder as it is held (the page's one form for the four)
 //   POST /api/settings/schedule      {times: [...]}: the hours, through the registry
 //   GET  /api/sources                the tenant's sources, RSS and newsletter, each with its feed's health
 //   POST /api/sources                {name, url, lane}: one RSS source added or rewritten
@@ -117,20 +117,24 @@ function providerEntry(name, defaultModel, variables = [], secrets) {
   return { name, env_var: variables[0] ?? "", default_model: defaultModel, configured };
 }
 
+// The embedder every tenant's vote similarity runs on, the operator's (ADR-0049).
+const EMBEDDER = { "vote_similarity.provider": POLICY.embedding_provider, "vote_similarity.model": POLICY.embedding_model };
+
 // The keys read from the tenant's own rows: every grade-D key but what the run pins and the
 // schedule, which is the registry's.
-const PINNED = new Set(["llm_provider.provider", "llm_provider.model", ...POLICY.blank_settings]);
+const PINNED = new Set(["llm_provider.provider", "llm_provider.model", ...Object.keys(EMBEDDER), ...POLICY.blank_settings]);
 const STORED_KEYS = Object.keys(FIELDS).filter((key) => !PINNED.has(key) && key !== SCHEDULE_KEY && key !== TIMEZONE_KEY);
 
 // What a hosted run takes for each grade-D key: the tenant's rows with what it does not decide put
 // back, as `pin_tenant_settings` (src/cyris/adapters/hosted.py) puts it back as a run's settings
-// load (the policy's provider and model, blank notify targets, an article cap at most the
-// policy's), and the schedule the registry holds, which the tick reads (ADR-0032). Null for a key
+// load (the policy's provider, model and embedder, blank notify targets, an article cap at most
+// the policy's), and the schedule the registry holds, which the tick reads (ADR-0032). Null for a key
 // with no row.
 export function hostedValues(stored, schedule) {
   const values = Object.fromEntries(Object.keys(FIELDS).map((key) => [key, stored?.[key] ?? null]));
   values["llm_provider.provider"] = POLICY.provider;
   values["llm_provider.model"] = POLICY.model;
+  Object.assign(values, EMBEDDER);
   for (const key of POLICY.blank_settings) values[key] = "";
   if (Number.isInteger(values[ARTICLE_CAP]) && values[ARTICLE_CAP] > POLICY.max_articles_per_digest) {
     values[ARTICLE_CAP] = POLICY.max_articles_per_digest;
@@ -261,20 +265,22 @@ const VOTE_KEYS = ["enabled", "provider", "model", "max_seeds"].map((field) => `
 // shows empty.
 const heldAs = (value) => (value === "" || value === undefined ? null : value);
 
-// `POST /api/settings/vote-similarity` in TriageServer's shape (`_handle_post_vote`), for the one
-// key of the form a tenant writes, `vote_similarity.max_seeds`. The form's other keys are the
-// operator's: sent as they are held they are no change (`changedLock`'s rule, which leaves the seeds
-// writable), changed they are refused as locked, and none is stored; the answer names the four as
-// TriageServer's does, the held ones as sent. Nothing calls an embedder: a tenant cannot turn vote
-// similarity on, so there is nothing to check.
+// `POST /api/settings/vote-similarity` in TriageServer's shape (`_handle_post_vote`), for the two
+// keys of the form a tenant writes, `vote_similarity.enabled` and `.max_seeds`. The embedder is the
+// operator's (ADR-0049): sent as the run takes it, the pinned one, it is no change (`changedLock`'s
+// rule, which leaves the switch and the seeds writable), changed it is refused as locked, and it is
+// never stored; the answer names the four as TriageServer's does, the held ones as sent. Nothing
+// calls an embedder, on or off: the run embeds on the operator's account, and TriageServer, given
+// a locked embedder, checks none either.
 async function saveVoteSimilarity(t, body, { db, stored, locks }) {
+  const held = hostedValues(stored, null);
   const sent = Object.fromEntries(VOTE_KEYS.map((key) => [key, body?.[key.replace("vote_similarity.", "")]]));
   for (const key of VOTE_KEYS) {
     if (!Object.hasOwn(body ?? {}, key.replace("vote_similarity.", ""))) {
       return refused(t("settings_api.required", { label: t(`settings_field.${key}`) }), key);
     }
   }
-  const changed = VOTE_KEYS.find((key) => Object.hasOwn(locks, key) && heldAs(sent[key]) !== heldAs(stored[key]));
+  const changed = VOTE_KEYS.find((key) => Object.hasOwn(locks, key) && heldAs(sent[key]) !== heldAs(held[key]));
   if (changed) return lockRefusal(t, locks, changed);
   const rows = [];
   for (const key of VOTE_KEYS.filter((key) => POLICY.writable_settings.includes(key) && !Object.hasOwn(locks, key))) {
@@ -287,7 +293,7 @@ async function saveVoteSimilarity(t, body, { db, stored, locks }) {
     if (saved.refused) return refused(refusalText(t, { reason: saved.refused, key: saved.key }), saved.key, saved.status);
   }
   const values = Object.fromEntries(VOTE_KEYS.map((key) => [key, rows.find(([saved]) => saved === key)?.[1] ?? sent[key]]));
-  return json({ ok: true, values, detail: t("settings_api.vote_not_checked"), note: t("settings_api.saved_next_run") });
+  return json({ ok: true, values, detail: t("settings_api.vote_operator_embedder"), note: t("settings_api.saved_next_run") });
 }
 
 // `POST /api/settings/schedule` in TriageServer's shape (`_handle_post_schedule`): `{times}`, the

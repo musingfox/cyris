@@ -54,6 +54,7 @@ const RULES = new Map([
   ["digest.scoring_snippet_length", wholeFrom(1)],
   ["digest.summarize_snippet_length", wholeFrom(1)],
   ["digest.filter_snippet_length", wholeFrom(1)],
+  ["vote_similarity.enabled", onOff],
 ]);
 export const WRITABLE = Object.freeze([...RULES.keys()]);
 

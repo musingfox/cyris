@@ -79,6 +79,8 @@ NO_PAGES_WRITTEN = (
 TYPE_SCALE_KEY = "digest.type_scale"
 SCHEDULE_KEY = "general.digest_schedule"
 WEBHOOK_KEY = "notify.discord_webhook_url"
+# The embedder vote similarity runs on: an edition that locks both keeps it its operator's.
+EMBEDDER_KEYS = ("vote_similarity.provider", "vote_similarity.model")
 OUTPUT_LANGUAGE_KEY = "digest.output_language"
 # The steps `DigestConfig.type_scale` allows; the app Worker's own list is `type_scale.js`'s.
 TYPE_SCALES = tuple(get_args(DigestConfig.model_fields["type_scale"].annotation))
@@ -1105,7 +1107,9 @@ class TriageServer:
         Turning it on checks the embedder with one real call first, and this is
         the only writer of `enabled`, so no run meets an unverified embedder.
         Off stores without a call: a deployment with no embedding key must still
-        be able to complete its settings.
+        be able to complete its settings. An embedder the edition locks, provider
+        and model, is the operator's and not the reader's to check, so turning it
+        on calls nothing (ADR-0049); `cyris triage-ui` locks neither.
         """
         from cyris.bootstrap import EMBEDDING_ENV
         from cyris.config import validate_setting
@@ -1128,7 +1132,9 @@ class TriageServer:
             except ValueError as e:
                 return _refused(t("settings_api.refused", label=_label(t, key), reason=str(e)), key)
 
-        if values["vote_similarity.enabled"]:
+        if all(key in self._locked for key in EMBEDDER_KEYS):
+            detail = t("settings_api.vote_operator_embedder")
+        elif values["vote_similarity.enabled"]:
             provider = values["vote_similarity.provider"]
             probe = await probe_embedder(provider, values["vote_similarity.model"])
             if probe.status != "ok":

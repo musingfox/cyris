@@ -1,5 +1,5 @@
 {
-  "_comment": "One settings page for every edition; an edition locks keys (docs/decisions/0043-one-settings-page-an-edition-locks-a-key.md). Run by workers/app/test/hosted_shared_settings.test.js against the hosted Worker and by tests/test_shared_settings_cases.py against TriageServer. `answer_keys` and the entry keys are GET /api/settings' shape on both. `editions` is what each answers for `locked` and `limits`: TriageServer as `cyris triage-ui` starts it, which answers its own limits whatever it locks, and the hosted Worker as its policy file computes them, for a tenant the registry allows one digest time. `writes` go to POST /api/settings/values and `schedules` to POST /api/settings/schedule, on the hosted Worker and on a TriageServer given the hosted edition's locks; `max_digest_times` is the tenant's maximum in the registry, which TriageServer has no part in. Each case's `status` and `answer` are both servers' answer, or `self_hosted` is TriageServer's where the editions' own limits differ; `refuses` in place of `answer` names the field a 400 is about, worded by each server's own rule. A refused write writes nothing; a saved one `reads_back` from GET /api/settings. `route_locks` are a route that saves several keys, on a server locking `locked` and holding `stored`: it refuses only a change to a locked key, run on TriageServer for each route and on the hosted Worker for the routes it answers. `pins` are the values a hosted run takes from a tenant's rows, held by vitest to the Worker's `hostedValues` and by pytest to `pin_tenant_settings`.",
+  "_comment": "One settings page for every edition; an edition locks keys (docs/decisions/0043-one-settings-page-an-edition-locks-a-key.md). Run by workers/app/test/hosted_shared_settings.test.js against the hosted Worker and by tests/test_shared_settings_cases.py against TriageServer. `answer_keys` and the entry keys are GET /api/settings' shape on both. `editions` is what each answers for `locked` and `limits`: TriageServer as `cyris triage-ui` starts it, which answers its own limits whatever it locks, and the hosted Worker as its policy file computes them, for a tenant the registry allows one digest time. `writes` go to POST /api/settings/values and `schedules` to POST /api/settings/schedule, on the hosted Worker and on a TriageServer given the hosted edition's locks; `max_digest_times` is the tenant's maximum in the registry, which TriageServer has no part in. Each case's `status` and `answer` are both servers' answer, or `self_hosted` is TriageServer's where the editions' own limits differ, or where only the embedding provider is locked: TriageServer then leaves the model to its reader and checks it, and the hosted Worker's embedder is always the operator's (ADR-0049); `refuses` in place of `answer` names the field a 400 is about, worded by each server's own rule. A refused write writes nothing; a saved one `reads_back` from GET /api/settings. `route_locks` are a route that saves several keys, on a server locking `locked` and holding `stored`: it refuses only a change to a locked key, run on TriageServer for each route and on the hosted Worker for the routes it answers. `pins` are the values a hosted run takes from a tenant's rows, held by vitest to the Worker's `hostedValues` and by pytest to `pin_tenant_settings`.",
   "answer_keys": [
     "clef_ready",
     "embedding_providers",
@@ -27,7 +27,6 @@
         "llm_provider.model": {"reason": "operator-set"},
         "vote_similarity.provider": {"reason": "operator-set"},
         "vote_similarity.model": {"reason": "operator-set"},
-        "vote_similarity.enabled": {"reason": "operator-set"},
         "digest.preference_source": {"reason": "operator-set"},
         "llm_provider.reasoning_effort": {"reason": "operator-set"},
         "notify.discord_webhook_url": {"reason": "operator-set"},
@@ -135,8 +134,26 @@
       "stored": {"vote_similarity.enabled": false, "vote_similarity.provider": "workers_ai", "vote_similarity.model": "", "vote_similarity.max_seeds": 200},
       "body": {"enabled": false, "provider": "workers_ai", "model": "", "max_seeds": 300},
       "status": 200,
-      "answer": {"ok": true, "values": {"vote_similarity.enabled": false, "vote_similarity.provider": "workers_ai", "vote_similarity.model": "", "vote_similarity.max_seeds": 300}, "detail": "Not checked: vote similarity is off. Turning it on checks the embedder first.", "note": "Saved. The next digest run picks this up."},
+      "answer": {"ok": true, "values": {"vote_similarity.enabled": false, "vote_similarity.provider": "workers_ai", "vote_similarity.model": "", "vote_similarity.max_seeds": 300}, "detail": "Not checked here: the service's operator provides the embedder.", "note": "Saved. The next digest run picks this up."},
       "reads_back": {"vote_similarity.max_seeds": 300}
+    },
+    {
+      "name": "vote similarity is turned on with the operator's embedder as it is held, and no embedder is called",
+      "path": "/api/settings/vote-similarity",
+      "stored": {"vote_similarity.enabled": false, "vote_similarity.provider": "workers_ai", "vote_similarity.model": "", "vote_similarity.max_seeds": 200},
+      "body": {"enabled": true, "provider": "workers_ai", "model": "", "max_seeds": 200},
+      "status": 200,
+      "answer": {"ok": true, "values": {"vote_similarity.enabled": true, "vote_similarity.provider": "workers_ai", "vote_similarity.model": "", "vote_similarity.max_seeds": 200}, "detail": "Not checked here: the service's operator provides the embedder.", "note": "Saved. The next digest run picks this up."},
+      "reads_back": {"vote_similarity.enabled": true, "vote_similarity.provider": "workers_ai", "vote_similarity.model": ""}
+    },
+    {
+      "name": "vote similarity is turned off again with the seeds",
+      "path": "/api/settings/vote-similarity",
+      "stored": {"vote_similarity.enabled": true, "vote_similarity.provider": "workers_ai", "vote_similarity.model": "", "vote_similarity.max_seeds": 200},
+      "body": {"enabled": false, "provider": "workers_ai", "model": "", "max_seeds": 250},
+      "status": 200,
+      "answer": {"ok": true, "values": {"vote_similarity.enabled": false, "vote_similarity.provider": "workers_ai", "vote_similarity.model": "", "vote_similarity.max_seeds": 250}, "detail": "Not checked here: the service's operator provides the embedder.", "note": "Saved. The next digest run picks this up."},
+      "reads_back": {"vote_similarity.enabled": false, "vote_similarity.max_seeds": 250}
     },
     {
       "name": "the time zone is saved",
@@ -258,10 +275,26 @@
       "refuses": "vote_similarity.provider"
     },
     {
-      "name": "the vote form's switch turned on beside the seeds is refused as locked",
+      "name": "the vote form's switch turned on with another embedder is refused as locked",
       "path": "/api/settings/vote-similarity",
       "stored": {"vote_similarity.enabled": false, "vote_similarity.provider": "workers_ai", "vote_similarity.model": "", "vote_similarity.max_seeds": 200},
-      "body": {"enabled": true, "provider": "workers_ai", "model": "", "max_seeds": 300},
+      "body": {"enabled": true, "provider": "gemini", "model": "", "max_seeds": 200},
+      "status": 400,
+      "refuses": "vote_similarity.provider"
+    },
+    {
+      "name": "the vote form's embedding model changed is refused as locked",
+      "path": "/api/settings/vote-similarity",
+      "stored": {"vote_similarity.enabled": false, "vote_similarity.provider": "workers_ai", "vote_similarity.model": "", "vote_similarity.max_seeds": 200},
+      "body": {"enabled": true, "provider": "workers_ai", "model": "@cf/baai/bge-large-en-v1.5", "max_seeds": 200},
+      "status": 400,
+      "refuses": "vote_similarity.model"
+    },
+    {
+      "name": "a vote similarity switch that is neither on nor off is refused",
+      "path": "/api/settings/vote-similarity",
+      "stored": {"vote_similarity.enabled": false, "vote_similarity.provider": "workers_ai", "vote_similarity.model": "", "vote_similarity.max_seeds": 200},
+      "body": {"enabled": null, "provider": "workers_ai", "model": "", "max_seeds": 200},
       "status": 400,
       "refuses": "vote_similarity.enabled"
     },
@@ -495,8 +528,17 @@
       "answer": {
         "ok": true,
         "values": {"vote_similarity.enabled": false, "vote_similarity.provider": "workers_ai", "vote_similarity.model": "", "vote_similarity.max_seeds": 200},
-        "detail": "Not checked: vote similarity is off. Turning it on checks the embedder first.",
+        "detail": "Not checked here: the service's operator provides the embedder.",
         "note": "Saved. The next digest run picks this up."
+      },
+      "self_hosted": {
+        "status": 200,
+        "answer": {
+          "ok": true,
+          "values": {"vote_similarity.enabled": false, "vote_similarity.provider": "workers_ai", "vote_similarity.model": "", "vote_similarity.max_seeds": 200},
+          "detail": "Not checked: vote similarity is off. Turning it on checks the embedder first.",
+          "note": "Saved. The next digest run picks this up."
+        }
       }
     },
     {
@@ -537,6 +579,19 @@
     }
   ],
   "pins": [
+    {
+      "name": "the embedder is the operator's Workers AI one whatever the rows say, and the switch is the tenant's",
+      "stored": {
+        "vote_similarity.provider": "gemini",
+        "vote_similarity.model": "gemini-embedding-001",
+        "vote_similarity.enabled": true
+      },
+      "shown": {
+        "vote_similarity.provider": "workers_ai",
+        "vote_similarity.model": "",
+        "vote_similarity.enabled": true
+      }
+    },
     {
       "name": "the provider, the model and the notify targets are the policy's, whatever the rows say",
       "stored": {

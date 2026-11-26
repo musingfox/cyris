@@ -1,10 +1,11 @@
-"""A hosted tenant's run takes its provider, model, notify targets and article cap from the policy.
+"""A hosted tenant's run takes its provider, model, embedder, notify targets and article cap from
+the policy.
 
 A tenant's reader writes its settings on the hosted Worker, which refuses these keys (ADR-0040),
 but the run container can write any row of its own database through its gateway. So the run's
 settings load pins them, whatever the rows say: the provider and model the hosted policy names,
-every notify target blank, and an article cap above the policy's clamped to it. A self-hosted
-load reads its rows as it always has.
+the operator's Workers AI embedder (ADR-0049), every notify target blank, and an article cap
+above the policy's clamped to it. A self-hosted load reads its rows as it always has.
 """
 
 from pathlib import Path
@@ -28,6 +29,7 @@ POLICY = hosted_policy()
 REWRITTEN = {
     "llm_provider.provider": "gemini",
     "llm_provider.model": "gemini-3-pro",
+    "vote_similarity.provider": "gemini",
     "notify.discord_webhook_url": "https://discord.com/api/webhooks/1/tok",
     "notify.email_to": "anyone@a.test",
     "notify.email_from": "cyris@a.test",
@@ -52,6 +54,26 @@ def test_a_tenants_run_takes_the_policys_model_and_no_notify_target_whatever_its
     assert cfg.app.notify.discord_webhook_url == ""
     assert cfg.app.notify.email_to == ""
     assert cfg.app.notify.email_from == ""
+    assert cfg.missing_settings == []
+
+
+def test_a_tenants_run_embeds_on_the_operators_workers_ai_whatever_embedder_its_rows_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Vote similarity's switch is the tenant's; the embedder it runs on is the operator's."""
+    cfg = _hosted_load(
+        tmp_path,
+        monkeypatch,
+        **{
+            "vote_similarity.provider": "gemini",
+            "vote_similarity.model": "gemini-embedding-001",
+            "vote_similarity.enabled": True,
+        },
+    )
+
+    assert cfg.app.vote_similarity.provider == POLICY["embedding_provider"] == "workers_ai"
+    assert cfg.app.vote_similarity.model == POLICY["embedding_model"]
+    assert cfg.app.vote_similarity.enabled is True
     assert cfg.missing_settings == []
 
 
@@ -164,3 +186,4 @@ def test_a_self_hosted_load_reads_its_rows_as_they_are(
     assert cfg.app.llm_provider.model == "gemini-3-pro"
     assert cfg.app.notify.discord_webhook_url == REWRITTEN["notify.discord_webhook_url"]
     assert cfg.app.digest.max_articles_per_digest == 5000
+    assert cfg.app.vote_similarity.provider == "gemini"
