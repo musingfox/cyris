@@ -135,6 +135,232 @@ put_secret() {
   printf '%s' "$2" | run_wrangler secret put "$1"
 }
 
+# mask VALUE: the first four characters of a secret, enough to tell it from another and no more.
+mask() {
+  if ((${#1} > 8)); then printf '%s***' "${1:0:4}"; else printf '****'; fi
+}
+
+# SET_NAMES: the secret names the Worker has set, space-padded, or empty when it could not be asked.
+# WHY wrangler and not `cf workers secrets list`: the secrets are put through run_wrangler, so the
+# list is read as the same logged-in user, with the same config, as the account confirmed above;
+# cf may be logged in as someone else, and a name it could not see would read as "not set".
+list_set_secrets() {
+  SET_NAMES=
+  local names
+  # </dev/null: the list must not take the answer you type next.
+  if names=$(run_wrangler secret list </dev/null 2>/dev/null | python3 -c '
+import json, sys
+text = sys.stdin.read()
+listed, _ = json.JSONDecoder().raw_decode(text[text.find("["):])
+print(" ".join(s["name"] for s in listed))
+'); then
+    SET_NAMES=" $names "
+  else
+    echo "could not list the Worker's secrets (run: bun x wrangler login); every name is treated as not set" >&2
+  fi
+}
+
+# cf_json OUTFILE ARGS...: one `cf` call, run where no .env is, so cf takes no CLOUDFLARE_API_TOKEN
+# from it (production's narrow deploy token), and with none from the shell either: it acts as the
+# user cf is logged in as, on ACCOUNT_ID. Its answer lands in OUTFILE; on failure CF_REASON says why.
+cf_json() {
+  local out=$1 err rc=0
+  shift
+  err=$(mktemp "${TMPDIR:-/tmp}/cyris-hosted-cf.XXXXXX")
+  (cd workers && env -u CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID="$ACCOUNT_ID" cf "$@" </dev/null >"$out" 2>"$err") || rc=$?
+  CF_REASON=$(head -c 300 "$err" | tr '\n' ' ')
+  rm -f "$err"
+  [[ -n "$CF_REASON" ]] || CF_REASON="cf exited $rc"
+  return "$rc"
+}
+
+# cf_pick MODE FILE...: what the cf answers say, as the python below reads them. team: the
+# organization's auth_domain. app: the Access application covering HOST's /hosted/* (its AUD) and
+# the one service token its policies allow (its Client ID), as "AUD<tab>CLIENT_ID", each empty when
+# it cannot be told; the reason goes to stderr.
+cf_pick() {
+  python3 -c '
+import fnmatch, json, sys
+
+
+def load(path):
+    text = open(path).read()
+    starts = [i for i in (text.find("{"), text.find("[")) if i >= 0]
+    data, _ = json.JSONDecoder().raw_decode(text[min(starts):])
+    return data["result"] if isinstance(data, dict) and "result" in data else data
+
+
+def say(message):
+    print("cf: " + message, file=sys.stderr)
+
+
+def covers(app, host):
+    domains = [app.get("domain") or ""] + list(app.get("self_hosted_domains") or [])
+    domains += [d.get("uri", "") for d in app.get("destinations") or [] if isinstance(d, dict)]
+    for domain in domains:
+        domain = domain.split("://", 1)[-1]
+        name, slash, rest = domain.partition("/")
+        path = slash + rest
+        if fnmatch.fnmatch(host, name) and (
+            path in ("", "/") or fnmatch.fnmatch("/hosted/x", path) or path.rstrip("/") == "/hosted"
+        ):
+            return True
+    return False
+
+
+def describe(items, key):
+    return ", ".join("%s (%s)" % (i.get("name") or "unnamed", i.get(key)) for i in items)
+
+
+try:
+    mode = sys.argv[1]
+    if mode == "team":
+        domain = (load(sys.argv[2]) or {}).get("auth_domain") or ""
+        if not domain:
+            say("the Zero Trust organization has no auth_domain")
+        print(domain.split("://", 1)[-1])
+        sys.exit(0)
+    apps, tokens_file, host = load(sys.argv[2]), sys.argv[3], sys.argv[4]
+    found = [a for a in apps or [] if covers(a, host)]
+    if not found:
+        say("no Access application covers %s/hosted/*" % host)
+        print("\t")
+        sys.exit(0)
+    if len(found) > 1:
+        say("several Access applications cover %s/hosted/*: %s" % (host, describe(found, "aud")))
+        print("\t")
+        sys.exit(0)
+    app = found[0]
+    ids, any_token = [], False
+    for policy in app.get("policies") or []:
+        if not isinstance(policy, dict) or policy.get("decision") not in ("allow", "non_identity"):
+            continue
+        for rule in policy.get("include") or []:
+            any_token = any_token or "any_valid_service_token" in rule
+            if rule.get("service_token"):
+                ids.append(rule["service_token"].get("token_id"))
+    if tokens_file == "-":
+        say("the service tokens could not be read, so no Client ID is offered")
+        print((app.get("aud") or "") + "\t")
+        sys.exit(0)
+    tokens = load(tokens_file) or []
+    by_id = {t.get("id"): t for t in tokens}
+    allowed = [by_id[i] for i in dict.fromkeys(ids) if i in by_id]
+    client = ""
+    if len(allowed) == 1:
+        client = allowed[0].get("client_id") or ""
+    elif allowed:
+        say("%s allows several service tokens: %s" % (app.get("name"), describe(allowed, "client_id")))
+    elif any_token:
+        say("%s allows any valid service token; the account has: %s" % (app.get("name"), describe(tokens, "client_id")))
+    else:
+        say("no service token is named by the policies of %s" % app.get("name"))
+    print((app.get("aud") or "") + "\t" + client)
+except Exception as error:
+    print("cf: could not read the answer: %s" % error, file=sys.stderr)
+    sys.exit(1)
+' "$@"
+}
+
+# The lookups below set CF_DEFAULT (and CF_AUD, CF_CLIENT_ID); a failure prints why and leaves it
+# empty, so the name is asked. Each cf call is made at most once, and only for a name that needs it.
+lookup_team_domain() {
+  CF_DEFAULT=
+  local out=$CF_DIR/org.json
+  if ! cf_json "$out" zero-trust organization get; then
+    echo "cf could not read the team domain: $CF_REASON" >&2
+    return 0
+  fi
+  CF_DEFAULT=$(cf_pick team "$out") || true
+}
+
+lookup_app() {
+  CF_DEFAULT=
+  [[ -z "${CF_APP_LOOKED:-}" ]] || return 0
+  CF_APP_LOOKED=1 CF_AUD= CF_CLIENT_ID=
+  local apps=$CF_DIR/apps.json tokens=$CF_DIR/tokens.json host=${HOSTED_URL#https://} picked
+  if ! cf_json "$apps" zero-trust access applications list --domain "$host"; then
+    echo "cf could not read the Access applications: $CF_REASON" >&2
+    return 0
+  fi
+  if ! cf_json "$tokens" zero-trust access service-tokens list; then
+    echo "cf could not read the service tokens: $CF_REASON" >&2
+    tokens=-
+  fi
+  picked=$(cf_pick app "$apps" "$tokens" "$host") || return 0
+  CF_AUD=${picked%%$'\t'*} CF_CLIENT_ID=${picked#*$'\t'}
+}
+
+default_team_domain() { lookup_team_domain; }
+default_aud() { lookup_app; CF_DEFAULT=$CF_AUD; }
+default_operators() { lookup_app; CF_DEFAULT=$CF_CLIENT_ID; }
+
+# secret_step VAR KEY PROMPT KIND [DEFAULT_FN]: say whether the Worker already has KEY, then read
+# its value into VAR. A name not yet set is offered .env.hosted's value, else DEFAULT_FN's (a cf
+# lookup), and Enter takes it; a name already set is offered nothing and Enter keeps it (VAR is
+# left empty, so no put). A secret KIND is read without echo and a default for it shown masked.
+secret_step() {
+  local var=$1 key=$2 prompt=$3 kind=$4 provider=${5:-} value default= source= shown hint=
+  if [[ "$SET_NAMES" == *" $key "* ]]; then
+    echo "$key: already set on the Worker"
+    hint="Enter keeps it"
+  else
+    echo "$key: not set on the Worker yet"
+    default=$(state_get "$key")
+    source=$STATE
+    if [[ -z "$default" && -n "$provider" ]]; then
+      CF_DEFAULT=
+      "$provider"
+      default=$CF_DEFAULT source="cf"
+    fi
+    if [[ -n "$default" ]]; then
+      shown=$default
+      [[ "$kind" == secret ]] && shown=$(mask "$default")
+      hint="Enter uses $shown from $source"
+    fi
+  fi
+  [[ -z "${hint:-}" ]] || echo "  $hint"
+  if [[ "$kind" == secret ]]; then
+    read -rsp "$prompt: " value || true
+    echo >&2
+  else
+    read -rp "$prompt: " value || true
+  fi
+  if [[ -z "$value" ]]; then
+    if [[ -n "$default" ]]; then
+      value=$default
+    elif [[ "$SET_NAMES" == *" $key "* ]]; then
+      printf -v "$var" '%s' ''
+      return 0
+    else
+      echo "$key is required" >&2
+      exit 1
+    fi
+  elif [[ "$value" != "$(state_get "$key")" ]]; then
+    TYPED_KEYS+=("$key")
+    TYPED_VARS+=("$var")
+  fi
+  printf -v "$var" '%s' "$value"
+}
+
+# put_unless_kept NAME VAR: put VAR's value as secret NAME, unless the Worker's own was kept.
+put_unless_kept() {
+  if [[ -n "${!2}" ]]; then put_secret "$1" "${!2}"; else echo "$1: kept as set"; fi
+}
+
+# offer_save: once, after everything was asked, offer to keep what was typed in .env.hosted.
+offer_save() {
+  ((${#TYPED_KEYS[@]})) || return 0
+  local answer i
+  echo "Typed this time: ${TYPED_KEYS[*]}"
+  read -rp "Save ${#TYPED_KEYS[@]} value(s) to $STATE, mode 600, for next time? [y/N] " answer || answer=
+  [[ "$answer" == y || "$answer" == yes ]] || return 0
+  for i in "${!TYPED_KEYS[@]}"; do
+    set_state "${TYPED_KEYS[$i]}" "${!TYPED_VARS[$i]}"
+  done
+  echo "saved to $STATE"
+}
+
 ask_access() {
   [[ -n "${HOSTED_URL:-}" ]] || { echo "no HOSTED_URL in $STATE; run: scripts/hosted.sh deploy" >&2; exit 1; }
   # A token already in the environment, as `aac run` puts it there, is used without asking, so
@@ -233,31 +459,36 @@ case "${1:-}" in
     [[ -n "${HOSTED_URL:-}" ]] || { echo "no HOSTED_URL in $STATE; run: scripts/hosted.sh deploy" >&2; exit 1; }
     ask_account
     confirm_account "set the secrets of"
-    ask TEAM_DOMAIN "CYRIS_ACCESS_TEAM_DOMAIN, the Access team domain without a scheme (yourteam.cloudflareaccess.com)"
-    ask AUD "CYRIS_ACCESS_AUD, the Application Audience (AUD) tag of the cyris-hosted Access application"
+    list_set_secrets
+    CF_DIR=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-cf.XXXXXX")
+    trap 'rm -rf "$CF_DIR"' EXIT
+    TYPED_KEYS=() TYPED_VARS=()
+    secret_step TEAM_DOMAIN CYRIS_ACCESS_TEAM_DOMAIN "CYRIS_ACCESS_TEAM_DOMAIN, the Access team domain without a scheme (yourteam.cloudflareaccess.com)" plain default_team_domain
+    secret_step AUD CYRIS_ACCESS_AUD "CYRIS_ACCESS_AUD, the Application Audience (AUD) tag of the cyris-hosted Access application" plain default_aud
     # Who the operator routes admit, of whoever Access signs in (ADR-0037): the service token's
     # Client ID, which Access signs in as its common_name, and an operator's Access email if one
     # signs in with a browser. Not a secret; set as one so wrangler.hosted.toml names no one.
-    ask OPERATORS "CYRIS_HOSTED_OPERATORS, comma separated: the service token's Client ID (xxxx.access), and your Access email if you sign in with a browser"
-    ask ANTHROPIC "ANTHROPIC_API_KEY for the tenants' runs" secret
+    secret_step OPERATORS CYRIS_HOSTED_OPERATORS "CYRIS_HOSTED_OPERATORS, comma separated: the service token's Client ID (xxxx.access), and your Access email if you sign in with a browser" plain default_operators
+    secret_step ANTHROPIC ANTHROPIC_API_KEY "ANTHROPIC_API_KEY for the tenants' runs" secret
     # The tenants' vote similarity embeds on this account's Workers AI, metered as each tenant's
     # embedding spend (ADR-0049). The run reads it with the account id, which is ACCOUNT_ID.
-    ask EMBEDDING "CLOUDFLARE_EMBEDDING_API_TOKEN for the tenants' vote similarity, a token of this account with Workers AI Read" secret
+    secret_step EMBEDDING CLOUDFLARE_EMBEDDING_API_TOKEN "CLOUDFLARE_EMBEDDING_API_TOKEN for the tenants' vote similarity, a token of this account with Workers AI Read" secret
     # Where every tenant's failed run is reported, with its tenant id (ADR-0035). Its URL is its
     # credential, so it is read as a secret, and only the Worker's alert gateway holds it.
-    ask OPERATOR_WEBHOOK "CYRIS_HOSTED_OPERATOR_WEBHOOK, the operator's Discord webhook URL" secret
-    [[ "$OPERATOR_WEBHOOK" == https://* ]] || { echo "CYRIS_HOSTED_OPERATOR_WEBHOOK must be an https:// URL" >&2; exit 1; }
-    ask MAIL_FROM "CYRIS_HOSTED_MAIL_FROM, the sign-in mail's sender, on a domain onboarded to Email Sending (cyris@yourdomain.com)"
-    put_secret CYRIS_ACCESS_TEAM_DOMAIN "$TEAM_DOMAIN"
-    put_secret CYRIS_ACCESS_AUD "$AUD"
-    put_secret CYRIS_HOSTED_OPERATORS "$OPERATORS"
-    put_secret ANTHROPIC_API_KEY "$ANTHROPIC"
-    put_secret CLOUDFLARE_EMBEDDING_API_TOKEN "$EMBEDDING"
+    secret_step OPERATOR_WEBHOOK CYRIS_HOSTED_OPERATOR_WEBHOOK "CYRIS_HOSTED_OPERATOR_WEBHOOK, the operator's Discord webhook URL" secret
+    [[ -z "$OPERATOR_WEBHOOK" || "$OPERATOR_WEBHOOK" == https://* ]] || { echo "CYRIS_HOSTED_OPERATOR_WEBHOOK must be an https:// URL" >&2; exit 1; }
+    secret_step MAIL_FROM CYRIS_HOSTED_MAIL_FROM "CYRIS_HOSTED_MAIL_FROM, the sign-in mail's sender, on a domain onboarded to Email Sending (cyris@yourdomain.com)" plain
+    offer_save
+    put_unless_kept CYRIS_ACCESS_TEAM_DOMAIN TEAM_DOMAIN
+    put_unless_kept CYRIS_ACCESS_AUD AUD
+    put_unless_kept CYRIS_HOSTED_OPERATORS OPERATORS
+    put_unless_kept ANTHROPIC_API_KEY ANTHROPIC
+    put_unless_kept CLOUDFLARE_EMBEDDING_API_TOKEN EMBEDDING
     # Not a secret; the account the embedding token runs on, the one confirmed above.
     put_secret CLOUDFLARE_ACCOUNT_ID "$ACCOUNT_ID"
-    put_secret CYRIS_HOSTED_OPERATOR_WEBHOOK "$OPERATOR_WEBHOOK"
+    put_unless_kept CYRIS_HOSTED_OPERATOR_WEBHOOK OPERATOR_WEBHOOK
     # Not a secret either; set the same way, so wrangler.hosted.toml names no deployment's domain.
-    put_secret CYRIS_HOSTED_MAIL_FROM "$MAIL_FROM"
+    put_unless_kept CYRIS_HOSTED_MAIL_FROM MAIL_FROM
     # The host deploy kept, which every tenant's links point at (ADR-0029). Not a secret, but
     # `secret put` is how wrangler sets one value without editing wrangler.hosted.toml.
     put_secret CYRIS_STORE_HOSTED_DOMAIN "${HOSTED_URL#https://}"
