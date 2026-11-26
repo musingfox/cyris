@@ -28,6 +28,10 @@ export const PAGE_ROWS = 50;
 // https://developers.cloudflare.com/workers/runtime-apis/rpc/
 export const MAX_DUMP_BYTES = 32 * 1024 * 1024 - 64 * 1024;
 
+// The size a dump is refused above: `maxBytes` when it is a smaller limit, as a test passes, and
+// MAX_DUMP_BYTES for anything else, so no caller of an object's exportDump can raise the limit.
+export const dumpLimit = (maxBytes) => (Number.isFinite(maxBytes) ? Math.min(maxBytes, MAX_DUMP_BYTES) : MAX_DUMP_BYTES);
+
 const SCHEMA_ORDER = ["index", "trigger", "view"];
 
 const encoder = new TextEncoder();
@@ -183,12 +187,13 @@ function* dumpLines(sql) {
 // runtime resets an object that blocks for 30 s, which a dump of the size ADR-0041 designs for
 // stays far under. It also resets one whose callback throws, so a dump refused as over size, or
 // a failed read, is caught inside and thrown only once the object is unblocked.
-// `maxBytes` is the size it is refused above, MAX_DUMP_BYTES unless a test passes a smaller one.
+// `maxBytes` lowers the size it is refused above, MAX_DUMP_BYTES (dumpLimit); it cannot raise it.
 // https://developers.cloudflare.com/durable-objects/api/state/#blockconcurrencywhile
-export async function dumpObject(ctx, { maxBytes = MAX_DUMP_BYTES } = {}) {
+export async function dumpObject(ctx, { maxBytes } = {}) {
+  const limit = dumpLimit(maxBytes);
   const made = await ctx.blockConcurrencyWhile(async () => {
     try {
-      return { bytes: await gzipLines(dumpLines(ctx.storage.sql), maxBytes) };
+      return { bytes: await gzipLines(dumpLines(ctx.storage.sql), limit) };
     } catch (error) {
       return { error };
     }

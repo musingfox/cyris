@@ -2,8 +2,8 @@
 // seeded tenant's every table, exported and loaded into an empty object, comes back row for row.
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
-import { DUMP_FORMAT, DUMP_VERSION, PAGE_ROWS } from "../src/sqlite_dump.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { DUMP_FORMAT, DUMP_VERSION, MAX_DUMP_BYTES, PAGE_ROWS, dumpLimit } from "../src/sqlite_dump.js";
 import { isTenantTable, quotedName } from "../src/tenant_db.js";
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, registryObject, tenantDb } from "./sql_storage.js";
 
@@ -86,6 +86,8 @@ function seededTenant() {
 }
 
 describe("a hosted database's dump", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   it("restores into an empty object with every table's rows and every schema entry as they were", async () => {
     const source = seededTenant();
     const target = tenantDb();
@@ -166,6 +168,34 @@ describe("a hosted database's dump", () => {
     expect(db.tables()).toEqual({ noise: rows });
     // Under the default limit the same rows are a dump, so only the limit refused them.
     expect((await db.exportDump()).byteLength).toBeGreaterThan(maxBytes);
+  });
+
+  it("takes a limit below MAX_DUMP_BYTES, and no other", () => {
+    expect(dumpLimit(1024)).toBe(1024);
+    expect(dumpLimit(undefined)).toBe(MAX_DUMP_BYTES);
+    for (const raised of [MAX_DUMP_BYTES + 1, 2 * MAX_DUMP_BYTES, Infinity, NaN, null, "1024"]) {
+      expect(dumpLimit(raised)).toBe(MAX_DUMP_BYTES);
+    }
+  });
+
+  it("is refused past MAX_DUMP_BYTES however high the caller sets its limit", async () => {
+    // A compressor that answers each write with a chunk of MAX_DUMP_BYTES + 1 bytes, which only
+    // claims that size: the dump is refused on what the compressor reports, so no data is made.
+    vi.stubGlobal(
+      "CompressionStream",
+      class extends TransformStream {
+        constructor() {
+          super({ transform: (_chunk, controller) => controller.enqueue({ byteLength: MAX_DUMP_BYTES + 1 }) });
+        }
+      },
+    );
+    const { db } = seededTenant();
+    for (const maxBytes of [2 * MAX_DUMP_BYTES, Infinity]) {
+      await expect(db.exportDump({ maxBytes })).rejects.toThrow(
+        new RegExp(`^the dump (passed ${MAX_DUMP_BYTES} bytes compressed|is \\d+ bytes compressed, over ${MAX_DUMP_BYTES})$`),
+      );
+    }
+    expect(db.ctx.resets).toBe(0);
   });
 
   it("throws a failed read only once the object is unblocked, so the object is not reset", async () => {
