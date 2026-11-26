@@ -704,6 +704,61 @@ describe("the operator's routes and a tenant session", () => {
   });
 });
 
+// The interest map a tenant's run writes into its site at /interest.html (ADR-0048), as the run's
+// HostedPages.publish_interest stores it.
+const interestMap = (tenant) => `<!doctype html><html><head><title>${tenant}'s interest map</title></head><body>${tenant}'s tags</body></html>`;
+
+describe("a tenant's interest map", () => {
+  it("is served to the tenant's session as its issues are, with their policy, caching and token", async () => {
+    await bound.TENANT_DB.getByName("alpha").query(UPSERT, ["/interest.html", interestMap("alpha"), HTML, AT.toISOString()]);
+    const { session } = await signIn("ana@example.com");
+
+    const map = await call("/t/alpha/interest", { session });
+    const issue = await call("/t/alpha/", { session });
+
+    expect(map.status).toBe(200);
+    const text = await map.text();
+    expect(withoutVoteToken(text)).toBe(interestMap("alpha"));
+    // It carries the session's vote token, so its probe shows the site bar a signed-in reader gets.
+    expect(text).toMatch(/<meta name="cyris-vote-token" content="[^"]+">/);
+    for (const name of ["Content-Type", "Content-Security-Policy", "Cache-Control", "X-Robots-Tag", "X-Content-Type-Options", "Referrer-Policy"]) {
+      expect(map.headers.get(name), name).toBe(issue.headers.get(name));
+    }
+    expect(map.headers.get("Content-Security-Policy")).toBe(votePolicy(ORIGIN));
+    expect(map.headers.get("Cache-Control")).toBe("private, no-cache");
+  });
+
+  it("answers another tenant's session, and the tenant's own before its run wrote it, with the one fixed 404", async () => {
+    await bound.TENANT_DB.getByName("alpha").query(UPSERT, ["/interest.html", interestMap("alpha"), HTML, AT.toISOString()]);
+    const { session: bea } = await signIn("bea@example.com");
+
+    const elsewhere = await call("/t/alpha/interest", { session: bea });
+    // bravo's run has not written its map yet.
+    const unwritten = await call("/t/bravo/interest", { session: bea });
+    const otherTenantsIssue = await call("/t/alpha/", { session: bea });
+
+    const fixed = [otherTenantsIssue.status, await otherTenantsIssue.text()];
+    expect(fixed).toEqual([404, '{"error":"not found"}']);
+    expect([elsewhere.status, await elsewhere.text()]).toEqual(fixed);
+    expect([unwritten.status, await unwritten.text()]).toEqual(fixed);
+    for (const response of [elsewhere, unwritten]) {
+      expect(response.headers.get("Content-Security-Policy")).toBe(SITE_POLICY);
+      expect(response.headers.get("Cache-Control")).toBe("no-store");
+    }
+  });
+
+  it("sends a request with no session to sign in", async () => {
+    await bound.TENANT_DB.getByName("alpha").query(UPSERT, ["/interest.html", interestMap("alpha"), HTML, AT.toISOString()]);
+
+    for (const session of [undefined, "x".repeat(43)]) {
+      const response = await call("/t/alpha/interest", { session });
+      expect(response.status).toBe(302);
+      expect(response.headers.get("Location")).toBe("/login");
+      expect(await response.text()).not.toContain("interest map");
+    }
+  });
+});
+
 describe("a tenant's site, as served", () => {
   it("is sandboxed, unindexed, unsniffed and sends no referrer, on every answer", async () => {
     const { session } = await signIn("ana@example.com");

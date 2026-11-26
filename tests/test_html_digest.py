@@ -11,7 +11,7 @@ import pytest
 from css_rules import parse_style_block, receipt_fixtures, text_langs
 
 from cyris.adapters.output import html_digest
-from cyris.adapters.output.hosted_pages import tenant_settings_path
+from cyris.adapters.output.hosted_pages import tenant_interest_path, tenant_settings_path
 from cyris.adapters.output.html_digest import PROJECT_URL, HtmlDigestWriter
 from cyris.domain.models import (
     NO_LLM_MODEL,
@@ -2465,6 +2465,20 @@ def test_the_archive_links_the_interest_map_for_a_signed_in_reader_only(tmp_path
     )
     assert link is not None
     assert "interest.html" not in html
+
+
+def test_a_tenants_archive_links_the_interest_map_its_run_wrote(tmp_path) -> None:
+    """On the hosted Worker the link names the tenant's own map, which the probe opens for its
+    signed-in reader as it does on every edition (ADR-0048, tests/test_local_pages.py)."""
+    writer = HtmlDigestWriter(tmp_path, interest_path=tenant_interest_path("alpha"))
+
+    html = writer.render_index(["2026-10-17-morning.html"])
+
+    link = re.search(
+        r'<p class="small gated" hidden>[^<]*<a href="/t/alpha/interest">Interest map</a>', html
+    )
+    assert link is not None
+    assert 'href="/interest"' not in html
 
 
 def test_the_interest_page_is_never_an_issue_row_or_counted(tmp_path) -> None:

@@ -17,6 +17,11 @@ decision-makers: ""
 > `/api/sources` and `/api/sources/delete` routes are deleted, and `/t/<tenant>/settings` serves
 > ADR-0043's shared page. Its writable keys, its CSRF rule, its source rules and the poll's hold
 > stand, as the shared page's routes keep them.
+>
+> Amended by [ADR-0048](0048-a-hosted-tenants-interest-map-is-a-page-its-run-writes.md)
+> (2026-11-26): *The link*'s probe answer is now `{authorized: true, settings_link: true}`, so the
+> gated controls open for a signed-in reader, and the archive's Interest link opens the map the
+> tenant's run writes at `/t/<tenant>/interest`.
 
 ## Context and Problem Statement
 

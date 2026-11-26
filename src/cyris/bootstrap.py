@@ -456,6 +456,10 @@ class Deps:
     # Clef spent to the tenant's month as the run ends, failed or not, and returns it for the
     # summary. None outside a hosted tenant's run, which changes nothing.
     record_spend: Callable[[], dict] | None = None
+    # A hosted run's interest map (ADR-0048): draws the map from the tenant's own votes and
+    # holds as the run ends and stores it in the tenant's site. None outside a hosted run,
+    # whose map the `ui` container draws on each request; None changes nothing.
+    publish_interest: Callable[[], None] | None = None
 
 
 def build_promotion_sync(
@@ -651,10 +655,15 @@ def build_deps(
     publish_site = None
     page_serves = None
     site_filenames: Callable[[], list[str]] = list
+    publish_interest = None
     worker_domains = None if hosted else build_worker_domains()
     if hosted or cfg.app.html_output.enabled:
-        from cyris.adapters.output.hosted_pages import tenant_settings_path
-        from cyris.adapters.output.html_digest import SETTINGS_PATH, HtmlDigestWriter
+        from cyris.adapters.output.hosted_pages import tenant_interest_path, tenant_settings_path
+        from cyris.adapters.output.html_digest import (
+            INTEREST_PATH,
+            SETTINGS_PATH,
+            HtmlDigestWriter,
+        )
 
         html_writer = HtmlDigestWriter(
             Path(cfg.app.html_output.output_dir),
@@ -665,6 +674,10 @@ def build_deps(
             # route; its Settings link is the tenant's own page (ADR-0040).
             settings_path=(
                 tenant_settings_path(cfg.app.store.tenant_id) if hosted else SETTINGS_PATH
+            ),
+            # Its Interest link the page its run writes there (ADR-0048).
+            interest_path=(
+                tenant_interest_path(cfg.app.store.tenant_id) if hosted else INTEREST_PATH
             ),
         )
     if hosted:
@@ -677,6 +690,15 @@ def build_deps(
         publish_site = site.publish
         page_serves = site.serves
         site_filenames = site.filenames
+        # No container answers a tenant's reader, so its run draws the interest map, with the
+        # renderer the `ui` container's `/interest` uses, into the same site (ADR-0048).
+        from cyris.adapters.store.interest import D1InterestReader
+        from cyris.service_layer.interest_page import render_interest_page
+
+        publish_interest = partial(
+            site.publish_interest,
+            partial(render_interest_page, D1InterestReader(d1).read, html_writer),
+        )
         tenant_root = tenant_site(cfg.app.store.hosted_domain, cfg.app.store.tenant_id)
         worker_domains = lambda: [tenant_root]  # noqa: E731
     elif html_writer is not None and cfg.app.promote.publish_enabled:
@@ -776,4 +798,5 @@ def build_deps(
         lengthen_articles=lengthen_articles,
         process_usage=process_usage.read_process_usage if process_usage.available() else None,
         record_spend=record_spend,
+        publish_interest=publish_interest,
     )

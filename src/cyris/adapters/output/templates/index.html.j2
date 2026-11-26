@@ -57,7 +57,7 @@
             <span class="label">{{ t("site.archive") }}</span>
             <h1 class="display">{{ t("index.heading", elements={"em": ("em", {})}) }}</h1>
             <p class="small">{{ t("index.intro") }}</p>
-            <p class="small gated" hidden>{{ t("index.interest", elements={"link": ("a", {"href": "/interest"})}) }}</p>
+            <p class="small gated" hidden>{{ t("index.interest", elements={"link": ("a", {"href": interest_path | default("/interest")})}) }}</p>
         </div>
 
         {% if digests %}

@@ -8,6 +8,7 @@
 //   /t/<tenant>/<date>-<period>    one issue, and its raw page at <date>-<period>-raw,
 //                                  as a Pages project serves them; `.html` is taken too
 //   /t/<tenant>/index.html         the archive, and any asset the site holds (favicon.svg)
+//   /t/<tenant>/interest           the interest map the tenant's last run drew (ADR-0048)
 
 import { sized } from "./router.js";
 
@@ -35,6 +36,11 @@ export const SERVED_TYPES = {
 // still do small: no fetch, no form, no base, no frame, and fonts and styles only from where the
 // templates load them. Images are any https: a digest shows the feeds' own.
 export const SITE_POLICY = sitePolicy("'none'");
+
+// The tenant's interest map: a page its run writes beside its issues, as the run ends, and served
+// as they are (ADR-0048). `INTEREST_PAGE` in src/cyris/adapters/output/hosted_pages.py, which
+// stores it at `${INTEREST_PAGE}.html`; tests/test_hosted_config.py holds them.
+export const INTEREST_PAGE = "/interest";
 
 // The one route a tenant's page may send to (hosted_vote.js). The vote buttons post here.
 export const VOTE_PATH = "/api/vote";

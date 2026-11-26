@@ -47,6 +47,11 @@ _UPSERT = (
 # tests/test_hosted_config.py holds them.
 SETTINGS_PAGE = "/settings"
 
+# The tenant's interest map under its site: a page its run writes beside the digest pages, as of
+# the run's end, which the Worker serves at the clean URL (ADR-0048). `INTEREST_PAGE` in
+# workers/app/src/hosted_pages.js; tests/test_hosted_config.py holds them.
+INTEREST_PAGE = "/interest"
+
 
 def tenant_site(domain: str, tenant: str) -> str:
     """The tenant's site on the hosted Worker, as host and path: `<domain>/t/<tenant>`."""
@@ -56,6 +61,11 @@ def tenant_site(domain: str, tenant: str) -> str:
 def tenant_settings_path(tenant: str) -> str:
     """Where a tenant's pages link Settings: its own page on the hosted Worker, by path."""
     return SITE_PATH.format(tenant=tenant) + SETTINGS_PAGE
+
+
+def tenant_interest_path(tenant: str) -> str:
+    """Where a tenant's archive links its interest map: the page its run writes, by path."""
+    return SITE_PATH.format(tenant=tenant) + INTEREST_PAGE
 
 
 def _slash(path: str) -> str:
@@ -106,6 +116,23 @@ class HostedPages:
             return False
         logger.info("Stored %d page(s) of %s in the tenant's site", len(rows), slug)
         return True
+
+    def publish_interest(self, render: Callable[[datetime], str]) -> None:
+        """Draw the interest map as of now with `render` and store it in the tenant's site.
+
+        A hosted vote takes effect only at the next run (ADR-0039), so the page the run writes
+        as it ends is never older than the state it draws. Raises when the page cannot be
+        rendered or written; the run logs that and goes on (ADR-0048).
+        """
+        stamp = self._now()
+        path = INTEREST_PAGE + ".html"
+        body = render(stamp)
+        written = self._db.query(
+            _UPSERT, [path, body, CONTENT_TYPES[".html"], stamp.isoformat(timespec="seconds")]
+        ).changes
+        if written != 1:
+            raise RuntimeError(f"writing {path} changed {written} rows, not 1")
+        logger.info("Stored the interest map in the tenant's site")
 
     def serves(self, path: str, expected: bytes) -> bool:
         """Whether the site holds exactly `expected` at `path`, the bytes the Worker would serve."""

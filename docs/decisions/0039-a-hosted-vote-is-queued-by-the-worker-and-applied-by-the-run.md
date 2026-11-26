@@ -6,6 +6,11 @@ decision-makers: ""
 
 # A hosted vote is queued by the Worker from a page token, and applied by the tenant's run
 
+> Amended by [ADR-0048](0048-a-hosted-tenants-interest-map-is-a-page-its-run-writes.md)
+> (2026-11-26). The probe's answer no longer carries `settings: false`: the hosted Worker serves
+> the tenant's settings page (ADR-0043) and the interest map its run writes, so a signed-in
+> reader's probe opens the gated controls as on every edition. The rest of this ADR still stands.
+
 ## Context and Problem Statement
 
 A self-hosted reader's vote goes from the page to the app Worker's `/api/vote`, on to the shared

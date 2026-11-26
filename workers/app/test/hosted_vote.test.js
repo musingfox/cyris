@@ -221,14 +221,15 @@ describe("a vote", () => {
     expect(await queued("bravo")).toEqual([]);
   });
 
-  it("shows the buttons to a live session's page only: the probe asks with the token, and no Settings opens", async () => {
+  it("shows the whole page to a live session's page only: the probe asks with the token", async () => {
     const session = await signIn("ana@example.com");
     const { token } = await voteTokenOf(session, "alpha");
     const probe = (headers) => call("/api/vote", { headers: { Origin: "null", "Sec-Fetch-Site": "cross-site", ...headers } });
 
     const open = await probe({ "X-Cyris-Vote": token });
     expect(open.status).toBe(200);
-    expect(await open.json()).toEqual({ authorized: true, settings: false, settings_link: true });
+    // No `settings: false`: the gated controls open too, the Interest link among them (ADR-0048).
+    expect(await open.json()).toEqual({ authorized: true, settings_link: true });
     expect(open.headers.get("Access-Control-Allow-Origin")).toBe("*");
     // The cookie alone, a made-up token and another site each learn nothing.
     expect((await call("/api/vote", { session, headers: { Origin: "null" } })).status).toBe(401);

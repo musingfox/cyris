@@ -35,6 +35,9 @@ CARD_LINE_CHARS = 80
 # Where the Settings link of a page on a deployment's own host leads: the local server's and the
 # app Worker's `/settings`. A hosted tenant's pages name the tenant's own instead.
 SETTINGS_PATH = "/settings"
+# Where the archive's Interest link leads on a deployment's own host: the `ui` container's
+# `/interest`. A hosted tenant's archive names the page its run writes instead (ADR-0048).
+INTEREST_PATH = "/interest"
 # A copy of website/assets/favicon.svg, because the image ships `src/` only.
 FAVICON = Path(__file__).parent / "favicon.svg"
 TEMPLATES = Path(__file__).parent / "templates"
@@ -214,6 +217,7 @@ class HtmlDigestWriter:
         starts: Callable[[], Mapping[tuple[str, str], datetime]] | None = None,
         ai_pause: AiPause | None = None,
         settings_path: str = SETTINGS_PATH,
+        interest_path: str = INTEREST_PATH,
     ):
         """Initialize writer with output directory.
 
@@ -235,12 +239,16 @@ class HtmlDigestWriter:
             settings_path: Where every page's Settings link leads: `/settings` on a
                 deployment's own host, a hosted tenant's own settings page on the hosted
                 Worker (`hosted_pages.tenant_settings_path`, ADR-0040)
+            interest_path: Where the archive's Interest link leads: `/interest` on a
+                deployment's own host, the interest page a hosted tenant's run writes on the
+                hosted Worker (`hosted_pages.tenant_interest_path`, ADR-0048)
         """
         self.output_dir = Path(output_dir)
         self.language = language
         self.starts = starts
         self.ai_pause = ai_pause
         self.settings_path = settings_path
+        self.interest_path = interest_path
 
     @property
     def env(self) -> Environment:
@@ -423,6 +431,7 @@ class HtmlDigestWriter:
 
         return template.render(
             settings_path=self.settings_path,
+            interest_path=self.interest_path,
             digests=digests,
             latest=latest,
             card=card,

@@ -473,10 +473,11 @@ class TestTheProbeSplit:
             "signout": False,
         }
 
-    def test_the_hosted_answer_opens_votes_settings_and_archive_and_nothing_gated(self, tmp_path):
-        """A signed-in tenant reader gets the vote buttons, the Archive and Settings links and Sign
-        out on every page (the owner's rule, 2026-11-24), and no interest page (ADR-0043). Only this
-        answer opens Sign out: a cloud or local page has none to give."""
+    def test_the_hosted_answer_opens_the_whole_page_and_sign_out(self, tmp_path):
+        """A signed-in tenant reader gets the vote buttons, the Archive and Settings links, the
+        gated controls, the archive's Interest link to the map its run wrote among them (ADR-0048),
+        and Sign out, on every page (the owner's rule, 2026-11-24). Only this answer opens Sign
+        out: a cloud or local page has none to give."""
         vote = (ROOT / "workers" / "app" / "src" / "hosted_vote.js").read_text(encoding="utf-8")
         probe = re.search(r"export const PROBE = (\{[^}]*\});", vote)[1]
         answer = json.loads(re.sub(r"(\w+):", r'"\1":', probe))
@@ -484,7 +485,7 @@ class TestTheProbeSplit:
         assert _probe_opens(tmp_path, answer) == {
             "vote": True,
             "settings": True,
-            "gated": False,
+            "gated": True,
             "archive": True,
             "brand": True,
             "signout": True,
