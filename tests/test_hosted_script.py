@@ -59,7 +59,8 @@ elif args[2:3] == ["deploy"]:
 """.replace("ACCOUNT", ACCOUNT).replace("URL", URL)
 
 # The gate's stand-ins log to gate.jsonl, not CALLS, so the tests of wrangler's calls never see
-# them. GIT_STATUS is the porcelain output; GIT_HEAD and GIT_ORIGIN the shas HEAD and the fetched
+# them. GIT_STATUS is the porcelain output for tracked paths and GIT_UNTRACKED the untracked ones
+# the repo's .gitignore does not cover; GIT_HEAD and GIT_ORIGIN the shas HEAD and the fetched
 # origin/main are; GIT_FETCH_FAILS makes the fetch fail. `deploy_seen` says whether wrangler had
 # deployed when the stub ran, which is how the tests check the order.
 GIT = """#!/usr/bin/env python3
@@ -72,6 +73,8 @@ with open(os.environ["GATE"], "a") as log:
     log.write(json.dumps({"cmd": "git", "args": args, "deploy_seen": deployed}) + "\\n")
 if args[:1] == ["status"]:
     sys.stdout.write(os.environ.get("GIT_STATUS", ""))
+elif args[:1] == ["ls-files"]:
+    sys.stdout.write(os.environ.get("GIT_UNTRACKED", ""))
 elif args[:1] == ["fetch"]:
     if os.environ.get("GIT_FETCH_FAILS"):
         sys.stderr.write("fatal: unable to access origin\\n")
@@ -84,15 +87,25 @@ else:
     sys.exit(2)
 """.replace("SHA", repr(SHA))
 
-# Stands in for scripts/check.sh through HOSTED_CHECK: CHECK_FAILS is its exit status.
+# Stands in for scripts/check.sh, which the repo fixture writes where the script looks for it: the
+# real one installs dependencies and runs the suite. CHECK_FAILS is its exit status; CHECK_DIRTIES
+# leaves an untracked file behind, as a check that writes a file would; CHECK_COMMITS moves HEAD.
 CHECK = """#!/usr/bin/env python3
-import json, os, sys
+import json, os, subprocess, sys
 deployed = os.path.exists(os.environ["CALLS"]) and any(
     json.loads(l)["args"][2:3] == ["deploy"] for l in open(os.environ["CALLS"])
 )
 with open(os.environ["GATE"], "a") as log:
     log.write(json.dumps({"cmd": "check", "args": sys.argv[1:], "deploy_seen": deployed}) + "\\n")
 print("check: running the suite")
+if os.environ.get("CHECK_DIRTIES"):
+    open("check-droppings.txt", "w").write("left by the check\\n")
+if os.environ.get("CHECK_COMMITS"):
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@example.com",
+         "commit", "-q", "--allow-empty", "-m", "chore: moved by the check"],
+        check=True,
+    )
 sys.exit(int(os.environ.get("CHECK_FAILS", "0")))
 """
 
@@ -211,8 +224,13 @@ def repo(tmp_path: Path) -> Path:
         shutil.copy(ROOT / rel, tmp_path / rel)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for name, body in (("bun", BUN), ("curl", CURL), ("cf", CF), ("git", GIT), ("check", CHECK)):
-        path = bin_dir / name
+    for path, body in (
+        (bin_dir / "bun", BUN),
+        (bin_dir / "curl", CURL),
+        (bin_dir / "cf", CF),
+        (bin_dir / "git", GIT),
+        (tmp_path / "scripts/check.sh", CHECK),
+    ):
         path.write_text(body, encoding="utf-8")
         path.chmod(path.stat().st_mode | stat.S_IEXEC)
     return tmp_path
@@ -231,8 +249,6 @@ def _run(
             "PATH": f"{repo / 'bin'}:{os.environ['PATH']}",
             "CALLS": str(calls),
             "GATE": str(repo / "gate.jsonl"),
-            # Not the real scripts/check.sh, which installs dependencies and runs the suite.
-            "HOSTED_CHECK": str(repo / "bin/check"),
             "TMPDIR": str(repo),
             "CLOUDFLARE_ACCOUNT_ID": "f" * 32,
             **env,
@@ -288,32 +304,44 @@ def _deployed(calls: list[dict]) -> bool:
 
 
 @pytest.mark.parametrize(
-    "status",
-    [" M src/cyris/app.py\n", "?? notes.txt\n", "M  staged.py\n?? new.py\n"],
+    ("status", "untracked", "listed"),
+    [
+        (" M src/cyris/app.py\n", "", ["src/cyris/app.py"]),
+        ("", "notes.txt\n", ["notes.txt"]),
+        ("M  staged.py\n", "new.py\n", ["staged.py", "new.py"]),
+    ],
 )
 def test_deploy_refuses_a_tree_with_a_tracked_change_or_an_untracked_path(
-    repo: Path, status: str
+    repo: Path, status: str, untracked: str, listed: list[str]
 ) -> None:
-    done, calls = _run(repo, ["deploy"], [ACCOUNT, "yes"], GIT_STATUS=status)
+    done, calls = _run(
+        repo, ["deploy"], [ACCOUNT, "yes"], GIT_STATUS=status, GIT_UNTRACKED=untracked
+    )
 
     assert done.returncode == 1
     assert "working tree is not clean" in done.stderr
-    for line in status.splitlines():
-        assert line.removeprefix(line[:3]) in done.stderr
+    for path in listed:
+        assert path in done.stderr
     assert not _deployed(calls)
     # Nothing past the tree check ran: not the fetch, not the check.
-    assert [g["args"][0] for g in _gate(repo)] == ["status"]
+    assert [g["args"][0] for g in _gate(repo)] == ["status", "ls-files"]
     assert not (repo / ".env.hosted").read_text(encoding="utf-8")
 
 
 def test_the_tree_check_lists_untracked_files_one_by_one_and_stops_at_ten(repo: Path) -> None:
-    status = "".join(f"?? scratch/file{i:02d}.txt\n" for i in range(13))
+    untracked = "".join(f"scratch/file{i:02d}.txt\n" for i in range(13))
 
-    done, _ = _run(repo, ["deploy"], [ACCOUNT, "yes"], GIT_STATUS=status)
+    done, calls = _run(repo, ["deploy"], [ACCOUNT, "yes"], GIT_UNTRACKED=untracked)
 
+    assert done.returncode == 1
+    assert not _deployed(calls)
     [status_call] = [g for g in _gate(repo) if g["args"][0] == "status"]
     assert "--porcelain" in status_call["args"]
-    assert "--untracked-files=all" in status_call["args"]
+    [ls_call] = [g for g in _gate(repo) if g["args"][0] == "ls-files"]
+    assert "--others" in ls_call["args"]
+    # The repo's .gitignore files and no other source of excludes: see the real-git tests.
+    assert "--exclude-per-directory=.gitignore" in ls_call["args"]
+    assert "--exclude-standard" not in ls_call["args"]
     assert "scratch/file09.txt" in done.stderr
     assert "scratch/file10.txt" not in done.stderr
     assert "and 3 more" in done.stderr
@@ -340,7 +368,7 @@ def test_deploy_refuses_when_the_fetch_fails(repo: Path) -> None:
     assert "git fetch origin main failed" in done.stderr
     assert not _deployed(calls)
     gate = _gate(repo)
-    assert [g["args"] for g in gate if g["cmd"] == "git"][1] == ["fetch", "origin", "main"]
+    assert [g["args"] for g in gate if g["cmd"] == "git"][2] == ["fetch", "origin", "main"]
     assert "check" not in [g["cmd"] for g in gate]
 
 
@@ -354,6 +382,7 @@ def test_deploy_runs_the_check_first_and_does_not_deploy_when_it_fails(repo: Pat
     assert not _deployed(calls)
     assert [g["args"][0] for g in _gate(repo) if g["cmd"] == "git"] == [
         "status",
+        "ls-files",
         "fetch",
         "rev-parse",
         "rev-parse",
@@ -368,6 +397,27 @@ def test_a_clean_origin_main_checkout_runs_the_check_and_then_deploys(repo: Path
     [check] = [g for g in _gate(repo) if g["cmd"] == "check"]
     assert check["deploy_seen"] is False
     assert _deployed(calls)
+    # The tree and HEAD are looked at again once the check is done, before wrangler builds.
+    assert [g["args"][0] for g in _gate(repo) if g["cmd"] == "git"] == [
+        "status",
+        "ls-files",
+        "fetch",
+        "rev-parse",
+        "rev-parse",
+        "status",
+        "ls-files",
+        "rev-parse",
+    ]
+
+
+def test_the_check_is_the_repos_own_and_no_environment_variable_swaps_or_skips_it(
+    repo: Path,
+) -> None:
+    done, calls = _run(repo, ["deploy"], [ACCOUNT, "yes"], HOSTED_CHECK="true", CHECK_FAILS="1")
+
+    assert done.returncode == 1
+    assert "check: running the suite" in done.stdout
+    assert not _deployed(calls)
 
 
 def test_the_deployment_carries_the_full_sha_in_its_message_and_a_tag(repo: Path) -> None:
@@ -382,9 +432,109 @@ def test_the_deployment_carries_the_full_sha_in_its_message_and_a_tag(repo: Path
 
 
 def test_nothing_of_the_gate_runs_before_the_account_is_confirmed(repo: Path) -> None:
-    _run(repo, ["deploy"], [ACCOUNT, "no"], GIT_STATUS="?? x\n")
+    _run(repo, ["deploy"], [ACCOUNT, "no"], GIT_UNTRACKED="x\n")
 
     assert _gate(repo) == []
+
+
+# What git reads from its own config would change what these tests prove.
+GIT_ISOLATED = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1"}
+
+
+def _git(cwd: Path, *args: str) -> None:
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        env={"PATH": os.environ["PATH"], **GIT_ISOLATED},
+    )
+
+
+def _commit_and_push(repo: Path, *paths: str) -> None:
+    _git(repo, "add", *paths)
+    _git(repo, "commit", "-q", "-m", "chore: change")
+    _git(repo, "push", "-q", "origin", "main")
+
+
+@pytest.fixture
+def real_git_repo(repo: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """`repo` as a real git checkout at origin/main, so the gate is judged by git itself.
+
+    The stubs above replay what git prints; these tests hold what git reports for an ignore
+    rule, which a stub cannot. Only the fake `git` goes: the rest of the stubs stay.
+    """
+    (repo / "bin/git").unlink()
+    origin = tmp_path_factory.mktemp("origin")
+    _git(origin, "init", "-q", "--bare", "-b", "main")
+    (repo / ".gitignore").write_text(
+        "/bin/\n/calls.jsonl\n/gate.jsonl\n/.env.hosted\n", encoding="utf-8"
+    )
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "add", ".gitignore", "scripts", "wrangler.hosted.toml", "workers")
+    _git(repo, "commit", "-q", "-m", "chore: fixture")
+    _git(repo, "remote", "add", "origin", str(origin))
+    _git(repo, "push", "-q", "origin", "main")
+    return repo
+
+
+def test_a_clean_real_checkout_at_origin_main_deploys(real_git_repo: Path) -> None:
+    done, calls = _run(real_git_repo, ["deploy"], [ACCOUNT, "yes"], **GIT_ISOLATED)
+
+    assert done.returncode == 0, done.stderr
+    assert _deployed(calls)
+
+
+def test_an_untracked_file_hidden_only_by_info_exclude_still_stops_the_deploy(
+    real_git_repo: Path,
+) -> None:
+    """`COPY src ./src` in the Dockerfile copies it, whatever .git/info/exclude says."""
+    (real_git_repo / "src").mkdir()
+    (real_git_repo / "src/leak.py").write_text("SECRET = 1\n", encoding="utf-8")
+    with (real_git_repo / ".git/info/exclude").open("a", encoding="utf-8") as exclude:
+        exclude.write("src/leak.py\n")
+
+    done, calls = _run(real_git_repo, ["deploy"], [ACCOUNT, "yes"], **GIT_ISOLATED)
+
+    assert done.returncode == 1
+    assert "src/leak.py" in done.stderr
+    assert not _deployed(calls)
+    assert _gate(real_git_repo) == []
+
+
+def test_a_file_the_repos_own_gitignore_covers_does_not_stop_the_deploy(
+    real_git_repo: Path,
+) -> None:
+    (real_git_repo / "build").mkdir()
+    (real_git_repo / "build/.gitignore").write_text("*.o\n", encoding="utf-8")
+    _commit_and_push(real_git_repo, "build/.gitignore")
+    (real_git_repo / "build/main.o").write_text("object\n", encoding="utf-8")
+
+    done, calls = _run(real_git_repo, ["deploy"], [ACCOUNT, "yes"], **GIT_ISOLATED)
+
+    assert done.returncode == 0, done.stderr
+    assert _deployed(calls)
+
+
+def test_a_check_that_leaves_a_file_behind_stops_the_deploy(real_git_repo: Path) -> None:
+    done, calls = _run(
+        real_git_repo, ["deploy"], [ACCOUNT, "yes"], CHECK_DIRTIES="1", **GIT_ISOLATED
+    )
+
+    assert done.returncode == 1
+    assert "not clean after scripts/check.sh" in done.stderr
+    assert "check-droppings.txt" in done.stderr
+    assert not _deployed(calls)
+
+
+def test_a_check_that_moves_head_stops_the_deploy(real_git_repo: Path) -> None:
+    done, calls = _run(
+        real_git_repo, ["deploy"], [ACCOUNT, "yes"], CHECK_COMMITS="1", **GIT_ISOLATED
+    )
+
+    assert done.returncode == 1
+    assert "HEAD moved" in done.stderr
+    assert not _deployed(calls)
 
 
 @pytest.mark.parametrize(
