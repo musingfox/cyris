@@ -34,10 +34,14 @@ of the operator's routes only, is
 
 Every command runs, as pasted, from the root of a checkout of this repository. `scripts/hosted.sh` asks for each value by name:
 
-- `ACCOUNT_ID`: the trial account's Account ID (dashboard > Account home > Account ID). You
-  type it for every command that runs wrangler. It is never stored, and it is never read from
-  your environment. Before `deploy`, `secrets` and `delete`, the script prints the id and the
-  account name `wrangler whoami` gives for it. It does nothing until you type `yes`.
+- `ACCOUNT_ID`: the trial account's Account ID (dashboard > Account home > Account ID). The
+  script reads it from the `CLOUDFLARE_ACCOUNT_ID` line of the repository's `.env`, the one line
+  and no other key: `.env` holds production's `CLOUDFLARE_API_TOKEN`, which must not reach a
+  hosted call, so the file is parsed and never sourced. Without that line, you type it. An
+  exported `CLOUDFLARE_ACCOUNT_ID` is ignored. Before `deploy`, `secrets` and `delete`, the script
+  prints the id and the account name `wrangler whoami` gives for it. It does nothing until you
+  type `yes`: a wrong id would put this Worker's secrets on another account, so that stays
+  a human's answer however the id was found.
 - `CYRIS_ACCESS_TEAM_DOMAIN` and `CYRIS_ACCESS_AUD`: the Access team domain, and the AUD tag of
   the Access application from step 2.
 - `CYRIS_HOSTED_OPERATORS`: who the operator routes admit, comma separated. Give the step-2
@@ -59,11 +63,21 @@ Every command runs, as pasted, from the root of a checkout of this repository. `
   `signin@mail.readcyris.com`, and its `privacy@`, `support@` and `security@` addresses
   (`workers/app/src/hosted_legal.json`) are Email Routing rules on the apex.
 
-The secrets are read without echo each time, and they are never written down. They reach
-wrangler and curl on stdin, never on a command line. The one value the script keeps is the
-Worker's URL, `HOSTED_URL`, which `deploy` reads from wrangler's output. It goes in
-`.env.hosted`, which is gitignored and has mode 600. `secrets` sets the Worker's
-`CYRIS_STORE_HOSTED_DOMAIN` from it, so you never type the domain.
+The secrets are read without echo, a saved one is shown only as its first four characters, and
+they reach wrangler and curl on stdin, never on a command line. `.env.hosted`, which is
+gitignored and has mode 600, is the script's one state file. It holds `HOSTED_URL`, which
+`deploy` reads from wrangler's output, and `secrets` sets the Worker's `CYRIS_STORE_HOSTED_DOMAIN`
+from it, so you never type the domain. It may also hold the values the script would otherwise
+ask for again, one `KEY=value` per line: `CYRIS_ACCESS_TEAM_DOMAIN`, `CYRIS_ACCESS_AUD`,
+`CYRIS_HOSTED_OPERATORS`, `ANTHROPIC_API_KEY`, `CLOUDFLARE_EMBEDDING_API_TOKEN`,
+`CYRIS_HOSTED_OPERATOR_WEBHOOK`, `CYRIS_HOSTED_MAIL_FROM`, and the service token's
+`CYRIS_ACCESS_CLIENT_ID` and `CYRIS_ACCESS_CLIENT_SECRET`. The file is read line by line, never
+sourced, and any other key in it is ignored. A line is `KEY=value` split at its first `=`, so a
+value may hold more of them. As in a dotenv file, a CR at the end of the line, the whitespace
+around the key and the value, and one pair of matching quotes around the value are dropped;
+nothing else is unescaped. `secrets` offers to write what you typed into it.
+The service token's pair, which `secrets` never asks for, you add by hand, and it is kept in
+clear text, so keep the file out of backups and shares.
 
 ## 0. Before you start
 
@@ -100,9 +114,10 @@ stops with "Could not resolve fast-xml-parser". The third is for its newsletter 
 parses mail with `workers/newsletter`'s `postal-mime`; without it the deploy stops with "Could
 not resolve postal-mime".
 
-Every route call below asks for the Access service token's id and secret. When
+Every route call below needs the Access service token's id and secret. When
 `CYRIS_ACCESS_CLIENT_ID` and `CYRIS_ACCESS_CLIENT_SECRET` are both set, the script takes them
-from the environment instead, as `cyris --tenant` does. Bitwarden Agent Access can put them there
+from the environment without asking, as `cyris --tenant` does. Failing that, it takes the same two
+keys from `.env.hosted` when it holds both, and only then asks. Bitwarden Agent Access can put them there
 for one shell, approved once, with the token stored as a login item whose username is the id and
 whose password is the secret:
 
@@ -190,10 +205,24 @@ domain too, Access still covers `/t/`, and readers will meet its login instead o
 scripts/hosted.sh secrets
 ```
 
-This asks for `CYRIS_ACCESS_TEAM_DOMAIN`, `CYRIS_ACCESS_AUD`, `CYRIS_HOSTED_OPERATORS`,
-`ANTHROPIC_API_KEY`, `CLOUDFLARE_EMBEDDING_API_TOKEN`, `CYRIS_HOSTED_OPERATOR_WEBHOOK` and `CYRIS_HOSTED_MAIL_FROM`, and sets each one as a secret of `cyris-hosted` on stdin.
+This first lists the secrets `cyris-hosted` already has, then goes through `CYRIS_ACCESS_TEAM_DOMAIN`,
+`CYRIS_ACCESS_AUD`, `CYRIS_HOSTED_OPERATORS`, `ANTHROPIC_API_KEY`,
+`CLOUDFLARE_EMBEDDING_API_TOKEN`, `CYRIS_HOSTED_OPERATOR_WEBHOOK` and `CYRIS_HOSTED_MAIL_FROM` one
+by one, and sets each one you answer as a secret of `cyris-hosted` on stdin. For each it says
+whether the Worker has it set. A name not yet set is offered a default, and Enter takes it: the
+value `.env.hosted` holds, or for the team domain, the AUD and the operators the script asks
+`cf` for. `cf` runs from `workers/`, where no `.env` is, with no `CLOUDFLARE_API_TOKEN`, as
+whoever `cf` is logged in as. The team domain is the account's Zero Trust organization's
+`auth_domain`. The AUD is the Access application whose domain covers the `HOSTED_URL` host and
+`/hosted/*`. The operator default is the Client ID of the service token that application's policy
+allows. If `cf` fails, or finds none or several, it says why, lists the candidates, and asks. A
+name the Worker already has is offered nothing: Enter keeps it and puts nothing, and only a value
+you type replaces it. When you are done it offers once to save what you typed in `.env.hosted`.
+You still type `yes` for the account first, which is how a wrong account is caught before any
+secret is set.
+
 `CLOUDFLARE_EMBEDDING_API_TOKEN` is the Workers AI token from step 0, read without echo. It sets
-`CLOUDFLARE_ACCOUNT_ID` to the account id you typed and confirmed too, since the tenants' runs
+`CLOUDFLARE_ACCOUNT_ID` to the account id you confirmed too, since the tenants' runs
 embed on that account: a tenant that turns vote similarity on spends your Workers AI, charged to
 its month as `embedding_usd`
 ([ADR-0049](decisions/0049-a-hosted-tenants-embedding-runs-on-the-operators-workers-ai.md)).

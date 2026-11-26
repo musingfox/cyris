@@ -41,12 +41,51 @@ import json, os, sys
 args = sys.argv[1:]
 stdin = "" if sys.stdin.isatty() else sys.stdin.read()
 with open(os.environ["CALLS"], "a") as log:
-    log.write(json.dumps({"cmd": "bun", "args": args, "stdin": stdin}) + "\\n")
-if args[2:4] == ["whoami", "--json"]:
+    seen = {k: v for k, v in os.environ.items() if k.startswith("CLOUDFLARE")}
+    log.write(json.dumps({"cmd": "bun", "args": args, "stdin": stdin, "env": seen}) + "\\n")
+if args[2:4] == ["secret", "list"]:
+    # The names the Worker has set, as wrangler lists them; LIST_FAILS is a wrangler that cannot.
+    if os.environ.get("LIST_FAILS"):
+        sys.stderr.write("not logged in\\n")
+        sys.exit(1)
+    names = json.loads(os.environ.get("SET_SECRETS", "[]"))
+    print(json.dumps([{"name": n, "type": "secret_text"} for n in names]))
+elif args[2:4] == ["whoami", "--json"]:
     print(json.dumps({"accounts": [{"id": "ACCOUNT", "name": "Trial account"}]}))
 elif args[2:3] == ["deploy"]:
     print("Deployed cyris-hosted triggers\\n  URL")
 """.replace("ACCOUNT", ACCOUNT).replace("URL", URL)
+
+# Records where it ran and what it was given, and answers as `cf` would from the JSON the test
+# puts in CF_ORG (the Zero Trust organization), CF_APPS (the Access applications) and CF_TOKENS
+# (the service tokens); CF_FAILS makes every call fail with that message.
+CF = """#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+with open(os.environ["CALLS"], "a") as log:
+    log.write(json.dumps({
+        "cmd": "cf", "args": args, "stdin": "", "cwd": os.getcwd(),
+        "dotenv_here": os.path.exists(".env"),
+        "token_set": "CLOUDFLARE_API_TOKEN" in os.environ,
+        "account": os.environ.get("CLOUDFLARE_ACCOUNT_ID"),
+    }) + "\\n")
+if os.environ.get("CF_FAILS"):
+    sys.stderr.write(os.environ["CF_FAILS"] + "\\n")
+    sys.exit(1)
+answers = {
+    "organization": "CF_ORG",
+    "applications": "CF_APPS",
+    "service-tokens": "CF_TOKENS",
+}
+for word, var in answers.items():
+    if word in args:
+        if var not in os.environ:
+            sys.stderr.write("no such thing in this account\\n")
+            sys.exit(1)
+        print(os.environ[var])
+        sys.exit(0)
+sys.exit(2)
+"""
 
 # Records its argv and the config it reads on stdin, and answers each route: a report, the
 # tenant's latest page, which the report names by its hash, or the JSON body it was sent back.
@@ -132,7 +171,7 @@ def repo(tmp_path: Path) -> Path:
         shutil.copy(ROOT / rel, tmp_path / rel)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for name, body in (("bun", BUN), ("curl", CURL)):
+    for name, body in (("bun", BUN), ("curl", CURL), ("cf", CF)):
         path = bin_dir / name
         path.write_text(body, encoding="utf-8")
         path.chmod(path.stat().st_mode | stat.S_IEXEC)
@@ -784,3 +823,726 @@ def test_every_cards_subcommand_is_in_one_script_and_check_judges_the_full_repor
     ]
     assert "PASS alpha" in checked.stdout
     assert "PASS bravo" in checked.stdout
+
+
+# What `.env` may say about the account, in the shapes a dotenv file takes.
+ACCOUNT_LINES = [
+    f"CLOUDFLARE_ACCOUNT_ID={ACCOUNT}",
+    f'CLOUDFLARE_ACCOUNT_ID="{ACCOUNT}"',
+    f"export CLOUDFLARE_ACCOUNT_ID='{ACCOUNT}'",
+    f"CLOUDFLARE_ACCOUNT_ID={ACCOUNT} # the trial account",
+]
+
+
+@pytest.mark.parametrize("line", ACCOUNT_LINES)
+@pytest.mark.parametrize("action", ["deploy", "delete"])
+def test_the_account_is_the_one_in_dotenv_and_is_still_confirmed_by_name(
+    repo: Path, action: str, line: str
+) -> None:
+    (repo / ".env").write_text(f"CLOUDFLARE_API_TOKEN=production-token\n{line}\n", encoding="utf-8")
+
+    done, calls = _run(repo, [action], ["yes"])
+
+    assert done.returncode == 0, done.stderr
+    assert f"account id:   {ACCOUNT}" in done.stdout
+    assert "account name: Trial account" in done.stdout
+    assert "ACCOUNT_ID of the trial Cloudflare account" not in done.stdout + done.stderr
+    assert [c["args"][2] for c in calls] == ["whoami", action]
+
+
+def test_nothing_is_done_to_the_account_dotenv_names_until_yes(repo: Path) -> None:
+    (repo / ".env").write_text(f"CLOUDFLARE_ACCOUNT_ID={ACCOUNT}\n", encoding="utf-8")
+
+    done, calls = _run(repo, ["delete"], ["no"])
+
+    assert done.returncode == 1
+    assert "not confirmed; nothing was done" in done.stderr
+    assert [c["args"][2] for c in calls] == ["whoami"]
+
+
+def test_secrets_takes_the_account_from_dotenv_and_still_asks_for_yes(repo: Path) -> None:
+    (repo / ".env").write_text(f"CLOUDFLARE_ACCOUNT_ID={ACCOUNT}\n", encoding="utf-8")
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, calls = _run(repo, ["secrets"], SECRETS_TYPED[1:])
+
+    assert done.returncode == 0, done.stderr
+    [put] = [c for c in calls if c["args"][4:5] == ["CLOUDFLARE_ACCOUNT_ID"]]
+    assert put["stdin"] == ACCOUNT
+
+
+def test_no_other_key_of_dotenv_reaches_wrangler_and_the_file_is_never_sourced(
+    repo: Path,
+) -> None:
+    """`.env` holds production's CLOUDFLARE_API_TOKEN, and a dotenv file is not always shell."""
+    (repo / ".env").write_text(
+        "CLOUDFLARE_API_TOKEN=production-token\n"
+        "ANTHROPIC_API_KEY=production-anthropic\n"
+        f"CLOUDFLARE_ACCOUNT_ID={ACCOUNT}\n"
+        "touch SOURCED\n"
+        "OTHER=$(touch SOURCED)\n",
+        encoding="utf-8",
+    )
+
+    done, calls = _run(repo, ["deploy"], ["yes"])
+
+    assert done.returncode == 0, done.stderr
+    assert not (repo / "SOURCED").exists()
+    assert calls
+    for c in calls:
+        # Only the account is in wrangler's environment, and it is the one the file names.
+        assert c["env"] == {"CLOUDFLARE_ACCOUNT_ID": ACCOUNT}
+        assert "production" not in json.dumps(c)
+
+
+def test_the_account_is_asked_for_when_dotenv_has_none(repo: Path) -> None:
+    (repo / ".env").write_text("CLOUDFLARE_API_TOKEN=production-token\n", encoding="utf-8")
+
+    done, calls = _run(repo, ["deploy"], [ACCOUNT, "yes"])
+
+    assert done.returncode == 0, done.stderr
+    assert "ACCOUNT_ID of the trial Cloudflare account" not in done.stderr  # a prompt, not an error
+    assert [c["args"][2] for c in calls] == ["whoami", "deploy"]
+    assert all(c["env"] == {"CLOUDFLARE_ACCOUNT_ID": ACCOUNT} for c in calls)
+
+
+@pytest.mark.parametrize("bad", ["abc", "G" * 32, ACCOUNT.upper(), ""])
+def test_an_account_in_dotenv_that_is_not_32_hex_stops_before_wrangler(
+    repo: Path, bad: str
+) -> None:
+    (repo / ".env").write_text(f"CLOUDFLARE_ACCOUNT_ID={bad}\n", encoding="utf-8")
+
+    # An empty value is no value: the account is asked for, as without the key.
+    done, calls = _run(repo, ["deploy"], [ACCOUNT, "yes"] if not bad else [ACCOUNT])
+
+    if bad:
+        assert done.returncode == 1
+        assert "CLOUDFLARE_ACCOUNT_ID in .env must be 32 hex characters" in done.stderr
+        assert calls == []
+    else:
+        assert done.returncode == 0, done.stderr
+
+
+def test_the_environments_account_never_picks_the_account(repo: Path) -> None:
+    (repo / ".env").write_text(f"CLOUDFLARE_ACCOUNT_ID={ACCOUNT}\n", encoding="utf-8")
+
+    done, calls = _run(repo, ["deploy"], ["yes"], CLOUDFLARE_ACCOUNT_ID="e" * 32)
+
+    assert done.returncode == 0, done.stderr
+    assert all(c["env"] == {"CLOUDFLARE_ACCOUNT_ID": ACCOUNT} for c in calls)
+
+
+STATE_TOKEN = (
+    f"HOSTED_URL={URL}\n"
+    "CYRIS_ACCESS_CLIENT_ID=state-id.access\n"
+    "CYRIS_ACCESS_CLIENT_SECRET=state-SECRET\n"
+)
+
+
+@pytest.mark.parametrize("args", [["check"], ["spend"], ["run", "morning"]])
+def test_ask_access_commands_read_the_service_token_from_the_state_file(
+    repo: Path, args: list[str]
+) -> None:
+    (repo / ".env.hosted").write_text(STATE_TOKEN, encoding="utf-8")
+
+    done, calls = _run(repo, args, [])
+
+    assert done.returncode == 0, done.stderr
+    assert "CF-Access-Client-Id of a service token" not in done.stdout + done.stderr
+    curls = [c for c in calls if c["cmd"] == "curl"]
+    assert curls
+    for c in curls:
+        assert 'header = "CF-Access-Client-Id: state-id.access"' in c["stdin"]
+        assert 'header = "CF-Access-Client-Secret: state-SECRET"' in c["stdin"]
+        assert "state-SECRET" not in " ".join(c["args"])
+    assert "state-SECRET" not in done.stdout + done.stderr
+
+
+def test_a_token_in_the_environment_wins_over_the_state_files(repo: Path) -> None:
+    (repo / ".env.hosted").write_text(STATE_TOKEN, encoding="utf-8")
+
+    done, calls = _run(
+        repo,
+        ["spend"],
+        [],
+        CYRIS_ACCESS_CLIENT_ID="env-id.access",
+        CYRIS_ACCESS_CLIENT_SECRET="env-SECRET",
+    )
+
+    assert done.returncode == 0, done.stderr
+    [curl] = [c for c in calls if c["cmd"] == "curl"]
+    assert "CF-Access-Client-Id: env-id.access" in curl["stdin"]
+    assert "state-" not in curl["stdin"]
+
+
+@pytest.mark.parametrize(
+    "half",
+    ["CYRIS_ACCESS_CLIENT_ID=state-id.access\n", "CYRIS_ACCESS_CLIENT_SECRET=state-SECRET\n"],
+)
+def test_half_a_token_in_the_state_file_is_not_mixed_with_one_typed(repo: Path, half: str) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n{half}", encoding="utf-8")
+
+    done, calls = _run(repo, ["spend"], ["typed-id.access", "typed-SECRET"])
+
+    assert done.returncode == 0, done.stderr
+    [curl] = [c for c in calls if c["cmd"] == "curl"]
+    assert "CF-Access-Client-Id: typed-id.access" in curl["stdin"]
+    assert "CF-Access-Client-Secret: typed-SECRET" in curl["stdin"]
+
+
+def test_the_state_file_keeps_its_other_keys_when_deploy_rewrites_the_url(repo: Path) -> None:
+    state = repo / ".env.hosted"
+    state.write_text(
+        "HOSTED_URL=https://old.example\nCYRIS_ACCESS_CLIENT_ID=state-id.access\n", encoding="utf-8"
+    )
+    state.chmod(0o644)
+
+    done, _ = _run(repo, ["deploy"], [ACCOUNT, "yes"])
+
+    assert done.returncode == 0, done.stderr
+    assert state.read_text(encoding="utf-8") == (
+        f"CYRIS_ACCESS_CLIENT_ID=state-id.access\nHOSTED_URL={URL}\n"
+    )
+    assert stat.S_IMODE(state.stat().st_mode) == 0o600
+
+
+# The seven names `secrets` asks for, in its order, and the value the tests type for each.
+ASKED = [
+    "CYRIS_ACCESS_TEAM_DOMAIN",
+    "CYRIS_ACCESS_AUD",
+    "CYRIS_HOSTED_OPERATORS",
+    "ANTHROPIC_API_KEY",
+    "CLOUDFLARE_EMBEDDING_API_TOKEN",
+    "CYRIS_HOSTED_OPERATOR_WEBHOOK",
+    "CYRIS_HOSTED_MAIL_FROM",
+]
+VALUES = dict(zip(ASKED, SECRETS_TYPED[2:], strict=True))
+# Always put, never asked: the account and the host deploy kept.
+NOT_ASKED = ["CLOUDFLARE_ACCOUNT_ID", "CYRIS_STORE_HOSTED_DOMAIN"]
+
+
+def _secrets(
+    repo: Path, typed: list[str], state: str = "", **env: str
+) -> tuple[subprocess.CompletedProcess, dict[str, str], list[dict]]:
+    """Run `secrets` with the account in `.env`, and what it put by name."""
+    (repo / ".env").write_text(f"CLOUDFLARE_ACCOUNT_ID={ACCOUNT}\n", encoding="utf-8")
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n{state}", encoding="utf-8")
+    done, calls = _run(repo, ["secrets"], ["yes", *typed], **env)
+    puts = {c["args"][4]: c["stdin"] for c in calls if c["args"][2:4] == ["secret", "put"]}
+    return done, puts, calls
+
+
+def test_secrets_lists_the_workers_secret_names_first_and_says_which_are_set(repo: Path) -> None:
+    done, _, calls = _secrets(repo, [""] * 7, SET_SECRETS=json.dumps(ASKED))
+
+    assert done.returncode == 0, done.stderr
+    assert [c["args"][2:4] for c in calls if c["cmd"] == "bun"][:2] == [
+        ["whoami", "--json"],
+        ["secret", "list"],
+    ]
+    for name in ASKED:
+        assert f"{name}: already set on the Worker" in done.stdout
+
+
+def test_enter_on_every_name_already_set_puts_only_the_two_that_are_never_asked(
+    repo: Path,
+) -> None:
+    done, puts, calls = _secrets(repo, [""] * 7, SET_SECRETS=json.dumps(ASKED))
+
+    assert done.returncode == 0, done.stderr
+    assert list(puts) == NOT_ASKED
+    assert puts["CLOUDFLARE_ACCOUNT_ID"] == ACCOUNT
+    assert puts["CYRIS_STORE_HOSTED_DOMAIN"] == "cyris-hosted.trial.workers.dev"
+    # Nothing was missing, so nothing was looked up.
+    assert [c for c in calls if c["cmd"] == "cf"] == []
+    assert "CYRIS_ACCESS_AUD: kept as set" in done.stdout
+
+
+def test_a_name_set_on_the_worker_is_replaced_only_by_a_value_typed(repo: Path) -> None:
+    typed = ["", "", "", "sk-ant-NEW", "", "", ""]
+
+    done, puts, _ = _secrets(repo, typed, SET_SECRETS=json.dumps(ASKED))
+
+    assert done.returncode == 0, done.stderr
+    assert puts == {
+        "ANTHROPIC_API_KEY": "sk-ant-NEW",
+        "CLOUDFLARE_ACCOUNT_ID": ACCOUNT,
+        "CYRIS_STORE_HOSTED_DOMAIN": "cyris-hosted.trial.workers.dev",
+    }
+    assert "sk-ant-NEW" not in done.stdout + done.stderr
+
+
+def test_a_name_not_set_and_with_no_value_is_required(repo: Path) -> None:
+    done, puts, _ = _secrets(repo, ["team.cloudflareaccess.com", "AUD-1"])
+
+    assert done.returncode == 1
+    assert "not set on the Worker yet" in done.stdout
+    assert "CYRIS_HOSTED_OPERATORS is required" in done.stderr
+    assert puts == {}
+
+
+def test_the_state_files_values_are_the_defaults_and_enter_accepts_them(repo: Path) -> None:
+    state = "".join(f"{k}={v}\n" for k, v in VALUES.items())
+
+    done, puts, calls = _secrets(repo, [""] * 7, state, CLOUDFLARE_API_TOKEN="production-token")
+
+    assert done.returncode == 0, done.stderr
+    for secret in ("sk-ant-SECRET", "cf-embed-SECRET", OPERATOR_HOOK):
+        assert not any(secret in " ".join(c["args"]) for c in calls)
+    assert puts == {
+        **VALUES,
+        "CLOUDFLARE_ACCOUNT_ID": ACCOUNT,
+        "CYRIS_STORE_HOSTED_DOMAIN": "cyris-hosted.trial.workers.dev",
+    }
+    # Offered from the file, so nothing was typed and nothing asked to be saved again.
+    assert "Typed this time" not in done.stdout
+    assert "from .env.hosted" in done.stdout
+
+
+def test_a_default_for_a_secret_is_shown_masked_and_never_whole(repo: Path) -> None:
+    state = "".join(f"{k}={v}\n" for k, v in VALUES.items())
+
+    done, _, _ = _secrets(repo, [""] * 7, state)
+
+    out = done.stdout + done.stderr
+    assert "Enter uses sk-a*** from .env.hosted" in out
+    assert "Enter uses http*** from .env.hosted" in out
+    # Not a secret, so shown as it is.
+    assert "Enter uses cyris@mail.example from .env.hosted" in out
+    for secret in ("sk-ant-SECRET", "cf-embed-SECRET", OPERATOR_HOOK):
+        assert secret not in out
+
+
+def test_a_short_secret_default_is_masked_whole(repo: Path) -> None:
+    state = "ANTHROPIC_API_KEY=sk-a\n"
+
+    done, _, _ = _secrets(repo, ["t", "a", "o", "", "e", "https://w", "m"], state)
+
+    assert "Enter uses **** from .env.hosted" in done.stdout
+
+
+def test_typed_values_are_kept_in_the_state_file_when_the_owner_says_so(repo: Path) -> None:
+    typed = [*SECRETS_TYPED[2:], "y"]
+
+    done, puts, _ = _secrets(repo, typed, "CYRIS_ACCESS_CLIENT_ID=state-id.access\n")
+
+    assert done.returncode == 0, done.stderr
+    assert puts["ANTHROPIC_API_KEY"] == "sk-ant-SECRET"
+    state = repo / ".env.hosted"
+    kept = dict(line.split("=", 1) for line in state.read_text(encoding="utf-8").splitlines())
+    assert kept == {
+        "HOSTED_URL": URL,
+        "CYRIS_ACCESS_CLIENT_ID": "state-id.access",
+        **VALUES,
+    }
+    assert stat.S_IMODE(state.stat().st_mode) == 0o600
+    # The offer names the keys, never the values.
+    assert "Typed this time: CYRIS_ACCESS_TEAM_DOMAIN CYRIS_ACCESS_AUD" in done.stdout
+    for secret in ("sk-ant-SECRET", "cf-embed-SECRET", OPERATOR_HOOK):
+        assert secret not in done.stdout + done.stderr
+    assert not list(repo.glob(".env.hosted.new"))
+
+
+@pytest.mark.parametrize("answer", ["n", "", "no"])
+def test_typed_values_are_not_kept_unless_the_owner_says_so(repo: Path, answer: str) -> None:
+    done, _, _ = _secrets(repo, [*SECRETS_TYPED[2:], answer])
+
+    assert done.returncode == 0, done.stderr
+    assert (repo / ".env.hosted").read_text(encoding="utf-8") == f"HOSTED_URL={URL}\n"
+
+
+def test_only_what_was_typed_is_offered_for_saving(repo: Path) -> None:
+    state = f"CYRIS_ACCESS_TEAM_DOMAIN={VALUES['CYRIS_ACCESS_TEAM_DOMAIN']}\n"
+    typed = ["", *SECRETS_TYPED[3:], "y"]
+
+    done, _, _ = _secrets(repo, typed, state)
+
+    assert "Typed this time: CYRIS_ACCESS_AUD CYRIS_HOSTED_OPERATORS" in done.stdout
+    assert "Typed this time: CYRIS_ACCESS_TEAM_DOMAIN" not in done.stdout
+
+
+def test_a_failed_listing_is_reported_and_every_name_is_asked_as_unset(repo: Path) -> None:
+    done, puts, _ = _secrets(repo, SECRETS_TYPED[2:], LIST_FAILS="1")
+
+    assert done.returncode == 0, done.stderr
+    assert "could not list the Worker's secrets" in done.stderr
+    assert "not set on the Worker yet" in done.stdout
+    assert set(puts) == set(ASKED + NOT_ASKED)
+
+
+def test_the_operator_webhook_from_the_state_file_must_still_be_https(repo: Path) -> None:
+    state = "CYRIS_HOSTED_OPERATOR_WEBHOOK=hook\n"
+
+    done, puts, _ = _secrets(repo, [*SECRETS_TYPED[2:7], "", "mail"], state)
+
+    assert done.returncode == 1
+    assert "CYRIS_HOSTED_OPERATOR_WEBHOOK must be an https:// URL" in done.stderr
+    assert puts == {}
+
+
+# What cf answers: the organization, the applications of the account and its service tokens.
+CF_ORG = json.dumps({"auth_domain": "cf-team.cloudflareaccess.com", "name": "team"})
+CF_APP = {
+    "name": "cyris-hosted",
+    "aud": "AUD-FROM-CF",
+    "domain": "cyris-hosted.trial.workers.dev/hosted/*",
+    "policies": [
+        {"decision": "bypass", "include": [{"service_token": {"token_id": "tok-bypass"}}]},
+        {"decision": "non_identity", "include": [{"service_token": {"token_id": "tok-1"}}]},
+    ],
+}
+CF_OTHER_APP = {
+    "name": "cyris-other",
+    "aud": "AUD-OTHER",
+    "domain": "other.example.com/*",
+    "policies": [{"decision": "allow", "include": [{"service_token": {"token_id": "tok-2"}}]}],
+}
+CF_TOKENS = [
+    {"id": "tok-1", "name": "operator", "client_id": "cf-id.access"},
+    {"id": "tok-2", "name": "other", "client_id": "other-id.access"},
+    {"id": "tok-bypass", "name": "bypass", "client_id": "bypass-id.access"},
+]
+
+
+def _cf(*, org: str = CF_ORG, apps: list | None = None, tokens: list | None = None) -> dict:
+    return {
+        "CF_ORG": org,
+        "CF_APPS": json.dumps([CF_OTHER_APP, CF_APP] if apps is None else apps),
+        "CF_TOKENS": json.dumps(CF_TOKENS if tokens is None else tokens),
+    }
+
+
+def test_team_domain_aud_and_client_id_are_read_from_cf_and_offered_as_defaults(
+    repo: Path,
+) -> None:
+    typed = ["", "", "", *SECRETS_TYPED[5:]]
+
+    done, puts, calls = _secrets(repo, typed, CLOUDFLARE_API_TOKEN="production-token", **_cf())
+
+    assert done.returncode == 0, done.stderr
+    assert puts["CYRIS_ACCESS_TEAM_DOMAIN"] == "cf-team.cloudflareaccess.com"
+    assert puts["CYRIS_ACCESS_AUD"] == "AUD-FROM-CF"
+    # The service token the application's allowing policy names, not the bypass one.
+    assert puts["CYRIS_HOSTED_OPERATORS"] == "cf-id.access"
+    assert "Enter uses cf-team.cloudflareaccess.com from cf" in done.stdout
+    # cf ran where no .env is, with no token from the shell, on the account from .env.
+    cf_calls = [c for c in calls if c["cmd"] == "cf"]
+    assert [c["args"] for c in cf_calls] == [
+        ["zero-trust", "organization", "get"],
+        [
+            "zero-trust",
+            "access",
+            "applications",
+            "list",
+            "--domain",
+            "cyris-hosted.trial.workers.dev",
+        ],
+        ["zero-trust", "access", "service-tokens", "list"],
+    ]
+    for c in cf_calls:
+        assert Path(c["cwd"]).resolve() == (repo / "workers").resolve()
+        assert (c["dotenv_here"], c["token_set"], c["account"]) == (False, False, ACCOUNT)
+
+
+def test_cf_answers_in_a_result_envelope_are_read_too(repo: Path) -> None:
+    env = _cf(org=json.dumps({"result": json.loads(CF_ORG)}))
+    env["CF_APPS"] = json.dumps({"result": json.loads(env["CF_APPS"])})
+    env["CF_TOKENS"] = json.dumps({"result": CF_TOKENS})
+
+    done, puts, _ = _secrets(repo, ["", "", "", *SECRETS_TYPED[5:]], **env)
+
+    assert done.returncode == 0, done.stderr
+    assert puts["CYRIS_ACCESS_AUD"] == "AUD-FROM-CF"
+    assert puts["CYRIS_HOSTED_OPERATORS"] == "cf-id.access"
+
+
+def test_a_value_typed_over_a_cf_default_is_put_and_offered_for_saving(repo: Path) -> None:
+    typed = ["", "", "ops-id.access,me@example.com", *SECRETS_TYPED[5:], "y"]
+
+    done, puts, _ = _secrets(repo, typed, **_cf())
+
+    assert done.returncode == 0, done.stderr
+    assert puts["CYRIS_HOSTED_OPERATORS"] == "ops-id.access,me@example.com"
+    kept = (repo / ".env.hosted").read_text(encoding="utf-8")
+    assert "CYRIS_HOSTED_OPERATORS=ops-id.access,me@example.com\n" in kept
+    # What cf supplied was not typed, so it is not kept.
+    assert "AUD-FROM-CF" not in kept
+
+
+def test_a_name_the_state_file_holds_is_not_looked_up_in_cf(repo: Path) -> None:
+    state = (
+        "CYRIS_ACCESS_TEAM_DOMAIN=state-team.cloudflareaccess.com\n"
+        "CYRIS_ACCESS_AUD=AUD-STATE\n"
+        "CYRIS_HOSTED_OPERATORS=state-id.access\n"
+    )
+
+    done, puts, calls = _secrets(repo, ["", "", "", *SECRETS_TYPED[5:]], state, **_cf())
+
+    assert done.returncode == 0, done.stderr
+    assert puts["CYRIS_ACCESS_AUD"] == "AUD-STATE"
+    assert puts["CYRIS_HOSTED_OPERATORS"] == "state-id.access"
+    assert [c for c in calls if c["cmd"] == "cf"] == []
+
+
+def test_a_name_already_set_is_not_looked_up_either(repo: Path) -> None:
+    done, _, calls = _secrets(
+        repo,
+        ["", "", "", *SECRETS_TYPED[5:]],
+        SET_SECRETS=json.dumps(ASKED[:3]),
+        **_cf(),
+    )
+
+    assert done.returncode == 0, done.stderr
+    assert [c for c in calls if c["cmd"] == "cf"] == []
+
+
+def test_when_cf_fails_the_reason_is_printed_and_the_owner_is_asked(repo: Path) -> None:
+    done, puts, _ = _secrets(repo, SECRETS_TYPED[2:], CF_FAILS="Authentication error (10000)")
+
+    assert done.returncode == 0, done.stderr
+    assert "cf could not read the team domain: Authentication error (10000)" in done.stderr
+    assert "cf could not read the Access applications: Authentication error (10000)" in done.stderr
+    assert puts["CYRIS_ACCESS_TEAM_DOMAIN"] == "team.cloudflareaccess.com"
+    assert puts["CYRIS_ACCESS_AUD"] == "AUD-1"
+    assert puts["CYRIS_HOSTED_OPERATORS"] == "client-id.access,owner@example.com"
+
+
+def test_an_unreadable_cf_answer_falls_back_to_asking_with_the_reason(repo: Path) -> None:
+    done, puts, _ = _secrets(
+        repo, SECRETS_TYPED[2:], CF_ORG="not json", CF_APPS="not json", CF_TOKENS="[]"
+    )
+
+    assert done.returncode == 0, done.stderr
+    assert "cf: could not read the answer" in done.stderr
+    assert puts["CYRIS_ACCESS_AUD"] == "AUD-1"
+
+
+def test_no_application_covering_the_hosted_path_is_reported_and_asked(repo: Path) -> None:
+    done, puts, _ = _secrets(
+        repo,
+        ["", "AUD-1", "client-id.access", *SECRETS_TYPED[5:]],
+        **_cf(apps=[CF_OTHER_APP]),
+    )
+
+    assert done.returncode == 0, done.stderr
+    assert "no Access application covers cyris-hosted.trial.workers.dev/hosted/*" in done.stderr
+    assert puts["CYRIS_ACCESS_TEAM_DOMAIN"] == "cf-team.cloudflareaccess.com"
+    assert puts["CYRIS_ACCESS_AUD"] == "AUD-1"
+    assert puts["CYRIS_HOSTED_OPERATORS"] == "client-id.access"
+
+
+def test_several_service_tokens_are_listed_and_the_client_id_is_asked(repo: Path) -> None:
+    app = {
+        **CF_APP,
+        "policies": [
+            {
+                "decision": "non_identity",
+                "include": [
+                    {"service_token": {"token_id": "tok-1"}},
+                    {"service_token": {"token_id": "tok-2"}},
+                ],
+            }
+        ],
+    }
+
+    done, puts, _ = _secrets(
+        repo, ["", "", "typed-id.access", *SECRETS_TYPED[5:]], **_cf(apps=[app])
+    )
+
+    assert done.returncode == 0, done.stderr
+    assert (
+        "allows several service tokens: operator (cf-id.access), other (other-id.access)"
+        in done.stderr
+    )
+    assert puts["CYRIS_ACCESS_AUD"] == "AUD-FROM-CF"
+    assert puts["CYRIS_HOSTED_OPERATORS"] == "typed-id.access"
+
+
+def test_an_application_that_allows_any_service_token_lists_the_accounts_and_asks(
+    repo: Path,
+) -> None:
+    app = {
+        **CF_APP,
+        "policies": [{"decision": "non_identity", "include": [{"any_valid_service_token": {}}]}],
+    }
+
+    done, puts, _ = _secrets(
+        repo, ["", "", "typed-id.access", *SECRETS_TYPED[5:]], **_cf(apps=[app])
+    )
+
+    assert done.returncode == 0, done.stderr
+    assert "allows any valid service token; the account has: operator (cf-id.access)" in done.stderr
+    assert puts["CYRIS_HOSTED_OPERATORS"] == "typed-id.access"
+
+
+def test_two_applications_covering_the_path_are_listed_and_the_aud_is_asked(repo: Path) -> None:
+    twin = {
+        **CF_APP,
+        "name": "cyris-hosted-2",
+        "aud": "AUD-TWIN",
+        "domain": "cyris-hosted.trial.workers.dev/*",
+    }
+
+    done, puts, _ = _secrets(
+        repo, ["", "AUD-TYPED", "id.access", *SECRETS_TYPED[5:]], **_cf(apps=[CF_APP, twin])
+    )
+
+    assert done.returncode == 0, done.stderr
+    assert (
+        "several Access applications cover cyris-hosted.trial.workers.dev/hosted/*" in done.stderr
+    )
+    assert "cyris-hosted (AUD-FROM-CF), cyris-hosted-2 (AUD-TWIN)" in done.stderr
+    assert puts["CYRIS_ACCESS_AUD"] == "AUD-TYPED"
+
+
+def test_service_tokens_that_cf_cannot_list_cost_only_the_client_id(repo: Path) -> None:
+    env = _cf()
+    del env["CF_TOKENS"]
+
+    done, puts, _ = _secrets(repo, ["", "", "typed-id.access", *SECRETS_TYPED[5:]], **env)
+
+    assert done.returncode == 0, done.stderr
+    assert "cf could not read the service tokens: no such thing in this account" in done.stderr
+    assert puts["CYRIS_ACCESS_AUD"] == "AUD-FROM-CF"
+    assert puts["CYRIS_HOSTED_OPERATORS"] == "typed-id.access"
+
+
+def _spend_token(repo: Path, state: str) -> str:
+    """The curl config a `spend` sent, signed in with whatever the state file said."""
+    (repo / ".env.hosted").write_text(state, encoding="utf-8")
+    done, calls = _run(repo, ["spend"], [])
+    assert done.returncode == 0, done.stderr
+    [curl] = [c for c in calls if c["cmd"] == "curl"]
+    return curl["stdin"]
+
+
+@pytest.mark.parametrize("secret", ["abc=", "abc==", "a=b", "a=b=", "=lead"])
+def test_a_value_keeps_every_equals_sign_after_the_first(repo: Path, secret: str) -> None:
+    """Base64 pads with "=": a secret ending in one must come back whole, or Access refuses it."""
+    sent = _spend_token(
+        repo,
+        f"HOSTED_URL={URL}\nCYRIS_ACCESS_CLIENT_ID=id.access\nCYRIS_ACCESS_CLIENT_SECRET={secret}\n",
+    )
+
+    assert f'header = "CF-Access-Client-Secret: {secret}"\n' in sent
+
+
+def test_a_saved_value_ending_in_equals_is_put_whole_on_the_next_run(repo: Path) -> None:
+    padded = "sk-ant-xyzw1="
+    typed = [*SECRETS_TYPED[2:], "y"]
+    typed[typed.index("sk-ant-SECRET")] = padded
+    first, _, _ = _secrets(repo, typed)
+    assert first.returncode == 0, first.stderr
+    assert f"ANTHROPIC_API_KEY={padded}\n" in (repo / ".env.hosted").read_text(encoding="utf-8")
+    (repo / "calls.jsonl").unlink()
+
+    done, calls = _run(repo, ["secrets"], ["yes", *[""] * 7])
+
+    assert done.returncode == 0, done.stderr
+    puts = {c["args"][4]: c["stdin"] for c in calls if c["args"][2:4] == ["secret", "put"]}
+    assert puts["ANTHROPIC_API_KEY"] == padded
+
+
+@pytest.mark.parametrize(
+    ("written", "read"),
+    [
+        ("id.access\r", "id.access"),
+        ("  id.access  ", "id.access"),
+        ('"id.access"', "id.access"),
+        ("'id.access'", "id.access"),
+        ('  "id.access"  \r', "id.access"),
+        ('""id.access""', '"id.access"'),
+        ("\"id.access'", "\"id.access'"),
+        ('"id.access', '"id.access'),
+        ("id\\.acc\\ess", "id\\.acc\\ess"),
+        ('"a b # c"', "a b # c"),
+        ('""', ""),
+    ],
+)
+def test_a_hand_edited_value_is_read_as_a_dotenv_file_would(
+    repo: Path, written: str, read: str
+) -> None:
+    state = (
+        f"HOSTED_URL={URL}\r\n"
+        f"CYRIS_ACCESS_CLIENT_ID={written}\r\n"
+        "CYRIS_ACCESS_CLIENT_SECRET=secret-value\r\n"
+    )
+    (repo / ".env.hosted").write_bytes(state.encode())
+    token = ["typed-id.access", "typed-SECRET"] if not read else []
+
+    done, calls = _run(repo, ["spend"], token)
+
+    assert done.returncode == 0, done.stderr
+    [curl] = [c for c in calls if c["cmd"] == "curl"]
+    # A CRLF file does not leave a CR in the host either.
+    assert curl["args"][-1] == f"{URL}/hosted/spend"
+    assert 'header = "CF-Access-Client-Secret: secret-value"' in curl["stdin"] or not read
+    if read:
+        assert f'header = "CF-Access-Client-Id: {read}"\n' in curl["stdin"]
+    else:
+        assert 'header = "CF-Access-Client-Id: typed-id.access"' in curl["stdin"]
+
+
+@pytest.mark.parametrize(
+    "line", ["CYRIS_ACCESS_CLIENT_ID = id.access", "  CYRIS_ACCESS_CLIENT_ID=id.access"]
+)
+def test_whitespace_round_a_key_does_not_hide_it(repo: Path, line: str) -> None:
+    sent = _spend_token(repo, f"HOSTED_URL={URL}\n{line}\nCYRIS_ACCESS_CLIENT_SECRET = s\n")
+
+    assert 'header = "CF-Access-Client-Id: id.access"' in sent
+    assert 'header = "CF-Access-Client-Secret: s"' in sent
+
+
+def test_a_quoted_default_is_offered_without_its_quotes(repo: Path) -> None:
+    state = f'ANTHROPIC_API_KEY="{VALUES["ANTHROPIC_API_KEY"]}"\r\n'
+
+    done, puts, _ = _secrets(repo, ["t", "a", "o", "", "e", "https://w", "m"], state)
+
+    assert done.returncode == 0, done.stderr
+    assert puts["ANTHROPIC_API_KEY"] == VALUES["ANTHROPIC_API_KEY"]
+
+
+# Stands in for grep: records the mode of the file its stdout was opened as (the temp file at the
+# moment it is created, before anything chmods it), then runs the real one.
+GREP = """#!/usr/bin/env python3
+import os, stat, sys
+here = os.path.dirname(os.path.abspath(__file__))
+mode = os.fstat(1).st_mode
+if stat.S_ISREG(mode):
+    with open(os.environ["MODES"], "a") as log:
+        log.write(oct(mode & 0o777) + "\\n")
+real = next(
+    os.path.join(d, "grep") for d in os.environ["PATH"].split(":")
+    if d and os.path.abspath(d) != here and os.path.exists(os.path.join(d, "grep"))
+)
+os.execv(real, [real, *sys.argv[1:]])
+"""
+
+
+@pytest.mark.parametrize("stale", [False, True])
+def test_the_temp_state_file_is_mode_600_before_a_secret_is_written_into_it(
+    repo: Path, stale: bool
+) -> None:
+    """It holds every saved secret while it is copied: a mode set afterwards leaves a window."""
+    grep = repo / "bin" / "grep"
+    grep.write_text(GREP, encoding="utf-8")
+    grep.chmod(grep.stat().st_mode | stat.S_IEXEC)
+    state = repo / ".env.hosted"
+    state.write_text("HOSTED_URL=http://old\nANTHROPIC_API_KEY=sk-ant-SECRET\n", encoding="utf-8")
+    if stale:
+        # A temp file an earlier, killed run left, which a redirect would write into at its mode.
+        (repo / ".env.hosted.new").write_text("stale\n", encoding="utf-8")
+        (repo / ".env.hosted.new").chmod(0o644)
+    modes = repo / "modes.txt"
+    previous = os.umask(0o022)
+    try:
+        done, _ = _run(repo, ["deploy"], [ACCOUNT, "yes"], MODES=str(modes))
+    finally:
+        os.umask(previous)
+
+    assert done.returncode == 0, done.stderr
+    # Every grep that wrote a file for the rewrite wrote one that was already mode 600.
+    assert set(modes.read_text(encoding="utf-8").split()) == {"0o600"}
+    assert stat.S_IMODE(state.stat().st_mode) == 0o600
+    assert "ANTHROPIC_API_KEY=sk-ant-SECRET\n" in state.read_text(encoding="utf-8")
+    assert not (repo / ".env.hosted.new").exists()
