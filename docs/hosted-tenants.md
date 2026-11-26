@@ -144,14 +144,17 @@ scripts/hosted.sh deploy
 ```
 
 After you confirm the account, the script deploys only a clean checkout whose HEAD is
-`origin/main`, and it has no flag that skips any of this. In this order it:
+`origin/main`, and it has no flag or variable that skips any of this. In this order it:
 
-1. refuses if `git status --porcelain` shows a tracked change or an untracked path that
-   `.gitignore` does not cover, and lists up to 10 of them. `wrangler deploy` builds the container
-   image from the checkout as it is, so such a file could land in the image.
+1. refuses if `git status --porcelain` shows a tracked change, or `git ls-files --others` lists an
+   untracked path that the repository's own `.gitignore` files do not cover, and lists up to 10
+   of them. `.git/info/exclude` and a global excludes file do not count: they hide a file from
+   git, not from `wrangler deploy`, which builds the container image from the checkout as it is.
 2. runs `git fetch origin main` and refuses unless HEAD is the commit it fetched, naming both
    shas. A failed fetch refuses too.
-3. runs `scripts/check.sh`, its output on your terminal, and refuses if it exits non-zero.
+3. runs `scripts/check.sh`, its output on your terminal, and refuses if it exits non-zero. It then
+   checks the tree and HEAD once more as in 1 and 2, since the check can rewrite files, and
+   refuses if either changed.
 4. runs `wrangler deploy --config wrangler.hosted.toml --env-file /dev/null --tag <first 12 of the
    sha> --message "cyris-hosted <full sha>"`.
 
