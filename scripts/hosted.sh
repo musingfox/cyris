@@ -42,7 +42,12 @@ STATE_KEYS=(
   CYRIS_ACCESS_CLIENT_ID CYRIS_ACCESS_CLIENT_SECRET
 )
 for k in "${STATE_KEYS[@]}"; do printf -v "STATE_$k" '%s' ''; done
-while IFS='=' read -r key value || [[ -n "$key" ]]; do
+# A line is KEY=VALUE split at its first "=", so a value keeps every "=" after it, a base64 one's
+# padding included.
+while IFS= read -r line || [[ -n "$line" ]]; do
+  [[ "$line" == *=* ]] || continue
+  key=${line%%=*}
+  value=${line#*=}
   for k in "${STATE_KEYS[@]}"; do
     [[ "$key" == "$k" ]] && printf -v "STATE_$k" '%s' "$value"
   done

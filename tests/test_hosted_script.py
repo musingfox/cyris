@@ -1407,6 +1407,42 @@ def test_service_tokens_that_cf_cannot_list_cost_only_the_client_id(repo: Path) 
     assert puts["CYRIS_HOSTED_OPERATORS"] == "typed-id.access"
 
 
+def _spend_token(repo: Path, state: str) -> str:
+    """The curl config a `spend` sent, signed in with whatever the state file said."""
+    (repo / ".env.hosted").write_text(state, encoding="utf-8")
+    done, calls = _run(repo, ["spend"], [])
+    assert done.returncode == 0, done.stderr
+    [curl] = [c for c in calls if c["cmd"] == "curl"]
+    return curl["stdin"]
+
+
+@pytest.mark.parametrize("secret", ["abc=", "abc==", "a=b", "a=b=", "=lead"])
+def test_a_value_keeps_every_equals_sign_after_the_first(repo: Path, secret: str) -> None:
+    """Base64 pads with "=": a secret ending in one must come back whole, or Access refuses it."""
+    sent = _spend_token(
+        repo,
+        f"HOSTED_URL={URL}\nCYRIS_ACCESS_CLIENT_ID=id.access\nCYRIS_ACCESS_CLIENT_SECRET={secret}\n",
+    )
+
+    assert f'header = "CF-Access-Client-Secret: {secret}"\n' in sent
+
+
+def test_a_saved_value_ending_in_equals_is_put_whole_on_the_next_run(repo: Path) -> None:
+    padded = "sk-ant-xyzw1="
+    typed = [*SECRETS_TYPED[2:], "y"]
+    typed[typed.index("sk-ant-SECRET")] = padded
+    first, _, _ = _secrets(repo, typed)
+    assert first.returncode == 0, first.stderr
+    assert f"ANTHROPIC_API_KEY={padded}\n" in (repo / ".env.hosted").read_text(encoding="utf-8")
+    (repo / "calls.jsonl").unlink()
+
+    done, calls = _run(repo, ["secrets"], ["yes", *[""] * 7])
+
+    assert done.returncode == 0, done.stderr
+    puts = {c["args"][4]: c["stdin"] for c in calls if c["args"][2:4] == ["secret", "put"]}
+    assert puts["ANTHROPIC_API_KEY"] == padded
+
+
 # Stands in for grep: records the mode of the file its stdout was opened as (the temp file at the
 # moment it is created, before anything chmods it), then runs the real one.
 GREP = """#!/usr/bin/env python3
