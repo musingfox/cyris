@@ -6,6 +6,32 @@ decision-makers: ""
 
 # A hosted tenant's newsletters arrive at a random address and are queued in its own Durable Object
 
+> Amended by [ADR-0050](0050-mail-from-an-unknown-sender-becomes-a-source-the-reader-keeps-or-stops.md)
+> (2026-11-26). A run that meets a sender no source names makes a newsletter source for it, marked
+> `new`, and the tenant's reader keeps or stops it from the digest. These claims below no longer
+> hold:
+>
+> * *Sources*: "A run ingests an issue only for a source whose `email_match` names its sender", and
+>   "The tenant settings card replaces it". The `newsletter-source` route still writes the row it
+>   did, but a run no longer waits for it. The settings page stops and restores a newsletter source,
+>   and still adds none.
+> * *Pulling*: senders are no longer matched by a case-insensitive substring. Both sources read one
+>   lower-cased whole address, the header From, and match it exactly, then once each side drops its
+>   `+tag`. Mail from a member's address, or from one the tenant lists as its own on its settings
+>   page, is a forward, filed by the sender its forwarded block quotes.
+> * *Unmatched mail waits*: the 8-day hold now keeps only mail that no source matches and that makes
+>   no source, such as a system sender's (`system_senders` in `keywords.json`, Gmail's forwarding
+>   confirmation among them), a forward from a member's address whose block cannot be read, a sender
+>   past the run's 10 new sources or the tenant's 30 (a stopped source not counted), a source write
+>   that fails, and a sender whose address another source already names. Mail from a stopped source
+>   is deleted at the next run, never held.
+> * *Consequences*: an issue reaches each tenant's digest through the source the run made, not only
+>   one the operator added. The DMARC consequence's "It still reaches no digest unless it also
+>   matches a source's `email_match`" no longer holds: a forged sender becomes a new source, and its
+>   mail reaches the digest marked `New source`.
+>
+> The rest of this ADR still stands.
+
 ## Context and Problem Statement
 
 A self-hosted deployment's newsletters arrive through `workers/newsletter`. Email Routing hands

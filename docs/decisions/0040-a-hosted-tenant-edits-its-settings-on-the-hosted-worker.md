@@ -44,6 +44,16 @@ decision-makers: ""
 > `embedding_model` (the operator's Workers AI and its default model), and the vote order,
 > `digest.preference_source`, to the policy's `preference_source` (`cosine`, so never Clef), whatever
 > the tenant's rows say.
+>
+> Amended by [ADR-0050](0050-mail-from-an-unknown-sender-becomes-a-source-the-reader-keeps-or-stops.md)
+> (2026-11-26). *Sources*' "A source of either type may be removed" no longer holds: removing a
+> newsletter source stops it and keeps its row, marked `declined`, and
+> `POST /api/sources/<name>/review` keeps, stops or restores one. A tenant still adds RSS sources
+> only. The cap's count and write are still one synchronous turn for a settings save, but a run now
+> writes the sources it makes through its gateway, counting the cap against its own copy of the
+> sources. A stopped newsletter source holds no place under the cap. A tenant also writes
+> `notify.own_addresses`, its other addresses, the one `notify` key it writes; the notify targets
+> stay the operator's.
 
 ## Context and Problem Statement
 
