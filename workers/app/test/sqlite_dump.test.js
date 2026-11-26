@@ -85,6 +85,56 @@ function seededTenant() {
   return { db, sql };
 }
 
+// Replaces CompressionStream with one that reports `whileWriting` bytes of output after its first
+// write, or `atClose` bytes as it is closed, and nothing else, so each of the two limit checks in
+// gzipLines can be reached on its own and without making any data: the dump is refused on the
+// size the compressor reports. A write or the close returns once the reader has taken the chunk,
+// so what the writer sees does not depend on timing.
+function stubCompressor({ whileWriting = 0, atClose = 0 }) {
+  vi.stubGlobal(
+    "CompressionStream",
+    class {
+      constructor() {
+        const items = [];
+        let wake = () => {};
+        const push = (item) => {
+          items.push(item);
+          wake();
+        };
+        const take = async () => {
+          while (!items.length) await new Promise((resolve) => (wake = resolve));
+          return items.shift();
+        };
+        const emit = (byteLength) => new Promise((consumed) => push({ chunk: { byteLength }, consumed }));
+        let wrote = false;
+        this.readable = {
+          async *[Symbol.asyncIterator]() {
+            for (;;) {
+              const item = await take();
+              if (!item.chunk) return;
+              yield item.chunk;
+              item.consumed();
+            }
+          },
+        };
+        this.writable = {
+          getWriter: () => ({
+            write: async () => {
+              if (whileWriting && !wrote) await emit(whileWriting);
+              wrote = true;
+            },
+            close: async () => {
+              if (atClose) await emit(atClose);
+              push({});
+            },
+            abort: async () => push({}),
+          }),
+        };
+      }
+    },
+  );
+}
+
 describe("a hosted database's dump", () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -178,22 +228,33 @@ describe("a hosted database's dump", () => {
     }
   });
 
-  it("is refused past MAX_DUMP_BYTES however high the caller sets its limit", async () => {
-    // A compressor that answers each write with a chunk of MAX_DUMP_BYTES + 1 bytes, which only
-    // claims that size: the dump is refused on what the compressor reports, so no data is made.
-    vi.stubGlobal(
-      "CompressionStream",
-      class extends TransformStream {
-        constructor() {
-          super({ transform: (_chunk, controller) => controller.enqueue({ byteLength: MAX_DUMP_BYTES + 1 }) });
-        }
-      },
+  it("is refused as soon as a write takes the output past the limit", async () => {
+    const maxBytes = 1024;
+    stubCompressor({ whileWriting: maxBytes + 1 });
+    const { db } = seededTenant();
+
+    await expect(db.exportDump({ maxBytes })).rejects.toThrow(`the dump passed ${maxBytes} bytes compressed`);
+
+    expect(db.ctx.resets).toBe(0);
+  });
+
+  it("is refused when only the end of the output takes it past the limit", async () => {
+    const maxBytes = 1024;
+    stubCompressor({ atClose: maxBytes + 1 });
+    const { db } = seededTenant();
+
+    await expect(db.exportDump({ maxBytes })).rejects.toThrow(
+      `the dump is ${maxBytes + 1} bytes compressed, over ${maxBytes}`,
     );
+
+    expect(db.ctx.resets).toBe(0);
+  });
+
+  it("is refused past MAX_DUMP_BYTES however high the caller sets its limit", async () => {
+    stubCompressor({ whileWriting: MAX_DUMP_BYTES + 1 });
     const { db } = seededTenant();
     for (const maxBytes of [2 * MAX_DUMP_BYTES, Infinity]) {
-      await expect(db.exportDump({ maxBytes })).rejects.toThrow(
-        new RegExp(`^the dump (passed ${MAX_DUMP_BYTES} bytes compressed|is \\d+ bytes compressed, over ${MAX_DUMP_BYTES})$`),
-      );
+      await expect(db.exportDump({ maxBytes })).rejects.toThrow(`the dump passed ${MAX_DUMP_BYTES} bytes compressed`);
     }
     expect(db.ctx.resets).toBe(0);
   });
