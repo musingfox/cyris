@@ -30,7 +30,8 @@ of the operator's routes only, is
 [ADR-0033](decisions/0033-hosted-readers-sign-in-with-a-mailed-link.md).
 
 `cyris-hosted` is a separate Worker from `cyris-app`. Nothing here deploys or changes
-`wrangler.toml`, which a push to main deploys to production (ADR-0024).
+`wrangler.toml`, which a push to main deploys to production (ADR-0024). Unlike that deploy, which
+runs in CI, this one runs from your checkout, so `scripts/hosted.sh deploy` gates itself (step 1).
 
 Every command runs, as pasted, from the root of a checkout of this repository. `scripts/hosted.sh` asks for each value by name:
 
@@ -142,8 +143,23 @@ CLOUDFLARE_ACCOUNT_ID=<trial account id> bun x wrangler r2 bucket create cyris-h
 scripts/hosted.sh deploy
 ```
 
-This runs `wrangler deploy --config wrangler.hosted.toml --env-file /dev/null`, after you
-confirm the account. It deploys the Worker, its three Durable Object classes
+After you confirm the account, the script deploys only a clean checkout whose HEAD is
+`origin/main`, and it has no flag or variable that skips any of this. In this order it:
+
+1. refuses if `git status --porcelain` shows a tracked change, or `git ls-files --others` lists an
+   untracked path that the repository's own `.gitignore` files do not cover, and lists up to 10
+   of them. `.git/info/exclude` and a global excludes file do not count: they hide a file from
+   git, not from `wrangler deploy`, which builds the container image from the checkout as it is.
+2. runs `git fetch origin main` and refuses unless HEAD is the commit it fetched, naming both
+   shas. A failed fetch refuses too.
+3. runs `scripts/check.sh`, its output on your terminal, and refuses if it exits non-zero. It then
+   checks the tree and HEAD once more as in 1 and 2, since the check can rewrite files, and
+   refuses if either changed.
+4. runs `wrangler deploy --config wrangler.hosted.toml --env-file /dev/null --tag <first 12 of the
+   sha> --message "cyris-hosted <full sha>"`.
+
+`wrangler deployments list` shows the full sha as the deployment's `Message`, and the short one as
+the `Tag` of its version. The deploy ships the Worker, its three Durable Object classes
 (`TenantContainer`, `TenantDb` and `TenantRegistry`), its `MAIL` Email Sending binding and the
 container application `cyris-hosted-tenantcontainer` and its `BACKUP` R2 binding. It never reads `.env`. A first deploy's registry is empty, so
 until step 5 the Worker has no tenant: the hourly tick queues nothing, and every tenant route
