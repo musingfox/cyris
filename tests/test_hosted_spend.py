@@ -668,6 +668,87 @@ async def test_a_ledger_down_all_run_tells_the_operator_once_and_a_lost_report_t
     assert "was not added to its tenant's month" in alert["body"]
 
 
+# The operator's Workers AI account and embedding token, which `scripts/hosted.sh secrets` sets on
+# the hosted Worker and every tenant's container is handed (ADR-0049).
+OPERATOR_ACCOUNT = "0123456789abcdef0123456789abcdef"
+OPERATOR_EMBEDDING_TOKEN = "cf-operator-embedding"
+# What Workers AI reports it charged for one embedded text, in its answer's `meta`.
+NEURONS_PER_TEXT = 0.035
+
+
+def _workers_ai_answer(request: httpx.Request) -> httpx.Response:
+    texts = json.loads(request.content)["text"]
+    meta = {"neurons": NEURONS_PER_TEXT * len(texts)}
+    return httpx.Response(
+        200, json={"success": True, "result": {"data": [[1.0, 0.0] for _ in texts], "meta": meta}}
+    )
+
+
+async def test_a_tenant_that_turns_vote_similarity_on_embeds_on_the_operators_workers_ai(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The switch is the tenant's row; the embedder is the operator's, whatever embedder the rows
+    name; and its neurons reach the tenant's month as `embedding_usd`."""
+    from fakes import seed_d1_settings
+    from test_hosted_run_wiring import _files, _hosted_env, _through
+
+    _hosted_env(monkeypatch)
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", OPERATOR_ACCOUNT)
+    monkeypatch.setenv("CLOUDFLARE_EMBEDDING_API_TOKEN", OPERATOR_EMBEDDING_TOKEN)
+    monkeypatch.delenv("CLOUDFLARE_AI_TOKEN", raising=False)
+    gateway = FakeGateway("alpha")
+    apply_hosted_schema(gateway.db)
+    seed_d1_settings(
+        gateway.db,
+        **{
+            "llm_provider.provider": "anthropic",
+            "llm_provider.model": HAIKU,
+            "vote_similarity.enabled": True,
+            # Rows the tenant's own container could have written.
+            "vote_similarity.provider": "gemini",
+            "vote_similarity.model": "gemini-embedding-001",
+        },
+    )
+    gateway.db.query(
+        "INSERT INTO stored_articles (url, original_id, title, published_at, source_name, "
+        "source_lane, state, first_seen_at, triaged_at) VALUES ('https://a.test/old', 0, "
+        "'An old rumour', '2026-11-01T00:00:00.000000+00:00', 'A', 'read', 'rejected', "
+        "'2026-11-01T00:00:00.000000+00:00', '2026-11-01T01:00:00+00:00')"
+    )
+    _through(gateway, monkeypatch)
+    ledger = FakeSpendGateway("alpha")
+    ledger_through(ledger, monkeypatch)
+    llm = FakeLLM(SCORES, model=HAIKU, input_tokens=1_000, output_tokens=200)
+    monkeypatch.setattr(bootstrap, "build_llm", lambda _cfg: llm)
+
+    cfg = bootstrap.load_effective_config(*_files(tmp_path))
+    deps = replace(bootstrap.build_deps(cfg), fetch_sources=[FakeSource([_article()])])
+    with respx.mock:
+        model = bootstrap.embedding_defaults("workers_ai")["model"]
+        workers_ai = respx.post(
+            f"https://api.cloudflare.com/client/v4/accounts/{OPERATOR_ACCOUNT}/ai/run/{model}"
+        ).mock(side_effect=_workers_ai_answer)
+        anywhere = respx.route().mock(return_value=httpx.Response(500))
+        report = await run_digest(deps, RunOptions(period="morning"))
+
+    assert (cfg.app.vote_similarity.provider, cfg.app.vote_similarity.enabled) == (
+        "workers_ai",
+        True,
+    )
+    assert isinstance(deps.embedder, MeteredEmbedder)
+    assert report.status == "ok"
+    assert anywhere.call_count == 0
+    assert workers_ai.called
+    for call in workers_ai.calls:
+        assert call.request.headers["Authorization"] == f"Bearer {OPERATOR_EMBEDDING_TOKEN}"
+    [charged] = ledger.reports
+    assert charged["embedded_texts"] == 2
+    assert charged["embedding_usd"] > 0
+    assert charged["embedding_usd"] == pytest.approx(
+        2 * NEURONS_PER_TEXT * WORKERS_AI_USD_PER_KNEURON / 1000
+    )
+
+
 def test_only_a_tenants_own_run_is_metered_never_a_self_hosted_one_or_the_operators(
     tenant, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
