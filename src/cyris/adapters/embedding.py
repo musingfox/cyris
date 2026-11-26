@@ -121,6 +121,9 @@ class _Usage:
         self.api_seconds = 0.0
         self.input_tokens: int | None = None
         self.neurons: float | None = None
+        # The texts embedded in a batch whose answer reported no neurons, in order: a provider
+        # that reports what it charged did not say, so a meter cannot read their cost as 0.
+        self.unreported: list[str] = []
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -273,6 +276,9 @@ class WorkersAIEmbedder:
                 self.usage.input_tokens = (self.usage.input_tokens or 0) + int(
                     meta.get("cost_metric_value_1") or 0
                 )
-            self.usage.neurons = (self.usage.neurons or 0.0) + float(meta.get("neurons") or 0.0)
+            if meta.get("neurons") is None:
+                self.usage.unreported.extend(batch)
+            else:
+                self.usage.neurons = (self.usage.neurons or 0.0) + float(meta["neurons"])
             return result["data"]
         raise RuntimeError(f"Workers AI rate-limited after {MAX_RETRIES} retries")

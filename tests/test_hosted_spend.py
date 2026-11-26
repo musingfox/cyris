@@ -29,7 +29,7 @@ from cyris import bootstrap
 from cyris.adapters import hosted_spend
 from cyris.adapters.ai_gateway_client import AIGatewayClient
 from cyris.adapters.clef import CLEF_MODEL, ClefError
-from cyris.adapters.embedding import _Usage
+from cyris.adapters.embedding import WorkersAIEmbedder, _Usage
 from cyris.adapters.gemini_client import GeminiClient, OutputBudgetSpentError
 from cyris.adapters.hosted import OPERATOR_ORIGIN
 from cyris.adapters.hosted_spend import (
@@ -37,6 +37,7 @@ from cyris.adapters.hosted_spend import (
     EMBEDDING_BYTES_PER_TOKEN,
     GEMINI_EMBEDDING_USD_PER_MTOK,
     SPEND_ORIGIN,
+    UNPRICED_EMBEDDING_USD_PER_MTOK,
     UNPRICED_USD_PER_MTOK,
     WORKERS_AI_USD_PER_KNEURON,
     MeteredClef,
@@ -287,6 +288,49 @@ async def test_gemini_embeddings_are_estimated_from_the_texts_bytes_and_workers_
     by_neurons = SpendMeter(HAIKU)
     await MeteredEmbedder(UsageEmbedder(neurons=1000.0), by_neurons, "workers_ai").embed(texts[:2])
     assert by_neurons.report()["embedding_usd"] == pytest.approx(2 * WORKERS_AI_USD_PER_KNEURON)
+
+
+async def test_a_workers_ai_answer_with_no_neurons_is_charged_as_unpriced_never_as_free() -> None:
+    """As a model with no rate card is (ADR-0038): its estimated tokens charged at the dearest
+    per-token embedding rate the meter holds and counted in `unpriced_tokens`, so the operator
+    sees the guess in `scripts/hosted.sh spend`; the batch that reported neurons is priced by
+    them."""
+    meter = SpendMeter(HAIKU)
+    embedder = MeteredEmbedder(WorkersAIEmbedder("tok", "acct"), meter, "workers_ai")
+    reported = {"success": True, "result": {"data": [[1.0, 0.0]], "meta": {"neurons": 1000.0}}}
+    silent = {"success": True, "result": {"data": [[1.0, 0.0]], "meta": {}}}
+
+    with respx.mock:
+        route = respx.post(
+            "https://api.cloudflare.com/client/v4/accounts/acct/ai/run/@cf/baai/bge-m3"
+        ).mock(side_effect=[httpx.Response(200, json=reported), httpx.Response(200, json=silent)])
+        await embedder.embed(["priced by its neurons"])
+        await embedder.embed(["台灣半導體 with no neurons"])
+
+    assert route.call_count == 2
+    tokens = estimated_embedding_tokens(["台灣半導體 with no neurons"])
+    report = meter.report()
+    assert report["unpriced_tokens"] == tokens > 0
+    assert report["embedding_usd"] == pytest.approx(
+        WORKERS_AI_USD_PER_KNEURON + tokens * UNPRICED_EMBEDDING_USD_PER_MTOK / 1_000_000
+    )
+    assert report["embedded_texts"] == 2
+    assert report["embedding_tokens_estimated"] == tokens
+
+
+async def test_an_embedder_reporting_no_neurons_at_all_is_unpriced_unless_it_is_gemini() -> None:
+    texts = ["A launch today"]
+    tokens = estimated_embedding_tokens(texts)
+
+    unpriced = SpendMeter(HAIKU)
+    await MeteredEmbedder(UsageEmbedder(), unpriced, "workers_ai").embed(texts)
+    gemini = SpendMeter(HAIKU)
+    await MeteredEmbedder(UsageEmbedder(), gemini, "gemini").embed(texts)
+
+    assert unpriced.report()["unpriced_tokens"] == tokens
+    assert unpriced.report()["embedding_usd"] > 0
+    # Gemini has its own rate card: estimated, priced, and not a guess at the rate.
+    assert gemini.report()["unpriced_tokens"] == 0
 
 
 async def test_an_embed_call_that_raised_part_way_still_counts_the_batches_it_got_embedded() -> (
