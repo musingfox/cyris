@@ -1149,7 +1149,7 @@ The failure would be silent, because every write lands somewhere real. Suppose a
   project.
 * It writes an `ok` row to `digest_runs`. The app Worker's catch-up (`planTick`, under *Where grade D
   lives* below) reads that row as the period done, so a production run lost that hour is not retried. `--if-due`
-  itself never reads `digest_runs`; the catch-up is what the row misleads.
+  on a digest hour never reads `digest_runs`; the catch-up is what the row misleads.
 * With production's Worker URLs it drains and acknowledges production's vote and newsletter
   queues, which hand over each item once.
 * With production's notification targets, the production reader gets a digest that is not
@@ -1276,8 +1276,18 @@ schedule read, which happens once per tick; when either read fails it starts not
 unlike a digest hour, because a missed catch-up loses nothing the lost run had not already lost.
 Any other status without an `ok` row (a quiet window's `no_articles`, an onboarding wait that
 records no row) is retried as well; that costs two container passes, not an issue. The
-local install has no catch-up: its tick, from the compose crontab or `cyris triage-ui` (§6), is
-unconditional and it has no Durable Object to lose. Votes therefore sync at the digest runs and their catch-ups only, not hourly; `run_digest` syncs them
+local install catches up too, since 2026-11-26, though it has no Durable Object to lose: a machine
+that was off or asleep at a digest hour, or a run that failed, leaves the same missing `ok` row. Its tick,
+from the compose crontab or `cyris triage-ui` (§6), is unconditional, so `cyris run --if-due` itself does
+what `planTick` does: off a digest hour, it takes the latest one that began less than `CATCH_UP_HOURS`
+ago (`missed_slot`) and, once it holds the digest-run lock, reads the SQLite store's `digest_runs`
+(`D1RunLog.since`); with no `ok`, non-dry row of that period since the hour began (`catch_up`, both in
+`service_layer/schedule.py`) it runs that period with the hour's own date. The Worker and the CLI answer
+the same cases, the catch-up ones in `workers/app/test/schedule_cases.json` included, and an unreadable
+`digest_runs` is no catch-up on either. A preview, and a Cloudflare store, whose Worker has already
+asked, catch up nothing, and a tick on a digest hour runs that hour's period only. What the catch-up
+cannot recover is a feed's entries that dropped while the machine slept (`docs/install-local.md`): it
+makes the issue from what the store holds. Votes therefore sync at the digest runs and their catch-ups only, not hourly; `run_digest` syncs them
 before each issue, and the promote Worker's KV keeps them until then. Hour granularity is the contract, not a rounding: the write
 surface refuses `08:30` rather than firing at 08:00 and leaving the reader to work out why.
 

@@ -111,8 +111,12 @@ records whether each feed answered, so `cyris doctor` and `/settings` name a fee
 polls in a row or stored no article in 30 days.
 
 **The schedule runs only while the server or its container runs. A machine or a server that is off
-fetches nothing**, and an hour it misses is not made up: what a feed dropped meanwhile is gone, and a
-digest hour it slept through has no issue.
+fetches nothing**, and what a feed dropped meanwhile is gone. A digest hour it slept through is made up
+if it is running again within 3 hours of that hour: the first hourly `cyris run --if-due` after it
+finds no finished run of that period since the hour began and makes the issue, dated that hour, from
+the articles the store holds, so it can be thinner than a digest that was polled all along. Later than
+3 hours, that hour has no issue until you run `cyris run --period morning` (or `evening`). A run that
+failed is tried again by the next two ticks in the same way, and an hour that has its issue is left alone.
 
 **With `uv`**, `uv run cyris triage-ui` runs the hour itself, by this machine's clock, and logs it where
 the server logs. Keep it running from the repo root, as a login item or a service. Stopping it does not
@@ -309,8 +313,9 @@ sets them.
   nothing`** or **`Waited 30 minutes for another digest to finish`**: the rule of
   [step 5](#5-the-schedule). The first is a `--period` run refused while another is under way. The last
   means the other run was still going 30 minutes after the hourly run began waiting, so the hourly run
-  gave up and that hour has no issue: when the other run ends, `cyris run --period morning` (or
-  `evening`, whichever hour was missed) makes it.
+  gave up. If no digest of that period finished ok by the next hourly run, within 3 hours of the digest
+  hour, that run makes the issue; later, `cyris run --period morning` (or `evening`, whichever hour was
+  missed) makes it.
 - **The evening digest replaced the morning one**: a command you scheduled yourself lacks `--if-due`:
   without it or `--period`, every issue is labelled `morning`.
 - **No new articles, and nothing in the log on the hour**: the server is not running, or it was started
