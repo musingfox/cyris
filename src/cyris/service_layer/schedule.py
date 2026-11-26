@@ -11,8 +11,9 @@ Hour granularity is the contract, not a rounding: an hourly tick cannot honour
 
 from __future__ import annotations
 
-from collections.abc import Iterable
-from datetime import datetime, timedelta
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from typing import Literal, cast, get_args
 
 Period = Literal["morning", "evening"]
@@ -103,3 +104,74 @@ def is_latest_issue(key: tuple[str, str], issues: Iterable[tuple[str, str]]) -> 
 
     key_rank = rank(key)
     return all(rank(issue) <= key_rank for issue in issues)
+
+
+# How long after a digest hour begins a tick still runs that hour's issue when `digest_runs` holds
+# no ok run of it, as `CATCH_UP_HOURS` in workers/app/src/schedule.js. A run the platform killed
+# mid-way, or a machine that was off at the hour, leaves no ok row; the ticks after it retry, and a
+# persistent failure is retried twice before it is left to a manual `cyris run --period`.
+CATCH_UP_HOURS = 3
+
+
+@dataclass(frozen=True)
+class MissedSlot:
+    """A digest hour that began within `CATCH_UP_HOURS` of now.
+
+    `date` is the hour's own local date, which past midnight is not today's. `since` is the hour's
+    start as `digest_runs` stores `finished_at`, UTC with a `+00:00` offset.
+    """
+
+    period: Period
+    date: str
+    since: str
+
+
+def missed_slot(
+    now: datetime, times: list[str], counts: frozenset[int] = SELF_HOSTED_TIMES
+) -> MissedSlot | None:
+    """The latest digest hour begun before `now`'s own hour and under `CATCH_UP_HOURS` before it.
+
+    Stepping back whole hours from `now` lands once in every hour of that window, so the first
+    step that lands in a digest hour finds the latest one. `now` must already be local; steps are
+    absolute, so a daylight-saving change does not skip or repeat an hour.
+    """
+    for back in range(1, CATCH_UP_HOURS):
+        probe = (now.astimezone(UTC) - timedelta(hours=back)).astimezone(now.tzinfo)
+        period = due_period(probe, times, counts)
+        if period is None:
+            continue
+        into_hour = timedelta(
+            minutes=probe.minute, seconds=probe.second, microseconds=probe.microsecond
+        )
+        start = (probe.astimezone(UTC) - into_hour).replace(tzinfo=UTC)
+        return MissedSlot(period, probe.date().isoformat(), start.isoformat(timespec="seconds"))
+    return None
+
+
+def catch_up(
+    now: datetime,
+    times: list[str],
+    counts: frozenset[int],
+    read_runs: Callable[[str, str], Iterable[Mapping] | None],
+) -> MissedSlot | None:
+    """The digest hour a tick off the hour should run, or None.
+
+    Answers the same cases as `planTick` in workers/app/src/schedule.js, which the shared
+    `schedule_cases.json` holds both to. A slot is caught up while it is under `CATCH_UP_HOURS` old
+    and `digest_runs` holds no ok, non-dry run of its period since it began; an error row is not
+    done, so a failed run is retried too. A tick on a digest hour catches up nothing: the regular
+    run is that hour's. `read_runs(period, since)` answers the `digest_runs` rows (`status`,
+    `dry_run`) of that period with a `finished_at` at or after `since`, or None when it cannot
+    be read, which is also a None here: a missed catch-up loses nothing the lost run had not
+    already lost.
+    """
+    if due_period(now, times, counts) is not None:
+        return None
+    slot = missed_slot(now, times, counts)
+    if slot is None:
+        return None
+    runs = read_runs(slot.period, slot.since)
+    if runs is None:
+        return None
+    done = any(row["status"] == "ok" and int(row["dry_run"]) == 0 for row in runs)
+    return None if done else slot

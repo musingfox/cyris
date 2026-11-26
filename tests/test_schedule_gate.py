@@ -11,6 +11,7 @@ from cyris.service_layer.schedule import (
     HOSTED_TIMES,
     PERIOD_ORDER,
     SELF_HOSTED_TIMES,
+    catch_up,
     due_period,
     schedule_counts,
     validate_schedule,
@@ -68,7 +69,10 @@ def test_hours_are_normalised_and_sorted():
 SHARED_CASES = Path(__file__).parent.parent / "workers/app/test/schedule_cases.json"
 
 
-@pytest.mark.parametrize("case", json.loads(SHARED_CASES.read_text()), ids=lambda c: str(c))
+ALL_CASES = json.loads(SHARED_CASES.read_text())
+
+
+@pytest.mark.parametrize("case", ALL_CASES, ids=lambda c: str(c))
 def test_due_period_agrees_with_the_app_workers_cron_check(case):
     """workers/app/src/schedule.js answers the same cases before it wakes the container."""
     now = datetime.fromisoformat(case["at"]).astimezone(ZoneInfo(case["timezone"]))
@@ -94,3 +98,24 @@ def test_a_self_hosted_schedule_is_still_exactly_two_hours():
     assert schedule_counts(hosted=False) == SELF_HOSTED_TIMES == {2}
     with pytest.raises(ValueError, match="exactly two times"):
         validate_schedule(["08:00"])
+
+
+def _digest_runs(case: dict):
+    """What `D1RunLog.since` answers for a case's `digest_runs` table: the period's rows since."""
+    if case["runs"] is None:
+        return lambda period, since: None
+    return lambda period, since: [
+        row for row in case["runs"] if row["period"] == period and row["finished_at"] >= since
+    ]
+
+
+@pytest.mark.parametrize("case", [c for c in ALL_CASES if "catch_up" in c], ids=lambda c: str(c))
+def test_catch_up_agrees_with_the_app_workers_plan_tick(case):
+    """workers/app/src/schedule.js `planTick` answers the same cases off the hour."""
+    now = datetime.fromisoformat(case["at"]).astimezone(ZoneInfo(case["timezone"]))
+    counts = schedule_counts(hosted=case.get("edition") == "hosted")
+
+    slot = catch_up(now, case["schedule"], counts, _digest_runs(case))
+
+    expected = case["catch_up"]
+    assert (None if slot is None else {"period": slot.period, "date": slot.date}) == expected
