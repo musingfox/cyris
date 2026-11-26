@@ -41,12 +41,51 @@ import json, os, sys
 args = sys.argv[1:]
 stdin = "" if sys.stdin.isatty() else sys.stdin.read()
 with open(os.environ["CALLS"], "a") as log:
-    log.write(json.dumps({"cmd": "bun", "args": args, "stdin": stdin}) + "\\n")
-if args[2:4] == ["whoami", "--json"]:
+    seen = {k: v for k, v in os.environ.items() if k.startswith("CLOUDFLARE")}
+    log.write(json.dumps({"cmd": "bun", "args": args, "stdin": stdin, "env": seen}) + "\\n")
+if args[2:4] == ["secret", "list"]:
+    # The names the Worker has set, as wrangler lists them; LIST_FAILS is a wrangler that cannot.
+    if os.environ.get("LIST_FAILS"):
+        sys.stderr.write("not logged in\\n")
+        sys.exit(1)
+    names = json.loads(os.environ.get("SET_SECRETS", "[]"))
+    print(json.dumps([{"name": n, "type": "secret_text"} for n in names]))
+elif args[2:4] == ["whoami", "--json"]:
     print(json.dumps({"accounts": [{"id": "ACCOUNT", "name": "Trial account"}]}))
 elif args[2:3] == ["deploy"]:
     print("Deployed cyris-hosted triggers\\n  URL")
 """.replace("ACCOUNT", ACCOUNT).replace("URL", URL)
+
+# Records where it ran and what it was given, and answers as `cf` would from the JSON the test
+# puts in CF_ORG (the Zero Trust organization), CF_APPS (the Access applications) and CF_TOKENS
+# (the service tokens); CF_FAILS makes every call fail with that message.
+CF = """#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+with open(os.environ["CALLS"], "a") as log:
+    log.write(json.dumps({
+        "cmd": "cf", "args": args, "stdin": "", "cwd": os.getcwd(),
+        "dotenv_here": os.path.exists(".env"),
+        "token_set": "CLOUDFLARE_API_TOKEN" in os.environ,
+        "account": os.environ.get("CLOUDFLARE_ACCOUNT_ID"),
+    }) + "\\n")
+if os.environ.get("CF_FAILS"):
+    sys.stderr.write(os.environ["CF_FAILS"] + "\\n")
+    sys.exit(1)
+answers = {
+    "organization": "CF_ORG",
+    "applications": "CF_APPS",
+    "service-tokens": "CF_TOKENS",
+}
+for word, var in answers.items():
+    if word in args:
+        if var not in os.environ:
+            sys.stderr.write("no such thing in this account\\n")
+            sys.exit(1)
+        print(os.environ[var])
+        sys.exit(0)
+sys.exit(2)
+"""
 
 # Records its argv and the config it reads on stdin, and answers each route: a report, the
 # tenant's latest page, which the report names by its hash, or the JSON body it was sent back.
@@ -132,7 +171,7 @@ def repo(tmp_path: Path) -> Path:
         shutil.copy(ROOT / rel, tmp_path / rel)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for name, body in (("bun", BUN), ("curl", CURL)):
+    for name, body in (("bun", BUN), ("curl", CURL), ("cf", CF)):
         path = bin_dir / name
         path.write_text(body, encoding="utf-8")
         path.chmod(path.stat().st_mode | stat.S_IEXEC)
@@ -784,3 +823,184 @@ def test_every_cards_subcommand_is_in_one_script_and_check_judges_the_full_repor
     ]
     assert "PASS alpha" in checked.stdout
     assert "PASS bravo" in checked.stdout
+
+
+# What `.env` may say about the account, in the shapes a dotenv file takes.
+ACCOUNT_LINES = [
+    f"CLOUDFLARE_ACCOUNT_ID={ACCOUNT}",
+    f'CLOUDFLARE_ACCOUNT_ID="{ACCOUNT}"',
+    f"export CLOUDFLARE_ACCOUNT_ID='{ACCOUNT}'",
+    f"CLOUDFLARE_ACCOUNT_ID={ACCOUNT} # the trial account",
+]
+
+
+@pytest.mark.parametrize("line", ACCOUNT_LINES)
+@pytest.mark.parametrize("action", ["deploy", "delete"])
+def test_the_account_is_the_one_in_dotenv_and_is_still_confirmed_by_name(
+    repo: Path, action: str, line: str
+) -> None:
+    (repo / ".env").write_text(f"CLOUDFLARE_API_TOKEN=production-token\n{line}\n", encoding="utf-8")
+
+    done, calls = _run(repo, [action], ["yes"])
+
+    assert done.returncode == 0, done.stderr
+    assert f"account id:   {ACCOUNT}" in done.stdout
+    assert "account name: Trial account" in done.stdout
+    assert "ACCOUNT_ID of the trial Cloudflare account" not in done.stdout + done.stderr
+    assert [c["args"][2] for c in calls] == ["whoami", action]
+
+
+def test_nothing_is_done_to_the_account_dotenv_names_until_yes(repo: Path) -> None:
+    (repo / ".env").write_text(f"CLOUDFLARE_ACCOUNT_ID={ACCOUNT}\n", encoding="utf-8")
+
+    done, calls = _run(repo, ["delete"], ["no"])
+
+    assert done.returncode == 1
+    assert "not confirmed; nothing was done" in done.stderr
+    assert [c["args"][2] for c in calls] == ["whoami"]
+
+
+def test_secrets_takes_the_account_from_dotenv_and_still_asks_for_yes(repo: Path) -> None:
+    (repo / ".env").write_text(f"CLOUDFLARE_ACCOUNT_ID={ACCOUNT}\n", encoding="utf-8")
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n", encoding="utf-8")
+
+    done, calls = _run(repo, ["secrets"], SECRETS_TYPED[1:])
+
+    assert done.returncode == 0, done.stderr
+    [put] = [c for c in calls if c["args"][4:5] == ["CLOUDFLARE_ACCOUNT_ID"]]
+    assert put["stdin"] == ACCOUNT
+
+
+def test_no_other_key_of_dotenv_reaches_wrangler_and_the_file_is_never_sourced(
+    repo: Path,
+) -> None:
+    """`.env` holds production's CLOUDFLARE_API_TOKEN, and a dotenv file is not always shell."""
+    (repo / ".env").write_text(
+        "CLOUDFLARE_API_TOKEN=production-token\n"
+        "ANTHROPIC_API_KEY=production-anthropic\n"
+        f"CLOUDFLARE_ACCOUNT_ID={ACCOUNT}\n"
+        "touch SOURCED\n"
+        "OTHER=$(touch SOURCED)\n",
+        encoding="utf-8",
+    )
+
+    done, calls = _run(repo, ["deploy"], ["yes"])
+
+    assert done.returncode == 0, done.stderr
+    assert not (repo / "SOURCED").exists()
+    assert calls
+    for c in calls:
+        # Only the account is in wrangler's environment, and it is the one the file names.
+        assert c["env"] == {"CLOUDFLARE_ACCOUNT_ID": ACCOUNT}
+        assert "production" not in json.dumps(c)
+
+
+def test_the_account_is_asked_for_when_dotenv_has_none(repo: Path) -> None:
+    (repo / ".env").write_text("CLOUDFLARE_API_TOKEN=production-token\n", encoding="utf-8")
+
+    done, calls = _run(repo, ["deploy"], [ACCOUNT, "yes"])
+
+    assert done.returncode == 0, done.stderr
+    assert "ACCOUNT_ID of the trial Cloudflare account" not in done.stderr  # a prompt, not an error
+    assert [c["args"][2] for c in calls] == ["whoami", "deploy"]
+    assert all(c["env"] == {"CLOUDFLARE_ACCOUNT_ID": ACCOUNT} for c in calls)
+
+
+@pytest.mark.parametrize("bad", ["abc", "G" * 32, ACCOUNT.upper(), ""])
+def test_an_account_in_dotenv_that_is_not_32_hex_stops_before_wrangler(
+    repo: Path, bad: str
+) -> None:
+    (repo / ".env").write_text(f"CLOUDFLARE_ACCOUNT_ID={bad}\n", encoding="utf-8")
+
+    # An empty value is no value: the account is asked for, as without the key.
+    done, calls = _run(repo, ["deploy"], [ACCOUNT, "yes"] if not bad else [ACCOUNT])
+
+    if bad:
+        assert done.returncode == 1
+        assert "CLOUDFLARE_ACCOUNT_ID in .env must be 32 hex characters" in done.stderr
+        assert calls == []
+    else:
+        assert done.returncode == 0, done.stderr
+
+
+def test_the_environments_account_never_picks_the_account(repo: Path) -> None:
+    (repo / ".env").write_text(f"CLOUDFLARE_ACCOUNT_ID={ACCOUNT}\n", encoding="utf-8")
+
+    done, calls = _run(repo, ["deploy"], ["yes"], CLOUDFLARE_ACCOUNT_ID="e" * 32)
+
+    assert done.returncode == 0, done.stderr
+    assert all(c["env"] == {"CLOUDFLARE_ACCOUNT_ID": ACCOUNT} for c in calls)
+
+
+STATE_TOKEN = (
+    f"HOSTED_URL={URL}\n"
+    "CYRIS_ACCESS_CLIENT_ID=state-id.access\n"
+    "CYRIS_ACCESS_CLIENT_SECRET=state-SECRET\n"
+)
+
+
+@pytest.mark.parametrize("args", [["check"], ["spend"], ["run", "morning"]])
+def test_ask_access_commands_read_the_service_token_from_the_state_file(
+    repo: Path, args: list[str]
+) -> None:
+    (repo / ".env.hosted").write_text(STATE_TOKEN, encoding="utf-8")
+
+    done, calls = _run(repo, args, [])
+
+    assert done.returncode == 0, done.stderr
+    assert "CF-Access-Client-Id of a service token" not in done.stdout + done.stderr
+    curls = [c for c in calls if c["cmd"] == "curl"]
+    assert curls
+    for c in curls:
+        assert 'header = "CF-Access-Client-Id: state-id.access"' in c["stdin"]
+        assert 'header = "CF-Access-Client-Secret: state-SECRET"' in c["stdin"]
+        assert "state-SECRET" not in " ".join(c["args"])
+    assert "state-SECRET" not in done.stdout + done.stderr
+
+
+def test_a_token_in_the_environment_wins_over_the_state_files(repo: Path) -> None:
+    (repo / ".env.hosted").write_text(STATE_TOKEN, encoding="utf-8")
+
+    done, calls = _run(
+        repo,
+        ["spend"],
+        [],
+        CYRIS_ACCESS_CLIENT_ID="env-id.access",
+        CYRIS_ACCESS_CLIENT_SECRET="env-SECRET",
+    )
+
+    assert done.returncode == 0, done.stderr
+    [curl] = [c for c in calls if c["cmd"] == "curl"]
+    assert "CF-Access-Client-Id: env-id.access" in curl["stdin"]
+    assert "state-" not in curl["stdin"]
+
+
+@pytest.mark.parametrize(
+    "half",
+    ["CYRIS_ACCESS_CLIENT_ID=state-id.access\n", "CYRIS_ACCESS_CLIENT_SECRET=state-SECRET\n"],
+)
+def test_half_a_token_in_the_state_file_is_not_mixed_with_one_typed(repo: Path, half: str) -> None:
+    (repo / ".env.hosted").write_text(f"HOSTED_URL={URL}\n{half}", encoding="utf-8")
+
+    done, calls = _run(repo, ["spend"], ["typed-id.access", "typed-SECRET"])
+
+    assert done.returncode == 0, done.stderr
+    [curl] = [c for c in calls if c["cmd"] == "curl"]
+    assert "CF-Access-Client-Id: typed-id.access" in curl["stdin"]
+    assert "CF-Access-Client-Secret: typed-SECRET" in curl["stdin"]
+
+
+def test_the_state_file_keeps_its_other_keys_when_deploy_rewrites_the_url(repo: Path) -> None:
+    state = repo / ".env.hosted"
+    state.write_text(
+        "HOSTED_URL=https://old.example\nCYRIS_ACCESS_CLIENT_ID=state-id.access\n", encoding="utf-8"
+    )
+    state.chmod(0o644)
+
+    done, _ = _run(repo, ["deploy"], [ACCOUNT, "yes"])
+
+    assert done.returncode == 0, done.stderr
+    assert state.read_text(encoding="utf-8") == (
+        f"CYRIS_ACCESS_CLIENT_ID=state-id.access\nHOSTED_URL={URL}\n"
+    )
+    assert stat.S_IMODE(state.stat().st_mode) == 0o600

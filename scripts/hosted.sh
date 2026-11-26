@@ -30,10 +30,36 @@ run_wrangler() {
 unset ACCOUNT_ID CLOUDFLARE_ACCOUNT_ID HOSTED_URL ACCESS_ID ACCESS_SECRET
 touch "$STATE"
 chmod 600 "$STATE"
-# Only this key is read back; anything else in the file is ignored.
-while IFS='=' read -r key value; do
-  [[ "$key" == HOSTED_URL ]] && HOSTED_URL=$value
+# Only these keys are read back, each by name, never sourced; anything else in the file is ignored.
+STATE_KEYS=(
+  HOSTED_URL CYRIS_ACCESS_TEAM_DOMAIN CYRIS_ACCESS_AUD CYRIS_HOSTED_OPERATORS ANTHROPIC_API_KEY
+  CLOUDFLARE_EMBEDDING_API_TOKEN CYRIS_HOSTED_OPERATOR_WEBHOOK CYRIS_HOSTED_MAIL_FROM
+  CYRIS_ACCESS_CLIENT_ID CYRIS_ACCESS_CLIENT_SECRET
+)
+for k in "${STATE_KEYS[@]}"; do printf -v "STATE_$k" '%s' ''; done
+while IFS='=' read -r key value || [[ -n "$key" ]]; do
+  for k in "${STATE_KEYS[@]}"; do
+    [[ "$key" == "$k" ]] && printf -v "STATE_$k" '%s' "$value"
+  done
 done <"$STATE"
+HOSTED_URL=$STATE_HOSTED_URL
+
+# state_get KEY: the value .env.hosted holds for KEY, empty when it holds none.
+state_get() {
+  local var=STATE_$1
+  printf '%s' "${!var}"
+}
+
+# set_state KEY VALUE: rewrite the file with KEY=VALUE through a temp file, so a failed write
+# leaves the old one, and keep mode 600 on the file that replaces it.
+set_state() {
+  local key=$1 value=$2
+  grep -v "^$key=" "$STATE" >"$STATE.new" || true
+  chmod 600 "$STATE.new"
+  printf '%s=%s\n' "$key" "$value" >>"$STATE.new"
+  mv "$STATE.new" "$STATE"
+  printf -v "STATE_$key" '%s' "$value"
+}
 
 # The runbook's tenants are the ones the seed names sources for. The Worker's own list is its
 # registry (ADR-0030), which `register` writes them into before anything else addresses them.
@@ -53,9 +79,33 @@ ask() {
   printf -v "$name" '%s' "$value"
 }
 
+# env_account: the value of the CLOUDFLARE_ACCOUNT_ID line of .env, empty when there is none.
+# The one line is parsed out; the file is never sourced and no other key leaves it.
+env_account() {
+  [[ -f .env ]] || return 0
+  local key value
+  while IFS='=' read -r key value || [[ -n "$key" ]]; do
+    key=${key//[[:space:]]/}
+    [[ "${key#export}" == CLOUDFLARE_ACCOUNT_ID ]] || continue
+    value=${value%$'\r'}
+    value=${value%% \#*}
+    value=${value#"${value%%[![:space:]]*}"}
+    value=${value%"${value##*[![:space:]]}"}
+    if [[ "$value" =~ ^\"(.*)\"$ || "$value" =~ ^\'(.*)\'$ ]]; then value=${BASH_REMATCH[1]}; fi
+    printf '%s' "$value"
+    return 0
+  done <.env
+}
+
 ask_account() {
-  ask ACCOUNT_ID "ACCOUNT_ID of the trial Cloudflare account (dashboard > Account home > Account ID)"
-  [[ "$ACCOUNT_ID" =~ ^[0-9a-f]{32}$ ]] || { echo "ACCOUNT_ID must be 32 hex characters" >&2; exit 1; }
+  ACCOUNT_ID=$(env_account)
+  if [[ -n "$ACCOUNT_ID" ]]; then
+    [[ "$ACCOUNT_ID" =~ ^[0-9a-f]{32}$ ]] || { echo "CLOUDFLARE_ACCOUNT_ID in .env must be 32 hex characters" >&2; exit 1; }
+    echo "ACCOUNT_ID $ACCOUNT_ID (CLOUDFLARE_ACCOUNT_ID in .env)"
+  else
+    ask ACCOUNT_ID "ACCOUNT_ID of the trial Cloudflare account (dashboard > Account home > Account ID)"
+    [[ "$ACCOUNT_ID" =~ ^[0-9a-f]{32}$ ]] || { echo "ACCOUNT_ID must be 32 hex characters" >&2; exit 1; }
+  fi
   export CLOUDFLARE_ACCOUNT_ID=$ACCOUNT_ID
 }
 
@@ -91,6 +141,11 @@ ask_access() {
   # one approval covers every call; these are the names `cyris --tenant` reads too.
   if [[ -n "${CYRIS_ACCESS_CLIENT_ID:-}" && -n "${CYRIS_ACCESS_CLIENT_SECRET:-}" ]]; then
     ACCESS_ID=$CYRIS_ACCESS_CLIENT_ID ACCESS_SECRET=$CYRIS_ACCESS_CLIENT_SECRET
+    return
+  fi
+  # Then the pair .env.hosted holds, both or neither, so one call never signs in as a mix.
+  if [[ -n "$STATE_CYRIS_ACCESS_CLIENT_ID" && -n "$STATE_CYRIS_ACCESS_CLIENT_SECRET" ]]; then
+    ACCESS_ID=$STATE_CYRIS_ACCESS_CLIENT_ID ACCESS_SECRET=$STATE_CYRIS_ACCESS_CLIENT_SECRET
     return
   fi
   ask ACCESS_ID "CF-Access-Client-Id of a service token the cyris-hosted Access application allows"
@@ -168,10 +223,7 @@ case "${1:-}" in
     run_wrangler deploy | tee "$log"
     url=$(grep -oE 'https://cyris-hosted\.[A-Za-z0-9.-]+\.workers\.dev' "$log" | head -1 || true)
     if [[ -n "$url" ]]; then
-      grep -v '^HOSTED_URL=' "$STATE" >"$STATE.new" || true
-      printf 'HOSTED_URL=%s\n' "$url" >>"$STATE.new"
-      chmod 600 "$STATE.new"
-      mv "$STATE.new" "$STATE"
+      set_state HOSTED_URL "$url"
       echo "HOSTED_URL=$url (kept in $STATE)"
     else
       echo "no workers.dev URL in the deploy output; add HOSTED_URL=https://... to $STATE" >&2
