@@ -11,6 +11,8 @@
 //
 //   GET  /hosted/spend[?month=YYYY-MM]                      every tenant's AI spend in a UTC month
 //   POST /hosted/backup                                     today's backup, now (hosted_backup.js)
+//   GET  /hosted/waitlist                                   hosted waitlist entries in signup order
+//   POST /hosted/waitlist/remove {"email": E}               remove an address from the waitlist
 //   POST /hosted/tenants/<tenant>/register[?status=S]       register a tenant, or set its status
 //   POST /hosted/tenants/<tenant>/schedule?times=T&timezone=Z[&daily_run_cap=N][&max_digest_times=M]
 //                                                           the tenant's digest hours, run cap and most hours
@@ -37,6 +39,7 @@
 //                                                           (hosted_shared_settings.js, ADR-0043)
 //   /login, /login/confirm, /logout                         the sign-in (hosted_login.js)
 //   GET  /privacy, /terms                                   the privacy policy and terms, to anyone (hosted_legal.js)
+//   POST /waitlist                                          join the hosted waitlist (hosted_waitlist.js)
 //   POST /api/vote   {url, vote}                            a reader's vote, by a vote token (hosted_vote.js)
 
 import { LEGAL_PATHS, handleLegal } from "./hosted_legal.js";
@@ -45,6 +48,7 @@ import { admitOperator, unsetOperators } from "./hosted_operators.js";
 import { PRIVATE_HEADERS, SITE_ROUTE, VOTE_PATH, privateHeaders, siteHeaders } from "./hosted_pages.js";
 import { SHARED_PAGE, isSharedPath } from "./hosted_shared_settings.js";
 import { handleVote } from "./hosted_vote.js";
+import { WAITLIST_PATH, handleWaitlist } from "./hosted_waitlist.js";
 import { clearedSessionCookie, crossSite, sessionToken, tokenHash } from "./hosted_session.js";
 import { MONTH } from "./ai_budget.js";
 import { RUN_PERIODS, accessRefusal, dayIn, refuseRunDate } from "./router.js";
@@ -197,6 +201,8 @@ async function route(request, env, deps) {
   if (LOGIN_PATHS.has(url.pathname)) return handleLogin(request, deps.login);
   // The privacy policy and terms take no credential at all: a reader reads them before signing in.
   if (LEGAL_PATHS.has(url.pathname)) return handleLegal(request);
+  // The waitlist endpoint accepts cross-origin signups from the marketing site after Turnstile verification.
+  if (url.pathname === WAITLIST_PATH) return handleWaitlist(request, env, deps.waitlist);
   // The vote route takes a vote token, which a page served to a session carries; no Access JWT, no
   // cookie, and no operator route is reached through it.
   if (url.pathname === VOTE_PATH) return handleVote(request, deps);
@@ -221,6 +227,20 @@ async function route(request, env, deps) {
     if (request.method !== "POST") return json({ error: "backup takes POST" }, 405);
     if (crossSite(request)) return json({ error: "backup is posted from this site or with curl, not from another site" }, 403);
     return json(await deps.backup());
+  }
+
+  if (url.pathname === "/hosted/waitlist") {
+    if (request.method !== "GET") return json({ error: "waitlist takes GET" }, 405);
+    return json(await deps.waitlistEntries());
+  }
+
+  if (url.pathname === "/hosted/waitlist/remove") {
+    if (request.method !== "POST") return json({ error: "waitlist/remove takes POST" }, 405);
+    if (crossSite(request)) {
+      return json({ error: "waitlist/remove is posted from this site or with curl, not from another site" }, 403);
+    }
+    const answer = await deps.removeWaitlist(await bodyEmail(request));
+    return answer.refused ? json({ error: answer.refused }, answer.status) : json(answer);
   }
 
   const match = ROUTE.exec(url.pathname);

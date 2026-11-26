@@ -82,6 +82,7 @@ function privacyBody(t) {
         t("privacy.kept_newsletters", { days: String(LEGAL.newsletter_hold_days) }),
         t("privacy.kept_spend"),
         t("privacy.kept_logs", { days: String(LEGAL.log_days) }),
+        t("privacy.kept_waitlist"),
       ]),
     ) +
     section(t("privacy.where_heading"), paragraph(t("privacy.where"))) +

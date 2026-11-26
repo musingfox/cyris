@@ -279,6 +279,15 @@ def test_the_operators_webhook_is_no_name_a_container_is_handed() -> None:
     assert name not in block
 
 
+def test_the_waitlist_secrets_are_not_handed_to_a_container_and_are_set_by_hosted_sh() -> None:
+    [block] = re.findall(r"const HOSTED_SECRETS = \[(.*?)\];", _js("hosted_container.js"), re.S)
+    hosted_sh = (ROOT / "scripts/hosted.sh").read_text(encoding="utf-8")
+
+    for name in ("CYRIS_WAITLIST_TURNSTILE_SECRET", "CYRIS_WAITLIST_ORIGINS"):
+        assert name not in block
+        assert f"put_secret {name} " in hosted_sh
+
+
 def test_the_tenants_site_path_is_one_shape_on_both_sides() -> None:
     """The run links `<domain>/t/<tenant>/<page>`, and the Worker serves the tenant's site there."""
     [route] = re.findall(r"^export const SITE_ROUTE = /(.+)/;", _js("hosted_pages.js"), re.M)

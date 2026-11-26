@@ -203,6 +203,35 @@ case "${1:-}" in
     # `secret put` is how wrangler sets one value without editing wrangler.hosted.toml.
     put_secret CYRIS_STORE_HOSTED_DOMAIN "${HOSTED_URL#https://}"
     ;;
+  waitlist-secrets)
+    ask_account
+    confirm_account "set the waitlist secrets of"
+    ask TURNSTILE_SECRET "CYRIS_WAITLIST_TURNSTILE_SECRET, the Turnstile widget secret for the waitlist form" secret
+    ask WAITLIST_ORIGINS "CYRIS_WAITLIST_ORIGINS, comma-separated allowed origins (e.g. https://cyris.musingfox.com)"
+    put_secret CYRIS_WAITLIST_TURNSTILE_SECRET "$TURNSTILE_SECRET"
+    put_secret CYRIS_WAITLIST_ORIGINS "$WAITLIST_ORIGINS"
+    ;;
+  waitlist)
+    # waitlist: list every address on the hosted waitlist in signup order.
+    # waitlist remove EMAIL: take EMAIL off the hosted waitlist (e.g. on invite or deletion request).
+    sub=${2:-list}
+    if [[ "$sub" == list ]]; then
+      ask_access
+      out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-waitlist.XXXXXX")
+      trap 'rm -rf "$out"' EXIT
+      call waitlist GET /hosted/waitlist "$out/waitlist.json" || finish waitlist
+    elif [[ "$sub" == remove ]]; then
+      email=${3:-}
+      [[ -n "$email" ]] || { echo "usage: $0 waitlist remove EMAIL" >&2; exit 2; }
+      ask_access
+      out=$(mktemp -d "${TMPDIR:-/tmp}/cyris-hosted-waitlist.XXXXXX")
+      trap 'rm -rf "$out"' EXIT
+      call waitlist POST /hosted/waitlist/remove "$out/remove.json" "$(email_body "$email")" || finish waitlist
+    else
+      echo "usage: $0 waitlist [remove EMAIL]" >&2
+      exit 2
+    fi
+    ;;
   containers)
     ask_account
     run_wrangler containers list
@@ -398,7 +427,7 @@ case "${1:-}" in
     run_wrangler delete
     ;;
   *)
-    echo "usage: $0 deploy|secrets|containers|register [TENANT [STATUS]]|schedule TENANT TIMES TIMEZONE [CAP [MOST]]|seed|run [morning|evening]|poll|address [show|rotate|revoke]|newsletter-source TENANT NAME FROM [HOMEPAGE]|check|invite TENANT EMAIL|revoke TENANT EMAIL|members TENANT|spend [YYYY-MM]|budget TENANT USD|backup|restore DATE TENANT NEW_TENANT|tail|delete" >&2
+    echo "usage: $0 deploy|secrets|waitlist-secrets|waitlist [remove EMAIL]|containers|register [TENANT [STATUS]]|schedule TENANT TIMES TIMEZONE [CAP [MOST]]|seed|run [morning|evening]|poll|address [show|rotate|revoke]|newsletter-source TENANT NAME FROM [HOMEPAGE]|check|invite TENANT EMAIL|revoke TENANT EMAIL|members TENANT|spend [YYYY-MM]|budget TENANT USD|backup|restore DATE TENANT NEW_TENANT|tail|delete" >&2
     exit 2
     ;;
 esac

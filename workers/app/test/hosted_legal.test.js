@@ -310,6 +310,18 @@ describe("changes and disputes", () => {
     expect(block(html, "zh-Hant")).toContain("處理濫用行為，或依法律要求，才");
   });
 
+  it("discloses waitlist signups and Turnstile in both languages", async () => {
+    const html = await (await call("/privacy")).text();
+    const [chinese, english] = [block(html, "zh-Hant"), block(html, "en")];
+
+    expect(english).toContain("Waitlist signups:");
+    expect(english).toContain("SHA-256 hash of your IP address");
+    expect(english).toContain("runs Turnstile on the waitlist form");
+    expect(chinese).toContain("候補名單登記：");
+    expect(chinese).toContain("IP 位址的 SHA-256 雜湊值");
+    expect(chinese).toContain("執行 Turnstile");
+  });
+
   // A digest page contacts Google Fonts and publishers' image hosts (privacy.recipient_browser), so
   // the cookie section speaks only for the service and points there instead of denying any tracker.
   it("speaks for the service's own tools and points to the sites a digest page contacts", async () => {

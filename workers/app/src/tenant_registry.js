@@ -56,6 +56,15 @@ import {
 } from "./run_queue.js";
 import { LOCATION_HINT, TENANT, tenantRows } from "./tenant_db.js";
 import { ACTIVE, TENANT_STATUSES } from "./tenant_status.js";
+import {
+  WAITLIST_DAILY_CAP,
+  WAITLIST_IP_HOURLY_CAP,
+  WAITLIST_MAX_ENTRIES,
+  WAITLIST_RATE_DAY_MS,
+  WAITLIST_RATE_HOUR_MS,
+  normalizeLanguage,
+  normalizeNote,
+} from "./hosted_waitlist.js";
 
 // The registry's name in its namespace. There is one registry, so the name is fixed; it is
 // outside TENANT, so no tenant id can ever name it.
@@ -130,6 +139,19 @@ CREATE TABLE IF NOT EXISTS inbound_addresses (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_inbound_addresses_tenant ON inbound_addresses(tenant_id);
+CREATE TABLE IF NOT EXISTS waitlist (
+  email TEXT PRIMARY KEY,
+  note TEXT NOT NULL DEFAULT '',
+  language TEXT NOT NULL DEFAULT 'en',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS waitlist_attempts (
+  ip_hash TEXT NOT NULL,
+  at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_waitlist_attempts_at ON waitlist_attempts(at);
+CREATE INDEX IF NOT EXISTS idx_waitlist_attempts_ip ON waitlist_attempts(ip_hash, at);
 ${SPEND_ROLLUP_SCHEMA}
 ${SPEND_REPORTS_SCHEMA}
 ${RUNS_SCHEMA}`;
@@ -633,5 +655,93 @@ export class TenantRegistry extends DurableObject {
   endSession(sessionHash) {
     this.ctx.storage.sql.exec("DELETE FROM sessions WHERE token_hash = ?", sessionHash);
     return { ended: true };
+  }
+
+  // Records a waitlist submission attempt for `ipHash` after checking the hourly per-IP and
+  // daily global caps; prunes attempts older than 24 hours first.
+  recordWaitlistAttempt(
+    ipHash,
+    { now = new Date(), ipCap = WAITLIST_IP_HOURLY_CAP, dailyCap = WAITLIST_DAILY_CAP } = {},
+  ) {
+    const sql = this.ctx.storage.sql;
+    const since = (ms) => stamp(new Date(now.getTime() - ms));
+    const count = (where, ...values) => sql.exec(`SELECT count(*) AS n FROM ${where}`, ...values).one().n;
+    sql.exec("DELETE FROM waitlist_attempts WHERE at <= ?", since(WAITLIST_RATE_DAY_MS));
+    if (count("waitlist_attempts WHERE ip_hash = ? AND at > ?", ipHash, since(WAITLIST_RATE_HOUR_MS)) >= ipCap) {
+      return { refused: "too many attempts from this address", capped: "ip" };
+    }
+    if (count("waitlist_attempts WHERE at > ?", since(WAITLIST_RATE_DAY_MS)) >= dailyCap) {
+      return { refused: "daily waitlist limit reached", capped: "daily" };
+    }
+    sql.exec("INSERT INTO waitlist_attempts (ip_hash, at) VALUES (?, ?)", ipHash, stamp(now));
+    return { ok: true };
+  }
+
+  // Adds or updates a waitlist entry by normalized email. Keeps the first `created_at` and
+  // preserves an existing note when a repeat submission leaves `note` blank.
+  joinWaitlist(
+    { email: rawEmail, note: rawNote = "", language: rawLang = "en" },
+    { now = new Date(), maxEntries = WAITLIST_MAX_ENTRIES } = {},
+  ) {
+    const email = normalEmail(rawEmail);
+    if (!isEmail(email)) return { refused: "enter a valid email address", code: "invalid_email", status: 400 };
+    const checkedNote = normalizeNote(rawNote);
+    if (checkedNote.refused) return { ...checkedNote, status: 400 };
+    const language = normalizeLanguage(rawLang);
+    const sql = this.ctx.storage.sql;
+    const at = stamp(now);
+    const [existing] = sql
+      .exec("SELECT email, note, language, created_at, updated_at FROM waitlist WHERE email = ?", email)
+      .toArray();
+    if (existing) {
+      const nextNote = checkedNote.note === "" ? existing.note : checkedNote.note;
+      sql.exec(
+        "UPDATE waitlist SET note = ?, language = ?, updated_at = ? WHERE email = ?",
+        nextNote,
+        language,
+        at,
+        email,
+      );
+      const [row] = sql
+        .exec("SELECT email, note, language, created_at, updated_at FROM waitlist WHERE email = ?", email)
+        .toArray();
+      return { entry: { ...row }, created: false };
+    }
+    const total = sql.exec("SELECT count(*) AS n FROM waitlist").one().n;
+    if (total >= maxEntries) {
+      return { refused: "waitlist is full", code: "waitlist_full", status: 503 };
+    }
+    sql.exec(
+      "INSERT INTO waitlist (email, note, language, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+      email,
+      checkedNote.note,
+      language,
+      at,
+      at,
+    );
+    const [row] = sql
+      .exec("SELECT email, note, language, created_at, updated_at FROM waitlist WHERE email = ?", email)
+      .toArray();
+    return { entry: { ...row }, created: true };
+  }
+
+  // Lists waitlist entries in signup order (FIFO).
+  waitlistEntries() {
+    const entries = this.ctx.storage.sql
+      .exec("SELECT email, note, language, created_at, updated_at FROM waitlist ORDER BY created_at ASC, email ASC")
+      .toArray()
+      .map((row) => ({ ...row }));
+    return { count: entries.length, entries };
+  }
+
+  // Removes one address from the waitlist (e.g., on invite or deletion request).
+  removeWaitlist(rawEmail) {
+    const email = normalEmail(rawEmail);
+    if (!isEmail(email)) return { refused: "remove needs an email address", status: 400 };
+    const sql = this.ctx.storage.sql;
+    const [held] = sql.exec("SELECT email FROM waitlist WHERE email = ?", email).toArray();
+    if (!held) return { refused: `${email} is not on the waitlist`, status: 404 };
+    sql.exec("DELETE FROM waitlist WHERE email = ?", email);
+    return { removed: { email } };
   }
 }

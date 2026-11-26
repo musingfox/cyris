@@ -185,6 +185,12 @@ const hosted = {
       recordVote: (tenant, vote) => tenantDb(env, tenant).recordVote(vote),
       restore: (tenant, { date, from }) => restoreExport(env, { date, from, into: tenant }),
       backup: () => backupAll(env),
+      waitlist: {
+        recordAttempt: (ipHash) => registry().recordWaitlistAttempt(ipHash),
+        join: (entry) => registry().joinWaitlist(entry),
+      },
+      waitlistEntries: () => registry().waitlistEntries(),
+      removeWaitlist: (email) => registry().removeWaitlist(email),
       login: {
         signIn,
         waitUntil: (promise) => ctx.waitUntil(promise),

@@ -825,6 +825,28 @@ A save refused with `This save was refused: it did not come from this settings p
 browser sent the save without this Worker's `Origin`; the browser's console names any script or
 style the page's policy refused.
 
+### Waitlist
+
+The landing page (`website/index.html`, `#waitlist`) accepts hosted waitlist signups and posts cross-origin to `https://readcyris.com/waitlist` (`POST /waitlist` on `cyris-hosted`). Until a Turnstile widget is configured, the form stays disabled and shows an unavailable notice.
+
+To enable the waitlist:
+
+1. Create a Cloudflare Turnstile widget (Managed mode) covering `cyris.musingfox.com` (and `localhost` / `127.0.0.1` only if testing locally on a separate dev config).
+2. Paste the public sitekey into `data-sitekey="..."` on `#waitlist-form` in `website/index.html`, then deploy the site with `bun run deploy:website`.
+3. Set the Worker secret and allowed origins on `cyris-hosted`:
+
+   ```bash
+   scripts/hosted.sh waitlist-secrets
+   ```
+
+   Enter `CYRIS_WAITLIST_TURNSTILE_SECRET` (the widget's secret) and `CYRIS_WAITLIST_ORIGINS` (e.g. `https://cyris.musingfox.com`). Do not include `localhost` or `127.0.0.1` in production `CYRIS_WAITLIST_ORIGINS`.
+4. Read signups in FIFO order or remove an address (when invited or on a deletion request):
+
+   ```bash
+   scripts/hosted.sh waitlist
+   scripts/hosted.sh waitlist remove reader@example.com
+   ```
+
 ## 11. Back up every tenant daily, and drill a restore
 
 Once a day, in the hourly tick of 04:00 UTC (`BACKUP_HOUR_UTC`) and after that tick's polls and
