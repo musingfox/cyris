@@ -95,3 +95,4 @@ launch-video/
 # Local agent-tool scratch dirs; listed here, not only in .git/info/exclude, so the hosted deploy gate sees them as ignored.
 .diagnose/
 .narrow/
+.claude/worktrees/
