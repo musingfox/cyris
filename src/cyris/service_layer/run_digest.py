@@ -309,6 +309,14 @@ async def run_digest(deps: "Deps", options: RunOptions) -> RunReport:
                 summary["ai_spend"] = deps.record_spend()
             except Exception as e:  # noqa: BLE001 - a lost record must not replace the result
                 logger.error("Failed to record the run's AI spend: %s", e)
+        if deps.publish_interest is not None and not options.dry_run:
+            # Whatever ended the run, an early return included: its votes and holds are applied
+            # by now, and the map is drawn from them (ADR-0048). Never the run's failure.
+            try:
+                deps.publish_interest()
+            except Exception as e:  # noqa: BLE001 - a lost map must not replace the result
+                logger.error("Failed to store the interest map: %s", e)
+                summary["interest_page_error"] = str(e)
         if failure is not None:
             # What the failure alert says, kept with the run: the onboarding's
             # first issue tells the reader why the run it started failed.

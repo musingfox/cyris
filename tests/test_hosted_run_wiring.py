@@ -707,6 +707,145 @@ async def test_a_hosted_run_applies_the_votes_its_readers_queued_before_it_score
     assert gateway.db.query("SELECT count(*) AS n FROM hosted_votes").rows[0]["n"] == 0
 
 
+def _tenant(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tenant: str
+) -> tuple[object, FakeGateway]:
+    """`hosted_cfg` for `tenant`: its own gateway and ledger, and a config loaded for it."""
+    from test_hosted_spend import FakeSpendGateway, ledger_through
+
+    for name, value in EVERY_CHANNEL.items():
+        monkeypatch.setenv(name, value)
+    _hosted_env(monkeypatch, tenant)
+    gateway = FakeGateway(tenant)
+    apply_hosted_schema(gateway.db)
+    _through(gateway, monkeypatch)
+    ledger_through(FakeSpendGateway(tenant), monkeypatch)
+    home = tmp_path / tenant
+    home.mkdir()
+    return load_files(*_files(home), {**TEST_SETTINGS, **NOTIFY}), gateway
+
+
+def _voted(gateway: FakeGateway, url: str, state: str, tags: list[str]) -> None:
+    """A row the tenant's reader voted on, with its tags, as an applied hosted vote leaves it."""
+    at = datetime.now(UTC).isoformat(timespec="seconds")
+    gateway.db.query(
+        "INSERT INTO stored_articles (url, title, published_at, source_name, source_lane, "
+        "first_seen_at, state, triaged_at) VALUES (?, ?, ?, 'A', 'read', ?, ?, ?)",
+        [url, "A voted story", at, at, state, at],
+    )
+    for tag in tags:
+        gateway.db.query(
+            "INSERT INTO article_tags (article_url, tag, tagged_at) VALUES (?, ?, ?)",
+            [url, tag, at],
+        )
+
+
+def _interest_page(gateway: FakeGateway) -> str | None:
+    rows = gateway.db.query(
+        "SELECT body, content_type FROM hosted_pages WHERE path = '/interest.html'"
+    ).rows
+    if not rows:
+        return None
+    assert rows[0]["content_type"] == "text/html; charset=utf-8"
+    return rows[0]["body"]
+
+
+async def test_a_hosted_run_stores_its_tenants_interest_map_in_its_own_site_alone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No container draws a tenant's map, so its run writes it, from its own votes (ADR-0048)."""
+    alpha_cfg, alpha = _tenant(tmp_path, monkeypatch, "alpha")
+    _voted(alpha, "https://a.test/liked", "accepted", ["alphatag-up"])
+    _voted(alpha, "https://a.test/disliked", "rejected", ["alphatag-down"])
+    article = Article(
+        id=1,
+        title="A launch",
+        url="https://a.test/launch",
+        content="Something launched today.",
+        published_at=datetime.now(UTC) - timedelta(hours=1),
+        source_name="A",
+        source_lane=Lane.FOLLOW,
+    )
+    alpha_deps = replace(bootstrap.build_deps(alpha_cfg), fetch_sources=[FakeSource([article])])
+    assert alpha_deps.html_writer.interest_path == "/t/alpha/interest"
+
+    report = await run_digest(alpha_deps, RunOptions(period="morning"))
+
+    assert report.status == "ok"
+    assert alpha.refused == []
+    page = _interest_page(alpha)
+    assert page is not None
+    assert "alphatag-up" in page and "alphatag-down" in page
+    # Its site bar links the tenant's own pages, and the archive's Interest link names this page.
+    assert 'href="/t/alpha/settings"' in page
+    [index] = alpha.db.query("SELECT body FROM hosted_pages WHERE path = '/index.html'").rows
+    assert 'href="/t/alpha/interest"' in index["body"]
+    [run] = alpha.db.query("SELECT summary FROM digest_runs").rows
+    assert "interest_page_error" not in json.loads(run["summary"])
+
+    bravo_cfg, bravo = _tenant(tmp_path, monkeypatch, "bravo")
+    _voted(bravo, "https://b.test/liked", "accepted", ["bravotag"])
+    bravo_deps = replace(bootstrap.build_deps(bravo_cfg), fetch_sources=[FakeSource([])])
+
+    await run_digest(bravo_deps, RunOptions(period="morning"))
+
+    other = _interest_page(bravo)
+    assert other is not None
+    assert "bravotag" in other
+    assert "alphatag" not in other
+    assert "bravotag" not in _interest_page(alpha)
+    # The run that fetched nothing still drew its map: its votes were applied all the same.
+    assert bravo.refused == []
+
+
+async def test_a_hosted_preview_stores_no_interest_map(hosted_cfg) -> None:
+    cfg, gateway = hosted_cfg
+
+    await run_digest(
+        replace(bootstrap.build_deps(cfg, dry_run=True), fetch_sources=[FakeSource([])]),
+        RunOptions(period="morning", dry_run=True),
+    )
+
+    assert _interest_page(gateway) is None
+
+
+async def test_an_interest_map_that_cannot_be_stored_leaves_the_run_as_it_was(hosted_cfg) -> None:
+    cfg, gateway = hosted_cfg
+    article = Article(
+        id=1,
+        title="A launch",
+        url="https://a.test/launch",
+        content="Something launched today.",
+        published_at=datetime.now(UTC) - timedelta(hours=1),
+        source_name="A",
+        source_lane=Lane.FOLLOW,
+    )
+
+    def refused() -> None:
+        raise tenant_gateway.TenantDbError("the object is gone")
+
+    deps = replace(
+        bootstrap.build_deps(cfg), fetch_sources=[FakeSource([article])], publish_interest=refused
+    )
+
+    report = await run_digest(deps, RunOptions(period="morning"))
+
+    assert report.status == "ok"
+    [run] = gateway.db.query("SELECT status, summary FROM digest_runs").rows
+    assert run["status"] == "ok"
+    assert json.loads(run["summary"])["interest_page_error"] == "the object is gone"
+    assert _interest_page(gateway) is None
+
+
+def test_a_self_hosted_run_draws_no_interest_map_of_its_own(tmp_path: Path) -> None:
+    """The `ui` container draws a self-hosted map on each request; the run writes none."""
+    cfg = load_files(*_files(tmp_path), TEST_SETTINGS)
+
+    deps = bootstrap.build_deps(cfg)
+
+    assert deps.publish_interest is None
+
+
 def test_a_hosted_tick_that_cannot_start_tells_the_operator_and_no_channel_its_rows_name(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
