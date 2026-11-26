@@ -9,7 +9,9 @@
 # nothing until you type "yes".
 #
 # .env.hosted (gitignored, mode 600) is the one state file: HOSTED_URL, which deploy prints, and
-# the values secrets and the route commands offer back, each read by name, never sourced. secrets
+# the values secrets and the route commands offer back, each read by name, never sourced. A line
+# is KEY=VALUE split at its first "="; a trailing CR and the whitespace round key and value are
+# dropped, and so is one pair of matching quotes round the value, nothing else. secrets
 # lists the Worker's set secret names, then asks for each in turn: it says whether the name is
 # already set, offers the saved value (or, for the team domain, AUD and operators, what `cf` reads
 # from Cloudflare), and Enter takes that, or keeps a name already set. What was typed can be saved
@@ -41,13 +43,26 @@ STATE_KEYS=(
   CLOUDFLARE_EMBEDDING_API_TOKEN CYRIS_HOSTED_OPERATOR_WEBHOOK CYRIS_HOSTED_MAIL_FROM
   CYRIS_ACCESS_CLIENT_ID CYRIS_ACCESS_CLIENT_SECRET
 )
+
+# trim TEXT: TEXT without the whitespace around it.
+trim() {
+  local text=$1
+  text=${text#"${text%%[![:space:]]*}"}
+  text=${text%"${text##*[![:space:]]}"}
+  printf '%s' "$text"
+}
+
 for k in "${STATE_KEYS[@]}"; do printf -v "STATE_$k" '%s' ''; done
 # A line is KEY=VALUE split at its first "=", so a value keeps every "=" after it, a base64 one's
-# padding included.
+# padding included. A hand-edited file is read as a dotenv one is: a CR at the end of the line, and
+# the whitespace around the key and the value, go, and so does one pair of matching quotes round the
+# value. Nothing else is unescaped.
 while IFS= read -r line || [[ -n "$line" ]]; do
+  line=${line%$'\r'}
   [[ "$line" == *=* ]] || continue
-  key=${line%%=*}
-  value=${line#*=}
+  key=$(trim "${line%%=*}")
+  value=$(trim "${line#*=}")
+  if [[ "$value" =~ ^\"(.*)\"$ || "$value" =~ ^\'(.*)\'$ ]]; then value=${BASH_REMATCH[1]}; fi
   for k in "${STATE_KEYS[@]}"; do
     [[ "$key" == "$k" ]] && printf -v "STATE_$k" '%s' "$value"
   done

@@ -1443,6 +1443,65 @@ def test_a_saved_value_ending_in_equals_is_put_whole_on_the_next_run(repo: Path)
     assert puts["ANTHROPIC_API_KEY"] == padded
 
 
+@pytest.mark.parametrize(
+    ("written", "read"),
+    [
+        ("id.access\r", "id.access"),
+        ("  id.access  ", "id.access"),
+        ('"id.access"', "id.access"),
+        ("'id.access'", "id.access"),
+        ('  "id.access"  \r', "id.access"),
+        ('""id.access""', '"id.access"'),
+        ("\"id.access'", "\"id.access'"),
+        ('"id.access', '"id.access'),
+        ("id\\.acc\\ess", "id\\.acc\\ess"),
+        ('"a b # c"', "a b # c"),
+        ('""', ""),
+    ],
+)
+def test_a_hand_edited_value_is_read_as_a_dotenv_file_would(
+    repo: Path, written: str, read: str
+) -> None:
+    state = (
+        f"HOSTED_URL={URL}\r\n"
+        f"CYRIS_ACCESS_CLIENT_ID={written}\r\n"
+        "CYRIS_ACCESS_CLIENT_SECRET=secret-value\r\n"
+    )
+    (repo / ".env.hosted").write_bytes(state.encode())
+    token = ["typed-id.access", "typed-SECRET"] if not read else []
+
+    done, calls = _run(repo, ["spend"], token)
+
+    assert done.returncode == 0, done.stderr
+    [curl] = [c for c in calls if c["cmd"] == "curl"]
+    # A CRLF file does not leave a CR in the host either.
+    assert curl["args"][-1] == f"{URL}/hosted/spend"
+    assert 'header = "CF-Access-Client-Secret: secret-value"' in curl["stdin"] or not read
+    if read:
+        assert f'header = "CF-Access-Client-Id: {read}"\n' in curl["stdin"]
+    else:
+        assert 'header = "CF-Access-Client-Id: typed-id.access"' in curl["stdin"]
+
+
+@pytest.mark.parametrize(
+    "line", ["CYRIS_ACCESS_CLIENT_ID = id.access", "  CYRIS_ACCESS_CLIENT_ID=id.access"]
+)
+def test_whitespace_round_a_key_does_not_hide_it(repo: Path, line: str) -> None:
+    sent = _spend_token(repo, f"HOSTED_URL={URL}\n{line}\nCYRIS_ACCESS_CLIENT_SECRET = s\n")
+
+    assert 'header = "CF-Access-Client-Id: id.access"' in sent
+    assert 'header = "CF-Access-Client-Secret: s"' in sent
+
+
+def test_a_quoted_default_is_offered_without_its_quotes(repo: Path) -> None:
+    state = f'ANTHROPIC_API_KEY="{VALUES["ANTHROPIC_API_KEY"]}"\r\n'
+
+    done, puts, _ = _secrets(repo, ["t", "a", "o", "", "e", "https://w", "m"], state)
+
+    assert done.returncode == 0, done.stderr
+    assert puts["ANTHROPIC_API_KEY"] == VALUES["ANTHROPIC_API_KEY"]
+
+
 # Stands in for grep: records the mode of the file its stdout was opened as (the temp file at the
 # moment it is created, before anything chmods it), then runs the real one.
 GREP = """#!/usr/bin/env python3

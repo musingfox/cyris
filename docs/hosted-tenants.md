@@ -72,7 +72,10 @@ ask for again, one `KEY=value` per line: `CYRIS_ACCESS_TEAM_DOMAIN`, `CYRIS_ACCE
 `CYRIS_HOSTED_OPERATORS`, `ANTHROPIC_API_KEY`, `CLOUDFLARE_EMBEDDING_API_TOKEN`,
 `CYRIS_HOSTED_OPERATOR_WEBHOOK`, `CYRIS_HOSTED_MAIL_FROM`, and the service token's
 `CYRIS_ACCESS_CLIENT_ID` and `CYRIS_ACCESS_CLIENT_SECRET`. The file is read line by line, never
-sourced, and any other key in it is ignored. `secrets` offers to write what you typed into it.
+sourced, and any other key in it is ignored. A line is `KEY=value` split at its first `=`, so a
+value may hold more of them. As in a dotenv file, a CR at the end of the line, the whitespace
+around the key and the value, and one pair of matching quotes around the value are dropped;
+nothing else is unescaped. `secrets` offers to write what you typed into it.
 The service token's pair, which `secrets` never asks for, you add by hand, and it is kept in
 clear text, so keep the file out of backups and shares.
 
