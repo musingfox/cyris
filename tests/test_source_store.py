@@ -1,13 +1,17 @@
 """Sources in D1, and a D1 deployment that fetches exactly what the table holds."""
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
 import pytest
+import respx
 from fakes import SqliteD1
 
+from cyris.adapters.fetch.newsletter_worker_source import CloudflareNewsletterSource
 from cyris.adapters.store.source_store import D1SourceStore
-from cyris.domain.models import Lane, SourceConfig
+from cyris.domain.models import SOURCE_DECISIONS, Lane, SourceConfig
 
 pytestmark = pytest.mark.integration
 
@@ -92,6 +96,43 @@ def test_a_push_keeps_each_reviewed_row_and_the_review_of_a_source_it_names(
         letter("new@x.test", "new"),
         letter("plain@x.test"),
     )
+
+
+async def test_a_kept_source_outlives_a_push_and_takes_its_senders_next_mail(
+    store: D1SourceStore,
+) -> None:
+    """Keep is a decision that lasts: a push that never names the source leaves its row."""
+    worker = "https://newsletters.example"
+    store.replace_all(_sources(SourceConfig(name="Blog", url="https://blog.test/feed")))
+    store.insert(
+        SourceConfig(
+            name="news@letter.test",
+            type="newsletter",
+            lane=Lane.READ,
+            email_match="from:news@letter.test",
+            review="new",
+        )
+    )
+
+    store.set_review("news@letter.test", SOURCE_DECISIONS["keep"])
+    store.replace_all(_sources(SourceConfig(name="Blog", url="https://blog.test/feed")))
+    mail = {"id": "nl:1", "from": "news@letter.test", "subject": "Issue 8", "text": "body"}
+    with respx.mock:
+        pull = respx.get(f"{worker}/newsletters").mock(
+            return_value=httpx.Response(200, json=[mail])
+        )
+        ack = respx.post(f"{worker}/ack").mock(return_value=httpx.Response(200, json={}))
+        source = CloudflareNewsletterSource(worker, "tok", create_source=store.insert)
+        now = datetime(2026, 11, 26, tzinfo=UTC)
+        articles = await source.fetch_articles(now, now, store.list_sources())
+
+    assert {name: s.review for name, s in store.list_sources().items()} == {
+        "Blog": None,
+        "news@letter.test": "kept",
+    }
+    assert [a.source_name for a in articles] == ["news@letter.test"]
+    assert (pull.call_count, ack.call_count) == (1, 1)
+    assert json.loads(ack.calls.last.request.content) == {"ids": ["nl:1"]}
 
 
 def test_insert_writes_a_new_name_and_never_overwrites_one(store: D1SourceStore) -> None:

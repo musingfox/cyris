@@ -58,6 +58,14 @@ def test_a_preview_leaves_the_newsletter_queue_alone(cfg) -> None:
     assert _newsletter_source(build_deps(cfg, dry_run=True))._ack_enabled is False
 
 
+def test_a_run_may_create_newsletter_sources(cfg) -> None:
+    assert _newsletter_source(build_deps(cfg))._create_source is not None
+
+
+def test_a_preview_creates_no_newsletter_source(cfg) -> None:
+    assert _newsletter_source(build_deps(cfg, dry_run=True))._create_source is None
+
+
 def test_a_preview_still_fetches_newsletters(cfg) -> None:
     """Not by dropping the source: what the preview shows must be what the run
     would digest, and email-only sources are half of some windows."""

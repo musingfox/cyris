@@ -600,6 +600,7 @@ def build_deps(
     from cyris.adapters.store.digests import D1DigestStore
     from cyris.adapters.store.runs import D1RunLog
     from cyris.adapters.store.similarity_shadow import D1SimilarityShadow
+    from cyris.adapters.store.source_store import D1SourceStore
     from cyris.adapters.store.stories import D1StoryStore
     from cyris.adapters.store.suppressions import D1Suppressions
     from cyris.adapters.store.tags import D1TagStore
@@ -612,23 +613,36 @@ def build_deps(
     language = cfg.app.digest.output_language if cfg.app.digest else ""
     hosted = cfg.app.store.is_hosted
 
+    from cyris.adapters.fetch.newsletter_worker_source import (
+        CloudflareNewsletterSource,
+        own_address_keys,
+    )
+
     fetch_sources: list[FetchSource] = []
+    newsletters: CloudflareNewsletterSource | None = None
+    # An unknown newsletter sender becomes a source of its own; a preview writes none.
+    create_source = None if dry_run else D1SourceStore(d1).insert
+    # The reader's own addresses: mail from one is a forward, read for the sender it quotes.
+    notify = cfg.app.notify
+    own = own_address_keys(notify.email_to if notify else "")
     if hosted:
         # The tenant's own queue, which the hosted Worker's email() handler fills from the
         # tenant's random address (ADR-0034); a preview reads it without the ack's delete.
         from cyris.adapters.fetch.newsletter_worker_source import TenantNewsletterSource
 
-        fetch_sources.append(TenantNewsletterSource(d1, ack=not dry_run))
-    elif cfg.app.newsletter.worker_url and cfg.app.newsletter.token:
-        from cyris.adapters.fetch.newsletter_worker_source import CloudflareNewsletterSource
-
-        fetch_sources.append(
-            CloudflareNewsletterSource(
-                cfg.app.newsletter.worker_url,
-                cfg.app.newsletter.token,
-                ack=not dry_run,
-            )
+        newsletters = TenantNewsletterSource(
+            d1, ack=not dry_run, create_source=create_source, own_addresses=own
         )
+        fetch_sources.append(newsletters)
+    elif cfg.app.newsletter.worker_url and cfg.app.newsletter.token:
+        newsletters = CloudflareNewsletterSource(
+            cfg.app.newsletter.worker_url,
+            cfg.app.newsletter.token,
+            ack=not dry_run,
+            create_source=create_source,
+            own_addresses=own,
+        )
+        fetch_sources.append(newsletters)
 
     fetch_sources.append(build_rss_source(cfg, d1))
 

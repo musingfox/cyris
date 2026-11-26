@@ -148,8 +148,8 @@ export function newsletterSource({ name, from, homepage, lane = NEWSLETTER_LANE 
 }
 
 // Adds, or rewrites, one newsletter source in a seeded tenant's database, so the tenant's runs
-// ingest the issues its address receives from that sender: a run takes an issue only for a
-// source whose `email_match` names its sender. Answers `{source}`, or `{refused, status}`: 400 for
+// file that sender's issues under it, named and matched as the operator sets them; a run makes a
+// source of its own for a sender no source matches (ADR-0050). Answers `{source}`, or `{refused, status}`: 400 for
 // a query that is not a source, 409 for a tenant not seeded yet or a name an RSS source holds.
 export async function addNewsletterSource({ db, params }) {
   const made = newsletterSource(params);

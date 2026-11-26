@@ -18,10 +18,13 @@ import pytest
 from test_tenant_gateway import FakeGateway
 
 from cyris.adapters.fetch.newsletter_worker_source import (
+    MAX_NEW_SOURCES_PER_RUN,
     TENANT_ACK_CHUNK,
     UNMATCHED_HOLD_DAYS,
     TenantNewsletterSource,
+    own_address_keys,
 )
+from cyris.adapters.hosted import hosted_policy
 from cyris.adapters.store.d1 import apply_schema
 from cyris.adapters.store.source_store import D1SourceStore
 from cyris.adapters.store.tenant_gateway import GatewayD1Client, TenantDbError, apply_hosted_schema
@@ -49,6 +52,9 @@ SOURCES = {
 }
 
 TOKENED = "https://esp.example/view/eyJzdWJzY3JpYmVyIjoicmVhZGVyIn0"
+
+# The tenant's reader: mail from this address is a forward.
+READER = own_address_keys("reader@gmail.example")
 
 
 def _issue(id_: str, sender: str = "letter@news.example", **extra: str) -> dict:
@@ -94,13 +100,13 @@ def _ids(gateway: FakeGateway) -> list[str]:
 
 async def test_a_run_pulls_its_own_queue_and_acks_what_it_processed() -> None:
     gateway = FakeGateway("alpha")
-    _queue(gateway, [_issue("nl:1"), _issue("nl:2", sender="stranger@else.example")])
+    _queue(gateway, [_issue("nl:1"), _issue("nl:2", sender="forwarding-noreply@google.com")])
 
     articles = await _source(_client("alpha", gateway)).fetch_articles(AFTER, BEFORE, SOURCES)
 
     assert [a.title for a in articles] == ["Issue nl:1"]
     assert articles[0].source_lane == Lane.READ
-    # The unmatched sender arrived two hours ago, so it waits for a source; the match is acked.
+    # The system sender's mail arrived two hours ago, so it waits; the match is acked.
     assert _ids(gateway) == ["nl:2"]
     assert {r.url.path for r in gateway.requests} == {"/t/alpha/query"}
     assert gateway.refused == []
@@ -171,16 +177,22 @@ async def test_a_failed_pull_raises_into_failed_sources_and_acks_nothing() -> No
     assert _ids(gateway) == ["nl:1"]
 
 
-async def test_unmatched_mail_waits_for_its_source_and_is_ingested_once_it_is_added() -> None:
+async def test_a_readers_forward_whose_sender_cannot_be_read_is_held_until_its_hold_ends() -> None:
     gateway = FakeGateway("alpha")
-    _queue(gateway, [_issue("nl:1")])
+    # A forward from a client whose block we cannot read, which names its sender in the body.
+    unreadable = "De : The Letter <letter@news.example>\n\nThis week's letter."
+    _queue(
+        gateway,
+        [_issue("nl:1", sender="reader@gmail.example", subject="Fwd: Issue nl:1", text=unreadable)],
+    )
     client = _client("alpha", gateway)
+    later = NOW + timedelta(days=UNMATCHED_HOLD_DAYS)
 
-    before_the_source = await _source(client).fetch_articles(AFTER, BEFORE, {})
-    after_the_source = await _source(client).fetch_articles(AFTER, BEFORE, SOURCES)
+    held = await _source(client, own_addresses=READER).fetch_articles(AFTER, BEFORE, SOURCES)
+    assert (held, _held(gateway)) == ([], {"nl:1": NOW.isoformat()})
+    gone = TenantNewsletterSource(client, now=lambda: later, own_addresses=READER)
+    assert await gone.fetch_articles(AFTER, BEFORE, SOURCES) == []
 
-    assert before_the_source == []
-    assert [a.title for a in after_the_source] == ["Issue nl:1"]
     assert _ids(gateway) == []
 
 
@@ -190,13 +202,15 @@ async def test_unmatched_mail_past_its_hold_is_acked() -> None:
     _queue(
         gateway,
         [
-            _issue("nl:old", sender="x@else.example", received_at=arrived.isoformat()),
+            _issue(
+                "nl:old", sender="forwarding-noreply@google.com", received_at=arrived.isoformat()
+            ),
             _issue(
                 "nl:new",
-                sender="x@else.example",
+                sender="forwarding-noreply@google.com",
                 received_at=(arrived + timedelta(minutes=1)).isoformat(),
             ),
-            _issue("nl:bad", sender="x@else.example", received_at="not a time"),
+            _issue("nl:bad", sender="forwarding-noreply@google.com", received_at="not a time"),
         ],
     )
 
@@ -276,12 +290,13 @@ async def test_a_manual_forward_matches_its_original_sender_in_any_case() -> Non
             _issue(
                 "nl:1",
                 sender="reader@gmail.example",
+                subject="Fwd: Issue nl:1",
                 text="---------- Forwarded message ---------\nFrom: <LETTER@news.example>\nBody",
             )
         ],
     )
 
-    articles = await _source(client).fetch_articles(
+    articles = await _source(client, own_addresses=READER).fetch_articles(
         AFTER, BEFORE, D1SourceStore(client).list_sources()
     )
 
@@ -308,7 +323,7 @@ async def test_a_run_stamps_what_it_holds_so_the_worker_may_evict_it_and_a_previ
     None
 ):
     gateway = FakeGateway("alpha")
-    _queue(gateway, [_issue("nl:1", sender="x@else.example"), _issue("nl:2")])
+    _queue(gateway, [_issue("nl:1", sender="forwarding-noreply@google.com"), _issue("nl:2")])
     client = _client("alpha", gateway)
 
     await _source(client, ack=False).fetch_articles(AFTER, BEFORE, SOURCES)
@@ -322,3 +337,98 @@ async def test_a_run_stamps_what_it_holds_so_the_worker_may_evict_it_and_a_previ
     # The matched issue is acked; the unmatched one is held from the first run that saw it.
     assert first == {"nl:1": NOW.isoformat()}
     assert _held(gateway) == first
+
+
+async def test_an_unknown_sender_becomes_a_tenant_source_and_its_issue_is_ingested() -> None:
+    gateway, client = _seeded_with_case_source("alpha")
+    _queue(gateway, [_issue("nl:1", sender="Writer@Else.example")])
+    store = D1SourceStore(client)
+
+    articles = await _source(client, create_source=store.insert).fetch_articles(
+        AFTER, BEFORE, store.list_sources()
+    )
+
+    assert [a.source_name for a in articles] == ["writer@else.example"]
+    assert store.list_sources()["writer@else.example"].email_match == "from:writer@else.example"
+    assert _ids(gateway) == []
+    assert {r.url.path for r in gateway.requests} == {"/t/alpha/query"}
+
+
+async def test_a_sender_no_source_could_be_made_for_is_held_as_before() -> None:
+    gateway, client = _seeded_with_case_source("alpha")
+    _queue(gateway, [_issue("nl:1", sender="writer@else.example")])
+
+    articles = await _source(client, create_source=lambda _source: False).fetch_articles(
+        AFTER, BEFORE, D1SourceStore(client).list_sources()
+    )
+
+    assert articles == []
+    assert _held(gateway) == {"nl:1": NOW.isoformat()}
+
+
+async def test_a_tenant_at_the_policys_source_cap_gets_no_new_source() -> None:
+    gateway = FakeGateway("alpha")
+    cap = hosted_policy()["max_sources"]
+    assert cap > MAX_NEW_SOURCES_PER_RUN
+    full = {
+        f"feed{i}": SourceConfig(name=f"feed{i}", url=f"https://f{i}.example/rss")
+        for i in range(cap)
+    }
+    _queue(gateway, [_issue("nl:1", sender="writer@else.example")])
+    made: list[SourceConfig] = []
+
+    articles = await _source(
+        _client("alpha", gateway), create_source=lambda s: made.append(s) or True
+    ).fetch_articles(AFTER, BEFORE, full)
+
+    assert made == []
+    assert articles == []
+    assert _held(gateway) == {"nl:1": NOW.isoformat()}
+
+
+async def test_stopped_sources_hold_no_place_under_the_policys_source_cap() -> None:
+    gateway = FakeGateway("alpha")
+    cap = hosted_policy()["max_sources"]
+    stopped = {
+        f"spam{i}@x.example": SourceConfig(
+            name=f"spam{i}@x.example",
+            type="newsletter",
+            lane=Lane.READ,
+            email_match=f"from:spam{i}@x.example",
+            review="declined",
+        )
+        for i in range(cap)
+    }
+    _queue(gateway, [_issue("nl:1", sender="writer@else.example")])
+    made: list[SourceConfig] = []
+
+    articles = await _source(
+        _client("alpha", gateway), create_source=lambda s: made.append(s) or True
+    ).fetch_articles(AFTER, BEFORE, stopped)
+
+    assert [s.name for s in made] == ["writer@else.example"]
+    assert [a.source_name for a in articles] == ["writer@else.example"]
+    assert _held(gateway) == {}
+
+
+async def test_mail_from_a_declined_source_is_deleted_not_held() -> None:
+    gateway, client = _seeded_with_case_source("alpha")
+    store = D1SourceStore(client)
+    store.insert(
+        SourceConfig(
+            name="writer@else.example",
+            type="newsletter",
+            lane=Lane.READ,
+            email_match="from:writer@else.example",
+            review="declined",
+        )
+    )
+    _queue(gateway, [_issue("nl:1", sender="writer@else.example")])
+
+    articles = await _source(client, create_source=store.insert).fetch_articles(
+        AFTER, BEFORE, store.list_sources()
+    )
+
+    assert articles == []
+    assert _ids(gateway) == []
+    assert set(store.list_sources()) == {"The Letter", "writer@else.example"}
