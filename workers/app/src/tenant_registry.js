@@ -235,8 +235,8 @@ export class TenantRegistry extends DurableObject {
 
   // The registry's tables as one gzip dump (sqlite_dump.js), for the daily backup
   // (hosted_backup.js). No route loads one back: the registry makes its own tables as it starts.
-  exportDump() {
-    return dumpObject(this.ctx);
+  exportDump(options) {
+    return dumpObject(this.ctx, options);
   }
 
   // The registered tenants in id order, every one or only those with `status`.

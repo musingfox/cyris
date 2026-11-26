@@ -3,7 +3,7 @@
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DUMP_FORMAT, DUMP_VERSION, MAX_DUMP_BYTES, PAGE_ROWS } from "../src/sqlite_dump.js";
+import { DUMP_FORMAT, DUMP_VERSION, PAGE_ROWS } from "../src/sqlite_dump.js";
 import { isTenantTable, quotedName } from "../src/tenant_db.js";
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, registryObject, tenantDb } from "./sql_storage.js";
 
@@ -147,18 +147,25 @@ describe("a hosted database's dump", () => {
     expect(registry.ctx.blocked).toBe(1);
   });
 
-  it("is refused past MAX_DUMP_BYTES compressed, without resetting the object, which keeps its rows", async () => {
+  it("is refused past its limit compressed, without resetting the object, which keeps its rows", async () => {
     const { db, sql } = tenantDb();
     db.query("CREATE TABLE noise (b BLOB)");
-    // Random bytes do not compress, so this many MiB of them is a dump past the limit.
-    const rows = Math.ceil(MAX_DUMP_BYTES / 2 ** 20) + 2;
-    for (let i = 0; i < rows; i++) sql.exec("INSERT INTO noise VALUES (?)", randomBytes(2 ** 20));
+    // Random bytes do not compress, so this many KiB of them is a dump past a limit of 16 KiB.
+    // The limit is passed in, as MAX_DUMP_BYTES would take tens of MiB of data to pass.
+    const maxBytes = 16 * 1024;
+    const rows = 4 * PAGE_ROWS;
+    for (let i = 0; i < rows; i++) sql.exec("INSERT INTO noise VALUES (?)", randomBytes(2 ** 10));
 
-    await expect(db.exportDump()).rejects.toThrow(`the dump passed ${MAX_DUMP_BYTES} bytes compressed`);
+    // Refused while it is written, or, if the compressor had not yet given its output, at its end.
+    await expect(db.exportDump({ maxBytes })).rejects.toThrow(
+      new RegExp(`^the dump (passed ${maxBytes} bytes compressed|is \\d+ bytes compressed, over ${maxBytes})$`),
+    );
 
     expect(db.ctx.blocked).toBe(1);
     expect(db.ctx.resets).toBe(0);
     expect(db.tables()).toEqual({ noise: rows });
+    // Under the default limit the same rows are a dump, so only the limit refused them.
+    expect((await db.exportDump()).byteLength).toBeGreaterThan(maxBytes);
   });
 
   it("throws a failed read only once the object is unblocked, so the object is not reset", async () => {
