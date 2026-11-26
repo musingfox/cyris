@@ -16,6 +16,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- On a hosted deployment, a tenant's settings page now edits the vote half-life, the
+  topic survival days, the vote seeds and the three snippet lengths, which take effect
+  at the tenant's next run, held to the same ranges as a local install. The reasoning
+  effort stays locked with the model. Longer snippets spend the tenant's own monthly
+  AI allowance.
 - `cyris triage-ui` schedules a uv install itself: every hour, on the hour, it runs
   `cyris ingest`, `cyris run --if-due` and `cyris promote-sync`, so the cron line
   from the install guide can go; remove it if you added one. The schedule runs only
