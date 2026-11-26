@@ -329,7 +329,12 @@ def test_the_vote_buttons_and_the_vote_route_agree_on_path_token_and_header() ->
     assert f"fetch('{path}'" in probe
     assert f'meta[name="{meta}"]' in probe
     assert f"'{header}'" in probe
-    assert "data.settings !== false" in probe
+    # The one field of the Worker's answer the probe reads beyond `authorized`: Sign out.
+    assert "data.settings_link === true" in probe
+    assert (
+        "settings_link: true"
+        in re.findall(r"^export const PROBE = (.+);", _js("hosted_vote.js"), re.M)[0]
+    )
     assert f'meta[name="{meta}"]' in script
     assert f"'{header}'" in script
     assert f"body.code === '{ended}'" in script
