@@ -181,6 +181,6 @@ How it is built:
 * `docs/architecture.md` §2 names the client beside the other three. §4's hosted store row names
   the route as a way in, §5 grades `CYRIS_OPERATOR_TENANT` and the route, and §6 describes it.
 * `docs/hosted-tenants.md` has the procedure: it reads or changes one tenant from the CLI.
-* The task card is `hosted-operator-tenant-access` in the owner's Obsidian vault. Its callers
+* The task card is a planning note outside this repo. Its callers
   were `src/cyris/entrypoints/cli.py`, `scripts/prune_archive.py` and
   `src/cyris/diagnostics/doctor.py`, which reached no tenant before this change.

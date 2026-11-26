@@ -19,7 +19,7 @@ decision-makers: ""
 
 The 2026-10-28 morning issue showed a vote group for every source under every topic. A reader
 had to open each article to vote, and the page read as too complex
-(vault `pm/cyris/docs/digest-pebble-sand-water/baseline-2026-10-28-morning.html`).
+(a planning note outside this repo).
 [ADR-0022](0022-the-preference-order-extends-to-news-units.md) put that vote on each news unit and
 ordered the units by their best member's preference inside an area skeleton
 ([digest-by-topic-and-area.md](../milestones/digest-by-topic-and-area.md), L1, L3, L4).
@@ -28,8 +28,8 @@ The owner redesigned the digest on 2026-10-28 and 2026-10-29. Cyris is the reade
 selects and explains, and does not analyse. The page does not show where an item came from;
 sources are folded away until the reader cares. A reader votes on a *topic*, not on a source or
 an article, and caring about one topic (Taiwan's election) must not turn into caring about its
-kind (the Paris protests). The design, its open questions and every experiment are in the vault
-at `pm/cyris/docs/digest-pebble-sand-water.md` (2026-10-29 version) and the folder beside it; the
+kind (the Paris protests). The design, its open questions and every experiment are in planning notes
+outside this repo (the 2026-10-29 version); the
 plan is [digest-pebble-sand-water.md](../milestones/digest-pebble-sand-water.md). The repo base
 for all of it is `9a7fa61b`.
 
@@ -57,7 +57,7 @@ shape the page takes around them.
 
 Chosen option: "topics carry the votes, and the page has three layers", because it is the only
 option the experiments and reviews did not reject. The owner decided the points below on
-2026-10-28 or 2026-10-29, and the parent vault card `pm/cyris/tasks/m-digest-pebble-sand-water.md`
+2026-10-28 or 2026-10-29, and the parent planning note outside this repo
 lists them, except two that come from the design (§3.4, §4) without a separate ruling: the topic
 lifetime `L`, and vote similarity staying as the intake gate.
 
@@ -95,14 +95,13 @@ clock (design §3.3, §3.4). A topic's score is its own decayed votes plus the s
 tags' preferences, and a topic's own votes are not counted again through its tags. Field and region
 tags are shown and may later be searched; they carry no preference. The owner adopted this for
 now because a pebble already has its own layer and cannot be drowned out; better ordering for
-sand and water is pursued separately (vault ticket `jev-auxiliary-ranking`).
+sand and water is pursued separately (a planning ticket outside this repo).
 
 **Embeddings leave the ranking.** The cosine order of `rank_by_preference` no longer orders the
 issue. Vote similarity stays as the intake gate it is under
 [ADR-0017](0017-suppression-is-a-relative-outlier-with-a-reason-and-a-clock.md). Embeddings'
 place is topic assignment: article to article, an article's nearest other article is in the same
-topic 88% of the time (78% across issues), vault
-`pm/cyris/docs/digest-pebble-sand-water/centering-2026-10-29/notes.md`. That ground truth was
+topic 88% of the time (78% across issues; a planning note outside this repo). That ground truth was
 labelled from titles by one person, so the 88% may be high; it is not yet measured on a second
 labelling. The one form tested so far, handing the LLM the topic of the nearest article from an
 earlier batch, lowered precision (see "Known weakness"), so how embeddings help assignment is
@@ -123,8 +122,7 @@ vote and the unit order it records are replaced by the topic vote and the order 
 The whole vote model rests on the topic id. A feasibility run measured `claude-haiku-5-5`
 assigning topics from titles alone, with a recent-topics list, to 275 articles of three issues,
 against the thresholds set before the calls: pairwise precision ≥ 0.95, pairwise recall ≥ 0.90,
-entity-link recall ≥ 0.80. No run met any threshold in either round (vault
-`pm/cyris/docs/digest-pebble-sand-water/feasibility-2026-10-29/notes.md`).
+entity-link recall ≥ 0.80. No run met any threshold in either round (a planning note outside this repo).
 
 * After the owner ruled that two merges the model made were right (the Taiwan stock market,
   the exchange rate and the central bank governor are one topic; the local elections and China's
@@ -141,7 +139,7 @@ entity-link recall ≥ 0.80. No run met any threshold in either round (vault
   0.762 to 0.505.
 
 The owner accepted this state on 2026-10-29 and chose to build on it rather than wait. The
-follow-up is vault ticket `topic-assignment-eval`: three new issues labelled by hand, ideally by
+follow-up is a planning ticket outside this repo: three new issues labelled by hand, ideally by
 the owner or a second person; the owner's granularity rulings written into the prompt as
 examples; article text in the input, not titles alone; and the production filter's output shape.
 Its result decides the prompt `filter-assigns-topics` ships, or how the thresholds change.
@@ -173,16 +171,14 @@ the plan.
 
 * Good, because a vote reaches the topic the reader voted on and, through entity tags only,
   little else: on the 2026-10-28 morning issue, 8 of 49 news topics could receive another topic's
-  vote at all (vault `pm/cyris/docs/digest-pebble-sand-water/review-2026-10-29b/summary.md`).
+  vote at all (a planning note outside this repo).
 * Good, because the reader votes on what the page shows, without opening an article.
 * Bad, because preference does not generalise: a ↓ on the Paris protests leaves a new "French
   strikes" topic untouched unless the two share an entity. This trades generalisation for
   precision on purpose.
 * Bad, because the topic id is a single point of failure, and today's assignment splits stories
   (see "Known weakness"). A wrong merge hurts more than a split: at 5% of topics wrong, a merge
-  moved an unvoted topic up to 23 places and a split moved one at most 1 (vault
-  `pm/cyris/docs/digest-pebble-sand-water/review-2026-10-29b/summary.md`,
-  `experiments/split_merge.py`).
+  moved an unvoted topic up to 23 places and a split moved one at most 1 (a planning note outside this repo).
 * Bad, because a page with no output cap grows with intake; only `max_articles_per_digest`
   bounds it.
 * Neutral, because the area skeleton stays in the code for the mail and Discord until the
@@ -194,8 +190,7 @@ the plan.
 Nothing confirms this yet: the change that records it touches no code. The parent card's
 acceptance criteria are the receipt: one production issue published in the three layers, rows in
 D1's topic-vote table, and a topic voted ↑ ranking higher in the next issue. The tests that pin
-the layer rule and the order arrive with vault tickets `digest-three-tiers-page` and
-`topic-store-and-votes`.
+the layer rule and the order arrive with planning tickets outside this repo.
 
 ## Pros and Cons of the Options
 
@@ -208,63 +203,52 @@ the layer rule and the order arrive with vault tickets `digest-three-tiers-page`
 ### Keep ADR-0022: a vote per news unit, ordered by preference inside each area
 
 * Bad, because a vote group per source under each topic is what made the 2026-10-28 issue read
-  as too complex (vault `pm/cyris/docs/digest-pebble-sand-water/baseline-2026-10-28-morning.html`).
+  as too complex (a planning note outside this repo).
 * Bad, because a unit lives one issue, so a vote cannot follow a story to the next issue. A
   topic id can: in the preference POC one ↑ on the local elections moved it from 24th to 1st in
-  the next morning's issue (vault
-  `pm/cyris/docs/digest-pebble-sand-water/preference-poc-2026-10-29/review/report.html` §1).
+  the next morning's issue (a planning note outside this repo).
 * Bad, because its cosine preference source leaks, as the embedding option below shows.
 
 ### An area skeleton
 
 * Bad, because one story appeared under several area sections in the POCs, so the areas
-  themselves made the overlap (vault `pm/cyris/docs/digest-pebble-sand-water/poc1-one-judgment-per-entry.html`,
-  `poc2-stories.html`, `poc3-pebble-sand-water.html`; design §6).
+  themselves made the overlap (a planning note outside this repo).
 * Bad, because both reviewers agreed with the direction, including dropping the area sections
-  (vault
-  `pm/cyris/docs/digest-pebble-sand-water/review-2026-10-29/comparison.md`, row 1).
+  (a planning note outside this repo).
 * Bad, because its news paragraphs packed several topics into one paragraph (design §2).
 
 ### Rank by embedding similarity
 
 * Bad, because a title embedding sees the kind of news, not the story. With similarity on, one ↑
   on the local elections turned 26 of 27 sand topics positive and gave the Paris protests 36% of
-  a vote (vault `pm/cyris/docs/digest-pebble-sand-water/preference-poc-2026-10-29/review/real/real.py`,
-  `results.json`).
+  a vote (a planning note outside this repo).
 * Bad, because the production outlier cutoff of 3.5 is not reached: the highest z was 2.07, so
   the cutoff turns it off (same source).
 * Bad, because the member mean favours large topics: member count and median cosine have a
-  Spearman of 0.845 over 118 topics (vault
-  `pm/cyris/docs/digest-pebble-sand-water/review-2026-10-29b/experiments/size_bias.py`).
+  Spearman of 0.845 over 118 topics (a planning note outside this repo).
 * Bad, because subtracting the mean or the first principal components did not bring it back:
   no variant improved the off-topic percentiles, same-topic retrieval and entity matching
   together. Subtracting the mean pushed the Paris protests from the 75th percentile to the 62nd
   and improved entity matching, but raised the lottery to the 84th; subtracting principal
   components pushed the Paris protests to the 20th but made retrieval and entity matching worse
-  (vault
-  `pm/cyris/docs/digest-pebble-sand-water/centering-2026-10-29/notes.md`, `centering.py`).
+  (a planning note outside this repo).
 
 ### Let field and region tags carry preference
 
 * Bad, because shared broad tags carry a vote to unrelated stories: one ↑ on the local elections
   lifted the lottery from 23rd to 3rd, through the shared `台灣` tag and the POC's tag-overlap
   similarity together, and one ↓ on Brazil's
-  election pushed the local elections down through `選舉` (vault
-  `pm/cyris/docs/digest-pebble-sand-water/preference-poc-2026-10-29/review/report.html` §1,
-  `breaks.py`).
+  election pushed the local elections down through `選舉` (a planning note outside this repo).
 * Bad, because the discount shrinks the leak from broad tags but does not remove it; with
   similarity off, only dropping their preference (variant B) or counting pairs of shared tags
-  (variant C, a second similarity) zeroed it (vault
-  `pm/cyris/docs/digest-pebble-sand-water/preference-poc-2026-10-29/review/variants.py`, report §2).
+  (variant C, a second similarity) zeroed it (a planning note outside this repo).
 * Good, because a reader's real interest in a field would carry. Rejected for now, with the
   owner accepting that loss.
 
 ### Let Clef spread a topic's vote
 
 * Bad, because all four pre-set checks failed: ↓ on Brazil raised Brazil, and ↑ on the local
-  elections raised the lottery by 0.61 (vault
-  `pm/cyris/docs/digest-pebble-sand-water/clef-2026-10-29/notes.md`, `clef_topics.py`,
-  `answers.json`). With no votes two runs were identical, so this is Clef's response, not noise.
+  elections raised the lottery by 0.61 (a planning note outside this repo). With no votes two runs were identical, so this is Clef's response, not noise.
 * Neutral, because the test gave titles only, while production Clef reads the first 1000
   characters; the version with text is untested.
 
@@ -272,8 +256,7 @@ the layer rule and the order arrive with vault tickets `digest-three-tiers-page`
 
 * Supersedes [ADR-0022](0022-the-preference-order-extends-to-news-units.md).
 * The plan and its tickets: [digest-pebble-sand-water.md](../milestones/digest-pebble-sand-water.md).
-* The design, its open questions and the folder of experiments: vault
-  `pm/cyris/docs/digest-pebble-sand-water.md` (2026-10-29 version) and
-  `pm/cyris/docs/digest-pebble-sand-water/`.
+* The design, its open questions and the folder of experiments: planning notes outside
+  this repo (2026-10-29 version).
 * [ADR-0017](0017-suppression-is-a-relative-outlier-with-a-reason-and-a-clock.md) is the intake
   gate vote similarity keeps.

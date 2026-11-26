@@ -553,7 +553,7 @@ cap is not offered, so a story it held opens anew. The model picks a number, or 
 name only for a genuinely new story, and gives the topic's tags with their kind. The prompt has the
 model name each article's subject first, in a `subject` field that is not stored and that
 `filtering.py` never reads; the owner's eval chose it over the plain prompt and over granularity
-examples (vault ticket `topic-assignment-eval`, 2026-11-12). Assignment is the
+examples (a planning ticket outside this repo, 2026-11-12). Assignment is the
 LLM's alone: it is handed no embedding candidates and no call merges topics after the last batch,
 since both lost in the feasibility rounds (ADR-0023, *Known weakness*), which
 `tests/test_topic_assignment_guard.py` holds. A topic name is made one line before it is stored or

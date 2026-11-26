@@ -27,7 +27,7 @@ depends: [clef-preference-order]
 - **注入條件要和投票的歸屬條件相同：在 Access 主機上，或帶著 `cyris_session` cookie。** `handleVote` 在 `CYRIS_UI_ACCESS_HOST` 上不檢查 cookie（`workers/app/src/router.js:143-150`、`docs/architecture.md:830`），而正式站的自訂網域在 Access 後面。如果只看 cookie，正式站主要的閱讀主機上一筆紀錄都收不到。Access 的 JWT cyris 不驗證（`docs/architecture.md:834`），所以歸屬只能到「這個部署的讀者」為止；一人一套的部署夠用，共用形態不夠。
 - **回報端點由 Worker 自己處理，不叫醒容器。** 比照 `/api/vote` 的路由位置（`workers/app/src/router.js:269-271`）；其他 `/api/*` 都會轉給容器（`router.js:293`），那正是 ADR-0010 要避免的成本。
 - **紀錄同時包含曝光和點開。** 沒點開只有在讀者看過那一期時才算「需要知道」。所以要記下「這個部署的讀者打開了這一期」，也要記下每一次點開，連同文章所在的區塊和順序。2026-09-24 以前沒有 D1 `digests`（commit `5ee1171`），那些期數的位置從頁面上的 `data-urls`、`data-story-id` 讀（`src/cyris/adapters/output/templates/digest.html.j2:2`）；2026-09-18 以前的頁面結構不同，區塊的判斷不可靠（ADR-0013）。
-- **點開紀錄住在 D1 的一張新表，`docs/architecture.md` §4 要新增一列。** 可擴充的欄位放在 JSON 欄，因為 `ADD COLUMN` 到不了既有部署（`docs/architecture.md:756-761`）；`tests/test_residency_covers_schema.py` 會強制 §4 這一列。這一列要寫明保存期間和刪除路徑，因為點開和曝光是行為紀錄，屬於個資（vault `pm/cyris/docs/hosted-eval-legal.md:245,265`）。託管版的隱私告知草稿目前沒有提到行為紀錄（vault `pm/cyris/docs/hosted-business-evaluation.md:146,183`）。期別和 URL 就夠了，不必複製標題，因為 `digests` 已經存了每一期的內容。
+- **點開紀錄住在 D1 的一張新表，`docs/architecture.md` §4 要新增一列。** 可擴充的欄位放在 JSON 欄，因為 `ADD COLUMN` 到不了既有部署（`docs/architecture.md:756-761`）；`tests/test_residency_covers_schema.py` 會強制 §4 這一列。這一列要寫明保存期間和刪除路徑，因為點開和曝光是行為紀錄，屬於個資（repo 外的規劃筆記）。託管版的隱私告知草稿目前沒有提到行為紀錄（repo 外的規劃筆記）。期別和 URL 就夠了，不必複製標題，因為 `digests` 已經存了每一期的內容。
 - **email 和 Discord 只做通知。** 現在的信件帶文章連結（`src/cyris/adapters/output/templates/email.html.j2:21,24`），Discord 訊息帶 markdown 連結（`src/cyris/adapters/notify.py:100,155,178`），兩者都改成只連到那一期。這個連結必須是 Worker 主機的網址：退回 `pages.dev` 的那一期不經過 Worker，也就不會被注入（`docs/architecture.md:507`）。會變紅的斷言：`tests/test_email_digest.py:108,157,175,184,299`、`tests/test_notify.py:153,184,302,874`。
 - **排序取代刪除，pipeline 的順序要改成「排值 → 截斷 → 寫字」。這條只對密度高的 lane 成立。** 新聞 lane 若採合成段落（`digest-by-topic-and-area.md` 的 N1 候選 a），寫段落本身就是挑選，順序倒過來。現在 filter 的同一次 LLM 呼叫同時負責挑文章和寫標題（`src/cyris/service_layer/filtering.py:29`、`src/cyris/service_layer/prompts.py:67-78`）。如果只拿掉刪除判決、順序不變，LLM 得替整個候選池寫標題，輸出 token 會隨候選數線性增加。排值落在上限之前，就等於對整個候選池判斷，這會推翻 `docs/milestones/clef-preference-order.md` 裡「只判斷已經進到這一期的項目」的範圍，要回頭改那份里程碑，並在 §7 記一列。
 - **拿掉 `rejected` 會牽動這些地方。**
@@ -39,7 +39,7 @@ depends: [clef-preference-order]
   - `cyris articles clean` 的預設值：`src/cyris/entrypoints/cli.py:969-972`。
   - 文件：`docs/architecture.md:314,405-408`。
   - 不受影響的：人工倒讚仍然寫 `REJECTED`，vote similarity 的種子照舊。
-- **vote similarity 的壓制也是一種刪除，要併進排序。** 它在當輪用絕對門檻移除候選（`src/cyris/service_layer/run_digest.py:423-426`），和「不判刪除」不一致。把倒讚相近度變成排序裡的負值，也正是 vault `pm/cyris/tasks/suppression-reason-and-clock.md` 要的相對門檻。
+- **vote similarity 的壓制也是一種刪除，要併進排序。** 它在當輪用絕對門檻移除候選（`src/cyris/service_layer/run_digest.py:423-426`），和「不判刪除」不一致。把倒讚相近度變成排序裡的負值，也正是 repo 外的規劃筆記要的相對門檻。
 - **判斷者只要排得準。** 用排序品質衡量，也就是 AUC 和「前 15 項的命中率」，不校準絕對門檻（ADR-0006）。
 - **新聞也要有一個逐篇的值。** 現在新聞不評分（`src/cyris/service_layer/scoring.py:31`），排序需要它。
 - **盲標改成依「有顯示、沒顯示」分層，並凍結在抽樣當時。** pending 的文章下一輪可能被顯示，所以「沒顯示」不是一個狀態；它要定義成「被哪一輪的上限截掉」，資料只能從 D1 `digests` 的 JSON 推出來（`src/cyris/adapters/store/schema.sql:186-193`）。
@@ -51,7 +51,7 @@ depends: [clef-preference-order]
 
 | 階段 | 結果 | 前置 | 收據 | 改回成本 |
 |---|---|---|---|---|
-| S0 保住正在跑的量測 | 第一輪盲標 100 列（含 position、stratum_size、pipeline_state、label）匯出到 repo 外，在第二輪 `--replace` 之前；第二輪抽完標完 | 無 | `~/cyris-jev-eval/blind-labels-round-one.json` 有 100 列；vault `pm/cyris/tasks/blind-labels-round-two.md` 的驗收條件勾掉（Clef 的計分 2026-10-11 起暫停，見 `clef-preference-order.md`） | 零 |
+| S0 保住正在跑的量測 | 第一輪盲標 100 列（含 position、stratum_size、pipeline_state、label）匯出到 repo 外，在第二輪 `--replace` 之前；第二輪抽完標完 | 無 | repo 外的匯出檔有 100 列；repo 外的規劃筆記裡的驗收條件勾掉（Clef 的計分 2026-10-11 起暫停，見 `clef-preference-order.md`） | 零 |
 | S1 通知不帶文章連結 | email 和 Discord 每一項都沒有原文連結，只有那一期在 Worker 主機上的網址 | 無 | 上面列的斷言改成反向後通過；記下改動前兩週每期的投票數當基準 | 低 |
 | S2 新 ADR 取代 0013 | 寫明哪些頁面會被改寫、丟哪些 header | 無 | ADR 進 `docs/decisions/`；vitest 通過 | 低 |
 | S3 最小的點開紀錄 | 一張表、一個端點、§4 一列，含保存期間和刪除路徑 | S2；Q3、Q4 | 正式站一期內至少一筆曝光、一筆點開；託管試用部署首次開機後也有這張表 | 低到中：已收的個資要能刪 |
@@ -62,7 +62,7 @@ depends: [clef-preference-order]
 | S7 上下層與領域配額由點開學 | 上下層由排序值加點開歷史決定，取代 `summarize_score_threshold` 分層；各領域的配額由每個曝光的點開率衰減回基線（那邊的 L6）；位置偏差的修正寫進 ADR | S6a 穩定數週；S4 的位置偏差有結論 | 人工抽查上下層和讀者事後點開的一致率，門檻事先定；一個領域的配額在半衰期左右跟上點開率 | 中 |
 | S8 自動化 | 盲標依固定節奏自動抽；冷啟動用確認過的領域抓第一批 triage 文章 | S6a；S7；那邊的 L1 | 連續兩輪自動抽樣與報告不需人工；一個新部署只靠選興趣領域就產出第一期 | 低 |
 
-- **約 2026-10-14 的第二輪盲標。** 原本是 Clef 排序的驗收輪；Clef 路線 2026-10-11 暫停（`clef-preference-order.md`），這一輪改為 Lb、Lm 與這裡 S 階段共用的測試集（vault `pm/cyris/tasks/blind-labels-round-two.md`）。分層以 `state == REJECTED` 為鍵（`src/cyris/diagnostics/blind_labels.py:22,26`），所以任何動到 `rejected` 的改動都要排在標完之後。
+- **約 2026-10-14 的第二輪盲標。** 原本是 Clef 排序的驗收輪；Clef 路線 2026-10-11 暫停（`clef-preference-order.md`），這一輪改為 Lb、Lm 與這裡 S 階段共用的測試集（repo 外的規劃筆記）。分層以 `state == REJECTED` 為鍵（`src/cyris/diagnostics/blind_labels.py:22,26`），所以任何動到 `rejected` 的改動都要排在標完之後。
 - **有期限的查詢。** `cyris labels draw --replace` 會刪掉第一輪的樣本列，而樣本列是唯一記得「抽樣當時 pipeline 判了保留還是刪除」的地方（`src/cyris/adapters/store/schema.sql:239`），所以 S0 的匯出必須在下一次抽樣之前，由人類對正式站 D1 執行。
 - **可以平行的部分。** S1 和 S2 不碰 `rejected`，可以和 S0 同時進行。
 
@@ -73,7 +73,7 @@ depends: [clef-preference-order]
 - **Q3 點開紀錄的寫入路徑（S2）。** 候選：(a) app Worker 經 REST 直寫 D1，但它和 `workers/app/src/type_scale.js:6-8` 刻意限流的理由衝突；(b) 送進 promote Worker 的 KV，每輪 run 排空後寫進 D1，投票已經是這個形狀（`docs/architecture.md:442`）；(c) 給 app Worker 加 D1 binding，要推翻 ADR-0012 的理由。
 - **Q4 網頁上的連結要不要改寫成轉址（S2）。** 候選：(a) 只監聽點擊，接受右鍵「在新分頁開啟」和 iOS 長按會漏掉；(b) 改寫成經過 Worker 的轉址，要防開放轉址，也和 cyris 剝除進來的電子報追蹤參數的做法相反（`src/cyris/adapters/fetch/keywords.json:48,52`）。
 - **Q5 S4 要累積幾期，推翻條件的閾值各是多少。** 要在看資料之前寫下。
-- **Q6 新聞的值從哪裡來（S5）。** 仍然需要：新聞升格成卡片（那邊的 L5）和沒有密度高文章時由新聞當頭條（那邊的 N2 候選 b）都靠它，但兩者都可以晚於版面上線。候選：(a) 對新聞也問 Clef，第一輪盲標新聞層 0.824 是間接證據（vault `pm/cyris/tasks/jev-feature-vector-eval.md:74`）；(b) 讓評分 prompt 開始評新聞，成本是新聞量級的 LLM 呼叫；(c) 新聞群組的值取成員中最好的一篇，和現在的投票排序一致。
+- **Q6 新聞的值從哪裡來（S5）。** 仍然需要：新聞升格成卡片（那邊的 L5）和沒有密度高文章時由新聞當頭條（那邊的 N2 候選 b）都靠它，但兩者都可以晚於版面上線。候選：(a) 對新聞也問 Clef，第一輪盲標新聞層 0.824 是間接證據（repo 外的規劃筆記）；(b) 讓評分 prompt 開始評新聞，成本是新聞量級的 LLM 呼叫；(c) 新聞群組的值取成員中最好的一篇，和現在的投票排序一致。
 - **Q7 pending 文章的過期（S6b 的前置，不再是可選）。** 新聞不再寫 `rejected` 之後，掛不上主題也沒被寫進段落的新聞不會有任何狀態轉換，「窗口過了就不是新聞」是這一題最自然的答案。現在沒有任何程式會改變超出窗口的 pending 文章（`src/cyris/service_layer/run_digest.py:567-570`），`cyris articles clean` 預設只清 rejected（`src/cyris/entrypoints/cli.py:971`）。候選：(a) 一超出窗口就改成新的 `expired` 狀態；(b) 不改狀態，raw 頁和盲標池以 `first_seen_at` 過濾；(c) 讓 `articles clean` 預設清掉超出窗口的 pending。
 - **Q8 拆成兩半。** 領域的分類已解：由 LLM 從讀者的來源分出來、讀者在 `/settings` 確認（那邊的 L1），所以不需要全域固定的領域清單。還開著的一半是託管版要不要替每個領域附入門來源清單：沒有來源的新讀者，LLM 沒有東西可分類。那是 §4 的新資料，也是託管版的產品決定。
 
@@ -102,9 +102,9 @@ depends: [clef-preference-order]
 
 ## 依據的資料
 
-- 第一輪盲標開發集，98 題，只抽 filter tier：filter LLM 保留判斷 AUC 0.598，非新聞 0.517；embedding 最近投票 0.596；Clef 只給通用條件 0.668；Clef 加最近 5 篇投票標題 0.754；再加通用條件 0.747（vault `pm/cyris/tasks/jev-feature-vector-eval.md`）。數字被反覆看過，偏樂觀。
-- 各層讚數：新聞保留 25 篇中 12 讚、被刪 25 篇中 4 讚；非新聞保留 23 篇中 9 讚、被刪 25 篇中 9 讚（vault `pm/cyris/tasks/filter-pool-blind-labels.md`）。
-- 早期 59 題子集中的 23 篇非新聞，現有 LLM 分數 AUC 0.862，讀者按讚的 7 篇裡有 4 篇在 72 到 86 分時被 filter 刪掉（`~/cyris-jev-eval/clef-2026-10/export.json`）。樣本小、偏樂觀，匯出的 SQL 沒有存下來，未驗證。
+- 第一輪盲標開發集，98 題，只抽 filter tier：filter LLM 保留判斷 AUC 0.598，非新聞 0.517；embedding 最近投票 0.596；Clef 只給通用條件 0.668；Clef 加最近 5 篇投票標題 0.754；再加通用條件 0.747（repo 外的規劃筆記）。數字被反覆看過，偏樂觀。
+- 各層讚數：新聞保留 25 篇中 12 讚、被刪 25 篇中 4 讚；非新聞保留 23 篇中 9 讚、被刪 25 篇中 9 讚（repo 外的規劃筆記）。
+- 早期 59 題子集中的 23 篇非新聞，現有 LLM 分數 AUC 0.862，讀者按讚的 7 篇裡有 4 篇在 72 到 86 分時被 filter 刪掉（匯出檔在 repo 外）。樣本小、偏樂觀，匯出的 SQL 沒有存下來，未驗證。
 
 ## Suggested skills
 

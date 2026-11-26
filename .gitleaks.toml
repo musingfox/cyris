@@ -1,0 +1,18 @@
+# gitleaks config: the default rules, plus the three fake keys the tests use.
+# Each entry matches the fake value itself, so a real key pasted into the same
+# files is still reported.
+
+title = "cyris gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fake keys in tests/test_embedding.py, tests/test_embedding_probe.py and tests/test_hosted_script.py"
+regexTarget = "secret"
+regexes = [
+  # A 39-character Gemini-key shape; the tests' own comment calls it a fake.
+  '''^AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY$''',
+  # CYRIS_HOSTED_B2_APPLICATION_KEY test value.
+  '''^K004-application-SECRET$''',
+]

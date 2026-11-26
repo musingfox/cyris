@@ -21,7 +21,7 @@ sys.modules["trial_api"] = trial_api
 _spec.loader.exec_module(trial_api)
 
 ACCOUNT = "a" * 32
-D1_ID = "0948e71f-2374-4e4e-8f30-44890139011b"
+D1_ID = "11111111-2222-4333-8444-555555555555"
 TOKEN = "trial-token-SECRET"
 OK = {"success": True, "errors": [], "result": []}
 AUTH = {"success": False, "errors": [{"code": 10000, "message": "Authentication error"}]}
