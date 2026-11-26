@@ -6,7 +6,7 @@ depends: []
 
 # digest 改成 pebble、sand、water 三層，票投在題目上
 
-2026-10-28 到 10-29 的討論定案，取代 [digest-by-topic-and-area.md](digest-by-topic-and-area.md) 的領域骨架與合成段落。決定與落選方案記在 [ADR-0023](../decisions/0023-votes-go-on-topics-and-the-digest-has-three-layers.md)。設計、待決問題與所有實驗在 Obsidian vault `pm/cyris/docs/digest-pebble-sand-water.md`（2026-10-29 版）與旁邊的 `digest-pebble-sand-water/` 資料夾，父卡是 vault `pm/cyris/tasks/m-digest-pebble-sand-water.md`。repo 基準是 `9a7fa61b`。
+2026-10-28 到 10-29 的討論定案，取代 [digest-by-topic-and-area.md](digest-by-topic-and-area.md) 的領域骨架與合成段落。決定與落選方案記在 [ADR-0023](../decisions/0023-votes-go-on-topics-and-the-digest-has-three-layers.md)。設計、待決問題與所有實驗在 repo 外的規劃筆記（2026-10-29 版）與旁邊的實驗資料夾，父卡也是 repo 外的規劃筆記。repo 基準是 `9a7fa61b`。
 
 ## 這個里程碑定下什麼
 
@@ -26,7 +26,7 @@ depends: []
 
 ## 分階段計畫
 
-每一階段是 vault `pm/cyris/tasks/` 底下的一張票。第一步端到端先以替身跑通：三層頁面上線時，題目暫用這一期現有的新聞分群，之後的票逐一換掉替身。
+每一階段是 repo 外規劃筆記裡的一張票。第一步端到端先以替身跑通：三層頁面上線時，題目暫用這一期現有的新聞分群，之後的票逐一換掉替身。
 
 | 順序 | 票 | 結果 |
 |---|---|---|

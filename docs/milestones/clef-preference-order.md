@@ -6,9 +6,9 @@ depends: []
 
 # Clef 進選文：只決定 digest 的排序
 
-2026-10-10 經一層設計討論定案，屬於 m-embedding-preference（Obsidian vault `pm/cyris/tasks/m-embedding-preference.md`）。開發輪量測的腳本與原始資料不入 repo，數字與做法記在 vault `pm/cyris/tasks/jev-feature-vector-eval.md` 的 2026-10-09 段。
+2026-10-10 經一層設計討論定案，屬於 m-embedding-preference（repo 外的規劃筆記）。開發輪量測的腳本與原始資料不入 repo，數字與做法記在 repo 外的規劃筆記的 2026-10-09 段。
 
-**2026-10-11 暫停，程式留在 main、開關維持 `cosine`。** 讀了正式站 `digest_runs.summary` 2026-10-09 到 10-11 六期的 `preference_rank_moved_*`：Features 六期都動 0 格，標題列動 2、3、5、8、2、6 格（約 15 格裡）。偏好排序只重排 filter 已保留的項目，在現在的版面上幾乎不改讀者看到的東西，驗收過關也不值得開。這正是下方「什麼會推翻這個決定」第二條預先寫下的情況。原訂 2026-10-14 的驗收輪照抽照標，但改為 `digest-by-topic-and-area.md` 的 Lb 與 Lm 的測試集（vault `pm/cyris/tasks/blind-labels-round-two.md`）。Clef 的去留在 Lm 裡決定：和「主力 LLM 帶同樣 5 篇相近投票標題」對照，打平就拆掉，明顯贏就在新設計裡當逐篇的值的判斷者。開發集的 0.754 對 0.596 說明的是「把相近投票放進輸入」有用，還沒說明是 Clef 這個模型有用。
+**2026-10-11 暫停，程式留在 main、開關維持 `cosine`。** 讀了正式站 `digest_runs.summary` 2026-10-09 到 10-11 六期的 `preference_rank_moved_*`：Features 六期都動 0 格，標題列動 2、3、5、8、2、6 格（約 15 格裡）。偏好排序只重排 filter 已保留的項目，在現在的版面上幾乎不改讀者看到的東西，驗收過關也不值得開。這正是下方「什麼會推翻這個決定」第二條預先寫下的情況。原訂 2026-10-14 的驗收輪照抽照標，但改為 `digest-by-topic-and-area.md` 的 Lb 與 Lm 的測試集（repo 外的規劃筆記）。Clef 的去留在 Lm 裡決定：和「主力 LLM 帶同樣 5 篇相近投票標題」對照，打平就拆掉，明顯贏就在新設計裡當逐篇的值的判斷者。開發集的 0.754 對 0.596 說明的是「把相近投票放進輸入」有用，還沒說明是 Clef 這個模型有用。
 
 ## 這個里程碑定下什麼
 

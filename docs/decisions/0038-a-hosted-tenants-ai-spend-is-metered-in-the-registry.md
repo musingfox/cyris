@@ -227,4 +227,4 @@ How it is built:
   [ADR-0035](0035-a-hosted-runs-alerts-go-to-the-operator-through-the-hosted-worker.md). The
   daily run cap, the other limit the registry holds, is
   [ADR-0032](0032-hosted-runs-wait-in-a-queue-the-registry-holds.md).
-* The task card is `hosted-ai-budget-meter` in the owner's Obsidian vault.
+* The task card is a planning note outside this repo.

@@ -5,8 +5,7 @@ preference of its entity tags. A tag's preference is the decayed votes of the ot
 topics carrying it, divided by df, the number of topics carrying it among those an
 issue's population holds; the population is fixed at the issue's own time, so the
 discount does not drift with the reader's clock. Domain and region tags carry nothing.
-Embeddings take no part. Ported from the preference POC, vault
-`pm/cyris/docs/digest-pebble-sand-water/preference-poc-2026-10-29/review/model_revised.py`,
+Embeddings take no part. Ported from the preference POC, a planning note outside this repo,
 without its similarity term and its 0.5 tag weight, which ADR-0023 does not adopt.
 """
 

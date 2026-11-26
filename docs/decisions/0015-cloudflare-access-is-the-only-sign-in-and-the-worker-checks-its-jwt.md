@@ -149,7 +149,7 @@ Supersedes [ADR-0009](0009-a-token-cookie-always-and-access-only-if-you-own-a-do
 supersedes in part [ADR-0021](0021-previews-answer-only-on-a-preview-only-custom-domain.md): its
 bullet "No Access on the Preview hostnames".
 
-The task card is `pm/cyris/tasks/access-replaces-ui-token.md` in the owner's Obsidian vault. It
+The task card is a planning note outside this repo. It
 lists, at commit `3bd8d9c`, every file that reads the token: `workers/app/src/router.js`,
 `src/cyris/diagnostics/doctor.py`, `.github/workflows/deploy.yml`, `scripts/trial-wizard.sh`, and
 their tests and docs. The decision was accepted before that change, which the card tracks.
