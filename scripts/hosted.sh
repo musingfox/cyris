@@ -6,7 +6,8 @@
 # that reaches Cloudflare through wrangler, and is never stored or read from the environment,
 # so neither an exported variable nor an old file can pick the account. deploy, secrets and
 # delete also print the account's name and do nothing until you type "yes". The secrets (the
-# Anthropic key, the operator's webhook, the Access service token's secret) are read without echo
+# Anthropic key, the Workers AI embedding token, the operator's webhook, the Access service
+# token's secret) are read without echo
 # each time, never written down, and reach wrangler and curl on stdin, never in argv, where `ps` would show them.
 # HOSTED_URL, which deploy prints, is the one value kept, in .env.hosted (gitignored, mode 600).
 set -euo pipefail
@@ -187,6 +188,9 @@ case "${1:-}" in
     # signs in with a browser. Not a secret; set as one so wrangler.hosted.toml names no one.
     ask OPERATORS "CYRIS_HOSTED_OPERATORS, comma separated: the service token's Client ID (xxxx.access), and your Access email if you sign in with a browser"
     ask ANTHROPIC "ANTHROPIC_API_KEY for the tenants' runs" secret
+    # The tenants' vote similarity embeds on this account's Workers AI, metered as each tenant's
+    # embedding spend (ADR-0049). The run reads it with the account id, which is ACCOUNT_ID.
+    ask EMBEDDING "CLOUDFLARE_EMBEDDING_API_TOKEN for the tenants' vote similarity, a token of this account with Workers AI Read" secret
     # Where every tenant's failed run is reported, with its tenant id (ADR-0035). Its URL is its
     # credential, so it is read as a secret, and only the Worker's alert gateway holds it.
     ask OPERATOR_WEBHOOK "CYRIS_HOSTED_OPERATOR_WEBHOOK, the operator's Discord webhook URL" secret
@@ -196,6 +200,9 @@ case "${1:-}" in
     put_secret CYRIS_ACCESS_AUD "$AUD"
     put_secret CYRIS_HOSTED_OPERATORS "$OPERATORS"
     put_secret ANTHROPIC_API_KEY "$ANTHROPIC"
+    put_secret CLOUDFLARE_EMBEDDING_API_TOKEN "$EMBEDDING"
+    # Not a secret; the account the embedding token runs on, the one confirmed above.
+    put_secret CLOUDFLARE_ACCOUNT_ID "$ACCOUNT_ID"
     put_secret CYRIS_HOSTED_OPERATOR_WEBHOOK "$OPERATOR_WEBHOOK"
     # Not a secret either; set the same way, so wrangler.hosted.toml names no deployment's domain.
     put_secret CYRIS_HOSTED_MAIL_FROM "$MAIL_FROM"

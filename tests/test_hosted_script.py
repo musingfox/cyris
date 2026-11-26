@@ -30,6 +30,7 @@ SECRETS_TYPED = [
     "AUD-1",
     "client-id.access,owner@example.com",
     "sk-ant-SECRET",
+    "cf-embed-SECRET",
     OPERATOR_HOOK,
     "cyris@mail.example",
 ]
@@ -201,6 +202,7 @@ def test_deploy_ships_the_hosted_config_without_dotenv_and_keeps_its_url(repo: P
                 "AUD-1",
                 "client-id.access",
                 "sk-ant-SECRET",
+                "cf-embed-SECRET",
                 OPERATOR_HOOK,
                 "cyris@mail.example",
             ],
@@ -255,6 +257,10 @@ def test_each_secret_reaches_wrangler_on_stdin_and_never_in_argv(repo: Path) -> 
         # Who the operator routes admit of whoever Access signs in (ADR-0037).
         ("CYRIS_HOSTED_OPERATORS", "client-id.access,owner@example.com"),
         ("ANTHROPIC_API_KEY", "sk-ant-SECRET"),
+        # The tenants' vote similarity embeds on the operator's Workers AI (ADR-0049), with the
+        # account id the operator confirmed.
+        ("CLOUDFLARE_EMBEDDING_API_TOKEN", "cf-embed-SECRET"),
+        ("CLOUDFLARE_ACCOUNT_ID", ACCOUNT),
         # Where every tenant's failed run is reported (ADR-0035).
         ("CYRIS_HOSTED_OPERATOR_WEBHOOK", OPERATOR_HOOK),
         # The sign-in mail's sender (ADR-0033).
@@ -266,7 +272,7 @@ def test_each_secret_reaches_wrangler_on_stdin_and_never_in_argv(repo: Path) -> 
         c["args"][5:] == ["--config", "wrangler.hosted.toml", "--env-file", "/dev/null"]
         for c in puts
     )
-    for secret in ("sk-ant-SECRET", OPERATOR_HOOK):
+    for secret in ("sk-ant-SECRET", "cf-embed-SECRET", OPERATOR_HOOK):
         assert not any(secret in " ".join(c["args"]) for c in calls)
         assert secret not in done.stdout + done.stderr
 
@@ -341,6 +347,7 @@ def test_secrets_refuses_an_operator_webhook_that_is_not_https(repo: Path) -> No
         "AUD-1",
         "client-id.access",
         "sk-ant-SECRET",
+        "cf-embed-SECRET",
         "hook",
     ]
 
