@@ -28,6 +28,10 @@ export const PAGE_ROWS = 50;
 // https://developers.cloudflare.com/workers/runtime-apis/rpc/
 export const MAX_DUMP_BYTES = 32 * 1024 * 1024 - 64 * 1024;
 
+// The size a dump is refused above: `maxBytes` when it is a smaller limit, as a test passes, and
+// MAX_DUMP_BYTES for anything else, so no caller of an object's exportDump can raise the limit.
+export const dumpLimit = (maxBytes) => (Number.isFinite(maxBytes) ? Math.min(maxBytes, MAX_DUMP_BYTES) : MAX_DUMP_BYTES);
+
 const SCHEMA_ORDER = ["index", "trigger", "view"];
 
 const encoder = new TextEncoder();
@@ -122,8 +126,8 @@ function* tablePages(sql, table, columns) {
 }
 
 // The gzip of `lines`, one string per line, written as each comes so only one page is held
-// uncompressed; refused once it passes MAX_DUMP_BYTES.
-async function gzipLines(lines) {
+// uncompressed; refused once it passes `maxBytes`.
+async function gzipLines(lines, maxBytes) {
   const stream = new CompressionStream("gzip");
   const writer = stream.writable.getWriter();
   const chunks = [];
@@ -137,7 +141,7 @@ async function gzipLines(lines) {
   try {
     for (const page of lines) {
       await writer.write(encoder.encode(`${page.join("\n")}\n`));
-      if (size > MAX_DUMP_BYTES) throw new Error(`the dump passed ${MAX_DUMP_BYTES} bytes compressed`);
+      if (size > maxBytes) throw new Error(`the dump passed ${maxBytes} bytes compressed`);
     }
     await writer.close();
   } catch (error) {
@@ -146,7 +150,7 @@ async function gzipLines(lines) {
     throw error;
   }
   await read;
-  if (size > MAX_DUMP_BYTES) throw new Error(`the dump is ${size} bytes compressed, over ${MAX_DUMP_BYTES}`);
+  if (size > maxBytes) throw new Error(`the dump is ${size} bytes compressed, over ${maxBytes}`);
   const out = new Uint8Array(size);
   let at = 0;
   for (const chunk of chunks) {
@@ -183,11 +187,13 @@ function* dumpLines(sql) {
 // runtime resets an object that blocks for 30 s, which a dump of the size ADR-0041 designs for
 // stays far under. It also resets one whose callback throws, so a dump refused as over size, or
 // a failed read, is caught inside and thrown only once the object is unblocked.
+// `maxBytes` lowers the size it is refused above, MAX_DUMP_BYTES (dumpLimit); it cannot raise it.
 // https://developers.cloudflare.com/durable-objects/api/state/#blockconcurrencywhile
-export async function dumpObject(ctx) {
+export async function dumpObject(ctx, { maxBytes } = {}) {
+  const limit = dumpLimit(maxBytes);
   const made = await ctx.blockConcurrencyWhile(async () => {
     try {
-      return { bytes: await gzipLines(dumpLines(ctx.storage.sql)) };
+      return { bytes: await gzipLines(dumpLines(ctx.storage.sql), limit) };
     } catch (error) {
       return { error };
     }

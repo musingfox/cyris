@@ -2,8 +2,8 @@
 // seeded tenant's every table, exported and loaded into an empty object, comes back row for row.
 import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
-import { DUMP_FORMAT, DUMP_VERSION, MAX_DUMP_BYTES, PAGE_ROWS } from "../src/sqlite_dump.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { DUMP_FORMAT, DUMP_VERSION, MAX_DUMP_BYTES, PAGE_ROWS, dumpLimit } from "../src/sqlite_dump.js";
 import { isTenantTable, quotedName } from "../src/tenant_db.js";
 import { HOSTED_SCHEMA_SQL, SCHEMA_SQL, registryObject, tenantDb } from "./sql_storage.js";
 
@@ -85,7 +85,59 @@ function seededTenant() {
   return { db, sql };
 }
 
+// Replaces CompressionStream with one that reports `whileWriting` bytes of output after its first
+// write, or `atClose` bytes as it is closed, and nothing else, so each of the two limit checks in
+// gzipLines can be reached on its own and without making any data: the dump is refused on the
+// size the compressor reports. A write or the close returns once the reader has taken the chunk,
+// so what the writer sees does not depend on timing.
+function stubCompressor({ whileWriting = 0, atClose = 0 }) {
+  vi.stubGlobal(
+    "CompressionStream",
+    class {
+      constructor() {
+        const items = [];
+        let wake = () => {};
+        const push = (item) => {
+          items.push(item);
+          wake();
+        };
+        const take = async () => {
+          while (!items.length) await new Promise((resolve) => (wake = resolve));
+          return items.shift();
+        };
+        const emit = (byteLength) => new Promise((consumed) => push({ chunk: { byteLength }, consumed }));
+        let wrote = false;
+        this.readable = {
+          async *[Symbol.asyncIterator]() {
+            for (;;) {
+              const item = await take();
+              if (!item.chunk) return;
+              yield item.chunk;
+              item.consumed();
+            }
+          },
+        };
+        this.writable = {
+          getWriter: () => ({
+            write: async () => {
+              if (whileWriting && !wrote) await emit(whileWriting);
+              wrote = true;
+            },
+            close: async () => {
+              if (atClose) await emit(atClose);
+              push({});
+            },
+            abort: async () => push({}),
+          }),
+        };
+      }
+    },
+  );
+}
+
 describe("a hosted database's dump", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   it("restores into an empty object with every table's rows and every schema entry as they were", async () => {
     const source = seededTenant();
     const target = tenantDb();
@@ -147,18 +199,64 @@ describe("a hosted database's dump", () => {
     expect(registry.ctx.blocked).toBe(1);
   });
 
-  it("is refused past MAX_DUMP_BYTES compressed, without resetting the object, which keeps its rows", async () => {
+  it("is refused past its limit compressed, without resetting the object, which keeps its rows", async () => {
     const { db, sql } = tenantDb();
     db.query("CREATE TABLE noise (b BLOB)");
-    // Random bytes do not compress, so this many MiB of them is a dump past the limit.
-    const rows = Math.ceil(MAX_DUMP_BYTES / 2 ** 20) + 2;
-    for (let i = 0; i < rows; i++) sql.exec("INSERT INTO noise VALUES (?)", randomBytes(2 ** 20));
+    // Random bytes do not compress, so this many KiB of them is a dump past a limit of 16 KiB.
+    // The limit is passed in, as MAX_DUMP_BYTES would take tens of MiB of data to pass.
+    const maxBytes = 16 * 1024;
+    const rows = 4 * PAGE_ROWS;
+    for (let i = 0; i < rows; i++) sql.exec("INSERT INTO noise VALUES (?)", randomBytes(2 ** 10));
 
-    await expect(db.exportDump()).rejects.toThrow(`the dump passed ${MAX_DUMP_BYTES} bytes compressed`);
+    // Refused while it is written, or, if the compressor had not yet given its output, at its end.
+    await expect(db.exportDump({ maxBytes })).rejects.toThrow(
+      new RegExp(`^the dump (passed ${maxBytes} bytes compressed|is \\d+ bytes compressed, over ${maxBytes})$`),
+    );
 
     expect(db.ctx.blocked).toBe(1);
     expect(db.ctx.resets).toBe(0);
     expect(db.tables()).toEqual({ noise: rows });
+    // Under the default limit the same rows are a dump, so only the limit refused them.
+    expect((await db.exportDump()).byteLength).toBeGreaterThan(maxBytes);
+  });
+
+  it("takes a limit below MAX_DUMP_BYTES, and no other", () => {
+    expect(dumpLimit(1024)).toBe(1024);
+    expect(dumpLimit(undefined)).toBe(MAX_DUMP_BYTES);
+    for (const raised of [MAX_DUMP_BYTES + 1, 2 * MAX_DUMP_BYTES, Infinity, NaN, null, "1024"]) {
+      expect(dumpLimit(raised)).toBe(MAX_DUMP_BYTES);
+    }
+  });
+
+  it("is refused as soon as a write takes the output past the limit", async () => {
+    const maxBytes = 1024;
+    stubCompressor({ whileWriting: maxBytes + 1 });
+    const { db } = seededTenant();
+
+    await expect(db.exportDump({ maxBytes })).rejects.toThrow(`the dump passed ${maxBytes} bytes compressed`);
+
+    expect(db.ctx.resets).toBe(0);
+  });
+
+  it("is refused when only the end of the output takes it past the limit", async () => {
+    const maxBytes = 1024;
+    stubCompressor({ atClose: maxBytes + 1 });
+    const { db } = seededTenant();
+
+    await expect(db.exportDump({ maxBytes })).rejects.toThrow(
+      `the dump is ${maxBytes + 1} bytes compressed, over ${maxBytes}`,
+    );
+
+    expect(db.ctx.resets).toBe(0);
+  });
+
+  it("is refused past MAX_DUMP_BYTES however high the caller sets its limit", async () => {
+    stubCompressor({ whileWriting: MAX_DUMP_BYTES + 1 });
+    const { db } = seededTenant();
+    for (const maxBytes of [2 * MAX_DUMP_BYTES, Infinity]) {
+      await expect(db.exportDump({ maxBytes })).rejects.toThrow(`the dump passed ${MAX_DUMP_BYTES} bytes compressed`);
+    }
+    expect(db.ctx.resets).toBe(0);
   });
 
   it("throws a failed read only once the object is unblocked, so the object is not reset", async () => {

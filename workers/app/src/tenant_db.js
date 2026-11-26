@@ -203,8 +203,8 @@ export class TenantDb extends DurableObject {
   }
 
   // The whole database as one gzip dump (sqlite_dump.js), for the daily backup (hosted_backup.js).
-  exportDump() {
-    return dumpObject(this.ctx);
+  exportDump(options) {
+    return dumpObject(this.ctx, options);
   }
 
   // A dump loaded into this object, which must hold no table yet: the operator's restore of an
