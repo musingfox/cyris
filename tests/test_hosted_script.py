@@ -21,6 +21,8 @@ pytestmark = pytest.mark.unit
 ROOT = Path(__file__).resolve().parents[1]
 ACCOUNT = "0123456789abcdef0123456789abcdef"
 URL = "https://cyris-hosted.trial.workers.dev"
+# The commit the checkout is at, and origin/main too unless a test says otherwise.
+SHA = "0123456789abcdef0123456789abcdef01234567"
 # The operator's Discord webhook: its URL is its credential.
 OPERATOR_HOOK = "https://discord.com/api/webhooks/1/operator-SECRET"
 SECRETS_TYPED = [
@@ -55,6 +57,44 @@ elif args[2:4] == ["whoami", "--json"]:
 elif args[2:3] == ["deploy"]:
     print("Deployed cyris-hosted triggers\\n  URL")
 """.replace("ACCOUNT", ACCOUNT).replace("URL", URL)
+
+# The gate's stand-ins log to gate.jsonl, not CALLS, so the tests of wrangler's calls never see
+# them. GIT_STATUS is the porcelain output; GIT_HEAD and GIT_ORIGIN the shas HEAD and the fetched
+# origin/main are; GIT_FETCH_FAILS makes the fetch fail. `deploy_seen` says whether wrangler had
+# deployed when the stub ran, which is how the tests check the order.
+GIT = """#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+deployed = os.path.exists(os.environ["CALLS"]) and any(
+    json.loads(l)["args"][2:3] == ["deploy"] for l in open(os.environ["CALLS"])
+)
+with open(os.environ["GATE"], "a") as log:
+    log.write(json.dumps({"cmd": "git", "args": args, "deploy_seen": deployed}) + "\\n")
+if args[:1] == ["status"]:
+    sys.stdout.write(os.environ.get("GIT_STATUS", ""))
+elif args[:1] == ["fetch"]:
+    if os.environ.get("GIT_FETCH_FAILS"):
+        sys.stderr.write("fatal: unable to access origin\\n")
+        sys.exit(128)
+elif args == ["rev-parse", "HEAD"]:
+    print(os.environ.get("GIT_HEAD", SHA))
+elif args == ["rev-parse", "FETCH_HEAD"]:
+    print(os.environ.get("GIT_ORIGIN", SHA))
+else:
+    sys.exit(2)
+""".replace("SHA", repr(SHA))
+
+# Stands in for scripts/check.sh through HOSTED_CHECK: CHECK_FAILS is its exit status.
+CHECK = """#!/usr/bin/env python3
+import json, os, sys
+deployed = os.path.exists(os.environ["CALLS"]) and any(
+    json.loads(l)["args"][2:3] == ["deploy"] for l in open(os.environ["CALLS"])
+)
+with open(os.environ["GATE"], "a") as log:
+    log.write(json.dumps({"cmd": "check", "args": sys.argv[1:], "deploy_seen": deployed}) + "\\n")
+print("check: running the suite")
+sys.exit(int(os.environ.get("CHECK_FAILS", "0")))
+"""
 
 # Records where it ran and what it was given, and answers as `cf` would from the JSON the test
 # puts in CF_ORG (the Zero Trust organization), CF_APPS (the Access applications) and CF_TOKENS
@@ -171,7 +211,7 @@ def repo(tmp_path: Path) -> Path:
         shutil.copy(ROOT / rel, tmp_path / rel)
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for name, body in (("bun", BUN), ("curl", CURL), ("cf", CF)):
+    for name, body in (("bun", BUN), ("curl", CURL), ("cf", CF), ("git", GIT), ("check", CHECK)):
         path = bin_dir / name
         path.write_text(body, encoding="utf-8")
         path.chmod(path.stat().st_mode | stat.S_IEXEC)
@@ -190,6 +230,9 @@ def _run(
         env={
             "PATH": f"{repo / 'bin'}:{os.environ['PATH']}",
             "CALLS": str(calls),
+            "GATE": str(repo / "gate.jsonl"),
+            # Not the real scripts/check.sh, which installs dependencies and runs the suite.
+            "HOSTED_CHECK": str(repo / "bin/check"),
             "TMPDIR": str(repo),
             "CLOUDFLARE_ACCOUNT_ID": "f" * 32,
             **env,
@@ -217,6 +260,10 @@ def test_deploy_ships_the_hosted_config_without_dotenv_and_keeps_its_url(repo: P
         "x",
         "wrangler",
         "deploy",
+        "--tag",
+        SHA[:12],
+        "--message",
+        f"cyris-hosted {SHA}",
         "--config",
         "wrangler.hosted.toml",
         "--env-file",
@@ -225,6 +272,119 @@ def test_deploy_ships_the_hosted_config_without_dotenv_and_keeps_its_url(repo: P
     state = repo / ".env.hosted"
     assert state.read_text(encoding="utf-8") == f"HOSTED_URL={URL}\n"
     assert stat.S_IMODE(state.stat().st_mode) == 0o600
+
+
+def _gate(repo: Path) -> list[dict]:
+    log = repo / "gate.jsonl"
+    return (
+        [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+        if log.exists()
+        else []
+    )
+
+
+def _deployed(calls: list[dict]) -> bool:
+    return any(c["args"][2] == "deploy" for c in calls)
+
+
+@pytest.mark.parametrize(
+    "status",
+    [" M src/cyris/app.py\n", "?? notes.txt\n", "M  staged.py\n?? new.py\n"],
+)
+def test_deploy_refuses_a_tree_with_a_tracked_change_or_an_untracked_path(
+    repo: Path, status: str
+) -> None:
+    done, calls = _run(repo, ["deploy"], [ACCOUNT, "yes"], GIT_STATUS=status)
+
+    assert done.returncode == 1
+    assert "working tree is not clean" in done.stderr
+    for line in status.splitlines():
+        assert line.removeprefix(line[:3]) in done.stderr
+    assert not _deployed(calls)
+    # Nothing past the tree check ran: not the fetch, not the check.
+    assert [g["args"][0] for g in _gate(repo)] == ["status"]
+    assert not (repo / ".env.hosted").read_text(encoding="utf-8")
+
+
+def test_the_tree_check_lists_untracked_files_one_by_one_and_stops_at_ten(repo: Path) -> None:
+    status = "".join(f"?? scratch/file{i:02d}.txt\n" for i in range(13))
+
+    done, _ = _run(repo, ["deploy"], [ACCOUNT, "yes"], GIT_STATUS=status)
+
+    [status_call] = [g for g in _gate(repo) if g["args"][0] == "status"]
+    assert "--porcelain" in status_call["args"]
+    assert "--untracked-files=all" in status_call["args"]
+    assert "scratch/file09.txt" in done.stderr
+    assert "scratch/file10.txt" not in done.stderr
+    assert "and 3 more" in done.stderr
+
+
+def test_deploy_refuses_a_head_that_is_not_the_fetched_origin_main(repo: Path) -> None:
+    origin = "f" * 40
+
+    done, calls = _run(repo, ["deploy"], [ACCOUNT, "yes"], GIT_ORIGIN=origin)
+
+    assert done.returncode == 1
+    assert SHA in done.stderr
+    assert origin in done.stderr
+    assert not _deployed(calls)
+    gate = _gate(repo)
+    assert [g["cmd"] for g in gate if g["args"][0] == "fetch"] == ["git"]
+    assert "check" not in [g["cmd"] for g in gate]
+
+
+def test_deploy_refuses_when_the_fetch_fails(repo: Path) -> None:
+    done, calls = _run(repo, ["deploy"], [ACCOUNT, "yes"], GIT_FETCH_FAILS="1")
+
+    assert done.returncode == 1
+    assert "git fetch origin main failed" in done.stderr
+    assert not _deployed(calls)
+    gate = _gate(repo)
+    assert [g["args"] for g in gate if g["cmd"] == "git"][1] == ["fetch", "origin", "main"]
+    assert "check" not in [g["cmd"] for g in gate]
+
+
+def test_deploy_runs_the_check_first_and_does_not_deploy_when_it_fails(repo: Path) -> None:
+    done, calls = _run(repo, ["deploy"], [ACCOUNT, "yes"], CHECK_FAILS="3")
+
+    assert done.returncode == 1
+    # Its output reaches the terminal.
+    assert "check: running the suite" in done.stdout
+    assert "failed" in done.stderr
+    assert not _deployed(calls)
+    assert [g["args"][0] for g in _gate(repo) if g["cmd"] == "git"] == [
+        "status",
+        "fetch",
+        "rev-parse",
+        "rev-parse",
+    ]
+
+
+def test_a_clean_origin_main_checkout_runs_the_check_and_then_deploys(repo: Path) -> None:
+    done, calls = _run(repo, ["deploy"], [ACCOUNT, "yes"])
+
+    assert done.returncode == 0, done.stderr
+    assert "check: running the suite" in done.stdout
+    [check] = [g for g in _gate(repo) if g["cmd"] == "check"]
+    assert check["deploy_seen"] is False
+    assert _deployed(calls)
+
+
+def test_the_deployment_carries_the_full_sha_in_its_message_and_a_tag(repo: Path) -> None:
+    sha = "fedcba9876543210fedcba9876543210fedcba98"
+
+    done, calls = _run(repo, ["deploy"], [ACCOUNT, "yes"], GIT_HEAD=sha, GIT_ORIGIN=sha)
+
+    assert done.returncode == 0, done.stderr
+    [deploy] = [c["args"] for c in calls if c["args"][2] == "deploy"]
+    assert deploy[deploy.index("--message") + 1] == f"cyris-hosted {sha}"
+    assert deploy[deploy.index("--tag") + 1] == sha[:12]
+
+
+def test_nothing_of_the_gate_runs_before_the_account_is_confirmed(repo: Path) -> None:
+    _run(repo, ["deploy"], [ACCOUNT, "no"], GIT_STATUS="?? x\n")
+
+    assert _gate(repo) == []
 
 
 @pytest.mark.parametrize(

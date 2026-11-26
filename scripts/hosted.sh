@@ -2,6 +2,13 @@
 # Deploys and drives the hosted Worker `cyris-hosted` (wrangler.hosted.toml) on the trial
 # account. docs/hosted-tenants.md says which step runs which subcommand.
 #
+# deploy ships only a clean checkout whose HEAD is origin/main. After the account is confirmed it
+# refuses on any tracked change or untracked, non-ignored path (it lists up to 10), then fetches
+# origin main and refuses unless HEAD is that commit (a failed fetch refuses too), then runs
+# scripts/check.sh and refuses if it fails. Only then does it run wrangler deploy, with the
+# commit's full sha in --message and its first 12 characters in --tag, which `wrangler deployments
+# list` shows. There is no flag or switch that skips any of it.
+#
 # The account is the CLOUDFLARE_ACCOUNT_ID line of the repo's .env, parsed out alone: the file is
 # never sourced, and no other key of it, above all production's CLOUDFLARE_API_TOKEN, reaches
 # wrangler or cf. Without that line it is asked for. A wrong account would put the hosted Worker's
@@ -26,6 +33,10 @@ STATE=.env.hosted
 WRANGLER=(bun x wrangler)
 # .env holds production's secrets; wrangler must not read it into a hosted deploy.
 NO_DOTENV=(--env-file /dev/null)
+# The gate deploy runs before it ships anything. It is a variable only so the tests can stand in
+# for it: the real scripts/check.sh installs dependencies and runs the whole suite, which a test
+# of this script must not do. It is not a way past the gate; the owner does not set it.
+HOSTED_CHECK=${HOSTED_CHECK:-scripts/check.sh}
 
 # Every wrangler call goes through here, whoami included: the hosted config, and never .env,
 # whose CLOUDFLARE_API_TOKEN would make one call act as another credential than the next, so
@@ -474,8 +485,35 @@ case "${1:-}" in
   deploy)
     ask_account
     confirm_account deploy
+    # wrangler builds the container image from the checkout as it is, so only a tree that is
+    # exactly origin/main, and passes the gate, is deployed. There is no way past it.
+    # --untracked-files=all lists each file, where the default names only the directory.
+    dirty=$(git status --porcelain --untracked-files=all) || {
+      echo "refusing to deploy: git status failed" >&2
+      exit 1
+    }
+    if [[ -n "$dirty" ]]; then
+      count=$(printf '%s\n' "$dirty" | wc -l | tr -d ' ')
+      echo "refusing to deploy: the working tree is not clean ($count path(s)):" >&2
+      printf '%s\n' "$dirty" | sed -n '1,10p' | sed 's/^/  /' >&2
+      [[ "$count" -le 10 ]] || echo "  ... and $((count - 10)) more" >&2
+      echo "commit or remove them, or add them to .gitignore, then deploy again" >&2
+      exit 1
+    fi
+    git fetch origin main || { echo "refusing to deploy: git fetch origin main failed" >&2; exit 1; }
+    # FETCH_HEAD, not origin/main: it is what this fetch brought, whatever refspec the remote has.
+    head_sha=$(git rev-parse HEAD)
+    origin_sha=$(git rev-parse FETCH_HEAD)
+    if [[ "$head_sha" != "$origin_sha" ]]; then
+      echo "refusing to deploy: HEAD $head_sha is not origin/main $origin_sha" >&2
+      echo "check out origin/main (git switch --detach origin/main), then deploy again" >&2
+      exit 1
+    fi
+    "$HOSTED_CHECK" || { echo "refusing to deploy: $HOSTED_CHECK failed" >&2; exit 1; }
     log=$(mktemp "${TMPDIR:-/tmp}/cyris-hosted-deploy.XXXXXX")
-    run_wrangler deploy | tee "$log"
+    # --message and --tag are wrangler's own: the message is what `wrangler deployments list` shows
+    # under the deployment, the tag under its version. Both carry the commit that was deployed.
+    run_wrangler deploy --tag "${head_sha:0:12}" --message "cyris-hosted $head_sha" | tee "$log"
     url=$(grep -oE 'https://cyris-hosted\.[A-Za-z0-9.-]+\.workers\.dev' "$log" | head -1 || true)
     if [[ -n "$url" ]]; then
       set_state HOSTED_URL "$url"
