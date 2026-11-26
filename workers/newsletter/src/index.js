@@ -10,6 +10,31 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Authorization, Content-Type",
 };
 
+// KV lists at most 1000 keys a call, and a bulk get reads at most 100 keys as one of an
+// invocation's 1000 operations (https://developers.cloudflare.com/kv/api/list-keys/,
+// https://developers.cloudflare.com/kv/api/read-key-value-pairs/). Fewer than 100 a batch: a bulk
+// get's answer is capped at 25 MB, and one issue's HTML can run to hundreds of KB.
+const READ_BATCH = 50;
+
+// Every queued message, in key order: each page of the list by its cursor until KV says the list
+// is complete, since a page may come back short or empty before then.
+async function queued(kv) {
+  const names = [];
+  let cursor;
+  do {
+    const page = await kv.list({ prefix: "nl:", cursor });
+    names.push(...page.keys.map(({ name }) => name));
+    cursor = page.list_complete ? null : page.cursor;
+  } while (cursor);
+  const items = [];
+  for (let start = 0; start < names.length; start += READ_BATCH) {
+    const batch = names.slice(start, start + READ_BATCH);
+    const values = await kv.get(batch, "json");
+    items.push(...batch.map((name) => values.get(name)).filter(Boolean));
+  }
+  return items;
+}
+
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -18,10 +43,11 @@ function json(data, status = 200) {
 }
 
 export default {
-  // Inbound email from Cloudflare Email Routing.
+  // Inbound email from Cloudflare Email Routing. `received_at` is when it arrived, which a run
+  // reads to ack mail it could not file once its hold has passed (UNMATCHED_HOLD_DAYS).
   async email(message, env) {
     const { id, record } = await newsletterRecord(message);
-    await env.NEWSLETTERS.put(id, JSON.stringify({ id, ...record }));
+    await env.NEWSLETTERS.put(id, JSON.stringify({ id, ...record, received_at: new Date().toISOString() }));
   },
 
   // HTTP: cyris pulls (GET /newsletters) and clears (POST /ack).
@@ -39,11 +65,7 @@ export default {
     const { pathname } = new URL(request.url);
 
     if (request.method === "GET" && pathname === "/newsletters") {
-      const list = await env.NEWSLETTERS.list({ prefix: "nl:" });
-      const items = await Promise.all(
-        list.keys.map(async ({ name }) => JSON.parse(await env.NEWSLETTERS.get(name)))
-      );
-      return json(items.filter(Boolean));
+      return json(await queued(env.NEWSLETTERS));
     }
 
     if (request.method === "POST" && pathname === "/ack") {

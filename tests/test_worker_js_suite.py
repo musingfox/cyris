@@ -1,10 +1,10 @@
 """Drive the Workers' JS suites when the toolchain is installed.
 
-There are two of them and they run on different runners: `workers/app/` under
-vitest from the repo root (its config lives beside `wrangler.toml`, which is
-also at the root because the image is built from the whole repo), and
-`workers/rss/` under `node --test` from its own package. `promote` and
-`newsletter` have no tests at all.
+There are two of them and they run on different runners: `workers/app/` and
+`workers/newsletter/` under vitest from the repo root (its config lives beside
+`wrangler.toml`, which is also at the root because the image is built from the
+whole repo), and `workers/rss/` under `node --test` from its own package.
+`promote` has no tests at all.
 
 Neither ran in CI until 2026-09-05, and the failure was silent both times: a
 suite that skips reports the same green as a suite that passes.
