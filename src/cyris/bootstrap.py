@@ -625,7 +625,9 @@ def build_deps(
     # The reader's own addresses: mail from one is a forward, read for the sender it quotes.
     notify = cfg.app.notify
     own = own_address_keys(
-        notify.email_to if notify else "", notify.own_addresses if notify else ""
+        notify.email_to if notify else "",
+        notify.own_addresses if notify else "",
+        cfg.app.store.member_addresses,
     )
     if hosted:
         # The tenant's own queue, which the hosted Worker's email() handler fills from the

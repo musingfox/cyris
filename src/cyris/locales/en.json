@@ -61,6 +61,7 @@
   "feed_check.too_large": "The answer from {$url} is too large to be a feed. Paste the feed's own address.",
   "feed_check.too_many_redirects": "{$url} redirects too many times. Paste the feed's own address.",
   "feed_check.unreachable": "Could not reach {$url} ({$reason}). Check the address and try again.",
+  "hosted_settings.refused_addresses": "{$label} is a list of email addresses, separated by commas.",
   "hosted_settings.refused_blank": "{$label} must not be empty.",
   "hosted_settings.refused_body": "The request is not a JSON object of settings.",
   "hosted_settings.refused_cross_origin": "Settings are saved only from this digest's own settings page.",

@@ -357,6 +357,12 @@ def test_the_hosted_domain_is_one_name_from_the_worker_to_the_container() -> Non
     assert f"put_secret {name} " in (ROOT / "scripts/hosted.sh").read_text(encoding="utf-8")
 
 
+def test_the_member_addresses_are_one_name_from_the_worker_to_the_container() -> None:
+    name = HOSTED_B_GRADE_ENV_VARS["store.member_addresses"]
+
+    assert f"    {name}: members.join(" in _js("hosted_container.js")
+
+
 def test_a_hosted_container_is_handed_only_names_the_default_worker_knows() -> None:
     """The allow-list holds no Worker URL or bearer, and no name the default Worker lacks."""
     [block] = re.findall(r"const HOSTED_SECRETS = \[(.*?)\];", _js("hosted_container.js"), re.S)

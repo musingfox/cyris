@@ -31,8 +31,7 @@
         "llm_provider.reasoning_effort": {"reason": "operator-set"},
         "notify.discord_webhook_url": {"reason": "operator-set"},
         "notify.email_to": {"reason": "operator-set"},
-        "notify.email_from": {"reason": "operator-set"},
-        "notify.own_addresses": {"reason": "operator-set"}
+        "notify.email_from": {"reason": "operator-set"}
       },
       "limits": {"digest_times_min": 1, "digest_times_max": 1, "max_articles_per_digest_max": 400}
     }
@@ -44,6 +43,13 @@
       "status": 200,
       "answer": {"ok": true, "values": {"digest.output_language": "zh-Hant"}, "note": "Effective next run.", "ui_lang": "zh-Hant"},
       "reads_back": {"digest.output_language": "zh-Hant"}
+    },
+    {
+      "name": "the reader's other addresses are saved, on a hosted tenant too",
+      "body": {"values": {"notify.own_addresses": "me@work.example"}},
+      "status": 200,
+      "answer": {"ok": true, "values": {"notify.own_addresses": "me@work.example"}, "note": "Effective next run.", "ui_lang": "en"},
+      "reads_back": {"notify.own_addresses": "me@work.example"}
     },
     {
       "name": "the style is saved",

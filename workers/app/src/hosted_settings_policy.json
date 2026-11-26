@@ -15,7 +15,8 @@
     "digest.scoring_snippet_length",
     "digest.summarize_snippet_length",
     "digest.filter_snippet_length",
-    "vote_similarity.enabled"
+    "vote_similarity.enabled",
+    "notify.own_addresses"
   ],
   "operator_keys": ["daily_run_cap", "max_digest_times", "monthly_ai_budget_usd"],
   "provider": "anthropic",

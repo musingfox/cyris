@@ -107,13 +107,15 @@ LOCAL_B_GRADE_ENV_VARS: dict[str, str] = {
     "store.sqlite_path": "CYRIS_STORE_SQLITE_PATH",
 }
 
-# Grade-B identity only a hosted tenant's run container has. The hosted Worker sets both on
+# Grade-B identity only a hosted tenant's run container has. The hosted Worker sets each on
 # each container it starts: the tenant id from the container's own name, so no deployer sets
-# it (ADR-0028), and the hosted domain from the Worker's own variable of that name, which the
-# operator sets once (ADR-0029). docs/architecture.md §5.
+# it (ADR-0028), the hosted domain from the Worker's own variable of that name, which the
+# operator sets once (ADR-0029), and the member addresses from the tenant's invite list in the
+# registry (ADR-0050). docs/architecture.md §5.
 HOSTED_B_GRADE_ENV_VARS: dict[str, str] = {
     "store.tenant_id": "CYRIS_STORE_TENANT_ID",
     "store.hosted_domain": "CYRIS_STORE_HOSTED_DOMAIN",
+    "store.member_addresses": "CYRIS_STORE_MEMBER_ADDRESSES",
 }
 
 # The operator's way into one hosted tenant from outside its run container: `cyris --tenant`
@@ -320,6 +322,10 @@ class StoreConfig(BaseModel):
     # at (`https://<it>/t/<tenant>/<issue>`). From CYRIS_STORE_HOSTED_DOMAIN, which the hosted
     # Worker forwards from its own variable of that name (ADR-0029).
     hosted_domain: str = ""
+    # Set only beside `tenant_id`: the tenant's members, comma-separated, the addresses its reader
+    # signs in with, which a run reads as the reader's own. From CYRIS_STORE_MEMBER_ADDRESSES, which
+    # the hosted Worker sets from the registry's invite list (ADR-0050).
+    member_addresses: str = ""
     # Set only by `OPERATOR_TENANT_ENV_VAR`, beside the tenant id it names: this process is the
     # operator's, outside the tenant's run, so the tables are reached through the hosted
     # Worker's operator route with the Access service token, not the run's gateway (ADR-0036).
@@ -359,6 +365,7 @@ class StoreConfig(BaseModel):
                 "sqlite_path": LOCAL_B_GRADE_ENV_VARS["store.sqlite_path"],
                 "tenant_id": HOSTED_B_GRADE_ENV_VARS["store.tenant_id"],
                 "hosted_domain": HOSTED_B_GRADE_ENV_VARS["store.hosted_domain"],
+                "member_addresses": HOSTED_B_GRADE_ENV_VARS["store.member_addresses"],
             },
         )
         if operator_tenant and isinstance(filled, dict):

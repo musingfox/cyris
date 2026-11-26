@@ -176,6 +176,7 @@
   "terms.title": {"text": "服務條款", "source": "Terms of service"},
   "terms.use": {"text": "請將本服務用於您個人的閱讀。請勿嘗試存取其他精選摘要、營運者的工具或他人的帳號；請勿使服務負載過重，或利用本服務從事違法行為；並只加入您可合法閱讀的來源。", "source": "Use the service for your own reading. Do not try to reach another digest, the operator's tools or anyone else's account; do not overload the service or use it to break the law; and add only sources you may lawfully read."},
   "terms.use_heading": {"text": "使用規範", "source": "Using the service"},
+  "hosted_settings.refused_addresses": {"text": "{$label}必須是以逗號分隔的電子郵件地址。", "source": "{$label} is a list of email addresses, separated by commas."},
   "hosted_settings.refused_blank": {"text": "{$label}不能空白。", "source": "{$label} must not be empty."},
   "hosted_settings.refused_body": {"text": "這個請求不是設定的 JSON 物件。", "source": "The request is not a JSON object of settings."},
   "hosted_settings.refused_cross_origin": {"text": "設定只能從這份精選自己的設定頁儲存。", "source": "Settings are saved only from this digest's own settings page."},

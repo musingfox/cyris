@@ -465,6 +465,53 @@ async def test_a_hosted_runs_newsletters_are_its_own_queue_and_a_preview_leaves_
     assert {r.url.path for r in gateway.requests} == {"/t/alpha/query"}
 
 
+async def test_a_members_mail_is_a_forward_read_for_its_sender_or_held(
+    hosted_cfg, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, gateway = hosted_cfg
+    # The tenant's invite list, as the hosted Worker hands it to the container.
+    monkeypatch.setenv("CYRIS_STORE_MEMBER_ADDRESSES", "Member@A.test,other@a.test")
+    cfg = load_files(*_files(tmp_path), {**TEST_SETTINGS, **NOTIFY})
+    block = "Forwarded message\nFrom: <writer@letters.test>\nDate: today\n\nThe letter"
+    for id_, text in (("nl:1", block), ("nl:2", "no block")):
+        gateway.db.query(
+            "INSERT INTO newsletters (id, sender, subject, html, text, date, headers, received_at) "
+            "VALUES (?, 'member+fwd@a.test', 'WG: S', '', ?, ?, '[]', ?)",
+            [id_, text, datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat()],
+        )
+
+    [source, _] = bootstrap.build_deps(cfg).fetch_sources
+    articles = await source.fetch_articles(datetime.now(UTC), datetime.now(UTC), cfg.sources)
+
+    assert [(a.source_name, a.content) for a in articles] == [("writer@letters.test", "The letter")]
+    assert [r["id"] for r in gateway.db.query("SELECT id FROM newsletters").rows] == ["nl:2"]
+
+
+async def test_an_address_the_tenant_entered_on_its_settings_page_is_read_as_its_own(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The tenant's own `notify.own_addresses` row reaches its run, beside its members'."""
+    from cyris.adapters.store.settings import D1Settings
+
+    _hosted_env(monkeypatch)
+    gateway = FakeGateway("alpha")
+    seed_d1_settings(gateway.db)
+    D1Settings(gateway.db).set({"notify.own_addresses": "Me@Office.test"})
+    _through(gateway, monkeypatch)
+    cfg = bootstrap.load_effective_config(*_files(tmp_path))
+    block = "Forwarded message\nFrom: <writer@letters.test>\nDate: today\n\nThe letter"
+    gateway.db.query(
+        "INSERT INTO newsletters (id, sender, subject, html, text, date, headers, received_at) "
+        "VALUES ('nl:1', 'me@office.test', 'FW: S', '', ?, ?, '[]', ?)",
+        [block, datetime.now(UTC).isoformat(), datetime.now(UTC).isoformat()],
+    )
+
+    [source, _] = bootstrap.build_deps(cfg).fetch_sources
+    articles = await source.fetch_articles(datetime.now(UTC), datetime.now(UTC), cfg.sources)
+
+    assert [(a.source_name, a.content) for a in articles] == [("writer@letters.test", "The letter")]
+
+
 async def test_a_hosted_runs_rss_is_its_own_buffer_read_through_its_gateway(hosted_cfg) -> None:
     cfg, gateway = hosted_cfg
     apply_schema(gateway.db)

@@ -35,6 +35,11 @@ const nonBlank = (value) => text(value) ?? (value.trim() ? null : { reason: "bla
 // `DigestConfig.type_scale`'s steps, which type_scale.js serves.
 const TYPE_SCALES = [0.875, 1, 1.125];
 const typeScale = (value) => (TYPE_SCALES.includes(value) ? null : { reason: "type_scale" });
+// `_address_list` in config.py: addresses split on commas and spaces, each one name@host.domain.
+const ADDRESS_SEPARATOR = /[\s,]+/;
+const ONE_ADDRESS = /^[^@\s,]+@[^@\s,]+\.[^@\s,]+$/;
+const addressList = (value) =>
+  text(value) ?? (value.split(ADDRESS_SEPARATOR).every((part) => !part || ONE_ADDRESS.test(part)) ? null : { reason: "addresses" });
 
 // Every key of `writable_settings`, with its rule: the bounds config.py sets on the field, and
 // for the article cap the policy's, which is tighter than the field's. A Map, so a key a request
@@ -55,6 +60,7 @@ const RULES = new Map([
   ["digest.summarize_snippet_length", wholeFrom(1)],
   ["digest.filter_snippet_length", wholeFrom(1)],
   ["vote_similarity.enabled", onOff],
+  ["notify.own_addresses", addressList],
 ]);
 export const WRITABLE = Object.freeze([...RULES.keys()]);
 

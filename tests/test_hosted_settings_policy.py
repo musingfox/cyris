@@ -69,7 +69,8 @@ def test_every_writable_key_is_a_settings_key_and_none_is_the_operators() -> Non
 
     assert writable <= set(GRADE_D_KEYS)
     assert not writable & {"llm_provider.provider", "llm_provider.model", *POLICY["blank_settings"]}
-    assert not any(key.startswith("notify.") for key in writable)
+    # The reader's own addresses are the one notify key a tenant writes: no notify target is.
+    assert {key for key in writable if key.startswith("notify.")} == {"notify.own_addresses"}
 
 
 def test_the_shared_page_locks_for_one_of_the_two_reasons() -> None:
