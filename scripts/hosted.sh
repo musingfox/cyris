@@ -56,12 +56,16 @@ state_get() {
 }
 
 # set_state KEY VALUE: rewrite the file with KEY=VALUE through a temp file, so a failed write
-# leaves the old one, and keep mode 600 on the file that replaces it.
+# leaves the old one. The temp file holds every saved secret, so it is made mode 600 from the first
+# byte (a stale one is removed first, or it would keep its own mode), not chmod-ed after the copy.
 set_state() {
   local key=$1 value=$2
-  grep -v "^$key=" "$STATE" >"$STATE.new" || true
-  chmod 600 "$STATE.new"
-  printf '%s=%s\n' "$key" "$value" >>"$STATE.new"
+  (
+    umask 077
+    rm -f "$STATE.new"
+    grep -v "^$key=" "$STATE" >"$STATE.new" || true
+    printf '%s=%s\n' "$key" "$value" >>"$STATE.new"
+  )
   mv "$STATE.new" "$STATE"
   printf -v "STATE_$key" '%s' "$value"
 }

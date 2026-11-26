@@ -1405,3 +1405,49 @@ def test_service_tokens_that_cf_cannot_list_cost_only_the_client_id(repo: Path) 
     assert "cf could not read the service tokens: no such thing in this account" in done.stderr
     assert puts["CYRIS_ACCESS_AUD"] == "AUD-FROM-CF"
     assert puts["CYRIS_HOSTED_OPERATORS"] == "typed-id.access"
+
+
+# Stands in for grep: records the mode of the file its stdout was opened as (the temp file at the
+# moment it is created, before anything chmods it), then runs the real one.
+GREP = """#!/usr/bin/env python3
+import os, stat, sys
+here = os.path.dirname(os.path.abspath(__file__))
+mode = os.fstat(1).st_mode
+if stat.S_ISREG(mode):
+    with open(os.environ["MODES"], "a") as log:
+        log.write(oct(mode & 0o777) + "\\n")
+real = next(
+    os.path.join(d, "grep") for d in os.environ["PATH"].split(":")
+    if d and os.path.abspath(d) != here and os.path.exists(os.path.join(d, "grep"))
+)
+os.execv(real, [real, *sys.argv[1:]])
+"""
+
+
+@pytest.mark.parametrize("stale", [False, True])
+def test_the_temp_state_file_is_mode_600_before_a_secret_is_written_into_it(
+    repo: Path, stale: bool
+) -> None:
+    """It holds every saved secret while it is copied: a mode set afterwards leaves a window."""
+    grep = repo / "bin" / "grep"
+    grep.write_text(GREP, encoding="utf-8")
+    grep.chmod(grep.stat().st_mode | stat.S_IEXEC)
+    state = repo / ".env.hosted"
+    state.write_text("HOSTED_URL=http://old\nANTHROPIC_API_KEY=sk-ant-SECRET\n", encoding="utf-8")
+    if stale:
+        # A temp file an earlier, killed run left, which a redirect would write into at its mode.
+        (repo / ".env.hosted.new").write_text("stale\n", encoding="utf-8")
+        (repo / ".env.hosted.new").chmod(0o644)
+    modes = repo / "modes.txt"
+    previous = os.umask(0o022)
+    try:
+        done, _ = _run(repo, ["deploy"], [ACCOUNT, "yes"], MODES=str(modes))
+    finally:
+        os.umask(previous)
+
+    assert done.returncode == 0, done.stderr
+    # Every grep that wrote a file for the rewrite wrote one that was already mode 600.
+    assert set(modes.read_text(encoding="utf-8").split()) == {"0o600"}
+    assert stat.S_IMODE(state.stat().st_mode) == 0o600
+    assert "ANTHROPIC_API_KEY=sk-ant-SECRET\n" in state.read_text(encoding="utf-8")
+    assert not (repo / ".env.hosted.new").exists()
