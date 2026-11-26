@@ -8,7 +8,13 @@
     "general.digest_window_hours",
     "digest.rank_by_preference",
     "digest.summarize_follow",
-    "routing.score_threshold"
+    "routing.score_threshold",
+    "digest.vote_half_life_days",
+    "digest.topic_lifetime_days",
+    "vote_similarity.max_seeds",
+    "digest.scoring_snippet_length",
+    "digest.summarize_snippet_length",
+    "digest.filter_snippet_length"
   ],
   "operator_keys": ["daily_run_cap", "max_digest_times", "monthly_ai_budget_usd"],
   "provider": "anthropic",

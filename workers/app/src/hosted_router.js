@@ -33,6 +33,7 @@
 //   GET  /hosted/tenants/<tenant>/members                   the tenant's invite list
 //   POST /hosted/tenants/<new>/restore?date=D&from=T        T's export of day D into the new id <new>
 //   GET  /t/<tenant>/...                                    the tenant's pages (hosted_pages.js), to its session
+//   GET  /t/<tenant>/interest                               the interest map its run wrote, to its session (ADR-0048)
 //   GET  /t/<tenant>/settings                               the settings page every edition shares, to its session
 //   /api/settings, /api/settings/values, /api/{sources,topics}, /static/...
 //                                                           that page's JSON and files, to a session, for its own tenant
@@ -45,7 +46,7 @@
 import { LEGAL_PATHS, handleLegal } from "./hosted_legal.js";
 import { LOGIN_PATHS, handleLogin } from "./hosted_login.js";
 import { admitOperator, unsetOperators } from "./hosted_operators.js";
-import { PRIVATE_HEADERS, SITE_ROUTE, VOTE_PATH, privateHeaders, siteHeaders } from "./hosted_pages.js";
+import { INTEREST_PAGE, PRIVATE_HEADERS, SITE_ROUTE, VOTE_PATH, privateHeaders, siteHeaders } from "./hosted_pages.js";
 import { SHARED_PAGE, isSharedPath } from "./hosted_shared_settings.js";
 import { handleVote } from "./hosted_vote.js";
 import { WAITLIST_PATH, handleWaitlist } from "./hosted_waitlist.js";
@@ -142,6 +143,12 @@ async function siteRequest(request, tenant, rest, deps) {
   // wrote does, so its probe shows a signed-in reader the site bar's links.
   const voteToken = () => deps.voteToken(sessionHash);
   if (rest === SHARED_PAGE) return siteHeaders(await deps.sharedSettings(request, tenant, rest, voteToken));
+  // The interest map is a page the tenant's run wrote (ADR-0048), served as its issues are. Until
+  // a run has written it, the reader gets the one fixed 404, as for a page of another tenant.
+  if (rest === INTEREST_PAGE) {
+    const map = await deps.page(request, tenant, rest, voteToken);
+    return siteHeaders(map.status === 404 ? json(NOT_FOUND, 404) : map);
+  }
   // A paused tenant's pages stay readable; only its runs stop. The page carries a vote token for
   // this session, made only if the page is one that is served.
   return siteHeaders(await deps.page(request, tenant, rest, voteToken));

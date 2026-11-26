@@ -177,6 +177,7 @@
   "hosted_settings.refused_url_service": {"text": "訂閱網址不能是這項服務或 workers.dev 上的網址。", "source": "A feed URL cannot be an address on this service or on workers.dev."},
   "hosted_settings.refused_url_userinfo": {"text": "訂閱網址不能帶使用者名稱或密碼。", "source": "A feed URL carries no user name or password."},
   "hosted_settings.refused_whole_number": {"text": "{$label}是 {$min} 到 {$max} 之間的整數。", "source": "{$label} is a whole number from {$min} to {$max}."},
+  "hosted_settings.refused_whole_number_min": {"text": "{$label}是 {$min} 以上的整數。", "source": "{$label} is a whole number, {$min} or more."},
   "index.articles": {"text": "{$count} 篇文章", "source": ".input {$count :integer}\n.match $count\none {{{$count} article}}\n* {{{$count} articles}}"},
   "index.description": {"text": "Cyris 精選的所有期數，每期從 RSS 和電子報挑出值得讀的文章，由新到舊排列。", "source": "Every issue of a Cyris digest: the articles worth reading from a set of RSS feeds and newsletters, newest first."},
   "index.empty": {"text": "還沒有任何一期精選。執行 {#code}cyris run{/code} 產生第一期。", "source": "No digests yet. Run {#code}cyris run{/code} to generate your first digest."},

@@ -11,6 +11,11 @@ decision-makers: ""
 > answers `limits`; and the shared page opens the keys a tenant writes and the schedule, so the
 > policy's `shared_page` stub is gone. The rest of this ADR still stands.
 >
+> Amended by [ADR-0048](0048-a-hosted-tenants-interest-map-is-a-page-its-run-writes.md)
+> (2026-11-26): the probe's answer no longer carries `settings: false`, so on a tenant's pages the
+> gated controls open too, the archive's Interest link to the map the tenant's run writes among
+> them; *The probe*'s "the gated controls still closed" no longer holds.
+>
 > Update (2026-11-24, M3): the shared page has left its stub path. The hosted Worker serves it at
 > `/t/<tenant>/settings`, the path the digest pages' Settings link opens, and
 > `/t/<tenant>/settings-next` is gone. The page ADR-0040 built is deleted with its policy and its

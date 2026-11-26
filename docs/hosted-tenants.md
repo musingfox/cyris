@@ -778,12 +778,14 @@ rendered into the committed `workers/app/src/shared_settings.build.json` that st
 the keys the hosted policy keeps from a tenant locked
 ([ADR-0043](decisions/0043-one-settings-page-an-edition-locks-a-key.md)); no container starts for
 it (ADR-0040). There the reader changes the tenant's output language, style, type size, articles
-per run (at most 400), window, vote order, follow summaries, Top story score, publish hour and time
-zone, and adds or removes RSS feeds, 30 sources at most with newsletters counted. The page offers a
+per run (at most 400), window, vote order, follow summaries, Top story score, vote half-life, topic
+survival days, vote seeds, the three snippet lengths, publish hour and time zone, and adds or removes RSS feeds, 30 sources at most with newsletters counted. The page offers a
 second publish hour only to a tenant you allowed two: for a tenant allowed one, Evening is disabled
 with `Not included in your plan.`
 ([ADR-0047](decisions/0047-a-route-refuses-a-change-to-a-locked-key.md)). The model, the notify
-targets, the run cap, the number of digest hours and the AI allowance stay yours: their controls are
+targets, the reasoning effort, the run cap, the number of digest hours and the AI allowance stay
+yours (a longer snippet only spends the tenant's own monthly allowance,
+[ADR-0038](decisions/0038-a-hosted-tenants-ai-spend-is-metered-in-the-registry.md)): their controls are
 disabled with the line `Set by the service's operator.`, the routes refuse a change to them, and the
 run pins the model and blanks the notify targets whatever the tenant's rows say. A save applies from
 the tenant's next run, and the hours and zone from the next tick, since they go to the registry as
@@ -824,6 +826,28 @@ To check it on a trial tenant, after a deploy that built the page:
 A save refused with `This save was refused: it did not come from this settings page.` means the
 browser sent the save without this Worker's `Origin`; the browser's console names any script or
 style the page's policy refused.
+
+### The reader's interest map
+
+A signed-in reader's archive shows the Interest map link, to `HOSTED_URL/t/<tenant>/interest`, as a
+local or cloud archive does. No container draws it on request: every run of the tenant but a
+preview draws the map as it ends, from the tenant's own votes and holds, and stores it in the
+tenant's `hosted_pages` at `/interest.html`
+([ADR-0048](decisions/0048-a-hosted-tenants-interest-map-is-a-page-its-run-writes.md)). A vote
+reaches it at the tenant's next run, as it reaches the digest; the hold clocks, and the page's `as
+of` line, are the run's end. The map's site bar links Archive, Settings and Sign out; it has no vote
+or topic control. A map that could not be stored leaves the last one, and the run's summary in
+`digest_runs` names `interest_page_error`; the run itself is not failed for it.
+
+To check it on a trial tenant, after a run of the tenant (step 7):
+
+1. Signed in as alpha's reader, open alpha's archive: under its heading, a line links the Interest
+   map. Open it: `HOSTED_URL/t/alpha/interest` shows the map, or the line saying no vote is tagged
+   yet, with an `as of` time at the last run's end.
+2. As the operator, `POST /hosted/tenants/alpha/query` with `{"sql": "SELECT updated_at FROM
+   hosted_pages WHERE path = '/interest.html'"}` answers that run's end.
+3. In the same browser, `HOSTED_URL/t/bravo/interest` answers `{"error":"not found"}`, as every
+   path of another tenant does, and so does a tenant's own map before its first run.
 
 ### Waitlist
 

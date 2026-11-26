@@ -73,6 +73,7 @@
   "hosted_settings.refused_url_service": "A feed URL cannot be an address on this service or on workers.dev.",
   "hosted_settings.refused_url_userinfo": "A feed URL carries no user name or password.",
   "hosted_settings.refused_whole_number": "{$label} is a whole number from {$min} to {$max}.",
+  "hosted_settings.refused_whole_number_min": "{$label} is a whole number, {$min} or more.",
   "index.articles": ".input {$count :integer}\n.match $count\none {{{$count} article}}\n* {{{$count} articles}}",
   "index.description": "Every issue of a Cyris digest: the articles worth reading from a set of RSS feeds and newsletters, newest first.",
   "index.empty": "No digests yet. Run {#code}cyris run{/code} to generate your first digest.",

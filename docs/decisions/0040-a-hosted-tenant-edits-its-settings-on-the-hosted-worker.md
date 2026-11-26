@@ -17,6 +17,24 @@ decision-makers: ""
 > `/api/sources` and `/api/sources/delete` routes are deleted, and `/t/<tenant>/settings` serves
 > ADR-0043's shared page. Its writable keys, its CSRF rule, its source rules and the poll's hold
 > stand, as the shared page's routes keep them.
+>
+> Amended by [ADR-0048](0048-a-hosted-tenants-interest-map-is-a-page-its-run-writes.md)
+> (2026-11-26): *The link*'s probe answer is now `{authorized: true, settings_link: true}`, so the
+> gated controls open for a signed-in reader, and the archive's Interest link opens the map the
+> tenant's run writes at `/t/<tenant>/interest`.
+>
+> Update (2026-11-26, M8): six keys join the eight a tenant writes below, so the policy's
+> `writable_settings` lists fourteen: `digest.vote_half_life_days`, `digest.topic_lifetime_days`,
+> `vote_similarity.max_seeds`, `digest.scoring_snippet_length`, `digest.summarize_snippet_length`
+> and `digest.filter_snippet_length`. Each is held to the bounds config.py puts on its field, which
+> for the seeds and the three snippet lengths is a whole number of 1 or more and no more. The reason
+> a snippet length may now be a tenant's is that a tenant's AI spend is capped by its monthly
+> allowance ([ADR-0038](0038-a-hosted-tenants-ai-spend-is-metered-in-the-registry.md)), so a longer
+> snippet costs the tenant its allowance and the operator nothing past it. The reasoning effort
+> stays the operator's with the provider and model, until the model choice card. The seeds are
+> saved by the vote form's own route, `POST /api/settings/vote-similarity`, which the hosted Worker
+> now answers for that key alone: the form's other keys sent as they are held are no change, and a
+> change to one is refused as locked (ADR-0047). The decision above is otherwise as it was.
 
 ## Context and Problem Statement
 

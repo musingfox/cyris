@@ -371,7 +371,8 @@ def run(
         bool,
         typer.Option(
             "--if-due",
-            help="Run only if this hour is on the digest schedule; picks --period from it",
+            help="Run only if this hour is on the digest schedule, or a digest hour just missed "
+            "has no ok run; picks --period from it",
         ),
     ] = False,
     date: Annotated[
@@ -398,7 +399,7 @@ def run(
 
     from cyris.adapters.store.d1 import D1Error
     from cyris.bootstrap import load_effective_config
-    from cyris.service_layer.schedule import due_period, schedule_counts
+    from cyris.service_layer.schedule import due_period, missed_slot, schedule_counts
     from cyris.utils.timezone import now_in_timezone
 
     cfg = None
@@ -441,17 +442,24 @@ def run(
         now = now_in_timezone(cfg.app.general.timezone)
         counts = schedule_counts(hosted=cfg.app.store.is_hosted)
         due = due_period(now, cfg.app.general.digest_schedule, counts)
-        if due is None:
+        # A local install's tick also catches up a digest hour it missed (below, once it holds
+        # the lock, since a run that ends meanwhile may have made it). The app Worker does that
+        # on Cloudflare, and a preview publishes nothing to catch up.
+        may_catch_up = not (dry_run or cfg.app.store.is_cloudflare)
+        if due is None and not (
+            may_catch_up and missed_slot(now, cfg.app.general.digest_schedule, counts)
+        ):
             message = f"Not a digest hour ({', '.join(cfg.app.general.digest_schedule)})."
             if output is not None:
                 typer.echo(message, err=True)
                 raise typer.Exit(1)
             typer.echo(message)
             return
-        period = due
-        # A tick that waits for the lock makes the issue of the hour it started in,
-        # even when it gets the lock after that hour, or that date, has ended.
-        date = now.strftime("%Y-%m-%d")
+        if due is not None:
+            period = due
+            # A tick that waits for the lock makes the issue of the hour it started in,
+            # even when it gets the lock after that hour, or that date, has ended.
+            date = now.strftime("%Y-%m-%d")
 
     if dry_run or cfg.app.store.is_cloudflare:
         _run_pipeline(cfg, period, dry_run, force, date, output, if_due)
@@ -466,9 +474,11 @@ def run(
         raise typer.Exit(1) from e
     if lock is None:
         if if_due:
+            # A catch-up tick has no period yet: it is named once the lock is held.
+            what = f"this {period} tick" if due is not None else "this tick"
             typer.echo(
                 f"Waited {DIGEST_LOCK_WAIT_SECONDS / 60:g} minutes for another digest to finish; "
-                f"this {period} tick gives up."
+                f"{what} gives up."
             )
         else:
             typer.echo(
@@ -476,6 +486,16 @@ def run(
             )
         return
     try:
+        if if_due and due is None:
+            slot = _caught_up_slot(cfg, now, counts)
+            if slot is None:
+                typer.echo(
+                    f"Not a digest hour ({', '.join(cfg.app.general.digest_schedule)}); "
+                    "the last one has its issue."
+                )
+                return
+            period, date = slot.period, slot.date
+            typer.echo(f"Catching up the {date} {period} issue: no run of it finished ok.")
         if if_due and _issue_stored(cfg, date, period):
             typer.echo(
                 f"The {date} {period} issue already exists; this tick does nothing. "
@@ -499,6 +519,29 @@ def _take_run_lock(store_path: Path, wait: bool) -> int | None:
             return None
         time.sleep(min(DIGEST_LOCK_POLL_SECONDS, left))
     return lock
+
+
+def _caught_up_slot(cfg, now, counts):
+    """The digest hour this tick runs in place of a missed one, or None; see `catch_up`.
+
+    A `digest_runs` the store cannot answer is None, as the app Worker's catch-up: it loses
+    nothing the lost run had not already lost.
+    """
+    from cyris.adapters.store.d1 import D1Error
+    from cyris.adapters.store.runs import D1RunLog
+    from cyris.bootstrap import build_d1_client
+    from cyris.service_layer.schedule import catch_up
+
+    log = D1RunLog(build_d1_client(cfg), "")
+
+    def read_runs(period: str, since: str):
+        try:
+            return log.since(period, since)
+        except D1Error as e:
+            logger.warning("digest_runs read failed: %s", e)
+            return None
+
+    return catch_up(now, cfg.app.general.digest_schedule, counts, read_runs)
 
 
 def _issue_stored(cfg, date: str, period: str) -> bool:
