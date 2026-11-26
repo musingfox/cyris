@@ -201,6 +201,7 @@ _PROBE_VALUES = {
     "notify.discord_webhook_url": STORED_WEBHOOK,
     "notify.email_to": "",
     "notify.email_from": "",
+    "notify.own_addresses": "",
     "digest.max_articles_per_digest": 200,
     "digest.scoring_snippet_length": 1000,
     "digest.summarize_snippet_length": 1000,

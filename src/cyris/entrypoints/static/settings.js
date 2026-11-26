@@ -674,9 +674,10 @@ $("pipeline-form").addEventListener("submit", async (e) => {
   if (plain) show(plain.ok ? "ok" : "err", plain.line, "pipeline-result");
 });
 
-// The Notifications form saves in two parts too: the webhook and the mail addresses.
+// The Notifications form saves in three parts: the webhook, the mail addresses, which a test
+// message checks, and the reader's other addresses, a plain setting.
 const DISCORD_PART = (field) => field === "discord-webhook";
-const EMAIL_PART = (field) => !DISCORD_PART(field);
+const EMAIL_PART = (field) => field === "email-to" || field === "email-from";
 
 $("notify-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -722,6 +723,11 @@ $("notify-form").addEventListener("submit", async (e) => {
       refuseSetting(err);
       lines.push(err.message);
     }
+  }
+  const plain = await savePlain(form, stored);
+  if (plain) {
+    failed = failed || !plain.ok;
+    lines.push(plain.line);
   }
   saving.delete(form);
   markClean(form, stored);

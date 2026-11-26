@@ -190,5 +190,13 @@
       "email-from"
     ],
     "route": "email"
+  },
+  "notify.own_addresses": {
+    "tab": "notifications",
+    "controls": [
+      "own-addresses"
+    ],
+    "route": "plain",
+    "optional": true
   }
 }

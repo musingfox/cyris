@@ -55,9 +55,11 @@ def test_every_runtime_setting_is_required_unless_it_is_optional(key):
     assert TABLES[table].model_fields[field].is_required() is (key not in OPTIONAL_SETTINGS)
 
 
-def test_the_optional_exception_is_one_key_holding_the_default_mode():
-    assert tuple(OPTIONAL_SETTINGS) == ("llm_provider.reasoning_effort",)
-    assert OPTIONAL_SETTINGS["llm_provider.reasoning_effort"] == "default"
+def test_the_optional_exceptions_are_the_default_mode_and_no_other_addresses():
+    assert OPTIONAL_SETTINGS == {
+        "llm_provider.reasoning_effort": "default",
+        "notify.own_addresses": "",
+    }
 
 
 @pytest.mark.parametrize("key", OPTIONAL_SETTINGS)

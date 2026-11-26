@@ -270,6 +270,11 @@
               <p class="small">{{ t("settings_help.notify.email_from") }}</p>
               <input class="input" id="email-from" type="email" placeholder="digest@your-domain" autocomplete="off">
             </div>
+            <div class="field">
+              <label class="label" for="own-addresses">{{ t("settings_field.notify.own_addresses") }}</label>
+              <p class="small">{{ t("settings_help.notify.own_addresses") }}</p>
+              <input class="input" id="own-addresses" type="text" placeholder="you@example.com, you@work.example" autocomplete="off">
+            </div>
             <div class="actions-line">
               <button class="btn primary" type="submit" id="save-notify" disabled>{{ t("settings.save") }}</button>
               <button class="btn danger" type="button" id="notify-off" hidden>{{ t("settings.turn_off") }}</button>

@@ -387,8 +387,9 @@ describe("GET /api/settings on the hosted Worker", () => {
     expect(values["digest.scoring_snippet_length"]).toBe(STARTING_VALUES["digest.scoring_snippet_length"]);
     expect(values["vote_similarity.provider"]).toBe(STARTING_VALUES["vote_similarity.provider"]);
     expect(embedders.map((embedder) => embedder.name)).toEqual([STARTING_VALUES["vote_similarity.provider"]]);
-    // The one key no seed writes: an absent reasoning effort is the provider's default (ADR-0018).
-    expect(missing).toEqual(["llm_provider.reasoning_effort"]);
+    // The keys no seed writes: an absent reasoning effort is the provider's default (ADR-0018), and
+    // a tenant's own addresses are its members', which the Worker hands its run (ADR-0050).
+    expect(missing).toEqual(["llm_provider.reasoning_effort", "notify.own_addresses"]);
   });
 
   it("reads through TenantDb, which hands out no notify target whoever asks", async () => {

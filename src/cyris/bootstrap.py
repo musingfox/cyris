@@ -624,7 +624,9 @@ def build_deps(
     create_source = None if dry_run else D1SourceStore(d1).insert
     # The reader's own addresses: mail from one is a forward, read for the sender it quotes.
     notify = cfg.app.notify
-    own = own_address_keys(notify.email_to if notify else "")
+    own = own_address_keys(
+        notify.email_to if notify else "", notify.own_addresses if notify else ""
+    )
     if hosted:
         # The tenant's own queue, which the hosted Worker's email() handler fills from the
         # tenant's random address (ADR-0034); a preview reads it without the ack's delete.

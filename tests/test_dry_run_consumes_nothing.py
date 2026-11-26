@@ -74,6 +74,26 @@ def test_a_preview_still_fetches_newsletters(cfg) -> None:
     assert "CloudflareNewsletterSource" in names
 
 
+def test_the_newsletter_source_knows_the_readers_addresses_from_both_settings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Beside the preview's rules: the one other thing `build_deps` hands this source."""
+    monkeypatch.setenv("CYRIS_WORKER_TOKEN", "tok")
+    config_path = tmp_path / "cyris.toml"
+    config_path.write_text(CONFIG.format(vault=tmp_path), encoding="utf-8")
+    sources_path = tmp_path / "sources.yaml"
+    sources_path.write_text(SOURCES, encoding="utf-8")
+    settings = {
+        **TEST_SETTINGS,
+        "notify.email_to": "Me@Mail.example",
+        "notify.own_addresses": "me+x@work.example, alt@home.example",
+    }
+
+    source = _newsletter_source(build_deps(load_files(config_path, sources_path, settings)))
+
+    assert source._own == {"me@mail.example", "me@work.example", "alt@home.example"}
+
+
 def test_the_digest_marks_what_the_newsletter_source_read_from_a_forward(
     cfg, monkeypatch: pytest.MonkeyPatch
 ) -> None:

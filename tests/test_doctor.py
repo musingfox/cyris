@@ -102,7 +102,7 @@ async def test_a_sqlite_store_is_named_with_its_path_and_asks_cloudflare_nothing
     assert f"at {cfg.app.store.sqlite_path}" in store.detail
     assert "sqlite_path" in store.fix
     assert _by_name(checks, "store wiring").status == "ok"
-    assert _by_name(checks, "settings").detail == "all 26 set in the SQLite store"
+    assert _by_name(checks, "settings").detail == "all 27 set in the SQLite store"
     # The file exists, so the check reads it rather than skipping; `TestFeedHealth` has the rows.
     assert _by_name(checks, "feed health").status != "skip"
     # Its pages are still files in the vault, so the vault is still probed.
@@ -1701,7 +1701,7 @@ def test_a_complete_d1_deployment_passes(tmp_path: Path) -> None:
     cfg = _config(tmp_path)
     cfg.app.store.backend = "d1"
 
-    assert doctor._check_settings(cfg) == doctor.Check("settings", "ok", "all 26 set in D1")
+    assert doctor._check_settings(cfg) == doctor.Check("settings", "ok", "all 27 set in D1")
 
 
 def test_a_d1_home_without_the_effort_passes_naming_its_default(tmp_path: Path, d1) -> None:
@@ -1709,7 +1709,7 @@ def test_a_d1_home_without_the_effort_passes_naming_its_default(tmp_path: Path, 
     cfg = load_effective_config(tmp_path / "nope.toml", tmp_path / "nope.yaml")
 
     assert doctor._check_settings(cfg) == doctor.Check(
-        "settings", "ok", "25 of 26 set in D1; default for llm_provider.reasoning_effort"
+        "settings", "ok", "26 of 27 set in D1; default for llm_provider.reasoning_effort"
     )
 
 

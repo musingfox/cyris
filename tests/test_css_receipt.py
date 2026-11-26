@@ -577,6 +577,7 @@ EXPECTED_IDS = {
     "notice-hides-on-edit",
     "model-notice-ok",
     "notify-notice-masked",
+    "notify-own-addresses-plain",
     "notice-unreachable",
     "notice-unexplained-refusal",
     "source-notice-beside-save",

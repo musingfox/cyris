@@ -152,10 +152,27 @@ SETTINGS_FIELDS: dict[str, dict[str, Any]] = json.loads(
 GRADE_D_KEYS: tuple[str, ...] = tuple(SETTINGS_FIELDS)
 
 
+_ADDRESS_LIST_SEPARATOR = re.compile(r"[\s,]+")
+_ONE_ADDRESS = re.compile(r"[^@\s,]+@[^@\s,]+\.[^@\s,]+")
+
+
+def _address_list(text: str) -> str:
+    addresses = [part for part in _ADDRESS_LIST_SEPARATOR.split(text) if part]
+    wrong = [part for part in addresses if not _ONE_ADDRESS.fullmatch(part)]
+    if wrong:
+        raise ValueError(f"not an email address: {', '.join(wrong)}")
+    return ", ".join(addresses)
+
+
+AddressList = Annotated[str, AfterValidator(_address_list)]
+
+
 class NotifyConfig(BaseModel):
     discord_webhook_url: str  # "" ⇒ notifications off
     email_to: str  # "" ⇒ no mail
     email_from: str
+    # The reader's addresses beside email_to, comma-separated: mail from any is a forward.
+    own_addresses: AddressList = ""
 
 
 def _known_timezone(name: str) -> str:

@@ -31,7 +31,8 @@
         "llm_provider.reasoning_effort": {"reason": "operator-set"},
         "notify.discord_webhook_url": {"reason": "operator-set"},
         "notify.email_to": {"reason": "operator-set"},
-        "notify.email_from": {"reason": "operator-set"}
+        "notify.email_from": {"reason": "operator-set"},
+        "notify.own_addresses": {"reason": "operator-set"}
       },
       "limits": {"digest_times_min": 1, "digest_times_max": 1, "max_articles_per_digest_max": 400}
     }

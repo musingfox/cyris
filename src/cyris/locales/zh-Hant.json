@@ -968,6 +968,7 @@
   "settings_field.notify.discord_webhook_url": {"text": "Discord webhook", "source": "Discord webhook"},
   "settings_field.notify.email_from": {"text": "寄件地址", "source": "Email from"},
   "settings_field.notify.email_to": {"text": "收件地址", "source": "Email to"},
+  "settings_field.notify.own_addresses": {"text": "你的其他地址", "source": "Your other addresses"},
   "settings_field.routing.score_threshold": {"text": "頭條分數", "source": "Top story score"},
   "settings_field.vote_similarity.enabled": {"text": "投票相似度", "source": "Vote similarity"},
   "settings_field.vote_similarity.max_seeds": {"text": "比對票數", "source": "Votes compared"},
@@ -1025,6 +1026,10 @@
   "settings_help.notify.email_to": {
     "text": "留空就不寄信。必須是 Cloudflare Email Routing 中已驗證的收件地址，測試信寄達後才會儲存。",
     "source": "Leave it empty to send no mail. It must be a verified destination in Cloudflare Email Routing, and is saved once a test message reaches it."
+  },
+  "settings_help.notify.own_addresses": {
+    "text": "從這些地址或收件地址寄給 cyris 的信，會當成轉寄來讀：歸到信中引用的原寄件者，不會歸到你名下。多個地址以逗號分隔。",
+    "source": "Mail to cyris from these, or from Email to, is read as a forward: it is filed under the sender it quotes, never under you. Separate addresses with commas."
   },
   "settings_help.routing.score_threshold": {
     "text": "同一主題有兩篇以上文章達到這個分數時，會一起列為頭條。",
