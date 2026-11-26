@@ -2,14 +2,19 @@
 # Deploys and drives the hosted Worker `cyris-hosted` (wrangler.hosted.toml) on the trial
 # account. docs/hosted-tenants.md says which step runs which subcommand.
 #
-# Every value only the human has is asked for by name. ACCOUNT_ID is typed for every command
-# that reaches Cloudflare through wrangler, and is never stored or read from the environment,
-# so neither an exported variable nor an old file can pick the account. deploy, secrets and
-# delete also print the account's name and do nothing until you type "yes". The secrets (the
-# Anthropic key, the Workers AI embedding token, the operator's webhook, the Access service
-# token's secret) are read without echo
-# each time, never written down, and reach wrangler and curl on stdin, never in argv, where `ps` would show them.
-# HOSTED_URL, which deploy prints, is the one value kept, in .env.hosted (gitignored, mode 600).
+# The account is the CLOUDFLARE_ACCOUNT_ID line of the repo's .env, parsed out alone: the file is
+# never sourced, and no other key of it, above all production's CLOUDFLARE_API_TOKEN, reaches
+# wrangler or cf. Without that line it is asked for. A wrong account would put the hosted Worker's
+# secrets on another one, so deploy, secrets and delete still print the account's name and do
+# nothing until you type "yes".
+#
+# .env.hosted (gitignored, mode 600) is the one state file: HOSTED_URL, which deploy prints, and
+# the values secrets and the route commands offer back, each read by name, never sourced. secrets
+# lists the Worker's set secret names, then asks for each in turn: it says whether the name is
+# already set, offers the saved value (or, for the team domain, AUD and operators, what `cf` reads
+# from Cloudflare), and Enter takes that, or keeps a name already set. What was typed can be saved
+# there once, afterwards. The secrets are read without echo, shown only as their first four
+# characters, and reach wrangler and curl on stdin, never in argv, where `ps` would show them.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
