@@ -117,24 +117,26 @@ function providerEntry(name, defaultModel, variables = [], secrets) {
   return { name, env_var: variables[0] ?? "", default_model: defaultModel, configured };
 }
 
-// The embedder every tenant's vote similarity runs on, the operator's (ADR-0049).
+// The embedder every tenant's vote similarity runs on, the operator's, and the vote order every
+// tenant runs, never Clef (ADR-0049).
 const EMBEDDER = { "vote_similarity.provider": POLICY.embedding_provider, "vote_similarity.model": POLICY.embedding_model };
+const VOTE_ORDER = { "digest.preference_source": POLICY.preference_source };
 
 // The keys read from the tenant's own rows: every grade-D key but what the run pins and the
 // schedule, which is the registry's.
-const PINNED = new Set(["llm_provider.provider", "llm_provider.model", ...Object.keys(EMBEDDER), ...POLICY.blank_settings]);
+const PINNED = new Set(["llm_provider.provider", "llm_provider.model", ...Object.keys(EMBEDDER), ...Object.keys(VOTE_ORDER), ...POLICY.blank_settings]);
 const STORED_KEYS = Object.keys(FIELDS).filter((key) => !PINNED.has(key) && key !== SCHEDULE_KEY && key !== TIMEZONE_KEY);
 
 // What a hosted run takes for each grade-D key: the tenant's rows with what it does not decide put
 // back, as `pin_tenant_settings` (src/cyris/adapters/hosted.py) puts it back as a run's settings
-// load (the policy's provider, model and embedder, blank notify targets, an article cap at most
+// load (the policy's provider, model, embedder and vote order, blank notify targets, an article cap at most
 // the policy's), and the schedule the registry holds, which the tick reads (ADR-0032). Null for a key
 // with no row.
 export function hostedValues(stored, schedule) {
   const values = Object.fromEntries(Object.keys(FIELDS).map((key) => [key, stored?.[key] ?? null]));
   values["llm_provider.provider"] = POLICY.provider;
   values["llm_provider.model"] = POLICY.model;
-  Object.assign(values, EMBEDDER);
+  Object.assign(values, EMBEDDER, VOTE_ORDER);
   for (const key of POLICY.blank_settings) values[key] = "";
   if (Number.isInteger(values[ARTICLE_CAP]) && values[ARTICLE_CAP] > POLICY.max_articles_per_digest) {
     values[ARTICLE_CAP] = POLICY.max_articles_per_digest;

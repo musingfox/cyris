@@ -580,6 +580,17 @@
   ],
   "pins": [
     {
+      "name": "the vote order is the policy's, never Clef, whatever the rows say",
+      "stored": {
+        "digest.preference_source": "clef",
+        "digest.rank_by_preference": true
+      },
+      "shown": {
+        "digest.preference_source": "cosine",
+        "digest.rank_by_preference": true
+      }
+    },
+    {
       "name": "the embedder is the operator's Workers AI one whatever the rows say, and the switch is the tenant's",
       "stored": {
         "vote_similarity.provider": "gemini",
