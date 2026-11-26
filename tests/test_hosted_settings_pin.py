@@ -77,6 +77,36 @@ def test_a_tenants_article_cap_within_the_policys_and_its_other_settings_are_its
     assert cfg.app.digest.style_prompt == "Short."
 
 
+# The tuning keys a tenant writes on its settings page (ADR-0040's update note), each with the
+# value a save puts in its row and the config field a run reads it from.
+TUNING = {
+    "digest.vote_half_life_days": (30, ("digest", "vote_half_life_days")),
+    "digest.topic_lifetime_days": (14, ("digest", "topic_lifetime_days")),
+    "vote_similarity.max_seeds": (321, ("vote_similarity", "max_seeds")),
+    "digest.scoring_snippet_length": (1500, ("digest", "scoring_snippet_length")),
+    "digest.summarize_snippet_length": (2000, ("digest", "summarize_snippet_length")),
+    "digest.filter_snippet_length": (300, ("digest", "filter_snippet_length")),
+}
+
+
+def test_every_tuning_key_the_policy_opens_is_one_this_file_runs() -> None:
+    opened = {key for key in POLICY["writable_settings"] if key in TUNING}
+
+    assert opened == set(TUNING)
+
+
+@pytest.mark.parametrize("key", TUNING)
+def test_a_saved_tuning_key_reaches_the_tenants_run_config(
+    key: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    value, (table, field) = TUNING[key]
+
+    cfg = _hosted_load(tmp_path, monkeypatch, **{key: value})
+
+    assert getattr(getattr(cfg.app, table), field) == value
+    assert cfg.missing_settings == []
+
+
 def test_a_cap_the_rule_refuses_is_left_for_the_load_to_report() -> None:
     assert (
         pin_tenant_settings({"digest.max_articles_per_digest": "many"})[

@@ -22,6 +22,10 @@ const whole = (min, max) => (value) =>
   typeof value === "number" && Number.isInteger(value) && value >= min && value <= max
     ? null
     : { reason: "whole_number", min: String(min), max: String(max) };
+// `Field(ge=min)` with no upper bound in config.py: the cap on what a run spends is the tenant's
+// monthly allowance (ADR-0038), not the key's range.
+const wholeFrom = (min) => (value) =>
+  typeof value === "number" && Number.isInteger(value) && value >= min ? null : { reason: "whole_number_min", min: String(min) };
 const onOff = (value) => (typeof value === "boolean" ? null : { reason: "on_off" });
 const text = (value) => (typeof value === "string" ? null : { reason: "text" });
 // `_not_blank` in config.py: a string with something besides whitespace.
@@ -42,6 +46,12 @@ const RULES = new Map([
   ["digest.rank_by_preference", onOff],
   ["digest.summarize_follow", onOff],
   ["routing.score_threshold", whole(0, 100)],
+  ["digest.vote_half_life_days", whole(1, 365)],
+  ["digest.topic_lifetime_days", whole(1, 365)],
+  ["vote_similarity.max_seeds", wholeFrom(1)],
+  ["digest.scoring_snippet_length", wholeFrom(1)],
+  ["digest.summarize_snippet_length", wholeFrom(1)],
+  ["digest.filter_snippet_length", wholeFrom(1)],
 ]);
 export const WRITABLE = Object.freeze([...RULES.keys()]);
 
