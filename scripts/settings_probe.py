@@ -113,6 +113,12 @@ class FakeSourceStore:
     def delete(self, name: str) -> int:
         return 1 if self.sources.pop(name, None) else 0
 
+    def set_review(self, name: str, review: str | None) -> int:
+        if name not in self.sources:
+            return 0
+        self.sources[name] = self.sources[name].model_copy(update={"review": review})
+        return 1
+
 
 class FakeTopicStore:
     """Stands in for the D1 `tracked_topics` table; `topics` is the receipt."""
@@ -1591,6 +1597,29 @@ CHECKS: list[Check] = [
         receipt=_calls([]),
     ),
     Check(
+        id="notify-own-addresses-plain",
+        fixture="writable",
+        path="/settings#notifications",
+        # The reader's other addresses are a plain setting: no test message is sent for them.
+        preload=answer_post(
+            "/api/settings/email", 'Promise.reject(new Error("the mail route was asked"))'
+        ),
+        act="""
+            await settingsLoaded();
+            setValue($("#own-addresses"), "a@x.example  b@y.example");
+            saveOf("notifications").click();
+            await waitFor(() => settled($("#notify-result")), "the notice");
+        """,
+        script="""
+            const notice = $("#notify-result"), text = notice.textContent;
+            expect(!notice.classList.contains("err"), `an error: ${text}`);
+            expect(text.includes("a@x.example, b@y.example"), `notice: ${text}`);
+            expect(saveOf("notifications").disabled, "the Save is still live");
+        """,
+        sabotage="""$("#notify-result").classList.add("err");""",
+        receipt=_calls([{"notify.own_addresses": "a@x.example, b@y.example"}]),
+    ),
+    Check(
         id="notice-unreachable",
         fixture="writable",
         path="/settings#notifications",
@@ -2062,7 +2091,7 @@ CHECKS: list[Check] = [
         path="/settings#sources",
         preload=REFUSE_CONFIRM,
         act="""
-            await openRow("曼報");
+            await openRow("Simon Willison");
             editorAct("retire").click();
             await sleep(200);
             editorAct("retire").click();
@@ -2070,12 +2099,73 @@ CHECKS: list[Check] = [
         """,
         script="""
             expect(!window.__confirmCalled, "window.confirm was called");
-            expect(!rowNames().includes("曼報"), `rows: ${rowNames()}`);
+            expect(!rowNames().includes("Simon Willison"), `rows: ${rowNames()}`);
             const text = $("#sources-notice").textContent;
-            expect(text === "曼報 retired. Effective next run.", `notice: ${text}`);
+            expect(text === "Simon Willison retired. Effective next run.", `notice: ${text}`);
         """,
         sabotage_preload=IGNORE_ARMED_RETIRE,
-        receipt=lambda fixture: "曼報 is still listed" if "曼報" in fixture.sources else None,
+        receipt=lambda fixture: (
+            "Simon Willison is still listed" if "Simon Willison" in fixture.sources else None
+        ),
+    ),
+    # A newsletter source is stopped, not deleted: with no row, its sender's next mail would make
+    # it again (ADR-0050). Its row stays, marked, and the button says what it does.
+    Check(
+        id="stop-keeps-a-newsletter-row",
+        fixture="writable",
+        path="/settings#sources",
+        act="""
+            await openRow("曼報");
+            ctx.label = editorAct("retire").textContent;
+            editorAct("retire").click();
+            await sleep(200);
+            ctx.armed = editorAct("retire").textContent;
+            editorAct("retire").click();
+            await waitFor(() => visible($("#sources-notice")), "the toolbar notice");
+        """,
+        script="""
+            const said = `button: ${ctx.label}, ${ctx.armed}`;
+            expect(ctx.label === "Stop" && ctx.armed === "Confirm stop", said);
+            expect(rowNames().some((name) => name.startsWith("曼報")), `rows: ${rowNames()}`);
+            const text = $("#sources-notice").textContent;
+            expect(text === "曼報 stopped. Effective next run.", `notice: ${text}`);
+            const name = $$("#src-body tr.src-row").find((r) => r.dataset.name === "曼報").cells[0];
+            expect(name.textContent.includes("Stopped"), `row: ${name.textContent}`);
+        """,
+        sabotage_preload=IGNORE_ARMED_RETIRE,
+        receipt=lambda fixture: (
+            None
+            if fixture.sources.get("曼報") and fixture.sources["曼報"].review == "declined"
+            else "曼報 is not listed as stopped"
+        ),
+    ),
+    Check(
+        id="restore-a-stopped-source",
+        fixture="writable",
+        path="/settings#sources",
+        setup=lambda fixture: fixture.sources.update(
+            {"曼報": fixture.sources["曼報"].model_copy(update={"review": "declined"})}
+        ),
+        act="""
+            await openRow("曼報");
+            ctx.retireShown = visible(editorAct("retire"));
+            editorAct("restore").click();
+            await waitFor(() => visible($("#sources-notice")), "the toolbar notice");
+        """,
+        script="""
+            expect(!ctx.retireShown, "Stop is shown on a stopped source");
+            const text = $("#sources-notice").textContent;
+            expect(text === "曼報 restored: its mail is taken again.", `notice: ${text}`);
+            const name = $$("#src-body tr.src-row").find((r) => r.dataset.name === "曼報").cells[0];
+            expect(!name.textContent.includes("Stopped"), `row: ${name.textContent}`);
+        """,
+        sabotage="""
+            const row = $$("#src-body tr.src-row").find((r) => r.dataset.name === "曼報");
+            row.cells[0].append("Stopped");
+        """,
+        receipt=lambda fixture: (
+            None if fixture.sources["曼報"].review == "kept" else "曼報 is still stopped"
+        ),
     ),
     # The last source may go: an empty table is a deployment waiting for
     # onboarding, so the page leaves the empty-table line behind.
@@ -2153,7 +2243,7 @@ CHECKS: list[Check] = [
         path="/settings#sources",
         focused=True,
         act="""
-            await openRow("曼報");
+            await openRow("Simon Willison");
             editorAct("retire").focus();
         """,
         gestures=({"key": "Enter"}, {"key": "Enter"}),
@@ -2163,7 +2253,9 @@ CHECKS: list[Check] = [
             expect(now === $("#add-source"), `focus is on ${now && (now.id || now.tagName)}`);
         """,
         sabotage=NO_FOCUS,
-        receipt=lambda fixture: "曼報 is still listed" if "曼報" in fixture.sources else None,
+        receipt=lambda fixture: (
+            "Simon Willison is still listed" if "Simon Willison" in fixture.sources else None
+        ),
     ),
     Check(
         id="missing-marked",

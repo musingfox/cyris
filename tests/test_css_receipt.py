@@ -543,6 +543,8 @@ EXPECTED_IDS = {
     "editor-new-cancel-focuses-add",
     "source-save-failure-focuses-save",
     "retire-failure-focuses-retire",
+    "stop-keeps-a-newsletter-row",
+    "restore-a-stopped-source",
     "retire-focuses-add",
     "site-bar-links-align",
     "no-credential-in-dom",

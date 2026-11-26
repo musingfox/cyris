@@ -20,6 +20,8 @@ from cyris.config import SETTINGS_FIELDS, STARTING_VALUES, DigestConfig
 from cyris.diagnostics.doctor import probe_discord, probe_embedder
 from cyris.domain.models import (
     NEWSLETTER_SOURCE_TYPE,
+    SOURCE_DECISIONS,
+    SOURCE_REVIEW_DECLINED,
     Lane,
     SourceConfig,
     SourceType,
@@ -240,6 +242,7 @@ SETTINGS_SCRIPT_MESSAGES: tuple[str, ...] = (
     "settings.checking_provider",
     "settings.confirm_remove",
     "settings.confirm_retire",
+    "settings.confirm_stop",
     "settings.confirm_turn_off",
     "settings.cross_origin",
     "settings.editing",
@@ -274,6 +277,7 @@ SETTINGS_SCRIPT_MESSAGES: tuple[str, ...] = (
     "settings.pick_provider_first",
     "settings.remove",
     "settings.removing",
+    "settings.restoring",
     "settings.retire",
     "settings.retiring",
     "settings.saved_value",
@@ -281,8 +285,14 @@ SETTINGS_SCRIPT_MESSAGES: tuple[str, ...] = (
     "settings.saving",
     "settings.sending_test",
     "settings.session_expired",
+    "settings.source_declined",
+    "settings.source_new",
+    "settings.source_restored",
     "settings.source_retired",
+    "settings.source_stopped",
     "settings.sources_used",
+    "settings.stop_source",
+    "settings.stopping",
     "settings.topic_other_model",
     "settings.topic_removed",
     "settings.turn_off",
@@ -728,6 +738,7 @@ class TriageServer:
         self._app.router.add_get("/api/sources", self._handle_get_sources)
         self._app.router.add_post("/api/sources", self._handle_post_source)
         self._app.router.add_delete("/api/sources/{name}", self._handle_delete_source)
+        self._app.router.add_post("/api/sources/{name}/review", self._handle_post_source_review)
         self._app.router.add_get("/api/onboarding/feeds", self._handle_get_onboarding_feeds)
         self._app.router.add_get("/api/onboarding/headlines", self._handle_get_headlines)
         self._app.router.add_post("/api/onboarding/feed-check", self._handle_post_feed_check)
@@ -1300,6 +1311,7 @@ class TriageServer:
                         "email_match": s.email_match,
                         "homepage": s.homepage,
                         "tags": s.tags,
+                        "review": s.review,
                         "health": _health_json(t, health.get(s.name), now),
                     }
                     for s in sources.values()
@@ -1333,6 +1345,10 @@ class TriageServer:
         except Exception:
             return _invalid_json(t)
 
+        # The review is the reader's decision, which only a decision changes (ADR-0050): one a
+        # client sends is dropped, and the row's own is kept over the rewrite.
+        if isinstance(body, dict):
+            body = {key: value for key, value in body.items() if key != "review"}
         try:
             source = SourceConfig.model_validate(body)
         except ValidationError as e:
@@ -1354,6 +1370,10 @@ class TriageServer:
             return _refused(*needs[source.type])
 
         try:
+            held = self._source_store.list_sources().get(source.name)
+            # Only a newsletter source takes a decision, so only one keeps it.
+            if held is not None and held.review is not None and source.type == held.type:
+                source = source.model_copy(update={"review": held.review})
             self._source_store.upsert(source)
         except Exception as e:  # noqa: BLE001 - the reason belongs in the response
             return web.json_response({"ok": False, "error": str(e)}, status=500)
@@ -1710,6 +1730,16 @@ class TriageServer:
             return _no_table(t("settings_api.no_source_table"))
         name = request.match_info["name"]
         try:
+            held = self._source_store.list_sources().get(name)
+            if held is not None and held.type == NEWSLETTER_SOURCE_TYPE:
+                # Its row goes nowhere: a newsletter source with no row is made again by its
+                # sender's next mail, so retiring one stops it (ADR-0050).
+                self._source_store.set_review(name, SOURCE_REVIEW_DECLINED)
+                logger.info("Source %s stopped", name)
+                note = t("settings_api.effective_next_run")
+                return web.json_response(
+                    {"ok": True, "name": name, "review": SOURCE_REVIEW_DECLINED, "note": note}
+                )
             # The last source may go: an empty table is a deployment waiting for
             # onboarding, and a run with none ends without fetching anything.
             deleted = self._source_store.delete(name)
@@ -1724,6 +1754,38 @@ class TriageServer:
         logger.info("Source %s retired", name)
         note = t("settings_api.effective_next_run")
         return web.json_response({"ok": True, "name": name, "note": note})
+
+    async def _handle_post_source_review(self, request: web.Request) -> web.Response:
+        """Keep, stop or restore a newsletter source, from whatever state it is in."""
+        t = self._translator(request)
+        if self._source_store is None:
+            return _no_table(t("settings_api.no_source_table"))
+        name = request.match_info["name"]
+        try:
+            body = await request.json()
+        except Exception:
+            return _invalid_json(t)
+        try:
+            source = self._source_store.list_sources().get(name)
+        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+        if source is None:
+            return web.json_response(
+                {"ok": False, "error": t("settings_api.source_missing", name=name)}, status=404
+            )
+        decision = body.get("decision") if isinstance(body, dict) else None
+        if decision not in SOURCE_DECISIONS:
+            return _refused(t("settings_api.review_decision"), "decision")
+        if source.type != NEWSLETTER_SOURCE_TYPE:
+            return _refused(t("settings_api.source_not_newsletter", name=name), "decision")
+        review = SOURCE_DECISIONS[decision]
+        try:
+            self._source_store.set_review(name, review)
+        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+            return web.json_response({"ok": False, "error": str(e)}, status=500)
+        logger.info("Source %s review: %s", name, decision)
+        note = t("settings_api.effective_next_run")
+        return web.json_response({"ok": True, "name": name, "review": review, "note": note})
 
     def _embedding_model(self) -> str:
         """The model a run embeds with now, which a new topic's threshold is set for."""

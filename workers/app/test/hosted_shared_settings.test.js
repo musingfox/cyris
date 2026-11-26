@@ -974,7 +974,7 @@ const listed = async (session) => (await (await call("/api/sources", { session }
 const withoutHealth = (sources) => sources.map(({ health: _health, ...source }) => source);
 
 describe("the Sources tab on the hosted Worker: the cases TriageServer answers too", () => {
-  it.each(SOURCES.cases)("gives TriageServer's answer: $name", async (one) => {
+  it.each(SOURCES.cases.filter((one) => (one.editions ?? ["hosted"]).includes("hosted")))("gives TriageServer's answer: $name", async (one) => {
     const session = await signIn();
     await arrange("alpha", one);
     const before = await sourceRows("alpha");
@@ -1014,6 +1014,8 @@ describe("the Sources tab on the hosted Worker: the cases TriageServer answers t
     expect((await sourceCall(session, "DELETE", "/api/sources", undefined)).status).toBe(405);
     expect((await call("/api/sources/Plain", { session })).status).toBe(405);
     expect((await sourceCall(session, "POST", "/api/sources/Plain", {})).status).toBe(405);
+    expect((await call("/api/sources/Plain/review", { session })).status).toBe(405);
+    expect((await call("/api/sources/Plain/review", { method: "POST", headers: SAME_ORIGIN, body: { decision: "keep" } })).status).toBe(401);
   });
 
   it("names the paths it answers, /api/sources/<name> one segment deep", () => {
@@ -1022,6 +1024,9 @@ describe("the Sources tab on the hosted Worker: the cases TriageServer answers t
     expect(isSharedPath("/api/sources/Two%20Words")).toBe(true);
     expect(isSharedPath("/api/sources/")).toBe(false);
     expect(isSharedPath("/api/sources/a/b")).toBe(false);
+    expect(isSharedPath("/api/sources/a%40b.example/review")).toBe(true);
+    expect(isSharedPath("/api/sources//review")).toBe(false);
+    expect(isSharedPath("/api/sources/a/b/review")).toBe(false);
     expect(isSharedPath("/api/sourcesx")).toBe(false);
   });
 });

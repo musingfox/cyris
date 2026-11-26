@@ -31,6 +31,10 @@ export const TENANT = /^[a-z0-9-]{1,40}$/;
 // https://developers.cloudflare.com/durable-objects/reference/data-location/#provide-a-location-hint
 export const LOCATION_HINT = "wnam";
 
+// The sources that count toward the policy's `max_sources`: every row but a stopped one.
+const COUNTED_SOURCES =
+  "SELECT count(*) AS n FROM sources WHERE coalesce(json_extract(config, '$.review'), '') != 'declined'";
+
 export const tenantDb = (env, tenant) => env.TENANT_DB.getByName(tenant, { locationHint: LOCATION_HINT });
 
 // The object's own tables start with "_" (`_cf_KV`, `_cf_METADATA`) and SQLite's with
@@ -161,21 +165,48 @@ export class TenantDb extends DurableObject {
   // Adds `row` ({name, url, type, config}) or rewrites the RSS source of its name, keeping what
   // else that row's config held (its tags, language). The count and the write are one
   // synchronous turn of this object, so two saves at once cannot both take the last place under
-  // `cap`: a new name past it is refused, a rewrite never is. A name a newsletter source holds is
-  // refused, as the operator's newsletter route refuses an RSS one's.
+  // `cap`: a new name past it is refused, a rewrite never is. A stopped source reads nothing, so
+  // it holds no place under the cap (ADR-0050). A name a newsletter source holds is refused, as the
+  // operator's newsletter route refuses an RSS one's.
   saveSource(row, cap) {
     const storage = this.ctx.storage;
     if (!hasTable(storage.sql, "sources")) return { refused: "not_seeded", status: 409 };
     return storage.transactionSync(() => {
       const held = storage.sql.exec("SELECT type, config FROM sources WHERE name = ?", row.name).toArray()[0];
       if (held && held.type !== row.type) return { refused: "source_taken", status: 409 };
-      if (!held && storage.sql.exec("SELECT count(*) AS n FROM sources").one().n >= cap) {
+      if (!held && storage.sql.exec(COUNTED_SOURCES).one().n >= cap) {
         return { refused: "source_cap", status: 409 };
       }
       const config = { ...(held ? stored(held.config) : {}), ...row.config };
       storage.sql.exec(SOURCE_UPSERT, row.name, row.url, row.type, JSON.stringify(config));
       return { source: { ...row, config } };
     });
+  }
+
+  // Sets the newsletter source `name`'s review, keeping the rest of its
+  // config and its row: a stopped source stays, so its sender's next mail matches it and makes no
+  // source again (ADR-0050). `{changed}` is how many rows changed, 0 or 1; an RSS source is
+  // refused, as it takes no decision.
+  setSourceReview(name, review) {
+    const storage = this.ctx.storage;
+    if (!hasTable(storage.sql, "sources")) return { refused: "not_seeded", status: 409 };
+    return storage.transactionSync(() => {
+      const held = storage.sql.exec("SELECT type, config FROM sources WHERE name = ?", name).toArray()[0];
+      if (!held) return { changed: 0 };
+      if (held.type !== "newsletter") return { refused: "not_newsletter", status: 400 };
+      const config = { ...(stored(held.config) ?? {}), review };
+      storage.sql.exec("UPDATE sources SET config = ? WHERE name = ?", JSON.stringify(config), name);
+      return { changed: 1 };
+    });
+  }
+
+  // The review each newsletter source holds, by name: what a page's probe reads to correct the
+  // marks it was rendered with. An unseeded tenant holds none.
+  sourceReviews() {
+    const storage = this.ctx.storage;
+    if (!hasTable(storage.sql, "sources")) return {};
+    const rows = storage.sql.exec("SELECT name, config FROM sources WHERE type = 'newsletter'").toArray();
+    return reviewsOf(rows.map(({ name, config }) => ({ name, config: stored(config) ?? {} })));
   }
 
   // Removes the source `name`, of either type; `{deleted}` is how many rows went, 0 or 1.
