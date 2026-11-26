@@ -123,7 +123,7 @@ def test_only_the_hosted_file_binds_the_sign_in_mail() -> None:
 
 def test_the_sign_in_sender_is_one_name_from_the_runbook_to_the_worker() -> None:
     assert "env.CYRIS_HOSTED_MAIL_FROM" in _js("hosted.js")
-    assert "put_secret CYRIS_HOSTED_MAIL_FROM " in (ROOT / "scripts/hosted.sh").read_text(
+    assert "put_unless_kept CYRIS_HOSTED_MAIL_FROM " in (ROOT / "scripts/hosted.sh").read_text(
         encoding="utf-8"
     )
 
