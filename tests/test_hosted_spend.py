@@ -738,7 +738,8 @@ async def test_a_tenant_that_turns_vote_similarity_on_embeds_on_the_operators_wo
     assert isinstance(deps.embedder, MeteredEmbedder)
     assert report.status == "ok"
     assert anywhere.call_count == 0
-    assert workers_ai.called
+    # One call for the downvote it is seeded with, one for the window's one candidate.
+    assert workers_ai.call_count == 2
     for call in workers_ai.calls:
         assert call.request.headers["Authorization"] == f"Bearer {OPERATOR_EMBEDDING_TOKEN}"
     [charged] = ledger.reports
