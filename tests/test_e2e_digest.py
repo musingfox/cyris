@@ -408,6 +408,8 @@ EXPECTED_D1 = [
     "SELECT stored_articles",
     "INSERT OR REPLACE INTO digests",
     "INSERT OR REPLACE INTO digest_inputs",
+    # The sources as they stand at render, so a card whose source waits for review is marked.
+    "SELECT sources",
     # The archive's file list, counts and starts for the index page, then the manifest the
     # deploy extends, the first-publish receipt, and the manifest of what landed.
     "SELECT pages_manifest",

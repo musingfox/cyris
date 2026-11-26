@@ -216,6 +216,15 @@
             color: var(--text-dim);
         }
 
+        /* A story card's source mark (spec section 4, source dialog): a pill, which for a
+           signed-in reader is a button that opens the source dialog. A stopped source's is warn. */
+        .source-mark[data-review="declined"] { color: var(--warn); border-color: var(--warn); background: var(--warn-tint); }
+        button.source-mark { position: relative; cursor: pointer; transition: color var(--t-fast), border-color var(--t-fast); }
+        button.source-mark:hover { color: var(--text); border-color: var(--text-dim); }
+        button.source-mark[data-review="declined"]:hover { color: var(--warn); border-color: var(--warn); }
+        button.source-mark::after { content: ""; position: absolute; inset: min(0px, calc((100% - 44px) / 2)); }
+        .source-error { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); margin-top: var(--s-2); }
+
         /* === NEWS CLUSTERS === */
         /* Sand is cards, three to a 1240px row and one on a phone (owner, 2026-11-02): two
            columns of text with a left rule read as a wall. A row's cards are one height, so
@@ -462,8 +471,22 @@
             transform-origin: 0 0;
         }
         /* 72% is section 2's literal exception for this backdrop. */
-        .topic-dialog::backdrop { background: color-mix(in srgb, var(--bg) 72%, transparent); }
-        html:has(.topic-dialog[open]) { overflow: hidden; }
+        .topic-dialog::backdrop, .source-dialog::backdrop { background: color-mix(in srgb, var(--bg) 72%, transparent); }
+        html:has(.topic-dialog[open], .source-dialog[open]) { overflow: hidden; }
+        /* The source dialog is the same panel, at the body measure, and never the whole screen. */
+        .source-dialog {
+            margin: auto;
+            width: calc(100% - 2 * var(--s-6));
+            max-width: var(--measure);
+            background: var(--bg-elev);
+            color: var(--text);
+            border: 1px solid var(--border-strong);
+            border-radius: 0;
+            padding: 0;
+        }
+        .source-dialog .topic-dialog-title { overflow-wrap: anywhere; }
+        .source-dialog-count { margin-bottom: var(--s-2); }
+        .source-dialog-actions { display: flex; flex-wrap: wrap; gap: var(--s-3); margin-top: var(--s-5); }
         .topic-dialog-head {
             position: sticky;
             top: 0;
@@ -635,12 +658,34 @@
                         {{ tag_pills(item.tags) }}
                         <div class="meta">
                             <span class="source-tag">{{ item.sources | join(' · ') }}</span>
+                            {%- for name in item.sources if name in source_marks %}{% set review, count, forwarded = source_marks[name] %}
+                            <span class="pill source-mark" data-source="{{ name }}" data-review="{{ review }}" data-items="{{ t("digest.source_items", count=count) }}"{% if forwarded %} data-forwarded{% endif %} lang="{{ ui_lang }}">{{ t("digest.source_stopped") if review == "declined" else t("digest.source_new") }}</span>
+                            {%- endfor %}
                             {% if item.link %}<a class="orig" href="{{ item.link }}" target="_blank" rel="noopener">↗</a>{% endif %}
                             {{ promote_btn(item) }}
                         </div>
                     </article>
                     {% endfor %}
                 </div>
+                {%- if source_marks %}
+                {#- One dialog for every mark: the script fills it from the mark that opened it. #}
+                <dialog class="source-dialog" id="source-dialog" aria-labelledby="source-dialog-title" lang="{{ ui_lang }}">
+                    <div class="topic-dialog-head">
+                        <h2 class="topic-dialog-title" id="source-dialog-title" lang=""></h2>
+                        <button type="button" class="btn secondary sm source-dialog-close">{{ t("digest.close") }}</button>
+                    </div>
+                    <div class="topic-dialog-body">
+                        <p class="label source-dialog-count"></p>
+                        <p class="topic-dialog-line source-dialog-line"></p>
+                        <p class="small source-dialog-forwarded" hidden>{{ t("digest.source_dialog_forwarded") }}</p>
+                        <div class="source-dialog-actions">
+                            <button type="button" class="btn primary" data-decision="keep">{{ t("digest.source_keep") }}</button>
+                            <button type="button" class="btn primary" data-decision="restore">{{ t("digest.source_restore") }}</button>
+                            <button type="button" class="btn danger" data-decision="stop">{{ t("digest.source_stop") }}</button>
+                        </div>
+                    </div>
+                </dialog>
+                {%- endif %}
             </section>
             {%- endif %}
 
@@ -714,6 +759,7 @@
         </footer>
     </div>
     {% include "_promote_script.html.j2" %}
+    {% if source_marks %}{% include "_source_review_script.html.j2" %}{% endif %}
     {% include "_layers_script.html.j2" %}
     {% include "_topic_dialog_script.html.j2" %}
     {% include "_probe_script.html.j2" %}

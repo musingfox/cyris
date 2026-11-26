@@ -693,6 +693,10 @@ def build_deps(
             interest_path=(
                 tenant_interest_path(cfg.app.store.tenant_id) if hosted else INTEREST_PATH
             ),
+            # Read at render, so the run's own new sources are marked and a rerender is current.
+            list_sources=D1SourceStore(d1).list_sources,
+            # This run's own pull, so a rerender, which pulls nothing, says nothing of forwards.
+            forwarded_urls=(lambda: newsletters.forwarded) if newsletters else None,
         )
     if hosted:
         # The tenant's site is its own Durable Object, which the hosted Worker serves behind

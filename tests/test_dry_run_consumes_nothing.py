@@ -74,6 +74,17 @@ def test_a_preview_still_fetches_newsletters(cfg) -> None:
     assert "CloudflareNewsletterSource" in names
 
 
+def test_the_digest_marks_what_the_newsletter_source_read_from_a_forward(
+    cfg, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(cfg.app.html_output, "enabled", True)
+    deps = build_deps(cfg)
+    source = _newsletter_source(deps)
+    source.forwarded.add("newsletter:1")
+
+    assert deps.html_writer.forwarded_urls() == {"newsletter:1"}
+
+
 def test_a_run_syncs_votes(cfg) -> None:
     assert build_deps(cfg).sync_promotions is not None
 

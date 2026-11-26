@@ -3,7 +3,8 @@
 import functools
 import logging
 import re
-from collections.abc import Callable, Mapping, Sequence
+from collections import Counter
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -13,8 +14,15 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from cyris.domain.graph_layout import layout
 from cyris.domain.interest_graph import InterestGraph
-from cyris.domain.layers import layer_by_lane
-from cyris.domain.models import DigestContent, DigestItem, DigestSection, StoredArticle
+from cyris.domain.layers import Layers, layer_by_lane
+from cyris.domain.models import (
+    SOURCE_REVIEW_KEPT,
+    DigestContent,
+    DigestItem,
+    DigestSection,
+    SourceConfig,
+    StoredArticle,
+)
 from cyris.i18n import issue_day, issue_hour, issue_name, resolve, translator
 from cyris.service_layer.degrade import cut
 from cyris.service_layer.schedule import PERIOD_ORDER
@@ -218,6 +226,8 @@ class HtmlDigestWriter:
         ai_pause: AiPause | None = None,
         settings_path: str = SETTINGS_PATH,
         interest_path: str = INTEREST_PATH,
+        list_sources: Callable[[], Mapping[str, SourceConfig]] | None = None,
+        forwarded_urls: Callable[[], Collection[str]] | None = None,
     ):
         """Initialize writer with output directory.
 
@@ -242,6 +252,14 @@ class HtmlDigestWriter:
             interest_path: Where the archive's Interest link leads: `/interest` on a
                 deployment's own host, the interest page a hosted tenant's run writes on the
                 hosted Worker (`hosted_pages.tenant_interest_path`, ADR-0048)
+            list_sources: Reads the sources as the store holds them at render time, so a card
+                whose source cyris made and the reader has not decided on is marked new, and
+                one whose source the reader stopped is marked stopped, a source made this very
+                run included; a page's probe corrects a mark a later decision outdated. None
+                marks nothing
+            forwarded_urls: The URL of each article this run read from a forward the reader
+                sent from their own address, so a mark whose items all came that way says its
+                mail arrives by forwarding. None, as on a rerender, says it of none
         """
         self.output_dir = Path(output_dir)
         self.language = language
@@ -249,6 +267,44 @@ class HtmlDigestWriter:
         self.ai_pause = ai_pause
         self.settings_path = settings_path
         self.interest_path = interest_path
+        self.list_sources = list_sources
+        self.forwarded_urls = forwarded_urls
+
+    def _source_marks(self, layers: Layers) -> dict[str, tuple[str, int, bool]]:
+        """Each story card's source with a review to show, by name: the review, its item count,
+        and whether each of those items arrived as a forward from the reader's own address. A
+        kept source is an ordinary one, so it carries no mark.
+
+        The count is every item of this issue the source is named on, in any layer, which the
+        mark's dialog states. Nothing is marked when the sources cannot be read: the mark is an
+        annotation, never the page.
+        """
+        if self.list_sources is None:
+            return {}
+        try:
+            listed = self.list_sources()
+        except Exception:  # noqa: BLE001 - the mark is an annotation, never the page
+            logger.warning("Could not read the sources to mark new ones", exc_info=True)
+            return {}
+        items = [
+            *(p.item for p in layers.pebbles),
+            *(m for s in layers.sand for m in s.members),
+            *(w.item for w in layers.water),
+        ]
+        named = Counter(name for item in items for name in set(item.sources))
+        forwarded_urls = set(self.forwarded_urls()) if self.forwarded_urls else set()
+        relayed = Counter(
+            name
+            for item in items
+            if forwarded_urls.intersection(item.urls)
+            for name in set(item.sources)
+        )
+        carded = {name for p in layers.pebbles for name in p.item.sources}
+        return {
+            name: (source.review, named[name], relayed[name] == named[name])
+            for name, source in listed.items()
+            if name in carded and source.review not in (None, SOURCE_REVIEW_KEPT)
+        }
 
     @property
     def env(self) -> Environment:
@@ -280,6 +336,7 @@ class HtmlDigestWriter:
             "digest.html.j2"
         )
         started, pause = content.started_at, self.ai_pause
+        layers = layer_by_lane(content)
         ai_paused = pause is not None and started is not None and started >= pause.since
 
         return template.render(
@@ -294,12 +351,13 @@ class HtmlDigestWriter:
             articles_included=content.articles_included,
             triage_pending_count=content.triage_pending_count,
             usage=content.usage,
-            layers=layer_by_lane(content),
+            layers=layers,
             raw_page=raw_page,
             degraded=degraded,
             ai_paused=ai_paused,
             ai_off=ai_paused and pause.off,
             content_lang=_html_lang(content.output_language),
+            source_marks=self._source_marks(layers),
         )
 
     def write(

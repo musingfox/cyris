@@ -1063,6 +1063,10 @@ def test_every_raw_probe_check_is_named_once_and_can_be_sabotaged():
 # The checks `scripts/digest_probe.py` must carry. Each digest-page change adds the
 # ids of the checks that hold it.
 EXPECTED_DIGEST_IDS = {
+    "source-decision-shows-at-once",
+    "source-decision-refused-reverts",
+    "source-mark-corrected-by-probe",
+    "source-dialog-says-forwarded",
     *(f"votes-one-row-{width}" for width in (360, 880, 1000, 1440)),
     *(f"votes-beside-meta-{width}" for width in (360, 880, 1000, 1440)),
     *(
@@ -1210,7 +1214,9 @@ async def test_the_digest_probe_fixture_serves_an_archive_with_small_buttons():
 async def test_the_digest_probe_fixture_signs_every_kind_in(kind):
     [(status, body)] = await _raw_answers(digest_probe.build_fixture(kind), [("GET", "/api/vote")])
     assert status == 200
-    assert json.loads(body) == {"authorized": True}
+    # A source kind's probe also lists the review its marked source holds now.
+    reviews = digest_probe.PROBED_REVIEWS.get(kind)
+    assert json.loads(body) == {"authorized": True, **({"reviews": reviews} if reviews else {})}
 
 
 async def test_the_digest_probe_fixture_keeps_a_refused_vote():
