@@ -68,6 +68,27 @@ const TAIPEI_11AM = new Date("2026-08-27T03:00:00Z");
 const MORNING_CATCH_UP = { period: "morning", date: "2026-08-27" };
 const run = (fields) => ({ period: "morning", dry_run: 0, status: "ok", ...fields });
 
+// The cases that name `catch_up` are planTick's off-the-hour answer, which `catch_up` in
+// service_layer/schedule.py gives too. A case's `runs` are the `digest_runs` table, null when it
+// cannot be read.
+describe("planTick agrees with service_layer/schedule.py's catch_up", () => {
+  for (const c of cases.filter((c) => "catch_up" in c)) {
+    it(`${c.at} in ${c.timezone}, ${c.edition ?? "self-hosted"} schedule ${JSON.stringify(c.schedule)}, runs ${JSON.stringify(c.runs)} → ${JSON.stringify(c.catch_up)}`, async () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const schedule = { "general.digest_schedule": c.schedule, "general.timezone": c.timezone };
+      const runs = c.runs === null ? () => new Response("no", { status: 500 }) : runsSince(c.runs);
+      const plan = await planTick({
+        env: ENV,
+        fetchImpl: tickD1({ schedule, runs }),
+        now: () => new Date(c.at),
+        counts: editionTimes(c.edition),
+      });
+      // On a digest hour the tick starts the container and `--if-due` picks the period: no catch-up.
+      expect(plan === null || Object.keys(plan).length === 0 ? null : plan).toEqual(c.catch_up);
+    });
+  }
+});
+
 describe("planTick", () => {
   it("starts the container on a digest hour and lets --if-due pick the period", async () => {
     const fetchImpl = tickD1();

@@ -16,6 +16,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A local install catches up a digest hour it missed. The hourly `cyris run --if-due`, from
+  `cyris triage-ui` or the compose crontab, now makes the issue of a digest hour that began less
+  than 3 hours ago when the store holds no finished, non-preview run of that period since the hour
+  began, as the cloud deployment's Worker already did; a failed run is retried by the next two
+  ticks. Feed entries that dropped while the machine slept are still gone, so a made-up issue
+  can be thinner. A store whose `digest_runs` cannot be read catches up nothing.
 - `cyris triage-ui` schedules a uv install itself: every hour, on the hour, it runs
   `cyris ingest`, `cyris run --if-due` and `cyris promote-sync`, so the cron line
   from the install guide can go; remove it if you added one. The schedule runs only

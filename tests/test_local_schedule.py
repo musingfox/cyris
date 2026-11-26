@@ -747,3 +747,153 @@ def test_the_cloud_paths_tick_keeps_its_meaning(tmp_path: Path, d1, digests, mon
     assert result.exit_code == 0, result.output
     assert digests == ["built"]
     assert list(tmp_path.rglob("*.run-lock")) == []
+
+
+# A digest hour the machine missed
+
+
+def _clock(monkeypatch, *, hour: int, minute: int = 30) -> None:
+    monkeypatch.setattr(
+        "cyris.utils.timezone.now_in_timezone",
+        lambda tz: datetime(2026, 9, 19, hour, minute, 0, tzinfo=ZoneInfo(tz)),
+    )
+
+
+# 08:00 in Taipei is 00:00 UTC: a run "since the hour" is finished at or after 2026-09-19T00:00.
+def _ran(root: Path, status: str, finished_at: str, *, period: str = "morning", dry_run: int = 0):
+    """A `digest_runs` row as a finished run left it, `finished_at` as the run log stores it."""
+    client = LocalD1Client(_store_path(root))
+    client.query(
+        "INSERT INTO digest_runs (finished_at, status, period, dry_run) VALUES (?, ?, ?, ?)",
+        [finished_at, status, period, dry_run],
+    )
+    client.close()
+
+
+@pytest.fixture
+def started(monkeypatch) -> list:
+    """The `RunOptions` of each run that started."""
+    options: list = []
+
+    async def run_digest(_deps, run_options):
+        options.append(run_options)
+        return SimpleNamespace(status="ok", rendered=None)
+
+    monkeypatch.setattr("cyris.service_layer.run_digest.run_digest", run_digest)
+    return options
+
+
+def test_a_tick_after_a_missed_digest_hour_with_no_ok_run_makes_that_issue(
+    install, digests, started, monkeypatch
+) -> None:
+    _clock(monkeypatch, hour=9)
+
+    result = runner.invoke(app, [*TICK, *install])
+
+    assert result.exit_code == 0, result.output
+    assert digests == ["built"]
+    [options] = started
+    assert (options.date, options.period) == (TODAY, "morning")
+    assert "Catching up the 2026-09-19 morning issue" in result.output
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        ("error", "2026-09-19T00:01:00+00:00", {}),
+        ("ok", "2026-09-19T00:01:00+00:00", {"dry_run": 1}),
+        ("ok", "2026-09-18T00:01:00+00:00", {}),
+        ("ok", "2026-09-19T00:30:00+00:00", {"period": "evening"}),
+    ],
+    ids=["error", "dry-run", "ok-before-the-hour", "ok-of-the-other-period"],
+)
+def test_a_run_that_does_not_count_leaves_the_catch_up_to_run(
+    install, digests, started, tmp_path: Path, monkeypatch, row
+) -> None:
+    status, finished_at, extra = row
+    _ran(tmp_path, status, finished_at, **extra)
+    _clock(monkeypatch, hour=10)
+
+    result = runner.invoke(app, [*TICK, *install])
+
+    assert result.exit_code == 0, result.output
+    assert [(o.date, o.period) for o in started] == [(TODAY, "morning")]
+
+
+def test_an_ok_run_since_the_hour_leaves_nothing_to_catch_up(
+    install, digests, started, tmp_path: Path, monkeypatch
+) -> None:
+    _ran(tmp_path, "error", "2026-09-19T00:01:00+00:00")
+    _ran(tmp_path, "ok", "2026-09-19T00:20:00+00:00")
+    _clock(monkeypatch, hour=9)
+
+    result = runner.invoke(app, [*TICK, *install])
+
+    assert result.exit_code == 0, result.output
+    assert "Not a digest hour" in result.output
+    assert digests == [] and started == []
+
+
+def test_a_digest_hour_three_hours_old_is_not_caught_up(
+    install, digests, started, monkeypatch
+) -> None:
+    _clock(monkeypatch, hour=11, minute=0)
+
+    result = runner.invoke(app, [*TICK, *install])
+
+    assert result.exit_code == 0, result.output
+    assert "Not a digest hour" in result.output
+    assert digests == [] and started == []
+
+
+def test_a_tick_on_a_digest_hour_runs_that_hours_period_not_a_catch_up(
+    install, digests, started, monkeypatch
+) -> None:
+    """At 20:00 the morning has no ok run either, yet the tick's own hour is the evening's."""
+    _clock(monkeypatch, hour=20, minute=0)
+
+    result = runner.invoke(app, [*TICK, *install])
+
+    assert result.exit_code == 0, result.output
+    assert [(o.date, o.period) for o in started] == [(TODAY, "evening")]
+    assert "Catching up" not in result.output
+
+
+def test_a_digest_runs_table_that_cannot_be_read_catches_up_nothing(
+    install, digests, started, monkeypatch
+) -> None:
+    from cyris.adapters.store.d1 import D1Error
+
+    def unreadable(self, period, since):
+        raise D1Error("database is locked")
+
+    monkeypatch.setattr("cyris.adapters.store.runs.D1RunLog.since", unreadable)
+    _clock(monkeypatch, hour=9)
+
+    result = runner.invoke(app, [*TICK, *install])
+
+    assert result.exit_code == 0, result.output
+    assert digests == [] and started == []
+
+
+def test_a_caught_up_issue_that_already_exists_is_left_alone(
+    install, digests, started, tmp_path: Path, monkeypatch
+) -> None:
+    _stored(tmp_path, TODAY, "morning")
+    _clock(monkeypatch, hour=9)
+
+    result = runner.invoke(app, [*TICK, *install])
+
+    assert result.exit_code == 0, result.output
+    assert f"{TODAY} morning issue already exists" in result.output
+    assert digests == [] and started == []
+
+
+def test_a_preview_catches_up_nothing(install, digests, started, monkeypatch) -> None:
+    _clock(monkeypatch, hour=9)
+
+    result = runner.invoke(app, [*TICK, "--dry-run", *install])
+
+    assert result.exit_code == 0, result.output
+    assert "Not a digest hour" in result.output
+    assert digests == [] and started == []

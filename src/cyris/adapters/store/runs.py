@@ -53,6 +53,18 @@ class D1RunLog:
             row["failed_sources"] = json.loads(row["failed_sources"])
         return row
 
+    def since(self, period: str, since: str) -> list[dict]:
+        """The rows of `period` finished at or after `since` (as `finished_at` is stored).
+
+        What a catch-up asks to tell whether a digest hour has an ok run (`catch_up` in
+        service_layer/schedule.py); the verdict is not made here.
+        """
+        rows = self._db.query(
+            "SELECT status, dry_run FROM digest_runs WHERE period = ? AND finished_at >= ?",
+            [period, since],
+        ).rows
+        return [dict(row) for row in rows]
+
     def newest(self) -> dict | None:
         """The newest non-preview row by insertion, with what its summary says a reader needs.
 
