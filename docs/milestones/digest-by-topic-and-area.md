@@ -39,9 +39,9 @@ depends: [value-by-clicks-and-rank]
 
 ## 分階段計畫
 
-每個階段一個可觀察的結果。只有一件事要等第二輪盲標抽完（約 2026-10-14，vault `pm/cyris/tasks/blind-labels-round-two.md`）：Lr 的正式站 D1 遷移，因為抽樣查詢以 `source_tier = 'filter'` 為鍵（`src/cyris/adapters/store/blind_labels.py:82`）；抽完之後標記頁與計分只讀 `blind_labels` 表存好的欄位，不再碰它。其餘階段的開發與試用部署都不等：試用租戶從空資料庫開機就是新 schema。原本「改版面的階段都等驗收輪」是為了 Clef 量投票行為，Clef 路線 2026-10-11 暫停（`clef-preference-order.md`）後這條理由不存在，2026-10-12 據此放寬。盲標第二輪改為 Lb 與 Lm 共用的測試集。
+每個階段一個可觀察的結果。只有一件事要等第二輪盲標抽完（約 2026-10-14，repo 外的規劃筆記）：Lr 的正式站 D1 遷移，因為抽樣查詢以 `source_tier = 'filter'` 為鍵（`src/cyris/adapters/store/blind_labels.py:82`）；抽完之後標記頁與計分只讀 `blind_labels` 表存好的欄位，不再碰它。其餘階段的開發與試用部署都不等：試用租戶從空資料庫開機就是新 schema。原本「改版面的階段都等驗收輪」是為了 Clef 量投票行為，Clef 路線 2026-10-11 暫停（`clef-preference-order.md`）後這條理由不存在，2026-10-12 據此放寬。盲標第二輪改為 Lb 與 Lm 共用的測試集。
 
-為了讓試用者早一點看到差異，2026-10-12 把實作順序定為 L1 → L3 → L4 → Lr → L2：L3 不等 L2，因為卡片預設就是單篇摘要，今天的 Features 卡直接當上層；L2 的掛接是例外路徑、每週約一張卡，對體驗貢獻最小，排最後。Lr 與 L1 不同時開，兩者都動 `SourceConfig` 與 `sources.config`，平行做整合必衝突。每個階段的票在 vault `pm/cyris/tasks/`，父卡 `m-digest-by-topic-and-area.md`。
+為了讓試用者早一點看到差異，2026-10-12 把實作順序定為 L1 → L3 → L4 → Lr → L2：L3 不等 L2，因為卡片預設就是單篇摘要，今天的 Features 卡直接當上層；L2 的掛接是例外路徑、每週約一張卡，對體驗貢獻最小，排最後。Lr 與 L1 不同時開，兩者都動 `SourceConfig` 與 `sources.config`，平行做整合必衝突。每個階段的票和父卡都在 repo 外的規劃筆記。
 
 | 階段 | 結果 | 前置 | 收據 | 改回成本 |
 |---|---|---|---|---|
@@ -57,9 +57,9 @@ depends: [value-by-clicks-and-rank]
 | Lm 模型評比 | 用同兩天的候選池，以生產的 filter、評分、Clef prompt 跑 gemini-3.8-flash、claude-haiku-5-5、gpt-6-luna，推理等級設成一樣；對照第二輪盲標算 AUC，連同 MVP 四種呼叫的費用列成一表；另加一臂「主力 LLM 帶同樣 5 篇相近投票標題問同一題」和 Clef 對照，決定 Clef 去留 | Lb，否則 filter 的比較仍是一個大請求；第二輪盲標標完；三個 client 要有共用的推理等級參數（`src/cyris/adapters/openai_client.py:64` 固定 low，Gemini 與 Anthropic client 沒有參數）；確認 AI Gateway 目錄有 `anthropic/claude-haiku-5-5` 與 `openai/gpt-6-luna` 的名字（未驗證） | 一張表：三個模型乘四個指標（filter AUC、評分 AUC、帶投票證據的排序 AUC、每天費用），Clef 列在排序那一欄旁邊；若換，`/settings` 改一個 grade D 值，程式不動；2026-12-31 前做完 | 零：只是量測 |
 
 - **L0 可以現在做。** 密度高文章的分布由人類對正式站 D1 查（資料庫名稱取自 `workers/rss/wrangler.toml:17`）：
-  `cd /Users/nickhuang/workspace/cyris/workers/rss && npx wrangler d1 execute cyris-rss --remote --command "SELECT digest_date, SUM(source_tier='summarize') AS dense, SUM(source_tier='filter') AS news FROM stored_articles WHERE digest_date IS NOT NULL GROUP BY digest_date ORDER BY digest_date DESC LIMIT 30"`
+  `cd workers/rss && npx wrangler d1 execute cyris-rss --remote --command "SELECT digest_date, SUM(source_tier='summarize') AS dense, SUM(source_tier='filter') AS news FROM stored_articles WHERE digest_date IS NOT NULL GROUP BY digest_date ORDER BY digest_date DESC LIMIT 30"`
 - **L1 到 L4 都不碰 `rejected`，可以和那邊的 S1 到 S5 平行。** 新聞的狀態改變是那邊的 S6b，它反過來以這裡的 L3 為前置。
-- **Lb 與 Lm 和版面無關，可以先做。** Lb 改的是 filter 呼叫的切法，不改判斷；Lm 是離線量測。兩者都不等第二輪盲標抽樣，但 Lm 的 AUC 以第二輪盲標為測試集，第一輪 98 題只當開發集。Lb 的第一步是離線重跑工具（vault `filter-replay-harness.md`），它和 Lm 共用。
+- **Lb 與 Lm 和版面無關，可以先做。** Lb 改的是 filter 呼叫的切法，不改判斷；Lm 是離線量測。兩者都不等第二輪盲標抽樣，但 Lm 的 AUC 以第二輪盲標為測試集，第一輪 98 題只當開發集。Lb 的第一步是離線重跑工具（repo 外的規劃筆記），它和 Lm 共用。
 
 ## 還要人類決定的問題
 
@@ -95,7 +95,7 @@ depends: [value-by-clicks-and-rank]
 - 只為 `summarize` 拉長窗口：被截掉的文章本來就留在 pending 等下一期，窗口不是瓶頸。
 - 頁面上加「這篇放錯區」按鈕：讀者在 `/settings` 改來源的領域就是修正訊號，不加 UI。
 - 修好新聞的 LLM 分群：嵌入分群在 0.70 就做出它做不出來的故事群，先消除再簡化。
-- 只靠標題餘弦門檻掛接：0.55 到 0.60 之間有斷崖，0.60 掛上的一半不同主題（Marvell 配 AppLovin），門檻切不開，要 LLM 看內容確認。
+- 只靠標題餘弦門檻掛接：0.55 到 0.60 之間有斷崖，0.60 掛上的一半不同主題（一家半導體公司配一家行動廣告公司），門檻切不開，要 LLM 看內容確認。
 - 掛接放寬到「同一領域的相關」、寫作時由 LLM 丟不相關：會出現硬湊的對照，而「忽略」欄位在 MVP 裡沒被檢驗到。
 - 純合成段落當剩餘新聞的形式：99 篇只寫到約 15 篇，其餘消失，和「排序取代刪除」相反。
 - 看了 MVP 的費用就直接換生產模型：MVP 只比了四種新呼叫，filter 去留、評分、Clef 三個花錢又定品質的步驟沒比，推理等級也不對等；換模型等 Lm 的 AUC。
@@ -111,14 +111,14 @@ depends: [value-by-clicks-and-rank]
 - `sources.yaml` 2026-10-11：53 個來源，`summarize` 30、`filter` 22、`fan` 1。第一個標籤為 `tech` 的：`summarize` 18 個、`filter` 12 個，合計 30。其餘第一個標籤都只有一到兩個來源（`news` 6 個例外，全在 `filter`）。
 - 正式站 D1 `stored_articles` 2026-10-11 查，依 `digest_date` 分日，2026-09-12 到 2026-10-11 共 30 天：`summarize` 每天 1 到 9 篇，中位數 3，平均 3.2，13 天只有 1 到 2 篇，沒有一天是 0；`filter` 每天 48 到 301 篇，中位數約 175；`fan` 每天 0 到 2 篇。`digest_date` 只到日，一天兩期，所以每期的密度高文章約 1 到 2 篇，零篇的期數常見但沒有直接數出來（要用 `digest_runs` 的期別再查）。腳本 `.spiral/dense-per-issue.sh` 不入 repo。
 - 盲標數字見 `value-by-clicks-and-rank.md` 的「依據的資料」；它只抽過 `filter` tier。
-- **MVP，2026-10-11，兩天的正式站候選池離線重跑**（2026-10-07：read 6、skim 233；2026-10-10：read 3、skim 154），gemini-embedding-001 標題嵌入，gemini-3.8-flash。腳本 `.spiral/mvp-*.py` 與輸出 `~/cyris-mvp/` 都不入 repo。
+- **MVP，2026-10-11，兩天的正式站候選池離線重跑**（2026-10-07：read 6、skim 233；2026-10-10：read 3、skim 154），gemini-embedding-001 標題嵌入，gemini-3.8-flash。腳本 `.spiral/mvp-*.py` 與輸出都放在 repo 外，不入 repo。
   - 掛接門檻掃描（每篇新聞只算餘弦最高的錨點）。10-07：θ 0.50 掛上 210 篇、0.55 掛 80、0.60 掛 8、0.65 掛 1、0.80 以上 0；10-10：0.50 掛 119、0.55 掛 32、0.60 掛 5、0.65 以上 0。斷崖在 0.55 到 0.60 之間，標題餘弦擠在一個窄區間，門檻切不開。
-  - θ=0.60 掛上的 13 篇，人工看約一半不同主題：Marvell 的電子報掛到 Marvell 財報（0.79，對）、AppLovin（0.65，錯）、力成、凌華、啓碁的季營收（0.61 到 0.62，只是同一個產業）。掛對的三張卡片，Stratechery 對 TechCrunch 的 AI agent、區塊勢對中央社的虛擬通貨公會、ByteByteGo 對 TechCrunch 的內容審核模型，論點對照寫得好、逐論點有出處。
-  - 第二輪改成嵌入取前 8 名（餘弦 ≥ 0.50）再由 LLM 以「同一事件、公司、政策或問題」確認：10-07 候選 48 篇確認 1 篇（Marvell 財報），10-10 候選 24 篇確認 0 篇。嚴格的同主題在這兩天只出現一次；密度高文章多是不跟當日新聞走的分析或隨筆（Stratechery 週報、Tidy First、Mitchell Hashimoto、Vincent 的研究報告方法）。
+  - θ=0.60 掛上的 13 篇，人工看約一半不同主題：某家半導體公司的電子報掛到同一家公司的財報（0.79，對）、掛到一家行動廣告公司（0.65，錯）、掛到三家不同公司的季營收（0.61 到 0.62，只是同一個產業）。掛對的三張卡片，一份科技週報對科技媒體的 AI agent 報導、一份區塊鏈電子報對通訊社的虛擬通貨公會報導、一份軟體工程電子報對科技媒體的內容審核模型報導，論點對照寫得好、逐論點有出處。
+  - 第二輪改成嵌入取前 8 名（餘弦 ≥ 0.50）再由 LLM 以「同一事件、公司、政策或問題」確認：10-07 候選 48 篇確認 1 篇（一家半導體公司的財報），10-10 候選 24 篇確認 0 篇。嚴格的同主題在這兩天只出現一次；密度高文章多是不跟當日新聞走的分析或隨筆（一份科技週報、一份軟體設計電子報、一位開發者的個人部落格、一位個人作者的研究報告方法）。
   - 剩餘新聞，候選 a 純合成段落：10-07 國際時事 99 篇只看前 60 篇、段落寫到約 15 篇，其餘默默消失。候選 b 嵌入分群 0.70：99 篇成 10 個多篇群組加 65 個單篇，群組是真的故事（國慶酒會 9 篇、徐佳青請辭 6 篇、法國高中生抗議 4 篇、諾貝爾物理獎 3 篇），正是 LLM 分群沒做出來的。候選 c 先分群再分批全數寫成段落：兩天五個領域引用覆蓋全部 100%（例如 97 篇成 74 個單位寫成 15 段、72 篇成 68 個單位寫成 10 段），段落可讀、同類事件被放在一起、重要的在前，但一個領域 15 段是一整牆文字，要靠 N7 的配額截尾。
-  - 同一份候選換三個 LLM 跑第二輪（嵌入與初選相同，只換判斷者）。確認的掛接：gemini-3.8-flash 兩天共 1 篇；gpt-6-luna 共 4 篇（多了 Stratechery 對 TechCrunch 的 AI agent、ieo Google 算力對資料中心電池、Tidy First 對「AI 寫更多程式碼但沒有更多軟體」）；claude-haiku-5-5 共 5 篇（再多 Stratechery 對 Khosla 的 agent 市場）。gpt 與 haiku 在 10-10 確認的兩篇完全相同，gemini 判 0；人工看 gpt 與 haiku 多確認的都是第一輪寫出好卡片的那幾對。所以確認的產量取決於判斷者對「同主題」的嚴格程度，prompt 要把這條線寫死，不能留給模型。段落的粗細也隨模型：10-07 政治 74 到 75 個單位，gemini 寫 15 段、haiku 約每 2.5 個單位一段、gpt 39 段幾乎一單位一段，讀起來像清單。引用覆蓋三者都在 98% 到 100%。領域粗細也不同：gpt 分 3 個、gemini 5 個、haiku 6 個（含只有一兩個來源的小領域）。每段幾個單位要在 prompt 裡給目標值，是 grade A 的常數還是 D 的設定待定。
+  - 同一份候選換三個 LLM 跑第二輪（嵌入與初選相同，只換判斷者）。確認的掛接：gemini-3.8-flash 兩天共 1 篇；gpt-6-luna 共 4 篇（多了科技週報對科技媒體的 AI agent、一位個人作者談 Google 算力對資料中心電池、軟體設計電子報對「AI 寫更多程式碼但沒有更多軟體」）；claude-haiku-5-5 共 5 篇（再多科技週報對一家創投公司的 agent 市場）。gpt 與 haiku 在 10-10 確認的兩篇完全相同，gemini 判 0；人工看 gpt 與 haiku 多確認的都是第一輪寫出好卡片的那幾對。所以確認的產量取決於判斷者對「同主題」的嚴格程度，prompt 要把這條線寫死，不能留給模型。段落的粗細也隨模型：10-07 政治 74 到 75 個單位，gemini 寫 15 段、haiku 約每 2.5 個單位一段、gpt 39 段幾乎一單位一段，讀起來像清單。引用覆蓋三者都在 98% 到 100%。領域粗細也不同：gpt 分 3 個、gemini 5 個、haiku 6 個（含只有一兩個來源的小領域）。每段幾個單位要在 prompt 裡給目標值，是 grade A 的常數還是 D 的設定待定。
   - 費用與耗時，重跑一次帶計數（只含 MVP 的四種呼叫：領域提案、掛接確認、卡片、剩餘段落；不含 filter、評分、Clef、嵌入）。兩天合計：gemini-3.8-flash 24 次呼叫、輸入 39K、輸出 50K（含思考）、375 秒、$0.216；gpt-6-luna 25 次、43K、18K、196 秒、$0.013；claude-haiku-5-5 27 次、58K、44K、240 秒、$0.028。換成每天：$0.108、$0.007、$0.014；一個月約 $3.2、$0.20、$0.42，batch 五折再減半。官方價 2026-10-11：gemini-3.8-flash $0.75/$3.75 每百萬 token（2026-12-31 前導入價，之後 $1.50/$7.50，ai.google.dev/gemini-api/docs/pricing）；gpt-6-luna $0.10/$0.50（developers.openai.com/api/docs/models/gpt-6-luna）；claude-haiku-5-5 $0.10/$0.50（提示 100K 內）。三家 batch 都是五折。不對等之處：專案的 OpenAI client 固定 `reasoning_effort: low`，Gemini 與 Haiku 走預設思考，所以 gpt 的輸出 token 只有另外兩者的三分之一。Gemini 的輸出單價是另外兩者的 7.5 倍、又含思考 token，是它貴十倍的原因。
-  - 領域由 LLM 從來源提出：兩天、兩輪，每次提出的名稱和分派都不同（同一天的 ByteByteGo 一輪在軟體工程、一輪在人工智慧與軟體工程）。印證領域要由讀者確認後固定，不能每輪重提。
+  - 領域由 LLM 從來源提出：兩天、兩輪，每次提出的名稱和分派都不同（同一天的一份軟體工程電子報一輪在軟體工程、一輪在人工智慧與軟體工程）。印證領域要由讀者確認後固定，不能每輪重提。
   - 最大請求的大小，2026-10-11 用 10-07 的 233 篇新聞實際組出 filter prompt，token 依字數估（中文字 0.7、其餘每 4 字元 1 個，是估算不是計數）：摘錄 300 字元約 21K、500 字元（`cyris.toml.example:43` 的預設）約 22K、1000 字元約 26K、2000 字元約 31K，都是整天的量，一期約一半；30 天最忙的一天 301 篇依比例約 29K。MVP 的四種呼叫每次都在 10K 以下。會超過 100K 的只有多媒體：兩小時 podcast 逐字稿約 25K 到 30K 仍在內，YouTube 直接讀網址是 Gemini 專屬（`docs/milestones/multimedia-sources-podcast-youtube.md:58-63`）。長提示分級的官方來源同上一條。
 
 ## Suggested skills
