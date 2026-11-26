@@ -825,6 +825,28 @@ A save refused with `This save was refused: it did not come from this settings p
 browser sent the save without this Worker's `Origin`; the browser's console names any script or
 style the page's policy refused.
 
+### The reader's interest map
+
+A signed-in reader's archive shows the Interest map link, to `HOSTED_URL/t/<tenant>/interest`, as a
+local or cloud archive does. No container draws it on request: every run of the tenant but a
+preview draws the map as it ends, from the tenant's own votes and holds, and stores it in the
+tenant's `hosted_pages` at `/interest.html`
+([ADR-0048](decisions/0048-a-hosted-tenants-interest-map-is-a-page-its-run-writes.md)). A vote
+reaches it at the tenant's next run, as it reaches the digest; the hold clocks, and the page's `as
+of` line, are the run's end. The map's site bar links Archive, Settings and Sign out; it has no vote
+or topic control. A map that could not be stored leaves the last one, and the run's summary in
+`digest_runs` names `interest_page_error`; the run itself is not failed for it.
+
+To check it on a trial tenant, after a run of the tenant (step 7):
+
+1. Signed in as alpha's reader, open alpha's archive: under its heading, a line links the Interest
+   map. Open it: `HOSTED_URL/t/alpha/interest` shows the map, or the line saying no vote is tagged
+   yet, with an `as of` time at the last run's end.
+2. As the operator, `POST /hosted/tenants/alpha/query` with `{"sql": "SELECT updated_at FROM
+   hosted_pages WHERE path = '/interest.html'"}` answers that run's end.
+3. In the same browser, `HOSTED_URL/t/bravo/interest` answers `{"error":"not found"}`, as every
+   path of another tenant does, and so does a tenant's own map before its first run.
+
 ## 11. Back up every tenant daily, and drill a restore
 
 Once a day, in the hourly tick of 04:00 UTC (`BACKUP_HOUR_UTC`) and after that tick's polls and

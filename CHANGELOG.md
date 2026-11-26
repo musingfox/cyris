@@ -16,6 +16,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A hosted reader who is signed in can open the Interest map from their archive, at
+  `/t/<tenant>/interest`, and use the All articles page's List and Triage views, as on
+  every other edition. Each run draws the map as it ends, so it shows the votes that
+  run applied, and its "As of" time is when that run ended.
 - `cyris triage-ui` schedules a uv install itself: every hour, on the hour, it runs
   `cyris ingest`, `cyris run --if-due` and `cyris promote-sync`, so the cron line
   from the install guide can go; remove it if you added one. The schedule runs only
