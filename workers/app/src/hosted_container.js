@@ -62,10 +62,12 @@ export const RUN = "run";
 const sameRun = (a, b) => Boolean(a && b && a.id === b.id && a.attempt === b.attempt);
 
 // The environment a tenant's run container starts with. The tenant id comes from the object's
-// own name. Pages publishing is off whatever the image defaults to: a hosted run stores its
-// pages in the tenant's own object (bootstrap wires that whatever this says). Without the hosted
-// domain a run would have no link to give, so it is not started.
-export function hostedContainerEnv(env, tenant) {
+// own name, and `members` are the addresses on its invite list, the reader's own: mail the
+// tenant's address gets from one is a forward, read for the sender it quotes (ADR-0050). Pages
+// publishing is off whatever the image defaults to: a hosted run stores its pages in the tenant's
+// own object (bootstrap wires that whatever this says). Without the hosted domain a run would have
+// no link to give, so it is not started.
+export function hostedContainerEnv(env, tenant, members = []) {
   if (!env[HOSTED_DOMAIN]) throw new Error(`${HOSTED_DOMAIN} is not set; run: scripts/hosted.sh secrets`);
   const secrets = Object.fromEntries(handedSecrets(env).map((name) => [name, env[name]]));
   return {
@@ -73,6 +75,7 @@ export function hostedContainerEnv(env, tenant) {
     CYRIS_ROLE: "run",
     CYRIS_STORE_BACKEND: "d1",
     CYRIS_STORE_TENANT_ID: tenant,
+    CYRIS_STORE_MEMBER_ADDRESSES: members.join(","),
     [HOSTED_DOMAIN]: env[HOSTED_DOMAIN],
     CYRIS_PROMOTE_PUBLISH_ENABLED: "false",
   };
@@ -131,8 +134,10 @@ export class TenantContainer extends DurableObject {
   async startRun({ period, date, run } = {}) {
     if (!TENANT.test(this.tenant ?? "")) throw new Error(`not a tenant's run container: ${this.tenant}`);
     let registered;
+    let members;
     try {
       registered = await tenantRegistry(this.env).tenant(this.tenant);
+      members = (await tenantRegistry(this.env).members(this.tenant)).map((member) => member.email);
     } catch (error) {
       await this.#couldNotStart(error, period, date);
       throw error;
@@ -142,7 +147,7 @@ export class TenantContainer extends DurableObject {
       throw new Error(`tenant ${this.tenant} is not an active registered tenant: ${status}`);
     }
     try {
-      const envVars = hostedContainerEnv(this.env, this.tenant);
+      const envVars = hostedContainerEnv(this.env, this.tenant, members);
       if (period) envVars.CYRIS_RUN_PERIOD = period;
       if (date) envVars.CYRIS_RUN_DATE = date;
       const named = run ? { id: run.id, attempt: run.attempt } : undefined;

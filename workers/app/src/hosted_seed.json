@@ -7,7 +7,8 @@
     "digest.output_language": "en",
     "notify.discord_webhook_url": "",
     "notify.email_to": "",
-    "notify.email_from": ""
+    "notify.email_from": "",
+    "notify.own_addresses": ""
   },
   "sources": {
     "alpha": [

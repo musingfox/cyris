@@ -183,6 +183,8 @@ const hosted = {
       voteToken: (sessionHash) => registry().voteToken(sessionHash),
       voteSession: (token) => registry().voteSession(token),
       recordVote: (tenant, vote) => tenantDb(env, tenant).recordVote(vote),
+      sourceReviews: (tenant) => tenantDb(env, tenant).sourceReviews(),
+      reviewSource: (tenant, name, review) => tenantDb(env, tenant).setSourceReview(name, review),
       restore: (tenant, { date, from }) => restoreExport(env, { date, from, into: tenant }),
       backup: () => backupAll(env),
       waitlist: {

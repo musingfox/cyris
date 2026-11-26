@@ -14,6 +14,7 @@
 
 import { PRIVATE_HEADERS, VOTE_PATH } from "./hosted_pages.js";
 import { crossSite } from "./hosted_session.js";
+import { answerDecision, isDecisionBody } from "./source_review.js";
 
 export const VOTE_HEADER = "X-Cyris-Vote";
 
@@ -89,9 +90,14 @@ export async function boundedText(request, max) {
   return new TextDecoder().decode(bytes);
 }
 
-// `deps`: `voteSession(token)`, the registry's live session `{tenant_id, ...}` or null, and
+// `deps`: `voteSession(token)`, the registry's live session `{tenant_id, ...}` or null,
 // `recordVote(tenant, {url, vote})`, which answers that tenant's object's `{queued}` or
-// `{refused, status}`.
+// `{refused, status}`, `sourceReviews(tenant)`, the review each of its newsletter sources holds,
+// and `reviewSource(tenant, name, review)`, which writes one (TenantDb.setSourceReview).
+//
+// A source decision, `{source, decision}`, is written at once rather than queued like a vote: it
+// is the tenant's own sources row, which this Worker already writes for the settings page, and
+// every decision is undone by another (ADR-0050).
 export async function handleVote(request, deps) {
   if (request.method === "OPTIONS") return answer(null, 204);
   const probe = request.method === "GET" || request.method === "HEAD";
@@ -105,7 +111,14 @@ export async function handleVote(request, deps) {
   const token = request.headers.get(VOTE_HEADER);
   if (!token) return ended();
   // The page asks first whether it may show its vote buttons: yes for a live session's token.
-  if (probe) return (await deps.voteSession(token)) ? answer(PROBE) : ended();
+  if (probe) {
+    const session = await deps.voteSession(token);
+    if (!session) return ended();
+    // The review each source holds, so the page corrects the marks it was rendered with; a read
+    // that fails leaves them as they are.
+    const reviews = await Promise.resolve(deps.sourceReviews(session.tenant_id)).catch(() => null);
+    return answer({ ...PROBE, ...(reviews ? { reviews } : {}) });
+  }
 
   let text;
   try {
@@ -119,6 +132,13 @@ export async function handleVote(request, deps) {
     body = JSON.parse(text);
   } catch {
     return answer({ error: "the body is not JSON" }, 400);
+  }
+  if (isDecisionBody(body)) {
+    const session = await deps.voteSession(token);
+    if (!session) return ended();
+    const store = { decide: (name, review) => deps.reviewSource(session.tenant_id, name, review) };
+    const [status, decided] = await answerDecision(body, store);
+    return answer(decided, status);
   }
   const { url, vote } = body ?? {};
   if (typeof url !== "string" || !url || url.length > MAX_URL_LENGTH || !VOTES.includes(vote)) {

@@ -1,0 +1,178 @@
+    <script>
+    // A story card's source mark and the source dialog (UI spec section 4, source dialog;
+    // ADR-0050). For a reader the probe admits, a mark is a button that opens the dialog, and the
+    // dialog's Keep, Stop or Restore goes through /api/vote, the one route a hosted tenant's
+    // sandboxed page may reach, so it never waits on a container. The card shows the decision at
+    // once and the request runs behind it; one the door refuses puts the card back as it was and
+    // says so, with Retry. The probe's `reviews` corrects a mark the page was rendered with.
+    // voteToken, timeoutSignal and VOTE_TIMEOUT_MS are the vote script's (_promote_script).
+    (() => {
+        const dialog = document.getElementById('source-dialog');
+        if (!dialog) return;
+        // A mark's state: the source's review. A kept source reads as an ordinary one, so a mark
+        // the probe finds kept, or with no review, is hidden.
+        const MARK = {
+            new: {{ t("digest.source_new") | tojson }},
+            declined: {{ t("digest.source_stopped") | tojson }},
+            kept: {{ t("digest.source_kept") | tojson }},
+        };
+        const LINE = {
+            new: {{ t("digest.source_dialog_new") | tojson }},
+            declined: {{ t("digest.source_dialog_stopped") | tojson }},
+            kept: {{ t("digest.source_dialog_kept") | tojson }},
+        };
+        // The decisions each state offers, and the review each leaves (source_review.js).
+        const OFFERED = { new: ['keep', 'stop'], declined: ['restore'], kept: ['stop'] };
+        const LEAVES = { keep: 'kept', stop: 'declined', restore: 'kept' };
+        const FAILED = {
+            signedOut: {{ t("digest.source_review_signed_out") | tojson }},
+            refused: (status) => {{ t("digest.source_review_refused", status="%STATUS%") | tojson }}.replace('%STATUS%', status),
+            unanswered: {{ t("digest.source_review_unanswered") | tojson }},
+        };
+        const RETRY = {{ t("digest.source_retry") | tojson }};
+        const marksOf = (name) => [...document.querySelectorAll('.source-mark')].filter((m) => m.dataset.source === name);
+        // Per source: the state the door last confirmed (the rendered mark, then the probe's and
+        // each answer's), the chain its decisions are sent on, one after another, so the door
+        // applies them in the reader's order, and how many are still out.
+        const confirmed = {};
+        const chain = {};
+        const pending = {};
+        for (const mark of document.querySelectorAll('.source-mark')) confirmed[mark.dataset.source] = mark.dataset.review;
+        let opener = null;
+
+        function paint(name, state, shown = true) {
+            for (const mark of marksOf(name)) {
+                mark.dataset.review = state;
+                mark.textContent = MARK[state];
+                mark.hidden = !shown;
+            }
+        }
+
+        // The notice goes after the card's meta row, as a vote's does.
+        function clearFailure(name) {
+            for (const mark of marksOf(name)) {
+                const next = mark.closest('.meta').nextElementSibling;
+                if (next && next.classList.contains('source-error')) next.remove();
+            }
+        }
+        function showFailure(name, decision, reason) {
+            for (const mark of marksOf(name)) {
+                const notice = document.createElement('div');
+                notice.className = 'notice err source-error';
+                notice.setAttribute('role', 'alert');
+                notice.lang = {{ ui_lang | tojson }};
+                const text = document.createElement('span');
+                text.textContent = reason;
+                const retry = document.createElement('button');
+                retry.type = 'button';
+                retry.className = 'btn secondary sm';
+                retry.textContent = RETRY;
+                retry.addEventListener('click', () => {
+                    // The notice and its button go; focus goes to the mark first.
+                    mark.focus();
+                    decide(name, decision);
+                });
+                notice.append(text, retry);
+                mark.closest('.meta').after(notice);
+            }
+        }
+
+        // The answer's reason when the door did not take the decision; null when it did.
+        async function sendDecision(name, decision) {
+            try {
+                const resp = await fetch('/api/vote', {
+                    method: 'POST',
+                    redirect: 'manual',
+                    headers: { 'Content-Type': 'application/json', ...(voteToken() ? { 'X-Cyris-Vote': voteToken() } : {}) },
+                    body: JSON.stringify({ source: name, decision: decision }),
+                    signal: timeoutSignal(VOTE_TIMEOUT_MS),
+                });
+                if (resp.ok) return null;
+                // Access's redirect, or the hosted Worker's answer to an ended session.
+                if (resp.type === 'opaqueredirect' || resp.status === 401) return FAILED.signedOut;
+                return FAILED.refused(resp.status);
+            } catch {
+                return FAILED.unanswered;
+            }
+        }
+
+        // A failed decision puts the card back to what the door last confirmed, once no later
+        // decision is still out to settle it.
+        function decide(name, decision) {
+            clearFailure(name);
+            paint(name, LEAVES[decision]);
+            pending[name] = (pending[name] ?? 0) + 1;
+            chain[name] = (chain[name] ?? Promise.resolve()).then(async () => {
+                const failure = await sendDecision(name, decision);
+                pending[name] -= 1;
+                if (!failure) confirmed[name] = LEAVES[decision];
+                else if (!pending[name]) {
+                    paint(name, confirmed[name]);
+                    showFailure(name, decision, failure);
+                }
+            });
+        }
+
+        function open(mark) {
+            opener = mark;
+            const state = mark.dataset.review;
+            dialog.dataset.source = mark.dataset.source;
+            dialog.querySelector('#source-dialog-title').textContent = mark.dataset.source;
+            dialog.querySelector('.source-dialog-count').textContent = mark.dataset.items;
+            dialog.querySelector('.source-dialog-line').textContent = LINE[state];
+            dialog.querySelector('.source-dialog-forwarded').hidden = !('forwarded' in mark.dataset);
+            for (const b of dialog.querySelectorAll('[data-decision]')) b.hidden = !OFFERED[state].includes(b.dataset.decision);
+            dialog.showModal();
+            dialog.querySelector('.source-dialog-close').focus();
+        }
+
+        // A signed-in reader's mark becomes a button; signed out it stays a plain tag.
+        function toButton(mark) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            for (const a of mark.attributes) button.setAttribute(a.name, a.value);
+            button.setAttribute('aria-haspopup', 'dialog');
+            button.textContent = mark.textContent;
+            mark.replaceWith(button);
+        }
+
+        document.addEventListener('cyris:signed-in', (e) => {
+            document.querySelectorAll('span.source-mark').forEach(toButton);
+            const reviews = e.detail?.reviews;
+            if (!reviews || typeof reviews !== 'object') return;
+            for (const name of new Set([...document.querySelectorAll('.source-mark')].map((m) => m.dataset.source))) {
+                const review = reviews[name];
+                confirmed[name] = review === 'new' || review === 'declined' ? review : 'kept';
+                // A decision already out repaints the card itself.
+                if (pending[name]) continue;
+                if (confirmed[name] === 'kept') paint(name, 'kept', false);
+                else paint(name, confirmed[name]);
+            }
+        });
+
+        document.addEventListener('click', (e) => {
+            const mark = e.target.closest('button.source-mark');
+            if (mark) open(mark);
+        });
+        dialog.querySelector('.source-dialog-close').addEventListener('click', () => dialog.close());
+        // A click that both began and ended outside the dialog's box landed on the backdrop.
+        let downOutside = false;
+        const outside = (e) => {
+            if (e.target !== dialog) return false;
+            const r = dialog.getBoundingClientRect();
+            return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+        };
+        dialog.addEventListener('pointerdown', (e) => { downOutside = outside(e); });
+        dialog.addEventListener('click', (e) => {
+            const button = e.target.closest('[data-decision]');
+            if (button) {
+                const name = dialog.dataset.source;
+                dialog.close();
+                decide(name, button.dataset.decision);
+            } else if (downOutside && outside(e)) dialog.close();
+            downOutside = false;
+        });
+        // Focus goes back to the mark that opened the dialog by hand: browsers restore it differently.
+        dialog.addEventListener('close', () => opener?.focus());
+    })();
+    </script>

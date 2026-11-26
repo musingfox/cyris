@@ -49,6 +49,7 @@ const REFUSALS = {
   whole_number_min: (t, v) => t("hosted_settings.refused_whole_number_min", v),
   on_off: (t, v) => t("hosted_settings.refused_on_off", v),
   text: (t, v) => t("hosted_settings.refused_text", v),
+  addresses: (t, v) => t("hosted_settings.refused_addresses", v),
   blank: (t, v) => t("hosted_settings.refused_blank", v),
   type_scale: (t, v) => t("hosted_settings.refused_type_scale", v),
   schedule: (t, v) => t("hosted_settings.refused_schedule", v),

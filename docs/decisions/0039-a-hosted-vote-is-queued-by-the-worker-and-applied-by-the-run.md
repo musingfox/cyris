@@ -10,6 +10,16 @@ decision-makers: ""
 > (2026-11-26). The probe's answer no longer carries `settings: false`: the hosted Worker serves
 > the tenant's settings page (ADR-0043) and the interest map its run writes, so a signed-in
 > reader's probe opens the gated controls as on every edition. The rest of this ADR still stands.
+>
+> Amended by [ADR-0050](0050-mail-from-an-unknown-sender-becomes-a-source-the-reader-keeps-or-stops.md)
+> (2026-11-26). The vote token also carries a reader's decision on a newsletter source,
+> `{source, decision}` on the same `POST /api/vote`, and the probe's answer adds `reviews`. The hosted
+> Worker writes a decision at once through `TenantDb.setSourceReview`, not queued, so "The Worker
+> writes nothing but the queue row" no longer holds: it also writes a newsletter source's review.
+> *Self-hosted is untouched* no longer holds either: the app Worker writes a source decision to D1
+> itself. ADR-0050 says why reversibility, the ground on which this record let the token write,
+> still holds, and names the one part that does not: mail that arrives while a source is stopped is
+> deleted.
 
 ## Context and Problem Statement
 

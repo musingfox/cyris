@@ -674,9 +674,10 @@ $("pipeline-form").addEventListener("submit", async (e) => {
   if (plain) show(plain.ok ? "ok" : "err", plain.line, "pipeline-result");
 });
 
-// The Notifications form saves in two parts too: the webhook and the mail addresses.
+// The Notifications form saves in three parts: the webhook, the mail addresses, which a test
+// message checks, and the reader's other addresses, a plain setting.
 const DISCORD_PART = (field) => field === "discord-webhook";
-const EMAIL_PART = (field) => !DISCORD_PART(field);
+const EMAIL_PART = (field) => field === "email-to" || field === "email-from";
 
 $("notify-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -722,6 +723,11 @@ $("notify-form").addEventListener("submit", async (e) => {
       refuseSetting(err);
       lines.push(err.message);
     }
+  }
+  const plain = await savePlain(form, stored);
+  if (plain) {
+    failed = failed || !plain.ok;
+    lines.push(plain.line);
   }
   saving.delete(form);
   markClean(form, stored);
@@ -789,6 +795,14 @@ const rowOf = (name) => document.querySelector(`tr.src-row[data-name="${CSS.esca
 
 const sourcesNav = () => document.querySelector('.settings-nav a[data-tab="sources"]');
 
+// A source cyris made waits for the reader's Keep or Stop on a digest card; a stopped one stays
+// listed, declined, so its sender's mail makes no source again (ADR-0050).
+const reviewMark = (s) => {
+  if (s.review === "new") return ` <span class="pill">${esc(t("settings.source_new"))}</span>`;
+  if (s.review === "declined") return ` <span class="label">${esc(t("settings.source_declined"))}</span>`;
+  return "";
+};
+
 // Only what `cyris doctor` would warn about: a feed failing now and then shows nothing.
 const feedProblem = (s) => s.health?.problems?.length
   ? `<span class="small feed-problem">${esc(s.health.problems.join(" · "))}</span>`
@@ -799,7 +813,7 @@ function renderSources() {
   $("src-body").innerHTML = rows.length
     ? rows.map((s) => `
       <tr class="src-row" data-name="${esc(s.name)}" tabindex="0">
-        <td class="name">${esc(s.name)}${feedProblem(s)}</td>
+        <td class="name">${esc(s.name)}${reviewMark(s)}${feedProblem(s)}</td>
         <td><span class="label">${esc(t(`source_type.${s.type}`))}</span></td>
         <td><span class="pill">${esc(t(`lane.${s.lane}`))}</span></td>
         <td class="target">${esc(s.url || s.email_match || "—")}</td>
@@ -841,7 +855,11 @@ function openEditor(name) {
   q("#e-email").value = s.email_match || "";
   q("#e-home").value = s.homepage || "";
   q("#e-tags").value = (s.tags || []).join(", ");
-  const save = q('[data-act="save"]'), retire = q('[data-act="retire"]');
+  const save = q('[data-act="save"]'), retire = q('[data-act="retire"]'), restore = q('[data-act="restore"]');
+  // A newsletter source is stopped rather than deleted, and a stopped one restored: with no row,
+  // its sender's next mail would make it again (ADR-0050).
+  const stops = !adding && s.type === "newsletter";
+  const retireText = () => (stops ? t("settings.stop_source") : t("settings.retire"));
   const setType = (type) => {
     ed.querySelectorAll("[data-type]").forEach((b) => {
       b.setAttribute("aria-pressed", String(b.dataset.type === type));
@@ -868,10 +886,13 @@ function openEditor(name) {
   ed.addEventListener("input", editorEdited);
   ed.addEventListener("change", editorEdited);
   refreshEditor();
-  retire.hidden = adding;
+  retire.hidden = adding || s.review === "declined";
+  retire.textContent = retireText();
+  restore.hidden = !(stops && s.review === "declined");
   if (!sourcesWritable) {
     // Rows still open so their values stay readable; nothing in them writes.
     retire.disabled = true;
+    restore.disabled = true;
     show("err", NO_SOURCE_TABLE, save.parentElement.querySelector(".notice"));
   }
   q('[data-act="cancel"]').addEventListener("click", () => {
@@ -886,26 +907,40 @@ function openEditor(name) {
   const disarm = () => {
     clearTimeout(armTimer);
     retire.classList.remove("armed");
-    retire.textContent = t("settings.retire");
+    retire.textContent = retireText();
   };
   retire.addEventListener("click", async () => {
     if (!retire.classList.contains("armed")) {
       retire.classList.add("armed");
-      retire.textContent = t("settings.confirm_retire");
+      retire.textContent = stops ? t("settings.confirm_stop") : t("settings.confirm_retire");
       armTimer = setTimeout(disarm, 3000);
       return;
     }
     disarm();
     const data = await writeSource(`/api/sources/${encodeURIComponent(s.name)}`, "DELETE", null,
-                                   retire, t("settings.retiring"));
+                                   retire, stops ? t("settings.stopping") : t("settings.retiring"));
     if (!data) {
       returnFocus(retire);
       return;
     }
     openName = null;
     await loadSources();
-    show("ok", t("settings.source_retired", {name: s.name, note: data.note}), "sources-notice");
-    returnFocus($("add-source"));
+    const fields = {name: s.name, note: data.note};
+    show("ok", data.review === "declined" ? t("settings.source_stopped", fields) : t("settings.source_retired", fields),
+         "sources-notice");
+    returnFocus(rowOf(s.name) ?? $("add-source"));
+  });
+  restore.addEventListener("click", async () => {
+    const data = await writeSource(`/api/sources/${encodeURIComponent(s.name)}/review`, "POST",
+                                   {decision: "restore"}, restore, t("settings.restoring"));
+    if (!data) {
+      returnFocus(restore);
+      return;
+    }
+    openName = null;
+    await loadSources();
+    show("ok", t("settings.source_restored", {name: s.name}), "sources-notice");
+    returnFocus(rowOf(s.name) ?? $("add-source"));
   });
   q("#e-name").focus();
   return ed;
@@ -915,11 +950,12 @@ function loaded(d) {
   sources = d.sources;
   sourcesWritable = d.writable;
   $("add-source").disabled = !d.writable;
-  // A deployment that caps its sources (the hosted one) says how many are used; one with no cap
-  // answers null and shows nothing.
+  // A deployment that caps its sources (the hosted one) says how many are used, a stopped one not
+  // among them, as the cap counts (ADR-0050); one with no cap answers null and shows nothing.
   const cap = $("sources-cap");
   cap.hidden = d.max_sources == null;
-  if (d.max_sources != null) cap.textContent = t("settings.sources_used", {count: sources.length, max: d.max_sources});
+  const used = sources.filter((s) => s.review !== "declined").length;
+  if (d.max_sources != null) cap.textContent = t("settings.sources_used", {count: used, max: d.max_sources});
   if (!d.writable) show("err", NO_SOURCE_TABLE, "sources-notice");
   // No source publishes no issue, so the category is marked like a missing
   // setting; unlike one, the next run waits instead of stopping.

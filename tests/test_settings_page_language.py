@@ -21,6 +21,7 @@ VALUE_SHAPES = {
     "Clef",
     "https://discord.com/api/webhooks/...",
     "you@example.com",
+    "you@example.com, you@work.example",
     "digest@your-domain",
     "from:hi@example.com",
     "cyris vote-sim",

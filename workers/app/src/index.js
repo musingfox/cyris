@@ -8,6 +8,7 @@ import { accessKeys } from "./access_keys.js";
 import { Lifecycle } from "./container.js";
 import { handleRequest } from "./router.js";
 import { planTick, readTimeZone } from "./schedule.js";
+import { createD1Sources } from "./d1_sources.js";
 import { createTypeScale } from "./type_scale.js";
 
 // Every secret the pipeline reads from the environment. The provider is a
@@ -196,6 +197,7 @@ export default {
       accessKeys: accessKeys(env.CYRIS_ACCESS_TEAM_DOMAIN),
       typeScale,
       injectStyle,
+      sources: createD1Sources({ env, fetchImpl: (input, init) => fetch(input, init) }),
     });
   },
 

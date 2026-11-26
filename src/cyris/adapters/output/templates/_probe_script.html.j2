@@ -15,6 +15,8 @@
     //   ends their session. The hosted Worker answers a request carrying the page's vote token
     //   (its <meta name="cyris-vote-token">, which it puts in every page it serves a session, its
     //   settings page too) and refuses one without.
+    // - any answer that opens the vote buttons may carry `reviews`, the review each newsletter
+    //   source holds (ADR-0050); the signed-in event hands the whole answer on.
     // - anything else (the Worker's 403, a non-ok status such as a 404 on a host with no
     //   Worker, a 200 that is not authorized JSON, a failed fetch) → nothing shows
     (async () => {
@@ -41,6 +43,8 @@
             if (data.votes === false) return;
             document.querySelectorAll('.vote-group').forEach((g) => g.style.display = 'inline-flex');
             document.querySelectorAll('.gated').forEach((g) => g.hidden = false);
+            // What else the answer opens listens here: the source marks (_source_review_script).
+            document.dispatchEvent(new CustomEvent('cyris:signed-in', { detail: data }));
         } catch {
             // Parse error, network failure, or CORS → nothing shows; the controls stay hidden
         }

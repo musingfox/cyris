@@ -39,6 +39,23 @@ class D1SourceStore:
             _columns(source),
         )
 
+    def insert(self, source: SourceConfig) -> bool:
+        """Write one source only if no row owns its name; whether a row was written."""
+        written = self._db.query(
+            "INSERT INTO sources (name, url, type, config) VALUES (?, ?, ?, ?) "
+            "ON CONFLICT(name) DO NOTHING",
+            _columns(source),
+        ).changes
+        return written > 0
+
+    def set_review(self, name: str, review: str | None) -> int:
+        """Set one source's `review`, or drop it for None; how many rows changed, 0 or 1."""
+        if review is None:
+            sql = "UPDATE sources SET config = json_remove(coalesce(config, '{}'), '$.review') "
+            return self._db.query(f"{sql}WHERE name = ?", [name]).changes
+        sql = "UPDATE sources SET config = json_set(coalesce(config, '{}'), '$.review', ?) "
+        return self._db.query(f"{sql}WHERE name = ?", [review, name]).changes
+
     def delete(self, name: str) -> int:
         """Retire one source.
 
@@ -49,11 +66,21 @@ class D1SourceStore:
         return self._db.query("DELETE FROM sources WHERE name = ?", [name]).changes
 
     def replace_all(self, sources: dict[str, SourceConfig]) -> int:
-        """Make the table match `sources` exactly, removals included.
+        """Make the table match `sources`, removals included, except the reader's decisions.
 
         A push is the whole list, not a merge: a source deleted from
-        `sources.yaml` has to stop being polled, and a merge would keep it.
+        `sources.yaml` has to stop being polled, and a merge would keep it. A row with a
+        review is the exception, the one thing the file cannot say: a stopped row is what keeps
+        its sender's mail out (ADR-0050), so a push that dropped it would let that sender's next
+        mail make the source again, a new one is waiting for the reader, and a kept one is the
+        reader's decision to read it. Such a row stays,
+        and a source the file names keeps the review its row held, whatever the file says.
         """
+        held = {name: s for name, s in self.list_sources().items() if s.review is not None}
+        sources = {
+            name: s.model_copy(update={"review": held[name].review if name in held else None})
+            for name, s in sources.items()
+        } | {name: s for name, s in held.items() if name not in sources}
         self._db.query("DELETE FROM sources")
         if not sources:
             return 0
@@ -78,5 +105,7 @@ def source_from_row(row: dict) -> SourceConfig:
 
 def _columns(source: SourceConfig) -> list:
     """name/url/type are columns; the rest rides as JSON."""
-    config = source.model_dump(mode="json", exclude={"name", "url", "type"})
+    # `review` is written only when it is set, so an ordinary source's row reads as it always has.
+    exclude = {"name", "url", "type"} | ({"review"} if source.review is None else set())
+    config = source.model_dump(mode="json", exclude=exclude)
     return [source.name, source.url, source.type, json.dumps(config)]

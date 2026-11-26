@@ -20,6 +20,7 @@ from cyris.domain.models import (
     DigestItem,
     DigestSection,
     Lane,
+    SourceConfig,
     StoredArticle,
     UsageStats,
 )
@@ -1612,7 +1613,8 @@ def test_digest_and_raw_probe_once_and_keep_their_votes(tmp_path):
     pages = _issue_pages(tmp_path)
 
     for html in (pages["digest"], pages["raw"]):
-        assert html.count("redirect: 'manual'") == 2
+        # The probe's GET and the vote's POST; a page with a source mark adds its decision's.
+        assert html.count("fetch('/api/vote'") == 2
         assert "DIGEST_DATE" in html
 
 
@@ -1621,7 +1623,7 @@ def test_every_vote_goes_through_the_one_cast_vote_path(tmp_path, page):
     html = _issue_pages(tmp_path)[page]
 
     assert html.count("async function castVote(group, vote)") == 1
-    assert html.count("method: 'POST'") == 1
+    assert len(re.findall(r"fetch\('/api/vote', \{\s*method: 'POST'", html)) == 1
 
 
 REVEAL_GATED = "document.querySelectorAll('.gated').forEach((g) => g.hidden = false);"
@@ -2956,3 +2958,142 @@ def test_a_legacy_cluster_stored_without_members_renders_as_sand_and_votes_on_it
     assert [a.text_content() for a in dialog.find_all(lambda n: n.tag == "a")] == ["A", "B"]
     # A member built from a link has no excerpt of its own.
     assert _by_class(dialog, "topic-member-excerpt") == []
+
+
+def _two_source_issue() -> DigestContent:
+    items = [
+        DigestItem(title=f"From {name}", summary="s", sources=[name], urls=[f"newsletter:{n}"])
+        for n, name in enumerate(["writer@new.example", "Ordinary"])
+    ]
+    return DigestContent(
+        date="2026-11-26",
+        period="morning",
+        sources_processed=2,
+        articles_received=2,
+        articles_included=2,
+        usage=UsageStats(),
+        fan_sections=[DigestSection(heading="Fan", items=items)],
+    )
+
+
+def _held(**reviews: str | None) -> dict[str, SourceConfig]:
+    return {
+        name.replace("_at_", "@").replace("_", "."): SourceConfig(
+            name=name.replace("_at_", "@").replace("_", "."), review=review
+        )
+        for name, review in reviews.items()
+    }
+
+
+def _source_marks(html: str) -> list[tuple[str, str, str, str]]:
+    """Each source mark: its source, review, item count and text."""
+    return re.findall(
+        r'<span class="pill source-mark" data-source="([^"]+)" data-review="([^"]+)"'
+        r' data-items="([^"]+)" lang="en">([^<]+)</span>',
+        html,
+    )
+
+
+def test_a_card_whose_source_has_a_review_is_marked_with_it_and_its_item_count(tmp_path):
+    held = _held(writer_at_new_example="new", Ordinary=None)
+    html = HtmlDigestWriter(tmp_path, list_sources=lambda: held).render(_two_source_issue())
+
+    assert _source_marks(html) == [
+        ("writer@new.example", "new", "1 item from it in this issue", "New source")
+    ]
+    assert html.count('<dialog class="source-dialog" id="source-dialog"') == 1
+    held.update(_held(writer_at_new_example="declined"))
+    stopped = HtmlDigestWriter(tmp_path, list_sources=lambda: held).render(_two_source_issue())
+    assert _source_marks(stopped) == [
+        ("writer@new.example", "declined", "1 item from it in this issue", "Stopped")
+    ]
+
+
+def test_a_marks_count_is_every_item_of_the_issue_that_names_its_source(tmp_path):
+    content = _two_source_issue()
+    first = content.fan_sections[0].items[0]
+    content.fan_sections[0].items.append(
+        first.model_copy(update={"title": "Again", "urls": ["newsletter:9"]})
+    )
+    held = _held(writer_at_new_example="new")
+    html = HtmlDigestWriter(tmp_path, list_sources=lambda: held).render(content)
+
+    assert {count for _, _, count, _ in _source_marks(html)} == {"2 items from it in this issue"}
+
+
+def test_the_mark_is_what_the_store_holds_at_each_render(tmp_path):
+    held = _held(writer_at_new_example="new", Ordinary=None)
+    writer = HtmlDigestWriter(tmp_path, list_sources=lambda: held)
+    first = writer.render(_two_source_issue())
+    held.update(_held(writer_at_new_example="kept"))
+    kept = writer.render(_two_source_issue())
+
+    assert len(_source_marks(first)) == 1
+    assert _source_marks(kept) == []
+    assert 'id="source-dialog"' not in kept
+
+
+def test_a_mark_whose_items_all_arrived_forwarded_says_so_in_its_dialog(tmp_path):
+    held = _held(writer_at_new_example="new", Ordinary="new")
+    content = _two_source_issue()
+    first = content.fan_sections[0].items[0]
+    content.fan_sections[0].items.append(
+        first.model_copy(update={"title": "Again", "urls": ["newsletter:9"]})
+    )
+    forwarded = {"newsletter:0", "newsletter:9", "newsletter:1x"}
+    html = HtmlDigestWriter(
+        tmp_path, list_sources=lambda: held, forwarded_urls=lambda: forwarded
+    ).render(content)
+    one_direct = HtmlDigestWriter(
+        tmp_path, list_sources=lambda: held, forwarded_urls=lambda: {"newsletter:0"}
+    ).render(content)
+
+    assert re.findall(r'data-source="([^"]+)"[^>]* data-forwarded', html) == [
+        "writer@new.example",
+        "writer@new.example",
+    ]
+    assert "data-forwarded" not in one_direct
+    assert "Its mail in this issue arrived forwarded from your own address." in html
+    assert "'forwarded' in mark.dataset" in html
+
+
+def test_a_render_told_of_no_forwards_marks_none(tmp_path):
+    held = _held(writer_at_new_example="new")
+    html = HtmlDigestWriter(tmp_path, list_sources=lambda: held).render(_two_source_issue())
+
+    assert len(_source_marks(html)) == 1
+    assert "data-forwarded" not in html
+
+
+def test_no_card_is_marked_when_the_sources_cannot_be_read(tmp_path):
+    def broken() -> dict[str, SourceConfig]:
+        raise RuntimeError("store down")
+
+    html = HtmlDigestWriter(tmp_path, list_sources=broken).render(_two_source_issue())
+
+    assert _source_marks(html) == []
+    assert 'id="source-dialog"' not in html
+    assert "From writer@new.example" in html
+
+
+def test_a_decision_goes_through_the_vote_door_and_never_the_settings_server(tmp_path):
+    held = _held(writer_at_new_example="new")
+    html = HtmlDigestWriter(tmp_path, list_sources=lambda: held).render(_two_source_issue())
+    decision = html[html.index("async function sendDecision(name, decision)") :]
+
+    assert "/api/sources" not in html
+    assert decision.index("fetch('/api/vote'") < decision.index(
+        "JSON.stringify({ source: name, decision: decision })"
+    )
+    assert "'X-Cyris-Vote': voteToken()" in decision[: decision.index("signal:")]
+
+
+def test_the_marks_open_only_where_the_probe_opens_the_votes(tmp_path):
+    held = _held(writer_at_new_example="new")
+    html = HtmlDigestWriter(tmp_path, list_sources=lambda: held).render(_two_source_issue())
+    probe = html[html.index("// Capability probe") :]
+
+    assert probe.index("data.votes === false") < probe.index("new CustomEvent('cyris:signed-in'")
+    assert "document.addEventListener('cyris:signed-in'" in html
+    # Rendered as a plain tag: only the signed-in event makes it a button.
+    assert '<button type="button" class="pill source-mark"' not in html

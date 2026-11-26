@@ -1,7 +1,7 @@
 {
-  "_comment": "Vocabulary the fetch adapters match against, kept out of the code so a new sender, ESP or locale is a data edit. Structure stays in code: the separators, the repetition, the ordering of forward-then-reply. Matching is case-insensitive, so list each token once in its usual casing. Every `host` here matches that host or any subdomain of it.",
+  "_comment": "Vocabulary the fetch adapters match against, kept out of the code so a new sender, ESP or locale is a data edit. Structure stays in code: the separators and the repetition. `forward_prefixes` and `reply_prefixes` are only stripped from a subject's head; no mail is filtered by them. Matching is case-insensitive, so list each token once in its usual casing. Every `host` here matches that host or any subdomain of it.",
 
-  "forward_prefixes": ["Fwd", "Fw", "轉寄"],
+  "forward_prefixes": ["Fwd", "Fw", "WG", "TR", "RV", "轉寄"],
   "reply_prefixes": ["Re", "回覆"],
   "view_in_browser_markers": [
     "view in browser",
@@ -10,6 +10,48 @@
     "網頁版",
     "線上閱讀"
   ],
+
+  "_comment_forwarded": "How a mail client quotes a forwarded message's headers in its body, by language: a marker line some clients open the block with, the labels of its From line, and the labels of the header lines around it. Only mail whose own From is one of the reader's addresses is read for a block: its sender is the From line's address, where a marker line stands just above that line or a header line follows it within three lines. Where each word was seen is recorded in docs/decisions/0050-mail-from-an-unknown-sender-becomes-a-source-the-reader-keeps-or-stops.md.",
+  "forwarded_blocks": {
+    "en": {
+      "markers": ["Forwarded message", "Begin forwarded message"],
+      "from": ["From"],
+      "headers": ["Sent", "Date", "To", "Subject", "Cc"]
+    },
+    "de": {
+      "markers": ["Anfang der weitergeleiteten Nachricht"],
+      "from": ["Von"],
+      "headers": ["Gesendet", "Datum", "An", "Betreff", "Kopie"]
+    },
+    "fr": {
+      "markers": ["Début du message réexpédié"],
+      "from": ["De"],
+      "headers": ["Envoyé", "Date", "À", "Objet"]
+    },
+    "es": {
+      "markers": ["Inicio del mensaje reenviado"],
+      "from": ["De"],
+      "headers": ["Enviado", "Fecha", "Para", "Asunto"]
+    },
+    "ja": {
+      "markers": ["メッセージを転送", "転送メッセージ", "転送されたメッセージ"],
+      "from": ["差出人", "送信元"],
+      "headers": ["送信日時", "日付", "宛先", "送信先", "件名"]
+    },
+    "zh-Hans": {
+      "markers": ["转发的邮件"],
+      "from": ["发件人"],
+      "headers": ["发送时间", "时间", "收件人", "主题", "抄送"]
+    },
+    "zh-Hant": {
+      "markers": ["已轉寄郵件", "轉寄的郵件", "開始轉寄郵件"],
+      "from": ["寄件者", "寄件人"],
+      "headers": ["寄件日期", "日期", "收件者", "收件人", "主旨", "標題", "回覆給", "副本"]
+    }
+  },
+
+  "_comment_system_senders": "Exact addresses whose mail never becomes a newsletter source, and stays the unknown sender's it was before sources were made: held on a hosted tenant, acked self-hosted. Gmail's forwarding confirmation is one: it is no newsletter, so it must not make a source the reader would then have to stop, and on a hosted tenant its code stays readable in the operator's report.",
+  "system_senders": ["forwarding-noreply@google.com"],
 
   "_comment_links": "What makes a link in a newsletter something other than the article. reject_host_patterns are regexes because these hosts are numbered (campaign-archive1, 2, ...); everything else is a plain list. A share entry needs both a host and how its share path looks, and the two path keys are not interchangeable: path_contains is a substring, path_segment_prefix matches the path exactly or followed by a slash, so /share matches /share and /share/x but not /share-tips.",
   "reject_hosts": ["mailchi.mp", "list-manage.com"],

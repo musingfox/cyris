@@ -18,7 +18,10 @@
 //   POST /api/settings/schedule      {times: [...]}: the hours, through the registry
 //   GET  /api/sources                the tenant's sources, RSS and newsletter, each with its feed's health
 //   POST /api/sources                {name, url, lane}: one RSS source added or rewritten
-//   DELETE /api/sources/<name>       one source removed; a name that is none is refused 404
+//   DELETE /api/sources/<name>       an RSS source removed, a newsletter source stopped: its row kept,
+//                                    declined, so its sender makes none; a name that is none is refused 404
+//   POST /api/sources/<name>/review  {decision: "keep"|"stop"|"restore"}: a newsletter source kept,
+//                                    stopped or restored, from any state (ADR-0050)
 //   GET  /api/topics                 STUB: read-only and empty
 //
 // The router has checked the session (hosted_router.js). The tenant is the session's: no path,
@@ -33,6 +36,7 @@ import { VOTE_TOKEN_META } from "./hosted_pages.js";
 import { CATALOGS, STATUS, bodyOf, refusalText, translator } from "./hosted_settings.js";
 import { POLICY, SCHEDULE_KEY, TIMEZONE_KEY, catalogTag, checkSettings, rssSource } from "./hosted_settings_rules.js";
 import { sameOrigin } from "./hosted_session.js";
+import { NEWSLETTER, SOURCE_DECISIONS, isDecision } from "./source_review.js";
 import { DEFAULT_MAX_DIGEST_TIMES, checkSchedule, registrySchedule } from "./run_queue.js";
 import { HOSTED_TIMES, digestHours } from "./schedule.js";
 
@@ -56,6 +60,9 @@ const ARTICLE_CAP = "digest.max_articles_per_digest";
 
 // `/api/sources/<name>`: the source's name, percent-encoded as one path segment.
 const isSourcePath = (path) => path.startsWith(SOURCE_PREFIX) && path.length > SOURCE_PREFIX.length && !path.includes("/", SOURCE_PREFIX.length);
+const REVIEW_SUFFIX = "/review";
+// `/api/sources/<name>/review`: the same one segment, then the review.
+const isReviewPath = (path) => path.endsWith(REVIEW_SUFFIX) && isSourcePath(path.slice(0, -REVIEW_SUFFIX.length));
 
 // The paths outside /t/<tenant>/ this module answers, to a live session of any tenant.
 export const isSharedPath = (path) =>
@@ -65,6 +72,7 @@ export const isSharedPath = (path) =>
   path === VOTE_API ||
   path === SOURCES_API ||
   isSourcePath(path) ||
+  isReviewPath(path) ||
   Object.hasOwn(EMPTY_READS, path) ||
   path.startsWith(STATIC);
 
@@ -329,6 +337,7 @@ function sourcesAnswer(t, listed) {
       email_match: config.email_match ?? null,
       homepage: config.homepage ?? null,
       tags: config.tags ?? [],
+      review: config.review ?? null,
       health: type === "rss" ? healthJson(t, health, now) : null,
     })),
   };
@@ -350,7 +359,8 @@ const unset = (value) => value === undefined || value === null || value === "" |
 // the operator sets, sent back by a rewrite), is no setting.
 function lockedSourceField(body, held) {
   for (const [field, value] of Object.entries(body)) {
-    if (field === "name" || field === "url" || field === "lane" || unset(value)) continue;
+    // A review is the reader's decision, which only a decision changes (ADR-0050): ignored here.
+    if (field === "name" || field === "url" || field === "lane" || field === "review" || unset(value)) continue;
     if (field === "type" && value === "rss") continue;
     if ((field === "tags" || field === "homepage") && JSON.stringify(value) === JSON.stringify(held?.config?.[field])) continue;
     return field;
@@ -384,7 +394,9 @@ async function saveSource(t, request, db, listed, ownHosts) {
 
 // `DELETE /api/sources/<name>` in TriageServer's shape (`_handle_delete_source`), the one answer
 // that differs by design from TriageServer's old one: a name that is no source is refused 404 on
-// both, so a page showing a source another tab retired is told so. A source of either type goes.
+// both, so a page showing a source another tab retired is told so. An RSS source goes; a
+// newsletter source is stopped and keeps its row, since one with no row is made again by its
+// sender's next mail (ADR-0050).
 async function deleteSource(t, path, db, listed) {
   if (listed === null) return refused(refusalText(t, { reason: "not_seeded" }), null, STATUS.not_seeded);
   let name;
@@ -393,10 +405,39 @@ async function deleteSource(t, path, db, listed) {
   } catch {
     return refused(refusalText(t, { reason: "source_name" }), "name");
   }
+  if (listed.find((one) => one.name === name)?.type === NEWSLETTER) {
+    const stopped = await db.setSourceReview(name, SOURCE_DECISIONS.stop);
+    if (stopped.refused) return refused(refusalText(t, { reason: stopped.refused }), null, stopped.status);
+    return json({ ok: true, name, review: SOURCE_DECISIONS.stop, note: t("settings_api.effective_next_run") });
+  }
   const deleted = await db.deleteSource(name);
   if (deleted.refused) return refused(refusalText(t, { reason: deleted.refused }), null, deleted.status);
   if (deleted.deleted === 0) return refused(t("settings_api.source_missing", { name }), null, STATUS.source_missing);
   return json({ ok: true, name, note: t("settings_api.effective_next_run") });
+}
+
+// `POST /api/sources/<name>/review` in TriageServer's shape (`_handle_post_source_review`): a
+// newsletter source kept, stopped or restored, from any state. A stop keeps the row
+// (TenantDb.setSourceReview).
+async function reviewSource(t, request, path, db, listed) {
+  if (listed === null) return refused(refusalText(t, { reason: "not_seeded" }), null, STATUS.not_seeded);
+  let name;
+  try {
+    name = decodeURIComponent(path.slice(SOURCE_PREFIX.length, -REVIEW_SUFFIX.length));
+  } catch {
+    return refused(refusalText(t, { reason: "source_name" }), "name");
+  }
+  const read = await bodyOf(request);
+  if (read.refused) return refused(refusalText(t, read.refused), null, STATUS[read.refused.reason] ?? 400);
+  const source = listed.find((one) => one.name === name);
+  if (!source) return refused(t("settings_api.source_missing", { name }), null, STATUS.source_missing);
+  const decision = read.body?.decision;
+  if (!isDecision(decision)) return refused(t("settings_api.review_decision"), "decision");
+  if (source.type !== NEWSLETTER) return refused(t("settings_api.source_not_newsletter", { name }), "decision");
+  const review = SOURCE_DECISIONS[decision];
+  const set = await db.setSourceReview(name, review);
+  if (set.refused) return refused(refusalText(t, { reason: set.refused }), null, set.status);
+  return json({ ok: true, name, review, note: t("settings_api.effective_next_run") });
 }
 
 // The page's policy, its own and none of the sandboxed site's: scripts and styles from this
@@ -446,7 +487,7 @@ function serveStatic(request, path) {
 }
 
 // `deps`: `db`, the session's tenant's object (TenantDb: settings, saveSettings, sourceList,
-// saveSource, deleteSource); `registryRow()`, that tenant's registry row, whose schedule the page
+// saveSource, deleteSource, setSourceReview); `registryRow()`, that tenant's registry row, whose schedule the page
 // shows; `setSchedule({times, timeZone})`, which writes the registry's schedule and its copy and
 // answers `{refused}` or not; `secrets`, the names of the operator's keys a run is handed;
 // `ownHosts`, this Worker's host names, which no feed may name; `locks`, the policy's
@@ -458,7 +499,7 @@ export async function handleSharedSettings(
 ) {
   const method = request.method === "HEAD" ? "GET" : request.method;
   const allowed =
-    path === VALUES_API || path === SCHEDULE_API || path === VOTE_API ? ["POST"] : path === SOURCES_API ? ["GET", "POST"] : isSourcePath(path) ? ["DELETE"] : ["GET"];
+    path === VALUES_API || path === SCHEDULE_API || path === VOTE_API ? ["POST"] : path === SOURCES_API ? ["GET", "POST"] : isSourcePath(path) ? ["DELETE"] : isReviewPath(path) ? ["POST"] : ["GET"];
   if (!allowed.includes(method)) return json({ ok: false, error: `${path} takes ${allowed.join(" or ")}` }, 405);
   if (path.startsWith(STATIC)) return serveStatic(request, path);
   if (Object.hasOwn(EMPTY_READS, path)) return json(EMPTY_READS[path]);
@@ -478,6 +519,7 @@ export async function handleSharedSettings(
     return saveSource(t, request, db, await db.sourceList(), hosts);
   }
   if (isSourcePath(path)) return deleteSource(t, path, db, await db.sourceList());
+  if (isReviewPath(path)) return reviewSource(t, request, path, db, await db.sourceList());
   if (stored === null) return refusedFor(t, { reason: "not_seeded" }, null);
   const read = await bodyOf(request);
   if (read.refused) return refusedFor(t, read.refused, null);

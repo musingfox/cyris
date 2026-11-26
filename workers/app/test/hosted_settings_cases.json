@@ -31,7 +31,9 @@
       { "key": "digest.filter_snippet_length", "value": 1 },
       { "key": "digest.filter_snippet_length", "value": 500 },
       { "key": "vote_similarity.enabled", "value": true },
-      { "key": "vote_similarity.enabled", "value": false }
+      { "key": "vote_similarity.enabled", "value": false },
+      { "key": "notify.own_addresses", "value": "" },
+      { "key": "notify.own_addresses", "value": "me@work.example, me+news@home.example" }
     ],
     "refused": [
       { "key": "llm_provider.provider", "value": "gemini", "reason": "operator_key" },
@@ -56,6 +58,8 @@
       { "key": "digest.output_language", "value": "  ", "reason": "blank" },
       { "key": "digest.output_language", "value": 5, "reason": "text" },
       { "key": "digest.style_prompt", "value": 5, "reason": "text" },
+      { "key": "notify.own_addresses", "value": "me@work.example, me", "reason": "addresses" },
+      { "key": "notify.own_addresses", "value": 5, "reason": "text" },
       { "key": "digest.type_scale", "value": 2, "reason": "type_scale" },
       { "key": "digest.type_scale", "value": "1", "reason": "type_scale" },
       { "key": "digest.max_articles_per_digest", "value": 0, "reason": "whole_number" },

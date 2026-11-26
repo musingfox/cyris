@@ -134,9 +134,21 @@ describe("a hosted tenant's run container", () => {
       CYRIS_ROLE: "run",
       CYRIS_STORE_BACKEND: "d1",
       CYRIS_STORE_TENANT_ID: "alpha",
+      CYRIS_STORE_MEMBER_ADDRESSES: "",
       CYRIS_STORE_HOSTED_DOMAIN: "cyris-hosted.example.workers.dev",
       CYRIS_PROMOTE_PUBLISH_ENABLED: "false",
     });
+  });
+
+  it("is started with its own members' addresses and no other tenant's", async () => {
+    const { object, container, env } = await runObject("alpha");
+    await tenantRegistry(env).invite("alpha", "Reader@Mail.example");
+    await tenantRegistry(env).invite("alpha", "partner@mail.example");
+    await tenantRegistry(env).invite("bravo", "other@mail.example");
+
+    await object.startRun({ period: "morning" });
+
+    expect(container.starts[0].env.CYRIS_STORE_MEMBER_ADDRESSES).toBe("partner@mail.example,reader@mail.example");
   });
 
   it("never hands a container the operator's webhook, which only the alert gateway reads", () => {

@@ -10,6 +10,7 @@
 // leaves the archive public.
 
 import { jwtVerify } from "jose";
+import { answerDecision, isDecisionBody } from "./source_review.js";
 import { typeScaleStyle } from "./type_scale.js";
 
 const INTEREST_PATHS = ["/interest", "/interest.html", "/interest/"];
@@ -188,12 +189,29 @@ export function sized(response, scale, deps) {
   });
 }
 
+// `deps.sources` (d1_sources.js) is the deployment's sources table, or null when the Worker is
+// not told where it is: the probe then lists no reviews, and a source decision is refused 503.
 async function handleVote(request, env, deps) {
-  if (request.method === "HEAD" || request.method === "GET") {
-    return json({ authorized: true }, 200);
+  if (request.method === "HEAD") return json({ authorized: true }, 200);
+  if (request.method === "GET") {
+    // The review each source holds, so a page corrects the marks it was rendered with.
+    const reviews = deps.sources ? await deps.sources.reviews() : null;
+    return json({ authorized: true, ...(reviews ? { reviews } : {}) }, 200);
   }
   if (request.method !== "POST") {
     return json({ error: "method not allowed" }, 405);
+  }
+  // A source decision is the Worker's own write: it never waits on the container or the promote
+  // Worker (ADR-0050). A vote's body names no source, and is forwarded as it always was.
+  const decision = await request.clone().json().catch(() => null);
+  if (isDecisionBody(decision)) {
+    // A page sends JSON. A cross-site form can send only a simple type, so requiring this one
+    // keeps another site's form from making a decision with the reader's Access cookie.
+    if (!(request.headers.get("Content-Type") ?? "").startsWith("application/json")) {
+      return json({ error: "a decision is JSON" }, 415);
+    }
+    const [status, body] = await answerDecision(decision, deps.sources ?? null);
+    return json(body, status);
   }
   const promoteUrl = env.CYRIS_PROMOTE_WORKER_URL;
   if (!promoteUrl) {

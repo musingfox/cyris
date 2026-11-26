@@ -45,6 +45,13 @@
       "reads_back": {"digest.output_language": "zh-Hant"}
     },
     {
+      "name": "the reader's other addresses are saved, on a hosted tenant too",
+      "body": {"values": {"notify.own_addresses": "me@work.example"}},
+      "status": 200,
+      "answer": {"ok": true, "values": {"notify.own_addresses": "me@work.example"}, "note": "Effective next run.", "ui_lang": "en"},
+      "reads_back": {"notify.own_addresses": "me@work.example"}
+    },
+    {
       "name": "the style is saved",
       "body": {"values": {"digest.style_prompt": "Short."}},
       "status": 200,
@@ -638,7 +645,7 @@
     }
   ],
   "sources": {
-    "_comment": "The Sources tab's contract. Each case seeds the tenant's own tables (`rows`: `sources` rows, `feed_health` and `articles`: stored_articles rows' `source_name` and `first_seen_at`), sends one request and holds the answer. Run by workers/app/test/hosted_shared_settings.test.js against the hosted Worker and, for each case whose `editions` holds self_hosted (the default is both), by tests/test_shared_settings_cases.py against TriageServer. A `hosted` case is a rule only a hosted tenant is held to (the URL rules, the field lock, the cap, ADR-0040), so TriageServer, which sets none, takes no such case; `fill_to_cap` first adds feeds named `Filler <n>` until the table holds `max_sources`, newsletters counted; `{pad:N}` in a string is N letters `a`. A list case's `answer` leaves out `max_sources`, which `max_sources` states for each edition. `reads_back` is the list after a write, health left out; `null` means the table is as it was (a write that took holds only `holds`, entries the list must contain, and `count`, how many sources it lists). A refused write changes nothing.",
+    "_comment": "The Sources tab's contract. Each case seeds the tenant's own tables (`rows`: `sources` rows, `feed_health` and `articles`: stored_articles rows' `source_name` and `first_seen_at`), sends one request and holds the answer. Run by workers/app/test/hosted_shared_settings.test.js against the hosted Worker and, for each case whose `editions` holds self_hosted (the default is both), by tests/test_shared_settings_cases.py against TriageServer. A `hosted` case is a rule only a hosted tenant is held to (the URL rules, the field lock, the cap, ADR-0040), so TriageServer, which sets none, takes no such case, and a `self_hosted` case is one the hosted Worker cannot take (a hosted tenant saves no newsletter source); `fill_to_cap` first adds feeds named `Filler <n>` until the table holds `max_sources`, newsletters counted; `{pad:N}` in a string is N letters `a`. A list case's `answer` leaves out `max_sources`, which `max_sources` states for each edition. `reads_back` is the list after a write, health left out; `null` means the table is as it was (a write that took holds only `holds`, entries the list must contain, and `count`, how many sources it lists). A refused write changes nothing.",
     "max_sources": {"hosted": 30, "self_hosted": null},
     "cases": [
       {
@@ -647,7 +654,7 @@
         "method": "GET",
         "path": "/api/sources",
         "status": 200,
-        "answer": {"writable": true, "sources": [{"name": "Letter", "type": "newsletter", "lane": "read", "url": null, "email_match": "from:news@letter.example", "homepage": "https://letter.example/", "tags": [], "health": null}, {"name": "Plain", "type": "rss", "lane": "skim", "url": "https://plain.example/feed", "email_match": null, "homepage": null, "tags": [], "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": null, "newest_article_at": null, "problems": ["no article stored yet"]}}, {"name": "Tagged", "type": "rss", "lane": "read", "url": "https://tagged.example/feed", "email_match": null, "homepage": "https://tagged.example/", "tags": ["ai", "policy"], "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": null, "newest_article_at": null, "problems": ["no article stored yet"]}}]}
+        "answer": {"writable": true, "sources": [{"name": "Letter", "type": "newsletter", "lane": "read", "url": null, "email_match": "from:news@letter.example", "homepage": "https://letter.example/", "tags": [], "review": null, "health": null}, {"name": "Plain", "type": "rss", "lane": "skim", "url": "https://plain.example/feed", "email_match": null, "homepage": null, "tags": [], "review": null, "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": null, "newest_article_at": null, "problems": ["no article stored yet"]}}, {"name": "Tagged", "type": "rss", "lane": "read", "url": "https://tagged.example/feed", "email_match": null, "homepage": "https://tagged.example/", "tags": ["ai", "policy"], "review": null, "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": null, "newest_article_at": null, "problems": ["no article stored yet"]}}]}
       },
       {
         "name": "an empty table is listed empty",
@@ -665,7 +672,7 @@
         "method": "GET",
         "path": "/api/sources",
         "status": 200,
-        "answer": {"writable": true, "sources": [{"name": "Failing", "type": "rss", "lane": "skim", "url": "https://failing.example/feed", "email_match": null, "homepage": null, "tags": [], "health": {"consecutive_failures": 3, "last_error": "HTTP 503\n  at the edge", "last_failed_at": "2026-10-08T11:00:00.000Z", "last_ok_at": null, "newest_article_at": "2099-01-01T00:00:00.000Z", "problems": ["3 failures in a row · HTTP 503 at the edge"]}}, {"name": "Failing no error", "type": "rss", "lane": "skim", "url": "https://failing-no-error.example/feed", "email_match": null, "homepage": null, "tags": [], "health": {"consecutive_failures": 4, "last_error": null, "last_failed_at": "2026-10-08T11:00:00.000Z", "last_ok_at": "2026-10-01T11:00:00.000Z", "newest_article_at": "2099-01-01T00:00:00.000Z", "problems": ["4 failures in a row"]}}, {"name": "Healthy", "type": "rss", "lane": "skim", "url": "https://healthy.example/feed", "email_match": null, "homepage": null, "tags": [], "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": "2026-10-08T11:00:00.000Z", "newest_article_at": "2099-01-01T00:00:00.000Z", "problems": []}}, {"name": "Letter", "type": "newsletter", "lane": "read", "url": null, "email_match": "from:news@letter.example", "homepage": "https://letter.example/", "tags": [], "health": null}, {"name": "Never stored", "type": "rss", "lane": "skim", "url": "https://never-stored.example/feed", "email_match": null, "homepage": null, "tags": [], "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": "2026-10-08T11:00:00.000Z", "newest_article_at": null, "problems": ["no article stored yet"]}}, {"name": "Quiet", "type": "rss", "lane": "skim", "url": "https://quiet.example/feed", "email_match": null, "homepage": null, "tags": [], "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": "2026-10-08T11:00:00.000Z", "newest_article_at": "2020-01-01T00:00:00.000Z", "problems": ["no article in 30 days"]}}, {"name": "Two failures", "type": "rss", "lane": "skim", "url": "https://two-failures.example/feed", "email_match": null, "homepage": null, "tags": [], "health": {"consecutive_failures": 2, "last_error": "HTTP 429", "last_failed_at": "2026-10-08T11:00:00.000Z", "last_ok_at": "2026-10-01T11:00:00.000Z", "newest_article_at": "2099-01-01T00:00:00.000Z", "problems": []}}, {"name": "Unpolled", "type": "rss", "lane": "skim", "url": "https://unpolled.example/feed", "email_match": null, "homepage": null, "tags": [], "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": null, "newest_article_at": null, "problems": ["no article stored yet"]}}]}
+        "answer": {"writable": true, "sources": [{"name": "Failing", "type": "rss", "lane": "skim", "url": "https://failing.example/feed", "email_match": null, "homepage": null, "tags": [], "review": null, "health": {"consecutive_failures": 3, "last_error": "HTTP 503\n  at the edge", "last_failed_at": "2026-10-08T11:00:00.000Z", "last_ok_at": null, "newest_article_at": "2099-01-01T00:00:00.000Z", "problems": ["3 failures in a row · HTTP 503 at the edge"]}}, {"name": "Failing no error", "type": "rss", "lane": "skim", "url": "https://failing-no-error.example/feed", "email_match": null, "homepage": null, "tags": [], "review": null, "health": {"consecutive_failures": 4, "last_error": null, "last_failed_at": "2026-10-08T11:00:00.000Z", "last_ok_at": "2026-10-01T11:00:00.000Z", "newest_article_at": "2099-01-01T00:00:00.000Z", "problems": ["4 failures in a row"]}}, {"name": "Healthy", "type": "rss", "lane": "skim", "url": "https://healthy.example/feed", "email_match": null, "homepage": null, "tags": [], "review": null, "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": "2026-10-08T11:00:00.000Z", "newest_article_at": "2099-01-01T00:00:00.000Z", "problems": []}}, {"name": "Letter", "type": "newsletter", "lane": "read", "url": null, "email_match": "from:news@letter.example", "homepage": "https://letter.example/", "tags": [], "review": null, "health": null}, {"name": "Never stored", "type": "rss", "lane": "skim", "url": "https://never-stored.example/feed", "email_match": null, "homepage": null, "tags": [], "review": null, "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": "2026-10-08T11:00:00.000Z", "newest_article_at": null, "problems": ["no article stored yet"]}}, {"name": "Quiet", "type": "rss", "lane": "skim", "url": "https://quiet.example/feed", "email_match": null, "homepage": null, "tags": [], "review": null, "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": "2026-10-08T11:00:00.000Z", "newest_article_at": "2020-01-01T00:00:00.000Z", "problems": ["no article in 30 days"]}}, {"name": "Two failures", "type": "rss", "lane": "skim", "url": "https://two-failures.example/feed", "email_match": null, "homepage": null, "tags": [], "review": null, "health": {"consecutive_failures": 2, "last_error": "HTTP 429", "last_failed_at": "2026-10-08T11:00:00.000Z", "last_ok_at": "2026-10-01T11:00:00.000Z", "newest_article_at": "2099-01-01T00:00:00.000Z", "problems": []}}, {"name": "Unpolled", "type": "rss", "lane": "skim", "url": "https://unpolled.example/feed", "email_match": null, "homepage": null, "tags": [], "review": null, "health": {"consecutive_failures": 0, "last_error": null, "last_failed_at": null, "last_ok_at": null, "newest_article_at": null, "problems": ["no article stored yet"]}}]}
       },
       {
         "name": "a source is added from a name, a URL and a lane",
@@ -675,7 +682,7 @@
         "body": {"name": "Example", "url": "https://example.org/feed.xml", "lane": "read"},
         "status": 200,
         "answer": {"ok": true, "name": "Example", "note": "Effective next run."},
-        "reads_back": [{"name": "Example", "type": "rss", "lane": "read", "url": "https://example.org/feed.xml", "email_match": null, "homepage": null, "tags": []}]
+        "reads_back": [{"name": "Example", "type": "rss", "lane": "read", "url": "https://example.org/feed.xml", "email_match": null, "homepage": null, "tags": [], "review": null}]
       },
       {
         "name": "a source is added with the lane left to its default",
@@ -685,7 +692,39 @@
         "body": {"name": "Example", "url": "https://example.org/feed.xml"},
         "status": 200,
         "answer": {"ok": true, "name": "Example", "note": "Effective next run."},
-        "reads_back": [{"name": "Example", "type": "rss", "lane": "skim", "url": "https://example.org/feed.xml", "email_match": null, "homepage": null, "tags": []}]
+        "reads_back": [{"name": "Example", "type": "rss", "lane": "skim", "url": "https://example.org/feed.xml", "email_match": null, "homepage": null, "tags": [], "review": null}]
+      },
+      {
+        "name": "a review the body sends is ignored",
+        "rows": [],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "Example", "url": "https://example.org/feed.xml", "lane": "read", "review": "declined"},
+        "status": 200,
+        "answer": {"ok": true, "name": "Example", "note": "Effective next run."},
+        "reads_back": [{"name": "Example", "type": "rss", "lane": "read", "url": "https://example.org/feed.xml", "email_match": null, "homepage": null, "tags": [], "review": null}]
+      },
+      {
+        "name": "a stopped newsletter source rewritten as a feed takes no review with it",
+        "editions": ["self_hosted"],
+        "rows": [{"name": "gone@letter.example", "type": "newsletter", "url": null, "config": {"lane": "read", "tags": [], "email_match": "from:gone@letter.example", "review": "declined"}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "gone@letter.example", "type": "rss", "lane": "read", "url": "https://letter.example/feed"},
+        "status": 200,
+        "answer": {"ok": true, "name": "gone@letter.example", "note": "Effective next run."},
+        "reads_back": [{"name": "gone@letter.example", "type": "rss", "lane": "read", "url": "https://letter.example/feed", "email_match": null, "homepage": null, "tags": [], "review": null}]
+      },
+      {
+        "name": "a newsletter source rewritten keeps the review its row holds",
+        "editions": ["self_hosted"],
+        "rows": [{"name": "gone@letter.example", "type": "newsletter", "url": null, "config": {"lane": "read", "tags": [], "email_match": "from:gone@letter.example", "review": "declined"}}],
+        "method": "POST",
+        "path": "/api/sources",
+        "body": {"name": "gone@letter.example", "type": "newsletter", "lane": "follow", "email_match": "from:gone@letter.example"},
+        "status": 200,
+        "answer": {"ok": true, "name": "gone@letter.example", "note": "Effective next run."},
+        "reads_back": [{"name": "gone@letter.example", "type": "newsletter", "lane": "follow", "url": null, "email_match": "from:gone@letter.example", "homepage": null, "tags": [], "review": "declined"}]
       },
       {
         "name": "a source is added from the body the page sends, every field of it",
@@ -695,7 +734,7 @@
         "body": {"name": "Example", "type": "rss", "lane": "follow", "url": "https://example.org/feed.xml", "email_match": null, "homepage": null, "tags": []},
         "status": 200,
         "answer": {"ok": true, "name": "Example", "note": "Effective next run."},
-        "reads_back": [{"name": "Example", "type": "rss", "lane": "follow", "url": "https://example.org/feed.xml", "email_match": null, "homepage": null, "tags": []}, {"name": "Letter", "type": "newsletter", "lane": "read", "url": null, "email_match": "from:news@letter.example", "homepage": "https://letter.example/", "tags": []}]
+        "reads_back": [{"name": "Example", "type": "rss", "lane": "follow", "url": "https://example.org/feed.xml", "email_match": null, "homepage": null, "tags": [], "review": null}, {"name": "Letter", "type": "newsletter", "lane": "read", "url": null, "email_match": "from:news@letter.example", "homepage": "https://letter.example/", "tags": [], "review": null}]
       },
       {
         "name": "a source is rewritten by the body the page sends back, and keeps its tags and homepage",
@@ -705,7 +744,7 @@
         "body": {"name": "Tagged", "type": "rss", "lane": "follow", "url": "https://tagged.example/rss", "email_match": null, "homepage": "https://tagged.example/", "tags": ["ai", "policy"]},
         "status": 200,
         "answer": {"ok": true, "name": "Tagged", "note": "Effective next run."},
-        "reads_back": [{"name": "Other", "type": "rss", "lane": "skim", "url": "https://other.example/feed", "email_match": null, "homepage": null, "tags": []}, {"name": "Tagged", "type": "rss", "lane": "follow", "url": "https://tagged.example/rss", "email_match": null, "homepage": "https://tagged.example/", "tags": ["ai", "policy"]}]
+        "reads_back": [{"name": "Other", "type": "rss", "lane": "skim", "url": "https://other.example/feed", "email_match": null, "homepage": null, "tags": [], "review": null}, {"name": "Tagged", "type": "rss", "lane": "follow", "url": "https://tagged.example/rss", "email_match": null, "homepage": "https://tagged.example/", "tags": ["ai", "policy"], "review": null}]
       },
       {
         "name": "a rewrite that names a name, a URL and a lane only keeps the tags the row held",
@@ -716,7 +755,7 @@
         "body": {"name": "Tagged", "url": "https://tagged.example/rss", "lane": "skim"},
         "status": 200,
         "answer": {"ok": true, "name": "Tagged", "note": "Effective next run."},
-        "reads_back": [{"name": "Tagged", "type": "rss", "lane": "skim", "url": "https://tagged.example/rss", "email_match": null, "homepage": "https://tagged.example/", "tags": ["ai", "policy"]}]
+        "reads_back": [{"name": "Tagged", "type": "rss", "lane": "skim", "url": "https://tagged.example/rss", "email_match": null, "homepage": "https://tagged.example/", "tags": ["ai", "policy"], "review": null}]
       },
       {
         "name": "a name is trimmed, and a URL is written as the URL parser reads it",
@@ -727,7 +766,7 @@
         "body": {"name": "  Example  ", "url": " https://Example.org "},
         "status": 200,
         "answer": {"ok": true, "name": "Example", "note": "Effective next run."},
-        "reads_back": [{"name": "Example", "type": "rss", "lane": "skim", "url": "https://example.org/", "email_match": null, "homepage": null, "tags": []}]
+        "reads_back": [{"name": "Example", "type": "rss", "lane": "skim", "url": "https://example.org/", "email_match": null, "homepage": null, "tags": [], "review": null}]
       },
       {
         "name": "a source is removed, and the last one too",
@@ -739,13 +778,13 @@
         "reads_back": []
       },
       {
-        "name": "a newsletter source is removed",
+        "name": "a newsletter source is stopped by a removal, and keeps its row so its sender makes no source again",
         "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}, {"name": "Letter", "type": "newsletter", "url": null, "config": {"lane": "read", "email_match": "from:news@letter.example", "homepage": "https://letter.example/"}}],
         "method": "DELETE",
         "path": "/api/sources/Letter",
         "status": 200,
-        "answer": {"ok": true, "name": "Letter", "note": "Effective next run."},
-        "reads_back": [{"name": "Plain", "type": "rss", "lane": "skim", "url": "https://plain.example/feed", "email_match": null, "homepage": null, "tags": []}]
+        "answer": {"ok": true, "name": "Letter", "review": "declined", "note": "Effective next run."},
+        "reads_back": [{"name": "Letter", "type": "newsletter", "lane": "read", "url": null, "email_match": "from:news@letter.example", "homepage": "https://letter.example/", "tags": [], "review": "declined"}, {"name": "Plain", "type": "rss", "lane": "skim", "url": "https://plain.example/feed", "email_match": null, "homepage": null, "tags": [], "review": null}]
       },
       {
         "name": "a name with a space in it is removed by its percent-encoded path",
@@ -754,7 +793,7 @@
         "path": "/api/sources/Two%20Words",
         "status": 200,
         "answer": {"ok": true, "name": "Two Words", "note": "Effective next run."},
-        "reads_back": [{"name": "Plain", "type": "rss", "lane": "skim", "url": "https://plain.example/feed", "email_match": null, "homepage": null, "tags": []}]
+        "reads_back": [{"name": "Plain", "type": "rss", "lane": "skim", "url": "https://plain.example/feed", "email_match": null, "homepage": null, "tags": [], "review": null}]
       },
       {
         "name": "a name that is no source is refused 404, and nothing is removed",
@@ -763,7 +802,92 @@
         "path": "/api/sources/Nothing",
         "status": 404,
         "answer": {"ok": false, "error": "There is no source named Nothing."},
-        "reads_back": [{"name": "Plain", "type": "rss", "lane": "skim", "url": "https://plain.example/feed", "email_match": null, "homepage": null, "tags": []}]
+        "reads_back": [{"name": "Plain", "type": "rss", "lane": "skim", "url": "https://plain.example/feed", "email_match": null, "homepage": null, "tags": [], "review": null}]
+      },
+      {
+        "name": "a source cyris made lists its review, as does one the reader deleted",
+        "rows": [{"name": "new@letter.example", "type": "newsletter", "url": null, "config": {"lane": "read", "tags": [], "email_match": "from:new@letter.example", "review": "new"}}, {"name": "gone@letter.example", "type": "newsletter", "url": null, "config": {"lane": "read", "tags": [], "email_match": "from:gone@letter.example", "review": "declined"}}],
+        "method": "GET",
+        "path": "/api/sources",
+        "status": 200,
+        "answer": {"writable": true, "sources": [{"name": "gone@letter.example", "type": "newsletter", "lane": "read", "url": null, "email_match": "from:gone@letter.example", "homepage": null, "tags": [], "review": "declined", "health": null}, {"name": "new@letter.example", "type": "newsletter", "lane": "read", "url": null, "email_match": "from:new@letter.example", "homepage": null, "tags": [], "review": "new", "health": null}]}
+      },
+      {
+        "name": "a new source is kept, and holds the review kept, which reads as an ordinary source",
+        "rows": [{"name": "new@letter.example", "type": "newsletter", "url": null, "config": {"lane": "read", "tags": [], "email_match": "from:new@letter.example", "review": "new"}}, {"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources/new%40letter.example/review",
+        "body": {"decision": "keep"},
+        "status": 200,
+        "answer": {"ok": true, "name": "new@letter.example", "review": "kept", "note": "Effective next run."},
+        "reads_back": [{"name": "Plain", "type": "rss", "lane": "skim", "url": "https://plain.example/feed", "email_match": null, "homepage": null, "tags": [], "review": null}, {"name": "new@letter.example", "type": "newsletter", "lane": "read", "url": null, "email_match": "from:new@letter.example", "homepage": null, "tags": [], "review": "kept"}]
+      },
+      {
+        "name": "a new source is stopped, and its row stays declined so its sender makes no source again",
+        "rows": [{"name": "new@letter.example", "type": "newsletter", "url": null, "config": {"lane": "read", "tags": [], "email_match": "from:new@letter.example", "review": "new"}}],
+        "method": "POST",
+        "path": "/api/sources/new%40letter.example/review",
+        "body": {"decision": "stop"},
+        "status": 200,
+        "answer": {"ok": true, "name": "new@letter.example", "review": "declined", "note": "Effective next run."},
+        "reads_back": [{"name": "new@letter.example", "type": "newsletter", "lane": "read", "url": null, "email_match": "from:new@letter.example", "homepage": null, "tags": [], "review": "declined"}]
+      },
+      {
+        "name": "a stopped source is restored",
+        "rows": [{"name": "gone@letter.example", "type": "newsletter", "url": null, "config": {"lane": "read", "tags": [], "email_match": "from:gone@letter.example", "review": "declined"}}],
+        "method": "POST",
+        "path": "/api/sources/gone%40letter.example/review",
+        "body": {"decision": "restore"},
+        "status": 200,
+        "answer": {"ok": true, "name": "gone@letter.example", "review": "kept", "note": "Effective next run."},
+        "reads_back": [{"name": "gone@letter.example", "type": "newsletter", "lane": "read", "url": null, "email_match": "from:gone@letter.example", "homepage": null, "tags": [], "review": "kept"}]
+      },
+      {
+        "name": "a kept source is stopped later",
+        "rows": [{"name": "kept@letter.example", "type": "newsletter", "url": null, "config": {"lane": "read", "tags": [], "email_match": "from:kept@letter.example", "review": "kept"}}],
+        "method": "POST",
+        "path": "/api/sources/kept%40letter.example/review",
+        "body": {"decision": "stop"},
+        "status": 200,
+        "answer": {"ok": true, "name": "kept@letter.example", "review": "declined", "note": "Effective next run."},
+        "reads_back": [{"name": "kept@letter.example", "type": "newsletter", "lane": "read", "url": null, "email_match": "from:kept@letter.example", "homepage": null, "tags": [], "review": "declined"}]
+      },
+      {
+        "name": "a decision made twice is made once: a stopped source stopped again stays stopped",
+        "rows": [{"name": "gone@letter.example", "type": "newsletter", "url": null, "config": {"lane": "read", "tags": [], "email_match": "from:gone@letter.example", "review": "declined"}}],
+        "method": "POST",
+        "path": "/api/sources/gone%40letter.example/review",
+        "body": {"decision": "stop"},
+        "status": 200,
+        "answer": {"ok": true, "name": "gone@letter.example", "review": "declined", "note": "Effective next run."},
+        "reads_back": [{"name": "gone@letter.example", "type": "newsletter", "lane": "read", "url": null, "email_match": "from:gone@letter.example", "homepage": null, "tags": [], "review": "declined"}]
+      },
+      {
+        "name": "a review of a name that is no source is refused 404",
+        "rows": [{"name": "new@letter.example", "type": "newsletter", "url": null, "config": {"lane": "read", "tags": [], "email_match": "from:new@letter.example", "review": "new"}}],
+        "method": "POST",
+        "path": "/api/sources/Nothing/review",
+        "body": {"decision": "keep"},
+        "status": 404,
+        "answer": {"ok": false, "error": "There is no source named Nothing."}
+      },
+      {
+        "name": "a decision that is none of keep, stop and restore is refused",
+        "rows": [{"name": "new@letter.example", "type": "newsletter", "url": null, "config": {"lane": "read", "tags": [], "email_match": "from:new@letter.example", "review": "new"}}],
+        "method": "POST",
+        "path": "/api/sources/new%40letter.example/review",
+        "body": {"decision": "maybe"},
+        "status": 400,
+        "answer": {"ok": false, "error": "A decision is keep, stop or restore.", "field": "decision"}
+      },
+      {
+        "name": "a decision on an RSS source is refused",
+        "rows": [{"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}],
+        "method": "POST",
+        "path": "/api/sources/Plain/review",
+        "body": {"decision": "stop"},
+        "status": 400,
+        "answer": {"ok": false, "error": "Plain is not a newsletter source: only a newsletter source is kept, stopped or restored.", "field": "decision"}
       },
       {
         "name": "refused: a name of no characters",
@@ -1074,7 +1198,7 @@
         "status": 200,
         "answer": {"ok": true, "name": "Filler 1", "note": "Effective next run."},
         "reads_back": null,
-        "holds": [{"name": "Filler 1", "type": "rss", "lane": "read", "url": "https://moved.example/feed", "email_match": null, "homepage": null, "tags": []}],
+        "holds": [{"name": "Filler 1", "type": "rss", "lane": "read", "url": "https://moved.example/feed", "email_match": null, "homepage": null, "tags": [], "review": null}],
         "count": 30
       }
     ]

@@ -35,14 +35,43 @@ def subject_prefix_re() -> re.Pattern[str]:
 
 
 @cache
-def private_reply_re() -> re.Pattern[str]:
-    """A reply, or a forward of one — forwards may stack, the reply is the last prefix."""
-    forwards = _alternation("forward_prefixes")
-    replies = _alternation("reply_prefixes")
+def system_senders() -> frozenset[str]:
+    """Addresses whose mail never makes a source: a platform's own notices, not a newsletter."""
+    return frozenset(address.lower() for address in _vocabulary()["system_senders"])
+
+
+def _block_words(part: str) -> str:
+    """One part of every language's forwarded block, as an alternation, longest word first."""
+    words = {word for block in _vocabulary()["forwarded_blocks"].values() for word in block[part]}
+    return "|".join(re.escape(word) for word in sorted(words, key=len, reverse=True))
+
+
+# A quoted line's lead: the `>` of a plain-text quote, and the `*` a client's bold label leaves.
+_LEAD = r"^[\s>*]*"
+
+
+@cache
+def forwarded_marker_re() -> re.Pattern[str]:
+    """The line some mail clients open a forwarded message's quoted headers with."""
+    # On a line of its own, framed by rule characters or a colon, so a sentence that only
+    # mentions a forwarded message is not taken for one.
     return re.compile(
-        rf"^(?:(?:{forwards}){_SEPARATOR}\s*)*(?:{replies}){_SEPARATOR}\s*",
-        re.IGNORECASE,
+        rf"{_LEAD}[\-_]*\s*(?:{_block_words('markers')})[\s\-_*]*{_SEPARATOR}?\s*$", re.IGNORECASE
     )
+
+
+@cache
+def forwarded_from_line_re() -> re.Pattern[str]:
+    """A quoted header block's From line; group 1 is what follows its label."""
+    labels = _block_words("from")
+    return re.compile(rf"{_LEAD}(?:{labels})\s*\**\s*{_SEPARATOR}(.*)$", re.IGNORECASE)
+
+
+@cache
+def forwarded_header_line_re() -> re.Pattern[str]:
+    """Any line of a quoted header block, its From line included."""
+    labels = f"{_block_words('from')}|{_block_words('headers')}"
+    return re.compile(rf"{_LEAD}(?:{labels})\s*\**\s*{_SEPARATOR}", re.IGNORECASE)
 
 
 @cache

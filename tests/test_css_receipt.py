@@ -543,6 +543,8 @@ EXPECTED_IDS = {
     "editor-new-cancel-focuses-add",
     "source-save-failure-focuses-save",
     "retire-failure-focuses-retire",
+    "stop-keeps-a-newsletter-row",
+    "restore-a-stopped-source",
     "retire-focuses-add",
     "site-bar-links-align",
     "no-credential-in-dom",
@@ -575,6 +577,7 @@ EXPECTED_IDS = {
     "notice-hides-on-edit",
     "model-notice-ok",
     "notify-notice-masked",
+    "notify-own-addresses-plain",
     "notice-unreachable",
     "notice-unexplained-refusal",
     "source-notice-beside-save",
@@ -1061,6 +1064,10 @@ def test_every_raw_probe_check_is_named_once_and_can_be_sabotaged():
 # The checks `scripts/digest_probe.py` must carry. Each digest-page change adds the
 # ids of the checks that hold it.
 EXPECTED_DIGEST_IDS = {
+    "source-decision-shows-at-once",
+    "source-decision-refused-reverts",
+    "source-mark-corrected-by-probe",
+    "source-dialog-says-forwarded",
     *(f"votes-one-row-{width}" for width in (360, 880, 1000, 1440)),
     *(f"votes-beside-meta-{width}" for width in (360, 880, 1000, 1440)),
     *(
@@ -1208,7 +1215,9 @@ async def test_the_digest_probe_fixture_serves_an_archive_with_small_buttons():
 async def test_the_digest_probe_fixture_signs_every_kind_in(kind):
     [(status, body)] = await _raw_answers(digest_probe.build_fixture(kind), [("GET", "/api/vote")])
     assert status == 200
-    assert json.loads(body) == {"authorized": True}
+    # A source kind's probe also lists the review its marked source holds now.
+    reviews = digest_probe.PROBED_REVIEWS.get(kind)
+    assert json.loads(body) == {"authorized": True, **({"reviews": reviews} if reviews else {})}
 
 
 async def test_the_digest_probe_fixture_keeps_a_refused_vote():
@@ -1462,8 +1471,9 @@ async def test_the_onboarding_probe_serves_the_real_wizard_and_its_script():
     assert 'id="o-steps"' in page
     assert script.status == 200
     # The server's own answer, which the site bar's links wait on: it holds an article store,
-    # so it takes votes and answers as the app Worker does (ADR-0044).
-    assert probe == {"authorized": True}
+    # so it takes votes and answers as the app Worker does (ADR-0044), with the review each
+    # source holds, none in an empty store (ADR-0050).
+    assert probe == {"authorized": True, "reviews": {}}
 
 
 @pytest.mark.parametrize(

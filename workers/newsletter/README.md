@@ -22,7 +22,7 @@ cyris that needs a domain you control.
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET  | `/newsletters` | List queued newsletters (cyris pulls these) |
+| GET  | `/newsletters` | List every queued newsletter, past KV's 1000-key list page (cyris pulls these) |
 | POST | `/ack` | Body `{"ids":[...]}` — delete processed items from KV |
 
 Inbound email is handled by the Worker's `email()` trigger (Email Routing), not HTTP.
@@ -44,9 +44,14 @@ Each newsletter in KV contains:
     { "key": "Return-Path" },
     { "key": "To" }
   ],
-  "raw_size": 45678
+  "raw_size": 45678,
+  "received_at": "2026-09-01T12:00:03.000Z"
 }
 ```
+
+`received_at` is when the message reached this Worker. A run acks mail it could not file
+(a forward whose quoted sender it cannot read, a sender past a cap) 8 days after it, so no
+message waits in KV forever.
 
 **headers**: An array of email header objects. Each object has a `key` field; allowlisted
 headers also have a `value` field. Allowlisted headers (case-insensitive):
@@ -137,12 +142,20 @@ two values are `[newsletter] worker_url` in `cyris.toml` and `CYRIS_WORKER_TOKEN
 
 ## Add a new email-only newsletter
 
-1. Gmail filter: forward that sender → `cyris@<your-domain>`.
-2. Add a source with `type: newsletter` and `email_match` so cyris assigns its
-   lane and tags. On Cloudflare the source list is D1: add it on `/settings` →
-   Sources, or put it in `sources.yaml` and run `cyris sources push` (editing
-   `sources.yaml` alone does nothing there). A local install reads `sources.yaml`
-   directly.
+1. Gmail filter: forward that sender → `cyris@<your-domain>`, or subscribe with that
+   address.
+2. Nothing more is needed. The next run makes a source for a sender no source names
+   ([ADR-0050](../../docs/decisions/0050-mail-from-an-unknown-sender-becomes-a-source-the-reader-keeps-or-stops.md)):
+   named by its address, `type: newsletter`, lane `read`, and marked *New source*
+   on the digest card, where you keep or stop it. `/settings` → Sources stops or
+   restores it too. Mail you forward by hand comes from your own address, so list any
+   address beside *Email to* under Notifications → *Your other addresses*; cyris then
+   files it by the sender the forward quotes.
+3. Optional: to give the source a name, lane or tags before its first issue, add it
+   yourself with `type: newsletter` and `email_match`. On Cloudflare the source list
+   is D1: add it on `/settings` → Sources, or put it in `sources.yaml` and run
+   `cyris sources push` (editing `sources.yaml` alone does nothing there). A local
+   install reads `sources.yaml` directly.
    ```yaml
    - name: "Example Newsletter"
      type: newsletter
@@ -150,7 +163,9 @@ two values are `[newsletter] worker_url` in `cyris.toml` and `CYRIS_WORKER_TOKEN
      lane: read
      tags: [tech, business]
    ```
-Unmatched senders are pulled but skipped (and ACKed, so they don't pile up).
+A stopped source's mail is ACKed unread. Mail a run cannot file yet (a forward whose
+quoted sender it cannot read, a sender past the run's cap of new sources) stays queued
+for 8 days from `received_at`, then is ACKed.
 
 ## Local dev
 

@@ -1,12 +1,17 @@
 """Sources in D1, and a D1 deployment that fetches exactly what the table holds."""
 
+import json
+from datetime import UTC, datetime
 from pathlib import Path
 
+import httpx
 import pytest
+import respx
 from fakes import SqliteD1
 
+from cyris.adapters.fetch.newsletter_worker_source import CloudflareNewsletterSource
 from cyris.adapters.store.source_store import D1SourceStore
-from cyris.domain.models import Lane, SourceConfig
+from cyris.domain.models import SOURCE_DECISIONS, Lane, SourceConfig
 
 pytestmark = pytest.mark.integration
 
@@ -64,6 +69,109 @@ def test_push_is_a_replacement_not_a_merge(store: D1SourceStore) -> None:
     store.replace_all(_sources(SourceConfig(name="New", url="https://new.test/feed")))
 
     assert list(store.list_sources()) == ["New"]
+
+
+def test_a_push_keeps_each_reviewed_row_and_the_review_of_a_source_it_names(
+    store: D1SourceStore,
+) -> None:
+    """A stopped row is what keeps its sender's mail out; the file cannot say it."""
+
+    def letter(name: str, review: str | None = None, lane: Lane = Lane.READ) -> SourceConfig:
+        return SourceConfig(
+            name=name, type="newsletter", lane=lane, email_match=f"from:{name}", review=review
+        )
+
+    store.replace_all(_sources(SourceConfig(name="Old", url="https://old.test/feed")))
+    for made in (letter("new@x.test", "new"), letter("gone@x.test", "declined")):
+        store.insert(made)
+    store.insert(letter("named@x.test", "declined"))
+
+    store.replace_all(
+        _sources(letter("named@x.test", lane=Lane.FOLLOW), letter("plain@x.test", "declined"))
+    )
+
+    assert store.list_sources() == _sources(
+        letter("gone@x.test", "declined"),
+        letter("named@x.test", "declined", Lane.FOLLOW),
+        letter("new@x.test", "new"),
+        letter("plain@x.test"),
+    )
+
+
+async def test_a_kept_source_outlives_a_push_and_takes_its_senders_next_mail(
+    store: D1SourceStore,
+) -> None:
+    """Keep is a decision that lasts: a push that never names the source leaves its row."""
+    worker = "https://newsletters.example"
+    store.replace_all(_sources(SourceConfig(name="Blog", url="https://blog.test/feed")))
+    store.insert(
+        SourceConfig(
+            name="news@letter.test",
+            type="newsletter",
+            lane=Lane.READ,
+            email_match="from:news@letter.test",
+            review="new",
+        )
+    )
+
+    store.set_review("news@letter.test", SOURCE_DECISIONS["keep"])
+    store.replace_all(_sources(SourceConfig(name="Blog", url="https://blog.test/feed")))
+    mail = {"id": "nl:1", "from": "news@letter.test", "subject": "Issue 8", "text": "body"}
+    with respx.mock:
+        pull = respx.get(f"{worker}/newsletters").mock(
+            return_value=httpx.Response(200, json=[mail])
+        )
+        ack = respx.post(f"{worker}/ack").mock(return_value=httpx.Response(200, json={}))
+        source = CloudflareNewsletterSource(worker, "tok", create_source=store.insert)
+        now = datetime(2026, 11, 26, tzinfo=UTC)
+        articles = await source.fetch_articles(now, now, store.list_sources())
+
+    assert {name: s.review for name, s in store.list_sources().items()} == {
+        "Blog": None,
+        "news@letter.test": "kept",
+    }
+    assert [a.source_name for a in articles] == ["news@letter.test"]
+    assert (pull.call_count, ack.call_count) == (1, 1)
+    assert json.loads(ack.calls.last.request.content) == {"ids": ["nl:1"]}
+
+
+def test_insert_writes_a_new_name_and_never_overwrites_one(store: D1SourceStore) -> None:
+    held = SourceConfig(
+        name="Letter", type="newsletter", lane=Lane.FOLLOW, email_match="from:a@x.test"
+    )
+    store.replace_all(_sources(held))
+    other = SourceConfig(
+        name="Letter", type="newsletter", lane=Lane.READ, email_match="from:b@x.test"
+    )
+    new = SourceConfig(
+        name="b@x.test", type="newsletter", lane=Lane.READ, email_match="from:b@x.test"
+    )
+
+    assert store.insert(other) is False
+    assert store.insert(new) is True
+    assert store.list_sources() == {"Letter": held, "b@x.test": new}
+
+
+def test_a_review_is_set_and_dropped_and_an_ordinary_row_carries_none(store: D1SourceStore) -> None:
+    plain = SourceConfig(name="Plain", url="https://plain.test/feed")
+    new = SourceConfig(
+        name="b@x.test", type="newsletter", email_match="from:b@x.test", review="new"
+    )
+    store.replace_all(_sources(plain))
+    store.insert(new)
+
+    declined = store.set_review("b@x.test", "declined")
+    after_decline = store.list_sources()["b@x.test"].review
+    kept = store.set_review("b@x.test", None)
+
+    assert (declined, after_decline, kept) == (1, "declined", 1)
+    assert store.list_sources() == {
+        "Plain": plain,
+        "b@x.test": new.model_copy(update={"review": None}),
+    }
+    assert store.set_review("Nobody", "declined") == 0
+    rows = store._db.query("SELECT name, config FROM sources ORDER BY name").rows
+    assert all("review" not in json.loads(row["config"]) for row in rows)
 
 
 def test_push_batches_past_the_bound_parameter_limit(store: D1SourceStore) -> None:

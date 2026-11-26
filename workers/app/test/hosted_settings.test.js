@@ -168,6 +168,19 @@ describe("TenantDb's settings and sources", () => {
     expect(db.saveSource(rss("Letter"), POLICY.max_sources).refused).toBe("source_taken");
   });
 
+  it("holds no place under the cap for a stopped newsletter source", async () => {
+    const db = await seeded();
+    const held = db.query("SELECT count(*) AS n FROM sources").rows[0].n;
+    for (let i = held; i < POLICY.max_sources; i++) {
+      db.query("INSERT INTO sources (name, url, type, config) VALUES (?, NULL, 'newsletter', ?)", [
+        `stopped${i}@x.example`,
+        JSON.stringify({ email_match: `from:stopped${i}@x.example`, review: "declined" }),
+      ]);
+    }
+
+    expect(db.saveSource(rss("One more"), POLICY.max_sources).source).toBeTruthy();
+  });
+
   it("keeps what else a rewritten source's config held, its tags too", async () => {
     const db = await seeded();
     db.query("INSERT INTO sources (name, url, type, config) VALUES (?, ?, 'rss', ?)", ["Kept", "https://kept.example/feed", '{"lane":"skim","tags":["x"],"language":"en"}']);

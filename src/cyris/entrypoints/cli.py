@@ -2111,7 +2111,7 @@ def sources_push(
         "sources.yaml"
     ),
 ) -> None:
-    """Make D1 match sources.yaml exactly, removals included."""
+    """Make D1 match sources.yaml, removals included; a source with a review stays."""
     if not sources_path.is_file():
         typer.echo(
             f"No sources file at {sources_path}. Copy sources.example.yaml to it, or pass "
@@ -2132,11 +2132,13 @@ def sources_push(
 
     before = set(store.list_sources())
     written = store.replace_all(from_file)
-    removed = sorted(before - set(from_file))
+    after = store.list_sources()
 
     typer.echo(f"Pushed {written} sources from {sources_path}.")
-    for name in removed:
+    for name in sorted(before - set(after)):
         typer.echo(f"  removed: {name}")
+    for name in sorted(set(after) - set(from_file)):
+        typer.echo(f"  kept, {after[name].review}: {name}")
 
 
 @sources_app.command("list")

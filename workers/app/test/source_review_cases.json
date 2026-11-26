@@ -1,0 +1,21 @@
+{
+  "_comment": "A page's source decision through the vote door, /api/vote, answered alike by every door that takes one (ADR-0050): the app Worker (workers/app/src/router.js, over D1's REST API), the hosted Worker (hosted_vote.js, over the tenant's object), and a local `cyris triage-ui` (TriageServer). workers/app/test/source_review_contract.test.js holds the two Workers to every case, and tests/test_source_review_cases.py holds TriageServer. Each case starts from `rows`, sends `body` as a POST, and holds the answer; `reviews` is what the door's GET probe lists after it, which starts as `probe`. The body shape is the decision's whole contract: a vote names no `source`, so a door tells the two apart by that key.",
+  "rows": [
+    {"name": "new@letter.example", "type": "newsletter", "url": null, "config": {"lane": "read", "email_match": "from:new@letter.example", "review": "new"}},
+    {"name": "gone@letter.example", "type": "newsletter", "url": null, "config": {"lane": "read", "email_match": "from:gone@letter.example", "review": "declined"}},
+    {"name": "kept@letter.example", "type": "newsletter", "url": null, "config": {"lane": "read", "email_match": "from:kept@letter.example", "review": "kept"}},
+    {"name": "Plain", "type": "rss", "url": "https://plain.example/feed", "config": {}}
+  ],
+  "probe": {"reviews": {"gone@letter.example": "declined", "kept@letter.example": "kept", "new@letter.example": "new"}},
+  "cases": [
+    {"case": "a new source is kept, and is ordinary", "body": {"source": "new@letter.example", "decision": "keep"}, "status": 200, "answer": {"ok": true, "source": "new@letter.example", "review": "kept"}, "reviews": {"gone@letter.example": "declined", "kept@letter.example": "kept", "new@letter.example": "kept"}},
+    {"case": "a new source is stopped", "body": {"source": "new@letter.example", "decision": "stop"}, "status": 200, "answer": {"ok": true, "source": "new@letter.example", "review": "declined"}, "reviews": {"gone@letter.example": "declined", "kept@letter.example": "kept", "new@letter.example": "declined"}},
+    {"case": "a stopped source is restored", "body": {"source": "gone@letter.example", "decision": "restore"}, "status": 200, "answer": {"ok": true, "source": "gone@letter.example", "review": "kept"}, "reviews": {"gone@letter.example": "kept", "kept@letter.example": "kept", "new@letter.example": "new"}},
+    {"case": "a kept source is stopped later", "body": {"source": "kept@letter.example", "decision": "stop"}, "status": 200, "answer": {"ok": true, "source": "kept@letter.example", "review": "declined"}, "reviews": {"gone@letter.example": "declined", "kept@letter.example": "declined", "new@letter.example": "new"}},
+    {"case": "a decision made twice is made once: a stopped source stopped again", "body": {"source": "gone@letter.example", "decision": "stop"}, "status": 200, "answer": {"ok": true, "source": "gone@letter.example", "review": "declined"}, "reviews": {"gone@letter.example": "declined", "kept@letter.example": "kept", "new@letter.example": "new"}},
+    {"case": "a decision that is none of keep, stop and restore", "body": {"source": "new@letter.example", "decision": "delete"}, "status": 400, "answer": {"error": "bad decision"}, "reviews": {"gone@letter.example": "declined", "kept@letter.example": "kept", "new@letter.example": "new"}},
+    {"case": "a source that is no source", "body": {"source": "nobody@letter.example", "decision": "stop"}, "status": 404, "answer": {"error": "no such source"}, "reviews": {"gone@letter.example": "declined", "kept@letter.example": "kept", "new@letter.example": "new"}},
+    {"case": "an RSS source", "body": {"source": "Plain", "decision": "stop"}, "status": 400, "answer": {"error": "not a newsletter source"}, "reviews": {"gone@letter.example": "declined", "kept@letter.example": "kept", "new@letter.example": "new"}},
+    {"case": "a source that is no name", "body": {"source": 7, "decision": "stop"}, "status": 400, "answer": {"error": "missing source"}, "reviews": {"gone@letter.example": "declined", "kept@letter.example": "kept", "new@letter.example": "new"}}
+  ]
+}

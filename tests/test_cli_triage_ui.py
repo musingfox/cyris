@@ -170,7 +170,7 @@ def test_a_sqlite_ui_reads_the_feed_health_cyris_ingest_writes_to_the_same_file(
     )
 
 
-def test_an_empty_d1_starts_the_page_with_only_the_defaulted_effort(
+def test_an_empty_d1_starts_the_page_with_only_the_optional_defaults(
     config: tuple[Path, Path], monkeypatch
 ) -> None:
     """The page gets what the home holds and what runs on a default; an empty D1 has the latter."""
@@ -187,7 +187,10 @@ def test_an_empty_d1_starts_the_page_with_only_the_defaulted_effort(
 
     assert result.exit_code == 0, result.output
     [(_args, kwargs)] = FakeServer.calls
-    assert kwargs["values"] == {"llm_provider.reasoning_effort": "default"}
+    assert kwargs["values"] == {
+        "llm_provider.reasoning_effort": "default",
+        "notify.own_addresses": "",
+    }
     assert kwargs["settings"] is not None
     assert kwargs["feed_health"].read() == {}
     # /labels writes its answers to the articles as votes, so a D1 ui role opens both.
@@ -342,7 +345,8 @@ def test_a_sqlite_server_takes_the_pages_votes(config: tuple[Path, Path], monkey
             f'sqlite_path = "{config_path.parent / "state" / "cyris.sqlite3"}"\n'
         )
 
-    assert _vote_answers(config, monkeypatch) == ({"authorized": True}, 200)
+    # With the review each source holds, none on a new file (ADR-0050).
+    assert _vote_answers(config, monkeypatch) == ({"authorized": True, "reviews": {}}, 200)
 
 
 def test_a_d1_server_leaves_the_votes_to_the_clouds_queue(

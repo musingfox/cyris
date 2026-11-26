@@ -49,9 +49,11 @@ from css_computed import find_browser
 from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.domain.layers import layer_by_lane
 from cyris.domain.models import (
+    SOURCE_DECISIONS,
     DigestContent,
     DigestItem,
     DigestSection,
+    SourceConfig,
     UsageStats,
 )
 from cyris.i18n import translator
@@ -72,6 +74,10 @@ KINDS = (
     "pictured",
     "no-layer",
     "one-layer",
+    "source-new",
+    "source-fails",
+    "source-stale",
+    "source-forwarded",
 )
 
 # Every element a vote group sits in, one per layer: a pebble card, a sand block, a water row.
@@ -227,9 +233,47 @@ def content() -> DigestContent:
     )
 
 
-def render_page(issue: DigestContent | None = None) -> str:
+def _every_url(issue: DigestContent) -> set[str]:
+    layers = layer_by_lane(issue)
+    items = [
+        *(p.item for p in layers.pebbles),
+        *(m for s in layers.sand for m in s.members),
+        *(w.item for w in layers.water),
+    ]
+    return {url for item in items for url in item.urls}
+
+
+def render_page(
+    issue: DigestContent | None = None, marked: str | None = None, forwarded: bool = False
+) -> str:
+    """The digest page; `marked` names a source the store holds as new, so its card is marked,
+    and `forwarded` says every item of the issue arrived as a forward from the reader."""
+    held = {}
+    if marked:
+        held[marked] = SourceConfig(name=marked, type="newsletter", review="new")
+    issue = issue or content()
+    urls = _every_url(issue) if forwarded else set()
     with tempfile.TemporaryDirectory(prefix="digest-probe-") as unused:
-        return HtmlDigestWriter(Path(unused)).render(issue or content())
+        writer = HtmlDigestWriter(
+            Path(unused), list_sources=lambda: held, forwarded_urls=lambda: urls
+        )
+        return writer.render(issue)
+
+
+# The source the `source-*` kinds mark as new: the first Stories card's (ADR-0050).
+MARKED_SOURCE = layer_by_lane(content()).pebbles[0].item.sources[0]
+# What the probe of each `source-*` kind says the store holds now; `source-stale`'s page was
+# rendered before the reader stopped the source elsewhere.
+PROBED_REVIEWS = {
+    "source-new": {MARKED_SOURCE: "new"},
+    "source-fails": {MARKED_SOURCE: "new"},
+    "source-stale": {MARKED_SOURCE: "declined"},
+    "source-forwarded": {MARKED_SOURCE: "new"},
+}
+# The line a forwarded source's dialog adds.
+FORWARDED_LINE = translator("en")("digest.source_dialog_forwarded")
+# How long a decision's answer takes, so a check reads the card before it lands.
+DECISION_MS = 600
 
 
 # A story image the fixture serves only after this long, so a lazy image near a
@@ -310,7 +354,11 @@ def build_fixture(kind: str) -> VoteFixture:
     """
     if kind not in KINDS:
         raise ValueError(f"unknown fixture {kind!r}")
-    page = render_page(ISSUES[kind]() if kind in ISSUES else None)
+    page = render_page(
+        ISSUES[kind]() if kind in ISSUES else None,
+        marked=MARKED_SOURCE if kind in PROBED_REVIEWS else None,
+        forwarded=kind == "source-forwarded",
+    )
     archive = render_archive()
     if kind.endswith("-largest"):
         page = at_largest_type_scale(page)
@@ -326,11 +374,20 @@ def build_fixture(kind: str) -> VoteFixture:
         return web.Response(text=archive, content_type="text/html")
 
     async def probe(_: web.Request) -> web.Response:
+        if kind in PROBED_REVIEWS:
+            return web.json_response({"authorized": True, "reviews": PROBED_REVIEWS[kind]})
         return web.json_response({"authorized": True})
 
     async def vote(request: web.Request) -> web.Response:
-        fixture.posts.append(await request.json())
+        body = await request.json()
+        fixture.posts.append(body)
         fixture.post_headers.append(dict(request.headers))
+        if "source" in body:
+            await asyncio.sleep(DECISION_MS / 1000)
+            if kind == "source-fails":
+                return web.json_response({"error": "source store failed"}, status=502)
+            review = SOURCE_DECISIONS[body["decision"]]
+            return web.json_response({"ok": True, "source": body["source"], "review": review})
         if kind == "vote-fails":
             return web.json_response({"ok": False}, status=502)
         return web.json_response({"ok": True})
@@ -1005,6 +1062,103 @@ _CHECKS: list[Check] = [
             $$(".vote-error").forEach((n) => n.remove());
         }).observe(document.body, {subtree: true, childList: true});""",
         receipt=_voted(first_vote_urls()[".news-cluster"]),
+    ),
+    # A source decision (UI spec section 4, source dialog): the mark opens the dialog, and a
+    # decision repaints the card before the door answers, then gives focus back to the mark.
+    Check(
+        id="source-decision-shows-at-once",
+        fixture="source-new",
+        path=PAGE,
+        act="""
+            showEveryLayer();
+            const mark = await waitFor(() => $("button.source-mark"), "the mark as a button");
+            bringIntoView("button.source-mark");
+            mark.click();
+            const dialog = $("#source-dialog");
+            ctx.open = dialog.open;
+            ctx.title = $("h2", dialog).textContent;
+            ctx.actions = $$("[data-decision]", dialog).filter(visible).map((b) => b.textContent);
+            ctx.forwarded = visible($(".source-dialog-forwarded"));
+            $('#source-dialog [data-decision="stop"]').click();
+            ctx.atOnce = mark.textContent;
+            ctx.closed = !dialog.open;
+            await waitFor(() => document.activeElement === mark, "focus back on the mark");
+        """,
+        script=f"""
+            expect(ctx.open, "the dialog did not open");
+            expect(ctx.title === {json.dumps(MARKED_SOURCE)}, `title: ${{ctx.title}}`);
+            expect(same(ctx.actions, ["Keep", "Stop"]), `actions: ${{ctx.actions}}`);
+            expect(!ctx.forwarded, "the forwarding line shows for mail that came direct");
+            expect(ctx.closed, "the dialog stayed open");
+            expect(ctx.atOnce === "Stopped", `the mark right after Stop: ${{ctx.atOnce}}`);
+        """,
+        sabotage_preload="""document.addEventListener("click", (e) => {
+            if (e.target.closest("[data-decision]")) e.stopImmediatePropagation();
+        }, true);""",
+        receipt=lambda fixture: (
+            None
+            if [p for p in fixture.posts if "source" in p]
+            == [{"source": MARKED_SOURCE, "decision": "stop"}]
+            else f"posts: {fixture.posts}"
+        ),
+    ),
+    # A refused decision puts the card back as it was and says so, with Retry.
+    Check(
+        id="source-decision-refused-reverts",
+        fixture="source-fails",
+        path=PAGE,
+        act="""
+            showEveryLayer();
+            const mark = await waitFor(() => $("button.source-mark"), "the mark as a button");
+            mark.click();
+            $('#source-dialog [data-decision="stop"]').click();
+            await waitFor(() => $(".source-error"), "the refusal");
+        """,
+        script="""
+            const mark = $("button.source-mark");
+            expect(mark.textContent === "New source", `mark: ${mark.textContent}`);
+            const notice = $(".source-error");
+            expect(visible(notice) && notice.getAttribute("role") === "alert", "notice not shown");
+            expect(notice.textContent.includes("HTTP 502"), `notice: ${notice.textContent}`);
+            expect($("button", notice).textContent === "Retry", "no Retry");
+        """,
+        sabotage="""$$(".source-error").forEach((n) => n.remove());""",
+    ),
+    # A source whose items all arrived forwarded from the reader's address says so in its dialog.
+    Check(
+        id="source-dialog-says-forwarded",
+        fixture="source-forwarded",
+        path=PAGE,
+        act="""
+            showEveryLayer();
+            const mark = await waitFor(() => $("button.source-mark"), "the mark as a button");
+            mark.click();
+        """,
+        script=f"""
+            const line = $("#source-dialog .source-dialog-forwarded");
+            expect($("#source-dialog").open, "the dialog did not open");
+            expect(visible(line), "the forwarding line is hidden");
+            const text = line.textContent;
+            expect(text === {json.dumps(FORWARDED_LINE)}, `line: ${{text}}`);
+        """,
+        sabotage="""$("#source-dialog .source-dialog-forwarded").hidden = true;""",
+    ),
+    # The probe's reviews correct a mark the page was rendered with.
+    Check(
+        id="source-mark-corrected-by-probe",
+        fixture="source-stale",
+        path=PAGE,
+        act="""
+            showEveryLayer();
+            await waitFor(() => $("button.source-mark"), "the mark as a button");
+        """,
+        script="""
+            const mark = $(".source-mark");
+            expect(mark.textContent === "Stopped", `mark: ${mark.textContent}`);
+            expect(mark.dataset.review === "declined", `review: ${mark.dataset.review}`);
+        """,
+        sabotage_preload="""document.addEventListener("cyris:signed-in",
+            (e) => e.stopImmediatePropagation());""",
     ),
 ]
 # The longest failure reason, shown under every item kind at once, stays inside the

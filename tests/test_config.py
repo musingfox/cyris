@@ -732,6 +732,12 @@ class TestValidateSetting:
             ("notify.discord_webhook_url", "", ""),
             ("digest.preference_source", "cosine", "cosine"),
             ("digest.preference_source", "clef", "clef"),
+            ("notify.own_addresses", "", ""),
+            (
+                "notify.own_addresses",
+                " a@x.example,b+c@y.example  d@z.example ",
+                "a@x.example, b+c@y.example, d@z.example",
+            ),
         ],
     )
     def test_an_acceptable_value_comes_back(self, key, value, expected):
@@ -754,6 +760,7 @@ class TestValidateSetting:
             ("digest.preference_source", True, "Input should be 'cosine' or 'clef'"),
             ("digest.preference_source", "embedding", "Input should be 'cosine' or 'clef'"),
             ("digest.bogus", 1, "not a settings key"),
+            ("notify.own_addresses", "a@x.example, me", "not an email address: me"),
         ],
     )
     def test_an_unacceptable_value_is_refused(self, key, value, match):
