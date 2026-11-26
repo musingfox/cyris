@@ -15,6 +15,7 @@ import { POLICY, SCHEDULE_KEY, TIMEZONE_KEY, WRITABLE } from "./hosted_settings_
 import { pollTenantBuffer } from "./tenant_buffer.js";
 import { storeNewsletter } from "./tenant_inbound.js";
 import { queueVote } from "./tenant_votes.js";
+import { reviewsOf } from "./source_review.js";
 
 // The host the container queries; `GATEWAY_ORIGIN` in src/cyris/adapters/store/tenant_gateway.py
 // names the same one, and tests/test_hosted_config.py holds the two together.

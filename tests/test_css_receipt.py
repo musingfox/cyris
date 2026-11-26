@@ -1464,8 +1464,9 @@ async def test_the_onboarding_probe_serves_the_real_wizard_and_its_script():
     assert 'id="o-steps"' in page
     assert script.status == 200
     # The server's own answer, which the site bar's links wait on: it holds an article store,
-    # so it takes votes and answers as the app Worker does (ADR-0044).
-    assert probe == {"authorized": True}
+    # so it takes votes and answers as the app Worker does (ADR-0044), with the review each
+    # source holds, none in an empty store (ADR-0050).
+    assert probe == {"authorized": True, "reviews": {}}
 
 
 @pytest.mark.parametrize(

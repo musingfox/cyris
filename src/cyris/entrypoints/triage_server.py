@@ -2033,8 +2033,13 @@ class TriageServer:
         """
         from cyris.adapters.promotions import PromotedArticle, apply_promotions
 
-        if request.method in ("GET", "HEAD"):
+        if request.method == "HEAD":
             return web.json_response({"authorized": True})
+        if request.method == "GET":
+            reviews = self._source_reviews()
+            return web.json_response(
+                {"authorized": True, **({"reviews": reviews} if reviews is not None else {})}
+            )
         if request.method != "POST":
             return web.json_response({"error": "method not allowed"}, status=405)
         try:
@@ -2042,6 +2047,8 @@ class TriageServer:
         except Exception:
             # The promote Worker reads a body it cannot parse as none.
             body = None
+        if isinstance(body, dict) and "source" in body:
+            return self._page_decision(body)
         url = body.get("url") if isinstance(body, dict) else None
         if not isinstance(url, str) or not url:
             return web.json_response({"error": "missing url"}, status=400)
@@ -2072,6 +2079,52 @@ class TriageServer:
             logger.warning("Topic vote for %s not recorded: %s", url, result.topic_votes_failed)
             return web.json_response({"error": result.topic_votes_failed}, status=500)
         return web.json_response({"ok": True})
+
+    def _source_reviews(self) -> dict[str, str] | None:
+        """The review each newsletter source holds, by name, as the vote door's probe lists them.
+
+        What a page reads to correct the marks it was rendered with; None when there is no table
+        or it cannot be read, so the page keeps them.
+        """
+        if self._source_store is None:
+            return None
+        try:
+            listed = self._source_store.list_sources()
+        except Exception:  # noqa: BLE001 - the probe still answers; the marks stay as rendered
+            logger.warning("Could not read the sources for the probe", exc_info=True)
+            return None
+        return {
+            name: source.review
+            for name, source in listed.items()
+            if source.type == NEWSLETTER_SOURCE_TYPE and source.review is not None
+        }
+
+    def _page_decision(self, body: dict) -> web.Response:
+        """A page's `{source, decision}`, answered as the app Worker and the hosted Worker do.
+
+        `workers/app/test/source_review_cases.json` holds the three doors to the same answers
+        (ADR-0050).
+        """
+        source, decision = body.get("source"), body.get("decision")
+        if not isinstance(source, str) or not source:
+            return web.json_response({"error": "missing source"}, status=400)
+        if decision not in SOURCE_DECISIONS:
+            return web.json_response({"error": "bad decision"}, status=400)
+        if self._source_store is None:
+            return web.json_response({"error": "no source store"}, status=503)
+        try:
+            held = self._source_store.list_sources().get(source)
+            if held is None:
+                return web.json_response({"error": "no such source"}, status=404)
+            if held.type != NEWSLETTER_SOURCE_TYPE:
+                return web.json_response({"error": "not a newsletter source"}, status=400)
+            review = SOURCE_DECISIONS[decision]
+            self._source_store.set_review(source, review)
+        except Exception as e:  # noqa: BLE001 - the reason belongs in the response
+            logger.warning("Decision on %s not recorded: %s", source, e)
+            return web.json_response({"error": str(e)}, status=500)
+        logger.info("Source %s: %s", source, decision)
+        return web.json_response({"ok": True, "source": source, "review": review})
 
     def _type_scale(self) -> float:
         """The deployment's type size; 1 for a value that is not one of the steps."""

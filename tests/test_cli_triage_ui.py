@@ -342,7 +342,8 @@ def test_a_sqlite_server_takes_the_pages_votes(config: tuple[Path, Path], monkey
             f'sqlite_path = "{config_path.parent / "state" / "cyris.sqlite3"}"\n'
         )
 
-    assert _vote_answers(config, monkeypatch) == ({"authorized": True}, 200)
+    # With the review each source holds, none on a new file (ADR-0050).
+    assert _vote_answers(config, monkeypatch) == ({"authorized": True, "reviews": {}}, 200)
 
 
 def test_a_d1_server_leaves_the_votes_to_the_clouds_queue(

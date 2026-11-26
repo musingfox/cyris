@@ -42,6 +42,7 @@
 //   GET  /privacy, /terms                                   the privacy policy and terms, to anyone (hosted_legal.js)
 //   POST /waitlist                                          join the hosted waitlist (hosted_waitlist.js)
 //   POST /api/vote   {url, vote}                            a reader's vote, by a vote token (hosted_vote.js)
+//   POST /api/vote   {source, decision}                     a reader's source decision, the same way
 
 import { LEGAL_PATHS, handleLegal } from "./hosted_legal.js";
 import { LOGIN_PATHS, handleLogin } from "./hosted_login.js";

@@ -229,7 +229,8 @@ describe("a vote", () => {
     const open = await probe({ "X-Cyris-Vote": token });
     expect(open.status).toBe(200);
     // No `settings: false`: the gated controls open too, the Interest link among them (ADR-0048).
-    expect(await open.json()).toEqual({ authorized: true, settings_link: true });
+    // A seeded tenant's sources hold no review yet.
+    expect(await open.json()).toEqual({ authorized: true, settings_link: true, reviews: {} });
     expect(open.headers.get("Access-Control-Allow-Origin")).toBe("*");
     // The cookie alone, a made-up token and another site each learn nothing.
     expect((await call("/api/vote", { session, headers: { Origin: "null" } })).status).toBe(401);
