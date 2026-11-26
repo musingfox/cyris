@@ -26,6 +26,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `/t/<tenant>/interest`, and use the All articles page's List and Triage views, as on
   every other edition. Each run draws the map as it ends, so it shows the votes that
   run applied, and its "As of" time is when that run ended.
+- On a hosted deployment, a tenant's settings page now edits the vote half-life, the
+  topic survival days, the vote seeds and the three snippet lengths, which take effect
+  at the tenant's next run, held to the same ranges as a local install. The reasoning
+  effort stays locked with the model. Longer snippets spend the tenant's own monthly
+  AI allowance.
 - `cyris triage-ui` schedules a uv install itself: every hour, on the hour, it runs
   `cyris ingest`, `cyris run --if-due` and `cyris promote-sync`, so the cron line
   from the install guide can go; remove it if you added one. The schedule runs only

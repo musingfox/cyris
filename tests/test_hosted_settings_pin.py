@@ -18,6 +18,7 @@ from cyris import bootstrap
 from cyris.adapters.hosted import hosted_policy, pin_tenant_settings
 from cyris.adapters.store.d1 import apply_schema
 from cyris.adapters.store.local_d1 import LocalD1Client
+from cyris.config import validate_setting
 
 pytestmark = pytest.mark.integration
 
@@ -75,6 +76,64 @@ def test_a_tenants_article_cap_within_the_policys_and_its_other_settings_are_its
 
     assert cfg.app.digest.max_articles_per_digest == 150
     assert cfg.app.digest.style_prompt == "Short."
+
+
+# The tuning keys a tenant writes on its settings page (ADR-0040's update note), each with the
+# value a save puts in its row and the config field a run reads it from.
+TUNING = {
+    "digest.vote_half_life_days": (30, ("digest", "vote_half_life_days")),
+    "digest.topic_lifetime_days": (14, ("digest", "topic_lifetime_days")),
+    "vote_similarity.max_seeds": (321, ("vote_similarity", "max_seeds")),
+    "digest.scoring_snippet_length": (1500, ("digest", "scoring_snippet_length")),
+    "digest.summarize_snippet_length": (2000, ("digest", "summarize_snippet_length")),
+    "digest.filter_snippet_length": (300, ("digest", "filter_snippet_length")),
+}
+
+
+def test_every_tuning_key_the_policy_opens_is_one_this_file_runs() -> None:
+    opened = {key for key in POLICY["writable_settings"] if key in TUNING}
+
+    assert opened == set(TUNING)
+
+
+@pytest.mark.parametrize("key", TUNING)
+def test_a_saved_tuning_key_reaches_the_tenants_run_config(
+    key: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    value, (table, field) = TUNING[key]
+
+    cfg = _hosted_load(tmp_path, monkeypatch, **{key: value})
+
+    assert getattr(getattr(cfg.app, table), field) == value
+    assert cfg.missing_settings == []
+
+
+# The largest whole number the Worker takes (a JS safe integer), and the least it refuses that JSON
+# writes with an exponent: the first is read back by the run as the int it was, the second as a
+# float config.py refuses.
+LARGEST_TAKEN = 2**53 - 1
+SMALLEST_FLOAT_WRITTEN = 1e21
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "vote_similarity.max_seeds",
+        "digest.scoring_snippet_length",
+        "digest.summarize_snippet_length",
+        "digest.filter_snippet_length",
+    ],
+)
+def test_the_largest_whole_number_the_worker_takes_is_one_the_run_loads(
+    key: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    table, field = TUNING[key][1]
+
+    cfg = _hosted_load(tmp_path, monkeypatch, **{key: LARGEST_TAKEN})
+
+    assert getattr(getattr(cfg.app, table), field) == LARGEST_TAKEN
+    with pytest.raises(ValueError):
+        validate_setting(key, SMALLEST_FLOAT_WRITTEN)
 
 
 def test_a_cap_the_rule_refuses_is_left_for_the_load_to_report() -> None:

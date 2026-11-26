@@ -125,9 +125,10 @@ async def _holds_to(server: TriageServer, settings: FakeSettings, path: str, cas
 @pytest.mark.parametrize("case", CASES["writes"], ids=lambda case: case["name"])
 async def test_a_values_write_gets_the_answer_the_hosted_worker_gives(case) -> None:
     settings = FakeSettings()
-    server = TriageServer(settings=settings, values=STORED, locked=HOSTED_LOCKS)
+    values = {**STORED, **case.get("stored", {})}
+    server = TriageServer(settings=settings, values=values, locked=HOSTED_LOCKS)
 
-    await _holds_to(server, settings, "/api/settings/values", case)
+    await _holds_to(server, settings, case.get("path", "/api/settings/values"), case)
 
 
 @pytest.mark.parametrize("case", CASES["schedules"], ids=lambda case: case["name"])

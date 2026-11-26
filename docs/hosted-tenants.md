@@ -778,12 +778,14 @@ rendered into the committed `workers/app/src/shared_settings.build.json` that st
 the keys the hosted policy keeps from a tenant locked
 ([ADR-0043](decisions/0043-one-settings-page-an-edition-locks-a-key.md)); no container starts for
 it (ADR-0040). There the reader changes the tenant's output language, style, type size, articles
-per run (at most 400), window, vote order, follow summaries, Top story score, publish hour and time
-zone, and adds or removes RSS feeds, 30 sources at most with newsletters counted. The page offers a
+per run (at most 400), window, vote order, follow summaries, Top story score, vote half-life, topic
+survival days, vote seeds, the three snippet lengths, publish hour and time zone, and adds or removes RSS feeds, 30 sources at most with newsletters counted. The page offers a
 second publish hour only to a tenant you allowed two: for a tenant allowed one, Evening is disabled
 with `Not included in your plan.`
 ([ADR-0047](decisions/0047-a-route-refuses-a-change-to-a-locked-key.md)). The model, the notify
-targets, the run cap, the number of digest hours and the AI allowance stay yours: their controls are
+targets, the reasoning effort, the run cap, the number of digest hours and the AI allowance stay
+yours (a longer snippet only spends the tenant's own monthly allowance,
+[ADR-0038](decisions/0038-a-hosted-tenants-ai-spend-is-metered-in-the-registry.md)): their controls are
 disabled with the line `Set by the service's operator.`, the routes refuse a change to them, and the
 run pins the model and blanks the notify targets whatever the tenant's rows say. A save applies from
 the tenant's next run, and the hours and zone from the next tick, since they go to the registry as

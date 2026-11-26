@@ -99,7 +99,8 @@ async function signIn(email = "ana@example.com") {
 }
 
 // A save from the page itself: a same-origin fetch, which carries the page's Origin.
-const save = (session, body, headers = { Origin: ORIGIN }) => call("/api/settings/values", { method: "POST", session, headers, body });
+const save = (session, body, headers = { Origin: ORIGIN }, path = "/api/settings/values") => call(path, { method: "POST", session, headers, body });
+const SEEDS = "vote_similarity.max_seeds";
 const saveHours = (session, body, headers = { Origin: ORIGIN }) => call("/api/settings/schedule", { method: "POST", session, headers, body });
 const settingsOf = (tenant) => bound.TENANT_DB.getByName(tenant).settings();
 const rowsOf = async (tenant) =>
@@ -446,10 +447,10 @@ describe("POST /api/settings/values on the hosted Worker", () => {
     const session = await signIn();
     const before = await stateOf("alpha");
 
-    await holdsTo(session, await save(session, written.body), written, before);
+    await holdsTo(session, await save(session, written.body, { Origin: ORIGIN }, written.path), written, before);
   });
 
-  it.each(RULE_CASES.settings.accepted)("takes $key = $value, as the hosted rules do", async ({ key, value }) => {
+  it.each(RULE_CASES.settings.accepted.filter(({ key }) => key !== SEEDS))("takes $key = $value, as the hosted rules do", async ({ key, value }) => {
     const session = await signIn();
 
     const response = await save(session, { values: { [key]: value } });
@@ -458,7 +459,7 @@ describe("POST /api/settings/values on the hosted Worker", () => {
     expect((await response.json()).values).toEqual({ [key]: value });
   });
 
-  it.each(RULE_CASES.settings.refused.filter(({ key }) => POLICY.writable_settings.includes(key)))(
+  it.each(RULE_CASES.settings.refused.filter(({ key }) => POLICY.writable_settings.includes(key) && key !== SEEDS))(
     "refuses $key = $value, as the hosted rules do, in their words",
     async ({ key, value, reason }) => {
       const session = await signIn();
@@ -473,6 +474,109 @@ describe("POST /api/settings/values on the hosted Worker", () => {
       expect(await rowsOf("alpha")).toEqual(before);
     },
   );
+
+  // The vote form's route, the only one that saves the seeds, held to the same rule cases: the other
+  // keys of the form sent as the seeded tenant holds them.
+  const HELD_FORM = { enabled: false, provider: STARTING_VALUES["vote_similarity.provider"], model: "", max_seeds: STARTING_VALUES[SEEDS] };
+  const seedsForm = (value) => ({ ...HELD_FORM, max_seeds: value });
+
+  it.each(RULE_CASES.settings.accepted.filter(({ key }) => key === SEEDS))("takes the vote seeds $value from the vote form", async ({ key, value }) => {
+    const session = await signIn();
+
+    const response = await save(session, seedsForm(value), { Origin: ORIGIN }, "/api/settings/vote-similarity");
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).values[key]).toBe(value);
+    expect((await settingsOf("alpha"))[key]).toBe(value);
+  });
+
+  it.each(RULE_CASES.settings.refused.filter(({ key }) => key === SEEDS))("refuses the vote seeds $value from the vote form, in the rule's words", async ({ key, value, reason }) => {
+    const session = await signIn();
+    const before = await rowsOf("alpha");
+    const refusal = checkSettings({ [key]: value }).refused;
+
+    const response = await save(session, seedsForm(value), { Origin: ORIGIN }, "/api/settings/vote-similarity");
+
+    expect(refusal.reason).toBe(reason);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ ok: false, field: key, error: refusalText(translator("en"), refusal) });
+    expect(await rowsOf("alpha")).toEqual(before);
+  });
+
+  it("refuses a vote seeds save through the values route, which is not its form", async () => {
+    const session = await signIn();
+
+    const response = await save(session, { values: { [SEEDS]: 300 } });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).field).toBe(SEEDS);
+  });
+
+  it("refuses the vote form's embedder, switch or model changed, and stores none of it", async () => {
+    const session = await signIn();
+    const before = await rowsOf("alpha");
+
+    for (const changed of [{ provider: "gemini" }, { enabled: true }, { model: "other-model" }]) {
+      const response = await save(session, { ...seedsForm(300), ...changed }, { Origin: ORIGIN }, "/api/settings/vote-similarity");
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toContain("locked");
+    }
+    expect(await rowsOf("alpha")).toEqual(before);
+  });
+
+  it("takes no whole number past what JSON writes in full: a safe integer or none", async () => {
+    const session = await signIn();
+    const before = await rowsOf("alpha");
+
+    for (const value of [Number.MAX_SAFE_INTEGER + 1, 1e21, Number.MAX_VALUE]) {
+      const seeds = await save(session, seedsForm(value), { Origin: ORIGIN }, "/api/settings/vote-similarity");
+      const snippet = await save(session, { values: { "digest.scoring_snippet_length": value } });
+      expect(seeds.status).toBe(400);
+      expect(snippet.status).toBe(400);
+    }
+    expect(await rowsOf("alpha")).toEqual(before);
+    expect((await save(session, seedsForm(Number.MAX_SAFE_INTEGER), { Origin: ORIGIN }, "/api/settings/vote-similarity")).status).toBe(200);
+  });
+
+  it.each([
+    ["no Origin", {}],
+    ["Origin null", { Origin: "null" }],
+    ["another site's Origin", { Origin: "https://evil.example" }],
+    ["this Origin from another site", { Origin: ORIGIN, "Sec-Fetch-Site": "cross-site" }],
+  ])("refuses the vote form's save with %s, writing nothing", async (_name, headers) => {
+    const session = await signIn();
+    const before = await stateOf("alpha");
+
+    const response = await save(session, seedsForm(300), headers, "/api/settings/vote-similarity");
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ ok: false, error: EN["hosted_settings.refused_cross_origin"], reason: "cross_origin" });
+    expect(await stateOf("alpha")).toEqual(before);
+  });
+
+  it("refuses the vote form's save with no session, and writes the session's tenant's seeds only", async () => {
+    const session = await signIn();
+    const before = await stateOf("alpha");
+    const bravo = await stateOf("bravo");
+
+    expect((await save(undefined, seedsForm(300), { Origin: ORIGIN }, "/api/settings/vote-similarity")).status).toBe(401);
+    expect(await stateOf("alpha")).toEqual(before);
+    const named = await save(session, { ...seedsForm(300), tenant: "bravo" }, { Origin: ORIGIN }, "/api/settings/vote-similarity");
+
+    expect(named.status).toBe(200);
+    expect((await settingsOf("alpha"))[SEEDS]).toBe(300);
+    expect(await stateOf("bravo")).toEqual(bravo);
+  });
+
+  it("refuses the reasoning effort as an operator's key, and a model's lock with it", async () => {
+    const session = await signIn();
+
+    const response = await save(session, { values: { "llm_provider.reasoning_effort": "high" } });
+
+    expect(response.status).toBe(400);
+    expect((await response.json()).field).toBe("llm_provider.reasoning_effort");
+    expect(checkSettings({ "llm_provider.reasoning_effort": "high" }).refused.reason).toBe("operator_key");
+  });
 
   it("takes JSON's own types only: a number or a switch in a string is refused", async () => {
     const session = await signIn();
@@ -766,19 +870,19 @@ describe("a shared save that writes settings rows and the zone", () => {
   });
 
   // The route-level lock rule TriageServer's routes keep, on the routes this Worker answers.
-  it.each(CASES.route_locks.filter(({ path }) => path === "/api/settings/schedule"))(
+  it.each(CASES.route_locks.filter(({ path }) => ["/api/settings/schedule", "/api/settings/vote-similarity"].includes(path)))(
     "refuses only a change to a locked key: $name",
-    async ({ locked, stored, body: sent, status, answer }) => {
+    async ({ path, locked, stored, body: sent, status, answer }) => {
       const db = await seeded();
       const written = [];
       const locks = Object.fromEntries(Object.entries(locked).map(([key, reason]) => [key, { reason }]));
       const registryRow = () => ({ digest_times: JSON.stringify(stored["general.digest_schedule"]), timezone: "UTC", max_digest_times: 2 });
 
-      const response = await post({ db, registryRow, locks, setSchedule: async (schedule) => (written.push(schedule), {}) }, "/api/settings/schedule", sent);
+      const response = await post({ db, registryRow, locks, setSchedule: async (schedule) => (written.push(schedule), {}) }, path, sent);
 
       expect(response.status).toBe(status);
       expect(await response.json()).toEqual(answer);
-      expect(written.length).toBe(status === 200 ? 1 : 0);
+      expect(written.length).toBe(status === 200 && path === "/api/settings/schedule" ? 1 : 0);
     },
   );
 });

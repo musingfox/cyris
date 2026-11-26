@@ -13,6 +13,8 @@
 //   GET  /static/<file>              the page's scripts, its style and its browser messages
 //   GET  /api/settings               values, fields, what is missing, `locked` and `limits`
 //   POST /api/settings/values        {values: {key: value}}: an open key is saved, a locked one refused
+//   POST /api/settings/vote-similarity  {enabled, provider, model, max_seeds}: the seeds saved, the
+//                                    embedder as it is held (the page's one form for the four)
 //   POST /api/settings/schedule      {times: [...]}: the hours, through the registry
 //   GET  /api/sources                the tenant's sources, RSS and newsletter, each with its feed's health
 //   POST /api/sources                {name, url, lane}: one RSS source added or rewritten
@@ -40,6 +42,7 @@ export const SHARED_PAGE = "/settings";
 const SETTINGS_API = "/api/settings";
 const VALUES_API = "/api/settings/values";
 const SCHEDULE_API = "/api/settings/schedule";
+const VOTE_API = "/api/settings/vote-similarity";
 const SOURCES_API = "/api/sources";
 const SOURCE_PREFIX = `${SOURCES_API}/`;
 // STUB: the read the page makes of the tab this milestone leaves empty, answered as a deployment
@@ -59,6 +62,7 @@ export const isSharedPath = (path) =>
   path === SETTINGS_API ||
   path === VALUES_API ||
   path === SCHEDULE_API ||
+  path === VOTE_API ||
   path === SOURCES_API ||
   isSourcePath(path) ||
   Object.hasOwn(EMPTY_READS, path) ||
@@ -250,6 +254,42 @@ async function saveValues(t, values, { db, stored, locks, registryRow, setSchedu
   });
 }
 
+// The four keys the page saves as one form on `POST /api/settings/vote-similarity`, which is the
+// only route that saves any of them (`route: "vote"` in settings_fields.json).
+const VOTE_KEYS = ["enabled", "provider", "model", "max_seeds"].map((field) => `vote_similarity.${field}`);
+// A key with no row and a blank field are the same held value: the page sends "" for a model it
+// shows empty.
+const heldAs = (value) => (value === "" || value === undefined ? null : value);
+
+// `POST /api/settings/vote-similarity` in TriageServer's shape (`_handle_post_vote`), for the one
+// key of the form a tenant writes, `vote_similarity.max_seeds`. The form's other keys are the
+// operator's: sent as they are held they are no change (`changedLock`'s rule, which leaves the seeds
+// writable), changed they are refused as locked, and none is stored; the answer names the four as
+// TriageServer's does, the held ones as sent. Nothing calls an embedder: a tenant cannot turn vote
+// similarity on, so there is nothing to check.
+async function saveVoteSimilarity(t, body, { db, stored, locks }) {
+  const sent = Object.fromEntries(VOTE_KEYS.map((key) => [key, body?.[key.replace("vote_similarity.", "")]]));
+  for (const key of VOTE_KEYS) {
+    if (!Object.hasOwn(body ?? {}, key.replace("vote_similarity.", ""))) {
+      return refused(t("settings_api.required", { label: t(`settings_field.${key}`) }), key);
+    }
+  }
+  const changed = VOTE_KEYS.find((key) => Object.hasOwn(locks, key) && heldAs(sent[key]) !== heldAs(stored[key]));
+  if (changed) return lockRefusal(t, locks, changed);
+  const rows = [];
+  for (const key of VOTE_KEYS.filter((key) => POLICY.writable_settings.includes(key) && !Object.hasOwn(locks, key))) {
+    const checked = checkSettings({ [key]: sent[key] });
+    if (checked.refused) return refusedFor(t, checked.refused);
+    rows.push(...checked.rows);
+  }
+  if (rows.length) {
+    const saved = await db.saveSettings(rows);
+    if (saved.refused) return refused(refusalText(t, { reason: saved.refused, key: saved.key }), saved.key, saved.status);
+  }
+  const values = Object.fromEntries(VOTE_KEYS.map((key) => [key, rows.find(([saved]) => saved === key)?.[1] ?? sent[key]]));
+  return json({ ok: true, values, detail: t("settings_api.vote_not_checked"), note: t("settings_api.saved_next_run") });
+}
+
 // `POST /api/settings/schedule` in TriageServer's shape (`_handle_post_schedule`): `{times}`, the
 // hours, written through the registry with the zone it holds kept, and answered sorted. Refused
 // as a lock only when the hours change from the registry's.
@@ -410,7 +450,7 @@ export async function handleSharedSettings(
 ) {
   const method = request.method === "HEAD" ? "GET" : request.method;
   const allowed =
-    path === VALUES_API || path === SCHEDULE_API ? ["POST"] : path === SOURCES_API ? ["GET", "POST"] : isSourcePath(path) ? ["DELETE"] : ["GET"];
+    path === VALUES_API || path === SCHEDULE_API || path === VOTE_API ? ["POST"] : path === SOURCES_API ? ["GET", "POST"] : isSourcePath(path) ? ["DELETE"] : ["GET"];
   if (!allowed.includes(method)) return json({ ok: false, error: `${path} takes ${allowed.join(" or ")}` }, 405);
   if (path.startsWith(STATIC)) return serveStatic(request, path);
   if (Object.hasOwn(EMPTY_READS, path)) return json(EMPTY_READS[path]);
@@ -435,5 +475,6 @@ export async function handleSharedSettings(
   if (read.refused) return refusedFor(t, read.refused, null);
   const deps = { db, stored, locks, registryRow, setSchedule };
   if (path === SCHEDULE_API) return saveSchedule(t, read.body, deps);
+  if (path === VOTE_API) return saveVoteSimilarity(t, read.body, deps);
   return saveValues(t, read.body?.values, deps);
 }
