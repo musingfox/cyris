@@ -76,6 +76,12 @@
       { "key": "digest.summarize_snippet_length", "value": 2.5, "reason": "whole_number_min" },
       { "key": "digest.filter_snippet_length", "value": 0, "reason": "whole_number_min" },
       { "key": "digest.filter_snippet_length", "value": 2.5, "reason": "whole_number_min" },
+      { "key": "digest.vote_half_life_days", "value": 1e21, "reason": "whole_number" },
+      { "key": "digest.topic_lifetime_days", "value": 1e21, "reason": "whole_number" },
+      { "key": "vote_similarity.max_seeds", "value": 1e21, "reason": "whole_number_min" },
+      { "key": "digest.scoring_snippet_length", "value": 1e21, "reason": "whole_number_min" },
+      { "key": "digest.summarize_snippet_length", "value": 1e21, "reason": "whole_number_min" },
+      { "key": "digest.filter_snippet_length", "value": 1e21, "reason": "whole_number_min" },
       { "key": "llm_provider.reasoning_effort", "value": "high", "reason": "operator_key" }
     ]
   },

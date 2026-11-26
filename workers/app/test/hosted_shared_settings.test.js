@@ -524,6 +524,50 @@ describe("POST /api/settings/values on the hosted Worker", () => {
     expect(await rowsOf("alpha")).toEqual(before);
   });
 
+  it("takes no whole number past what JSON writes in full: a safe integer or none", async () => {
+    const session = await signIn();
+    const before = await rowsOf("alpha");
+
+    for (const value of [Number.MAX_SAFE_INTEGER + 1, 1e21, Number.MAX_VALUE]) {
+      const seeds = await save(session, seedsForm(value), { Origin: ORIGIN }, "/api/settings/vote-similarity");
+      const snippet = await save(session, { values: { "digest.scoring_snippet_length": value } });
+      expect(seeds.status).toBe(400);
+      expect(snippet.status).toBe(400);
+    }
+    expect(await rowsOf("alpha")).toEqual(before);
+    expect((await save(session, seedsForm(Number.MAX_SAFE_INTEGER), { Origin: ORIGIN }, "/api/settings/vote-similarity")).status).toBe(200);
+  });
+
+  it.each([
+    ["no Origin", {}],
+    ["Origin null", { Origin: "null" }],
+    ["another site's Origin", { Origin: "https://evil.example" }],
+    ["this Origin from another site", { Origin: ORIGIN, "Sec-Fetch-Site": "cross-site" }],
+  ])("refuses the vote form's save with %s, writing nothing", async (_name, headers) => {
+    const session = await signIn();
+    const before = await stateOf("alpha");
+
+    const response = await save(session, seedsForm(300), headers, "/api/settings/vote-similarity");
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ ok: false, error: EN["hosted_settings.refused_cross_origin"], reason: "cross_origin" });
+    expect(await stateOf("alpha")).toEqual(before);
+  });
+
+  it("refuses the vote form's save with no session, and writes the session's tenant's seeds only", async () => {
+    const session = await signIn();
+    const before = await stateOf("alpha");
+    const bravo = await stateOf("bravo");
+
+    expect((await save(undefined, seedsForm(300), { Origin: ORIGIN }, "/api/settings/vote-similarity")).status).toBe(401);
+    expect(await stateOf("alpha")).toEqual(before);
+    const named = await save(session, { ...seedsForm(300), tenant: "bravo" }, { Origin: ORIGIN }, "/api/settings/vote-similarity");
+
+    expect(named.status).toBe(200);
+    expect((await settingsOf("alpha"))[SEEDS]).toBe(300);
+    expect(await stateOf("bravo")).toEqual(bravo);
+  });
+
   it("refuses the reasoning effort as an operator's key, and a model's lock with it", async () => {
     const session = await signIn();
 

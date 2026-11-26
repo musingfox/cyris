@@ -266,6 +266,44 @@
       "refuses": "vote_similarity.enabled"
     },
     {
+      "name": "a vote half-life of 1e21 is refused, as a float the run would refuse",
+      "body": {"values": {"digest.vote_half_life_days": 1e21}},
+      "status": 400,
+      "refuses": "digest.vote_half_life_days"
+    },
+    {
+      "name": "a topic survival of 1e21 days is refused, as a float the run would refuse",
+      "body": {"values": {"digest.topic_lifetime_days": 1e21}},
+      "status": 400,
+      "refuses": "digest.topic_lifetime_days"
+    },
+    {
+      "name": "a scoring snippet of 1e21 characters is refused, as a float the run would refuse",
+      "body": {"values": {"digest.scoring_snippet_length": 1e21}},
+      "status": 400,
+      "refuses": "digest.scoring_snippet_length"
+    },
+    {
+      "name": "a summary snippet of 1e21 characters is refused, as a float the run would refuse",
+      "body": {"values": {"digest.summarize_snippet_length": 1e21}},
+      "status": 400,
+      "refuses": "digest.summarize_snippet_length"
+    },
+    {
+      "name": "a filter snippet of 1e21 characters is refused, as a float the run would refuse",
+      "body": {"values": {"digest.filter_snippet_length": 1e21}},
+      "status": 400,
+      "refuses": "digest.filter_snippet_length"
+    },
+    {
+      "name": "vote seeds of 1e21 are refused, as a float the run would refuse",
+      "path": "/api/settings/vote-similarity",
+      "stored": {"vote_similarity.enabled": false, "vote_similarity.provider": "workers_ai", "vote_similarity.model": "", "vote_similarity.max_seeds": 200},
+      "body": {"enabled": false, "provider": "workers_ai", "model": "", "max_seeds": 1e21},
+      "status": 400,
+      "refuses": "vote_similarity.max_seeds"
+    },
+    {
       "name": "no time zone is refused, and never stands for the one held",
       "body": {"values": {"general.timezone": null}},
       "status": 400,

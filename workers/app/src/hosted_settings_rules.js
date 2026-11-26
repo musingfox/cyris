@@ -19,13 +19,15 @@ export { POLICY, SCHEDULE_KEY, TIMEZONE_KEY };
 const refuse = (reason, values = {}) => ({ refused: { reason, ...values } });
 
 const whole = (min, max) => (value) =>
-  typeof value === "number" && Number.isInteger(value) && value >= min && value <= max
+  typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= max
     ? null
     : { reason: "whole_number", min: String(min), max: String(max) };
 // `Field(ge=min)` with no upper bound in config.py: the cap on what a run spends is the tenant's
-// monthly allowance (ADR-0038), not the key's range.
+// monthly allowance (ADR-0038), not the key's range. A safe integer only: JSON writes a number from
+// 1e21 up with an exponent, which the run reads back as a float, and config.py refuses a float that
+// size, so one such save would break every later run.
 const wholeFrom = (min) => (value) =>
-  typeof value === "number" && Number.isInteger(value) && value >= min ? null : { reason: "whole_number_min", min: String(min) };
+  typeof value === "number" && Number.isSafeInteger(value) && value >= min ? null : { reason: "whole_number_min", min: String(min) };
 const onOff = (value) => (typeof value === "boolean" ? null : { reason: "on_off" });
 const text = (value) => (typeof value === "string" ? null : { reason: "text" });
 // `_not_blank` in config.py: a string with something besides whitespace.
