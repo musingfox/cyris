@@ -18,7 +18,13 @@ import pytest
 
 from cyris.adapters.fetch.newsletter_worker_source import UNMATCHED_HOLD_DAYS
 from cyris.adapters.hosted import OPERATOR_ORIGIN, OPERATOR_TIMEOUT_SECONDS
-from cyris.adapters.output.hosted_pages import SETTINGS_PAGE, SITE_PATH, tenant_settings_path
+from cyris.adapters.output.hosted_pages import (
+    INTEREST_PAGE,
+    SETTINGS_PAGE,
+    SITE_PATH,
+    tenant_interest_path,
+    tenant_settings_path,
+)
 from cyris.adapters.store.source_store import source_from_row
 from cyris.adapters.store.tenant_gateway import GATEWAY_ORIGIN
 from cyris.config import HOSTED_B_GRADE_ENV_VARS, REQUIRED_KEYS, TENANT_ID, validate_setting
@@ -297,6 +303,16 @@ def test_a_tenants_settings_link_is_the_path_the_worker_serves_its_settings_page
 
     assert page == SETTINGS_PAGE
     assert re.fullmatch(route, tenant_settings_path("alpha")).groups() == ("alpha", page)
+
+
+def test_a_tenants_interest_link_is_the_path_the_worker_serves_its_map_at() -> None:
+    """The archive links the map the run stores at `<INTEREST_PAGE>.html` (ADR-0048)."""
+    pages = _js("hosted_pages.js")
+    [page] = re.findall(r'^export const INTEREST_PAGE = "([^"]+)";', pages, re.M)
+    [route] = re.findall(r"^export const SITE_ROUTE = /(.+)/;", pages, re.M)
+
+    assert page == INTEREST_PAGE
+    assert re.fullmatch(route, tenant_interest_path("alpha")).groups() == ("alpha", page)
 
 
 def test_the_vote_buttons_and_the_vote_route_agree_on_path_token_and_header() -> None:
