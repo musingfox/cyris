@@ -67,8 +67,11 @@ How it is built:
   stored row changes.
 * **The pin.** As a run's settings load, `pin_tenant_settings` (`src/cyris/adapters/hosted.py`)
   puts back `vote_similarity.provider` and `.model` from the policy, whatever the tenant's rows say,
-  as it already did for the LLM provider and model. The Worker's `hostedValues` shows the page the
-  same pinned values. The vote form's route compares a sent embedder with those pinned values, not
+  as it already did for the LLM provider and model. It also puts back `digest.preference_source`
+  as the policy's `preference_source`, `cosine`: the page already locked the vote order, but the
+  token Clef falls back to now reaches every hosted container, so a row the container wrote must
+  not select Clef. Clef stays out of hosted. The Worker's `hostedValues` shows the page the same
+  pinned values. The vote form's route compares a sent embedder with those pinned values, not
   with the rows, so a container-written row cannot block the form. The page shows both keys locked
   for `operator-set`, as it shows the LLM provider and model. A change to either is refused as
   locked (ADR-0047), and neither is ever stored.
@@ -87,7 +90,13 @@ How it is built:
   container allowlist already hands both to every run, and the page's `key ready` for `workers_ai`
   needs both (`providerEntry` over `handedSecrets`).
 * **The spend.** A hosted run wraps the embedder in `MeteredEmbedder`, which adds each batch's
-  reported neurons at `WORKERS_AI_USD_PER_KNEURON` to the run's `embedding_usd`. The run reports
+  reported neurons at `WORKERS_AI_USD_PER_KNEURON` to the run's `embedding_usd`. A batch whose
+  answer reports no neurons is not taken as free. The adapter names its texts
+  (`usage.unreported`), and the meter treats them as ADR-0038 treats a model with no rate card. Their
+  estimated tokens are charged at the dearest per-token embedding rate the meter holds,
+  gemini-embedding-001's (`UNPRICED_EMBEDDING_USD_PER_MTOK`), and counted in the report's
+  `unpriced_tokens`, which the operator reads in `scripts/hosted.sh spend`. As for an unpriced LLM,
+  no alert is sent. The run reports
   that to the registry's `spend_rollup` as it ends, and the tenant's allowance bounds it, as ADR-0038
   set out. No price or column is new.
 * **The cost is an estimate, and the trial measures it.** `build_embedder`'s docstring in
@@ -111,13 +120,13 @@ How it is built:
   the operator also gets the run's `Vote similarity did not run` alert through the operator gateway
   (ADR-0035). The page's `key ready` is the only
   sign before a run, and it shows only that the token is set, not that it works.
-* Bad, because the adapter counts a Workers AI answer with no `meta.neurons` as 0 neurons, so such
-  an answer would be charged nothing. Gemini's tokens are estimated instead. The trial's
-  `embedding_usd` above 0 is what shows the answers carry neurons.
+* Bad, because an embedding Workers AI answers without `meta.neurons` costs an unknown amount,
+  and the meter charges it at an estimate: its tokens at the dearest per-token embedding rate,
+  counted in `unpriced_tokens` (above). The trial's `unpriced_tokens` of 0 is what shows the
+  answers carry neurons.
 * Neutral, because the token also reaches Clef, which falls back to the embedding token when
-  `CLOUDFLARE_AI_TOKEN` is blank. A tenant's `digest.preference_source` is locked on the page but
-  not pinned at the run, so only a row the container wrote could ask for Clef. `MeteredClef` meters
-  it into the same month.
+  `CLOUDFLARE_AI_TOKEN` is blank. The run's vote-order pin (above) keeps a row the container wrote
+  from asking for Clef, which stays out of hosted.
 * Neutral, because every neuron is charged at the paid rate. The account's free daily allowance is
   the operator's, not a tenant's (ADR-0038).
 
@@ -127,14 +136,18 @@ How it is built:
   and `tests/test_shared_settings_cases.py`, holds the following on both servers: the switch turned
   on and off with the operator's embedder as held, with no embedder called; the switch turned on
   with another provider, a changed model, or a value that is neither on nor off, each refused; the
-  hosted edition's `locked` without the switch; and the pin of a tenant row naming Gemini.
+  hosted edition's `locked` without the switch; the pin of a tenant row naming Gemini; and the pin
+  of a row naming Clef.
 * `workers/app/test/hosted_settings_cases.json` holds `enabled` true and false as accepted and the
   provider and model as operator keys, against the Worker and `validate_setting`.
 * `hosted_shared_settings.test.js` checks two more things: turning the switch on makes no `fetch`
   and answers in the catalog's words, and a row naming Gemini is shown, and compared, as the pinned
   `workers_ai`.
-* `tests/test_hosted_settings_pin.py` checks that a tenant row naming Gemini and its model loads as
-  the policy's embedder with the switch kept on. A self-hosted load keeps its rows.
+* `tests/test_hosted_settings_pin.py` checks two loads. A tenant row naming Gemini and its model
+  loads as the policy's embedder, with the switch kept on. A row naming Clef loads as `cosine`. A
+  self-hosted load keeps its rows.
+* `tests/test_embedding.py` checks that a Workers AI answer with no neurons names its texts.
+  `tests/test_hosted_spend.py` checks that such texts are charged as unpriced, never as free.
 * `tests/test_hosted_spend.py` drives the hosted wiring from the tenant's rows with the switch on
   and Gemini named. The run embeds only through the operator's account URL with the operator's
   token, and its report carries `embedding_usd` above 0, priced from the neurons reported.

@@ -41,8 +41,9 @@ decision-makers: ""
 > `writable_settings` lists fifteen, saved through the vote form's route, which now saves the switch
 > and the seeds and calls no embedder. *What the run takes regardless* also pins the embedder,
 > `vote_similarity.provider` and `.model`, to the policy's `embedding_provider` and
-> `embedding_model` (the operator's Workers AI and its default model), whatever the tenant's rows
-> say.
+> `embedding_model` (the operator's Workers AI and its default model), and the vote order,
+> `digest.preference_source`, to the policy's `preference_source` (`cosine`, so never Clef), whatever
+> the tenant's rows say.
 
 ## Context and Problem Statement
 

@@ -512,7 +512,11 @@ scripts/hosted.sh spend 2026-11
 Each tenant has one entry: its `budget_usd` (`budget_set` is false while it is the default),
 `cost_usd` (the sum of `llm_usd`, `embedding_usd` and `clef_usd`), its tokens and `runs`, the
 number of runs that reported. A Haiku 5.5 run of about 150 articles costs about 0.017 USD.
-`unpriced_tokens` above 0 means a tenant runs a model this release has no rate card for. Those
+`unpriced_tokens` above 0 means a tenant runs a model this release has no rate card for, or that
+Workers AI answered some of its embeddings without saying how many neurons they cost; a run whose
+`ai_spend` in `digest_runs.summary` has `embedding_tokens_estimated` above 0 on the `workers_ai`
+embedder is the second
+([ADR-0049](decisions/0049-a-hosted-tenants-embedding-runs-on-the-operators-workers-ai.md)). Those
 tokens are charged at the dearest rate card it has, so that tenant's allowance runs out sooner
 than its model's real price would make it; add the model's rate to `_PRICES_PER_MTOK` in
 `src/cyris/domain/models.py`.
@@ -843,7 +847,9 @@ To check it on a trial tenant, after a deploy that built the page:
    is out, never `Checking the embedder…`, then `Not checked here: the service's operator provides
    the embedder.` and that the next run picks it up; nothing calls Workers AI yet. Once alpha has
    votes, run it (`scripts/hosted.sh run`) and read its month with `scripts/hosted.sh spend`:
-   alpha's `embedding_usd` is above 0, and its `digest_runs.summary` names an `embedding` usage.
+   alpha's `embedding_usd` is above 0 and its `unpriced_tokens` 0, so Workers AI reported the
+   neurons it charged; above 0, it answered some batches without them, and they were charged at
+   the dearest embedding rate.
    That is the trial's check that the per-run neuron estimate in `bootstrap.py` holds (ADR-0049).
 9. Set the language, the hour and vote similarity back.
 
