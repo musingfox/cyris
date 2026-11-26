@@ -16,6 +16,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- On a hosted deployment, a tenant's reader can turn vote similarity on in Settings. Its next run
+  embeds on the operator's Workers AI account, and the cost counts against the tenant's monthly AI
+  allowance as `embedding_usd`. The embedding provider and model stay the operator's and show as
+  locked. Saving the switch makes no embedding call, and the page no longer says it will. Operators:
+  run `scripts/hosted.sh secrets` again. It now also asks for `CLOUDFLARE_EMBEDDING_API_TOKEN`, a
+  Workers AI Read token of the trial account, and sets `CLOUDFLARE_ACCOUNT_ID`.
 - A local install catches up a digest hour it missed. The hourly `cyris run --if-due`, from
   `cyris triage-ui` or the compose crontab, now makes the issue of a digest hour that began less
   than 3 hours ago when the store holds no finished, non-preview run of that period since the hour

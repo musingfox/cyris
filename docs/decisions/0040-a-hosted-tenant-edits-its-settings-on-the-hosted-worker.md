@@ -35,6 +35,14 @@ decision-makers: ""
 > saved by the vote form's own route, `POST /api/settings/vote-similarity`, which the hosted Worker
 > now answers for that key alone: the form's other keys sent as they are held are no change, and a
 > change to one is refused as locked (ADR-0047). The decision above is otherwise as it was.
+>
+> Amended by [ADR-0049](0049-a-hosted-tenants-embedding-runs-on-the-operators-workers-ai.md)
+> (2026-11-26, M7): `vote_similarity.enabled` joins the keys a tenant writes, so
+> `writable_settings` lists fifteen, saved through the vote form's route, which now saves the switch
+> and the seeds and calls no embedder. *What the run takes regardless* also pins the embedder,
+> `vote_similarity.provider` and `.model`, to the policy's `embedding_provider` and
+> `embedding_model` (the operator's Workers AI and its default model), whatever the tenant's rows
+> say.
 
 ## Context and Problem Statement
 
