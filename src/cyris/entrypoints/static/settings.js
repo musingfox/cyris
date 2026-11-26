@@ -338,12 +338,17 @@ function updateHint() {
     : t("settings.model_hint_call");
 }
 
+// An embedder the edition locks is its operator's: saving vote similarity calls it for no
+// reader, so no line promises a call (ADR-0049); its lock line says why.
+const embedderLocked = () => isLocked("vote_similarity.provider") && isLocked("vote_similarity.model");
+
 function updateEmbeddingHint() {
   const el = document.querySelector("input[name=embedding-provider]:checked");
   const p = el && state.embedding_providers.find((x) => x.name === el.value);
   $("embedding-model-input").dataset.placeholder = p
     ? t("settings_option.model_default", {model: p.default_model}) : "";
   applyPlaceholder($("embedding-model-input"));
+  $("embedding-model-hint").hidden = embedderLocked();
 }
 
 // A setting that does nothing until another holds a value is disabled until then,
@@ -474,7 +479,7 @@ $("model-form").addEventListener("submit", async (e) => {
       model: sent["embedding-model-input"].trim(),
       max_seeds: seeds === "" ? null : Number(seeds),
     };
-    show("busy", body.enabled ? t("settings.checking_embedder") : t("settings.saving"), "model-result");
+    show("busy", body.enabled && !embedderLocked() ? t("settings.checking_embedder") : t("settings.saving"), "model-result");
     try {
       const data = await post("/api/settings/vote-similarity", body);
       Object.assign(state.values, data.values);
