@@ -78,10 +78,10 @@ A 級是 B 級的基礎，也是 B 級的退路。濃縮失敗、逾時，或濃
 
 - **兩個解析器都要做到的事。** Worker 的 `parse.js` 和 Python 的 `RssSource` 都要：產生單集的 guid 鍵；帶出單集連結與 feed 附的逐字稿網址；讀出 YouTube 的 `media:description`；丟掉連到 `/shorts/` 的項目。`/shorts/` 這條路徑規則是資料，不寫死在程式碼裡。兩邊的一致性由測試綁住，追蹤參數清單已經用同樣的做法（`workers/rss/src/parse.js:11-17`）。
 - **buffer 要多存兩樣東西。** buffer 的 `articles` 表目前只有一個網址欄位，同時也是主鍵，要能額外帶出單集連結和逐字稿網址。這張表只保留 8 天資料，由 Worker 用 `CREATE TABLE IF NOT EXISTS` 建立（`workers/rss/src/index.js:18-21,34`），換表的成本低。架構文件 §4 要跟著更新。
-- **YouTube 來源用頻道 feed。** 格式是 `https://www.youtube.com/feeds/videos.xml?channel_id=...`，這是 YouTube 唯一有文件記載的 feed（https://developers.google.com/youtube/v3/guides/push_notifications ）。3Blue1Brown 要從 RSSHub 網址換成這個格式。
+- **YouTube 來源用頻道 feed。** 格式是 `https://www.youtube.com/feeds/videos.xml?channel_id=...`，這是 YouTube 唯一有文件記載的 feed（https://developers.google.com/youtube/v3/guides/push_notifications ）。既有的 YouTube 來源要從 RSSHub 網址換成這個格式。
 - **濃縮文寫給讀者看。** 它用 `[digest] output_language` 指定的語言寫成，並當作該集在 digest 裡的摘要，仍然放在原本的標籤分組裡，`DigestContent` 的形狀不變。
 - **時間預算。** 實測一支 52 分鐘影片 43 秒；目前正式 run 最慢 196 秒（D1 `digest_runs`），run 實例的上限是 15 分鐘（`workers/app/src/index.js:119`）。
-- **對既有來源的影響。** 現有 50 個 RSS 來源中有 4 個帶音檔：Product Growth、區塊勢、Tidy First、Citations Needed。上線後，它們附音檔的文章會改用 guid 鍵；上線當下還在 buffer 8 天窗口內的文章，會用新鍵再出現一次，這是一次性的。其中三個是 summarize tier，附音檔的文章會被濃縮。
+- **對既有來源的影響。** 現有 50 個 RSS 來源中有 4 個帶音檔。上線後，它們附音檔的文章會改用 guid 鍵；上線當下還在 buffer 8 天窗口內的文章，會用新鍵再出現一次，這是一次性的。其中三個是 summarize tier，附音檔的文章會被濃縮。
 - **不動的東西。**
   - `synthetic_url_count` 維持只算電子報的 `newsletter:` 網址（`src/cyris/service_layer/run_digest.py:376`）。
   - 預覽模式不存檔，所以不會觸發濃縮，不用特別處理。
