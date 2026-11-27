@@ -1,4 +1,4 @@
-"""The architecture doc says where the interest page is made and who may read it."""
+"""The architecture doc says where the interest page is made, who may read it, and its limits."""
 
 import re
 from pathlib import Path
@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 import cyris
+from cyris.domain.interest_graph import MAX_INTEREST_NODES
 
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
@@ -41,3 +42,15 @@ def test_the_doc_says_the_interest_page_needs_sign_in_on_the_worker_path() -> No
     sentences = re.split(r"(?<=\.)\s+", ARCHITECTURE.read_text())
 
     assert any("`/interest`" in s and "sign-in" in s for s in sentences)
+
+
+def test_section_five_states_the_interest_maps_node_limit_as_grade_a() -> None:
+    text = ARCHITECTURE.read_text()
+    section = _section(text, "## 5. Configuration", "## 6.")
+
+    rows = [row for row in _rows(section) if "`MAX_INTEREST_NODES`" in " ".join(row[2:3])]
+
+    assert len(rows) == 1
+    assert rows[0][1] == "A"
+    (stated,) = re.findall(r"Interest map limits: (\d+) nodes", rows[0][0])
+    assert int(stated) == MAX_INTEREST_NODES
