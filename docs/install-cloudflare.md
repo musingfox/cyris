@@ -145,6 +145,7 @@ Optional names, by feature. Add them to the same file now or later:
 | Discord links point at this Worker, where votes work | `CYRIS_PROMOTE_CUSTOM_DOMAIN`, a bare hostname: `cyris-app.<subdomain>.workers.dev` on a domainless deploy, or your own hostname |
 | The archive lives somewhere other than `<project>.pages.dev` | `DIGEST_ORIGIN` |
 | The archive behind Access, not public | `CYRIS_PRIVATE_ARCHIVE=true`; Worker-only, the container never sees it |
+| `<project>.pages.dev` behind Access too | `CYRIS_ARCHIVE_ACCESS_CLIENT_ID` and `CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET`, an Access service token your Pages application's Service Auth policy admits; the Worker and the publisher send it. Set them before that application exists, or every read of the Pages origin fails |
 | RSS buffer, newsletter and vote Workers | see [Optional Workers](#optional-workers) |
 
 ## 5. Deploy the Worker

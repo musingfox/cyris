@@ -16,6 +16,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- A Cloudflare deployment can put its Pages project, `<project>.pages.dev`, behind Cloudflare
+  Access too. Set `CYRIS_ARCHIVE_ACCESS_CLIENT_ID` and `CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET` to an
+  Access service token that application admits: the Worker proxies the archive with it, and the
+  publisher reads the live site with it. Unset, nothing changes.
 - On a hosted deployment, a tenant's reader can turn vote similarity on in Settings. Its next run
   embeds on the operator's Workers AI account, and the cost counts against the tenant's monthly AI
   allowance as `embedding_usd`. The embedding provider and model stay the operator's and show as

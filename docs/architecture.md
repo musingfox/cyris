@@ -1027,7 +1027,9 @@ plan's ceilings, and the priced alternatives — is `docs/hosting-and-cost.md`.
 | Access audience | B | `CYRIS_ACCESS_AUD` (Worker-only; the Application Audience tag of the self-hosted Access application that guards the Worker) | done |
 | Access service token id | C | `CYRIS_ACCESS_CLIENT_ID` (script-only; the id scripts send as `CF-Access-Client-Id`, `cyris --tenant` to the hosted Worker included (ADR-0036); never forwarded to the container) | done |
 | Access service token secret | C | `CYRIS_ACCESS_CLIENT_SECRET` (script-only; the secret scripts send as `CF-Access-Client-Secret`, `cyris --tenant` to the hosted Worker included (ADR-0036); never forwarded to the container) | done |
-| Private archive | B | `CYRIS_PRIVATE_ARCHIVE` (Worker-only; `"true"` puts the archive behind the Access sign-in: Access sends a reader without a session to sign in, and the Worker answers 403 to a request that reaches it without a valid JWT; unset = public archive) | done 2026-10-05 — default off; production has set it since 2026-11-27, with its Access application covering both hosts whole, and a trial deployment turns it on in its generated config. `<project>.pages.dev` stays readable without the Worker, since the Worker's proxy and the publisher's guards read it uncredentialed |
+| Archive origin service token id | C | `CYRIS_ARCHIVE_ACCESS_CLIENT_ID` (a `cyris-app` Worker secret, forwarded to the container; the id the Worker's archive proxy and the publisher's four reads of `<project>.pages.dev` send as `CF-Access-Client-Id`) | added 2026-11-28 (ADR-0051) — optional, and used only beside the secret below: with either unset the origin is read uncredentialed, as before. Not the script token above, which never enters the container. A hosted run is not handed it: a tenant has no Pages project |
+| Archive origin service token secret | C | `CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET` (a `cyris-app` Worker secret, forwarded to the container; sent as `CF-Access-Client-Secret` beside the id above) | added 2026-11-28 (ADR-0051) — same rules as the id. The Worker drops any `CF-Access-Client-*` header a reader sent before it adds these |
+| Private archive | B | `CYRIS_PRIVATE_ARCHIVE` (Worker-only; `"true"` puts the archive behind the Access sign-in: Access sends a reader without a session to sign in, and the Worker answers 403 to a request that reaches it without a valid JWT; unset = public archive) | done 2026-10-05 — default off; production has set it since 2026-11-27, with its Access application covering both hosts whole, and a trial deployment turns it on in its generated config. `<project>.pages.dev` stays readable without the Worker unless an Access application covers it too and the archive service token below is set, which the Worker's proxy and the publisher's guards then send (ADR-0051) |
 | Digest archive origin | B | `DIGEST_ORIGIN` (Worker-only; Pages origin the Worker proxies). Optional since 2026-09-06: unset, it is `<CYRIS_PROMOTE_PAGES_PROJECT>.pages.dev`, so only a custom domain needs to say it twice | done |
 | **Email Routing: domain + route** | **B** | Cloudflare dashboard, by hand | **stays manual** — needs your own domain; the one step a Deploy button cannot automate |
 | LLM API keys, four Cloudflare tokens (D1 + Pages + Workers Scripts Read + Email Sending, embedding, Workers AI LLM — also the Clef vote order's, and AI Gateway Run for the `ai_gateway` provider), one Worker bearer, one vote token | C (the vote token was rendered into every digest published before 2026-09-01; a deployment that published none has no such pages) | `.env` locally, **`cyris-app` Worker secrets in production**; `CLOUDFLARE_CONTAINERS_TOKEN` in GitHub Actions secrets | done — see below. `CLOUDFLARE_CONTAINERS_TOKEN` is instead a GitHub Actions secret for the CI release workflow; it never enters the container. The Access service token is also a GitHub Actions secret, the copy that `deploy.yml`'s `verify` step alone reads to ask production which image it serves, so rotating it means replacing both |
@@ -1128,7 +1130,9 @@ GitHub Actions secret used only to push a release image, so it is not an eighth 
 Since then the app Worker also forwards `CLOUDFLARE_AI_TOKEN`, the `workers_ai` LLM provider's own
 Workers AI token, which falls back to `CLOUDFLARE_EMBEDDING_API_TOKEN` when blank, and
 `CLOUDFLARE_AIG_TOKEN`, the `ai_gateway` provider's AI Gateway Run token with no fallback. A
-deployment on `ai_gateway` can leave the three LLM API keys blank.
+deployment on `ai_gateway` can leave the three LLM API keys blank. Since 2026-11-28 it also
+forwards the optional archive service token, `CYRIS_ARCHIVE_ACCESS_CLIENT_ID` and
+`CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET`, which the publisher sends to the Pages origin (ADR-0051).
 The Clef vote order (`digest.preference_source = "clef"`) authenticates with
 `CLOUDFLARE_AI_TOKEN` too, else with `CLOUDFLARE_EMBEDDING_API_TOKEN`.
 The Worker checks the Access JWT itself, so no sign-in secret is forwarded to the container. The
@@ -1464,7 +1468,8 @@ production branch, or it lands on a preview URL. The first publish creates the P
   is a digest page and its `-raw.html` page under one `{date}-{period}` stem, so a raw page is
   in the signal and counts with its digest. A receipt skips only the Cloudflare deployments
   probe, never this check. Zero dated anchors on the live index passes; an unreadable index
-  fails closed. A deliberate prune of more than one issue goes through `publish_site`'s `drop` set, run by
+  fails closed, and an index a redirect served from another host, such as an Access sign-in page,
+  is unread (ADR-0051). A deliberate prune of more than one issue goes through `publish_site`'s `drop` set, run by
   `scripts/prune_archive.py`; see docs/operations.md.
 - **Recovery reads the live site.** The live `index.html` lists every digest, so fetching each
   page and re-running `asset_hash` rebuilds path → hash exactly; that is what the backfill script
@@ -1835,6 +1840,13 @@ compose passes that (above). A store on `d1` does not tick: its schedule is the 
 **The reader-facing surfaces share one hostname, split by path.** The Worker proxies
 `DIGEST_ORIGIN` for anything not on the protected list, at the cost of one Worker request; why the
 digest stays static is [ADR-0010](decisions/0010-the-digest-stays-static-behind-the-app-worker.md).
+The proxied request never carries the reader's Access JWT or cookie. When
+`CYRIS_ARCHIVE_ACCESS_CLIENT_ID` and `CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET` are both set, it carries
+them as `CF-Access-Client-Id` and `CF-Access-Client-Secret` instead, after any `CF-Access-Client-*`
+header the reader sent is dropped, and the publisher's reads of the live site send them too. An
+Access application over `<project>.pages.dev` then closes the copy readable without the Worker
+([ADR-0051](decisions/0051-the-pages-origin-may-sit-behind-access-with-a-service-token.md)). With
+either unset, the origin is read uncredentialed and has to stay public.
 
 ```
 /                         digest index  ─┐ public unless CYRIS_PRIVATE_ARCHIVE is "true"
