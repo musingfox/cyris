@@ -127,13 +127,32 @@ def _issue(path: str) -> str:
     return _slash(path).removesuffix(".html").removesuffix("-raw")
 
 
+# The Pages origin may sit behind Cloudflare Access, admitting only the service token the app
+# Worker proxies it with (ADR-0051), so every read of it sends that token. Both or neither: half a
+# token would only fetch Access's login page. Read here, beside `_client`'s token, because
+# `scripts/prune_archive.py` calls these reads directly.
+ARCHIVE_ACCESS_ENV_VARS = ("CYRIS_ARCHIVE_ACCESS_CLIENT_ID", "CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET")
+
+
+def _archive_headers() -> dict[str, str]:
+    client_id, secret = (os.environ.get(name, "") for name in ARCHIVE_ACCESS_ENV_VARS)
+    if not (client_id and secret):
+        return {}
+    return {"CF-Access-Client-Id": client_id, "CF-Access-Client-Secret": secret}
+
+
 def _fetch_live_index(pages_project: str) -> set[str] | None:
     url = f"https://{pages_project}.pages.dev/"
     for poll in range(1, LIVE_INDEX_POLLS + 1):
         if poll > 1:
             time.sleep(VERIFY_INTERVAL_SECONDS)
         try:
-            resp = httpx.get(url, timeout=VERIFY_TIMEOUT_SECONDS, follow_redirects=True)
+            resp = httpx.get(
+                url,
+                headers=_archive_headers(),
+                timeout=VERIFY_TIMEOUT_SECONDS,
+                follow_redirects=True,
+            )
         except httpx.HTTPError as e:
             logger.warning("Live archive request failed (poll %d): %s", poll, e)
             continue
@@ -297,7 +316,12 @@ def _fetch_live(pages_project: str, path: str) -> bytes | None:
     clean = path.removesuffix(".html").removesuffix("/index")
     url = f"https://{pages_project}.pages.dev{clean or '/'}"
     try:
-        resp = httpx.get(url, timeout=VERIFY_TIMEOUT_SECONDS, follow_redirects=True)
+        resp = httpx.get(
+            url,
+            headers=_archive_headers(),
+            timeout=VERIFY_TIMEOUT_SECONDS,
+            follow_redirects=True,
+        )
     except httpx.HTTPError as e:
         logger.error("Could not recover %s from the live site: %s", path, e)
         return None
@@ -415,7 +439,12 @@ def page_serves(pages_project: str, path: str, expected: bytes) -> bool:
         if poll > 1:
             time.sleep(VERIFY_INTERVAL_SECONDS)
         try:
-            resp = httpx.get(url, timeout=VERIFY_TIMEOUT_SECONDS, follow_redirects=True)
+            resp = httpx.get(
+                url,
+                headers=_archive_headers(),
+                timeout=VERIFY_TIMEOUT_SECONDS,
+                follow_redirects=True,
+            )
         except httpx.HTTPError as e:
             logger.warning("Pages verify request failed (poll %d): %s", poll, e)
             continue
@@ -467,7 +496,12 @@ def _page_is_live(pages_project: str, slug: str, deadline: _Deadline) -> bool:
         if poll > 1:
             time.sleep(VERIFY_INTERVAL_SECONDS)
         try:
-            resp = httpx.get(url, timeout=VERIFY_TIMEOUT_SECONDS, follow_redirects=True)
+            resp = httpx.get(
+                url,
+                headers=_archive_headers(),
+                timeout=VERIFY_TIMEOUT_SECONDS,
+                follow_redirects=True,
+            )
         except httpx.HTTPError as e:
             logger.warning("Pages verify request failed (poll %d): %s", poll, e)
             continue

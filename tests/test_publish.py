@@ -381,3 +381,60 @@ def test_a_page_of_another_day_from_before_the_receipt_is_refused(monkeypatch):
     _fake_get(monkeypatch, "<html><head><title>CYRIS // 2026-08-19 · 晚報</title></head></html>")
 
     assert _publish() is False
+
+
+# The four reads of the live Pages origin, each given a page that satisfies it.
+_ARCHIVE_READS = {
+    "_fetch_live_index": lambda: publish_mod._fetch_live_index("proj") is not None,
+    "_fetch_live": lambda: publish_mod._fetch_live("proj", "/2026-08-20-morning.html"),
+    "page_serves": lambda: publish_mod.page_serves("proj", "/index.html", LIVE_PAGE.encode()),
+    "_page_is_live": lambda: publish_mod._page_is_live("proj", SLUG, publish_mod._Deadline(60)),
+}
+
+
+def _record_headers(monkeypatch) -> list[httpx.Headers]:
+    sent: list[httpx.Headers] = []
+
+    def get(url, **kwargs):
+        sent.append(httpx.Headers(kwargs.get("headers")))
+        return httpx.Response(200, content=LIVE_PAGE.encode())
+
+    monkeypatch.setattr(publish_mod.httpx, "get", get)
+    return sent
+
+
+@pytest.mark.parametrize("read", sorted(_ARCHIVE_READS))
+def test_every_read_of_the_pages_origin_sends_the_archive_token(monkeypatch, read):
+    """Behind Access, the origin admits only this token; a read without it gets the login page."""
+    monkeypatch.setenv("CYRIS_ARCHIVE_ACCESS_CLIENT_ID", "archive-id")
+    monkeypatch.setenv("CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET", "archive-secret")
+    sent = _record_headers(monkeypatch)
+
+    assert _ARCHIVE_READS[read]()
+    assert sent
+    for headers in sent:
+        assert headers["CF-Access-Client-Id"] == "archive-id"
+        assert headers["CF-Access-Client-Secret"] == "archive-secret"
+
+
+@pytest.mark.parametrize("read", sorted(_ARCHIVE_READS))
+@pytest.mark.parametrize(
+    "token",
+    [
+        {},
+        {"CYRIS_ARCHIVE_ACCESS_CLIENT_ID": "archive-id"},
+        {"CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET": "archive-secret"},
+    ],
+    ids=["unset", "id-only", "secret-only"],
+)
+def test_a_read_sends_no_access_header_without_the_whole_token(monkeypatch, read, token):
+    for name in publish_mod.ARCHIVE_ACCESS_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+    for name, value in token.items():
+        monkeypatch.setenv(name, value)
+    sent = _record_headers(monkeypatch)
+
+    assert _ARCHIVE_READS[read]()
+    assert sent
+    for headers in sent:
+        assert not [name for name in headers if name.lower().startswith("cf-access-")]
