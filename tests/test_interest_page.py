@@ -11,10 +11,12 @@ from aiohttp.test_utils import TestClient, TestServer
 from fakes import FakeLLM, SqliteD1
 from test_run_digest import FakeSource, make_deps
 
+from cyris.adapters.output.html_digest import HtmlDigestWriter
 from cyris.adapters.store.d1 import D1Error
 from cyris.adapters.store.interest import D1InterestReader
 from cyris.domain.models import Article, Lane
 from cyris.entrypoints.triage_server import TriageServer
+from cyris.service_layer.interest_page import render_interest_page
 from cyris.service_layer.run_digest import RunOptions, run_digest
 
 pytestmark = pytest.mark.integration
@@ -111,6 +113,36 @@ async def test_a_failed_read_says_why(serve) -> None:
 
     assert resp.status == 500
     assert "down" in await resp.text()
+
+
+@pytest.mark.parametrize(
+    ("holds", "line"),
+    [
+        (0, "No suppression is active."),
+        (1, "Suppressions are active, but none is near a tag on this map."),
+        (2, "Suppressions are active, but none is near a tag on this map."),
+    ],
+)
+def test_one_live_hold_is_enough_to_say_holds_are_active(holds, line) -> None:
+    db = _seeded_db()
+    db.query("DELETE FROM suppressions")
+    # Each hold's downvote carries no tag, so no node on the map is lit by it.
+    for n in range(holds):
+        db.query(
+            "INSERT INTO suppressions (run_at, period, model, candidate_url, reason, "
+            "nearest_down_url, down_cosine, up_cosine, outlier_score, until) "
+            "VALUES (?, 'morning', 'm', ?, 'topic_near_downvote', "
+            "'https://example.test/untagged', 0.9, NULL, 0.1, ?)",
+            [
+                NOW.isoformat(timespec="seconds"),
+                f"https://example.test/cand{n}",
+                (NOW + timedelta(days=3)).isoformat(timespec="seconds"),
+            ],
+        )
+
+    page = render_interest_page(D1InterestReader(db).read, HtmlDigestWriter("unused"), NOW)
+
+    assert f'<p class="small">{line}</p>' in page
 
 
 def _article() -> Article:
