@@ -114,6 +114,14 @@ async def test_a_topic_set_for_another_model_never_hits_and_is_named() -> None:
     assert embedder.payloads == []
 
 
+async def test_a_topic_set_for_a_model_sorting_after_the_runs_is_skipped_too() -> None:
+    # ADR-0006: a threshold holds only for the model it was set for, in either direction.
+    report = await track_topics(TableEmbedder(), "aaa-embedding", [topic(model=MODEL)], [CLOSE])
+
+    assert report.hits == {}
+    assert "aaa-embedding" in report.skipped["Anthropic"]
+
+
 async def test_only_the_calibrated_topic_is_embedded_beside_a_skipped_one() -> None:
     embedder = TableEmbedder()
     other = topic("Other", model="@cf/baai/bge-m3", description="Lottery draw")
@@ -182,6 +190,35 @@ async def test_a_short_embedding_answer_skips_rather_than_mispairs() -> None:
     assert report.skipped["Anthropic"].startswith("embedding failed")
 
 
+async def test_an_embedding_answer_with_extra_vectors_skips_rather_than_mispairs() -> None:
+    class Extra(TableEmbedder):
+        async def embed(self, texts):
+            return [*await super().embed(texts), [0.0, 0.0, 1.0]]
+
+    report = await track_topics(Extra(), MODEL, [topic()], [CLOSE])
+
+    assert report.hits == {}
+    assert report.skipped["Anthropic"].startswith("embedding failed")
+
+
+class SameVectors:
+    """The description first, every title after it at cosine 0.6."""
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        return [[1.0, 0.0] if i == 0 else [0.6, 0.8] for i, _ in enumerate(texts)]
+
+
+# Past 256, len() hands back a fresh int each call: counts compare by value, not identity.
+HUNDREDS = [article(f"https://a.test/{i}", f"Title {i}") for i in range(300)]
+
+
+async def test_a_run_with_hundreds_of_titles_is_still_tracked() -> None:
+    report = await track_topics(SameVectors(), MODEL, [topic(threshold=0.5)], HUNDREDS)
+
+    assert report.skipped == {}
+    assert report.hits == {"Anthropic": 300}
+
+
 # ---- the topic itself ------------------------------------------------------------
 
 
@@ -229,3 +266,23 @@ async def test_ranking_raises_when_the_embedder_fails() -> None:
 
     with pytest.raises(RuntimeError, match="401"):
         await rank_titles(Broken(), "x", [CLOSE])
+
+
+async def test_ranking_lists_hundreds_of_titles() -> None:
+    from cyris.service_layer.tracking import rank_titles
+
+    ranked = await rank_titles(SameVectors(), "description", HUNDREDS)
+
+    assert len(ranked) == 300
+
+
+async def test_ranking_keeps_a_title_opposite_the_description() -> None:
+    from cyris.service_layer.tracking import rank_titles
+
+    class Opposite(TableEmbedder):
+        VECTORS = {**TableEmbedder.VECTORS, "Lottery draw": [-1.0, 0.0, 0.0]}
+
+    ranked = await rank_titles(Opposite(), topic().description, [CLOSE, FAR])
+
+    assert [a.url for a, _ in ranked] == [CLOSE.url, FAR.url]
+    assert ranked[1][1] == pytest.approx(-1.0)
