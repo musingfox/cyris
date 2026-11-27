@@ -49,6 +49,12 @@
       "CYRIS_PRIVATE_ARCHIVE": {
         "description": "Optional. Set to `true` to put the archive behind the same Cloudflare Access sign-in as `/settings`; a reader without one gets a 403. Leave blank for a public archive."
       },
+      "CYRIS_ARCHIVE_ACCESS_CLIENT_ID": {
+        "description": "Optional. The client id of an Access service token for the Pages origin, set with `CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET`. Set both before an Access application covers `<name>.pages.dev`, and have its Service Auth policy admit the token: the Worker proxies the archive with them and the publisher reads the live site with them. Blank reads the Pages origin uncredentialed, so it must stay public."
+      },
+      "CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET": {
+        "description": "Optional. The client secret of the same service token as `CYRIS_ARCHIVE_ACCESS_CLIENT_ID`."
+      },
       "CYRIS_WORKER_TOKEN": {
         "description": "Optional. The one bearer the rss and newsletter Workers accept. Set it here and in those Workers; leave blank to poll feeds directly at digest time."
       },

@@ -27,6 +27,9 @@ const SECRETS = {
   OPENAI_API_KEY: env.OPENAI_API_KEY,
   CLOUDFLARE_AI_TOKEN: env.CLOUDFLARE_AI_TOKEN,
   CLOUDFLARE_AIG_TOKEN: env.CLOUDFLARE_AIG_TOKEN,
+  // The publisher reads the Pages origin with the token router.js proxies it with (ADR-0051).
+  CYRIS_ARCHIVE_ACCESS_CLIENT_ID: env.CYRIS_ARCHIVE_ACCESS_CLIENT_ID,
+  CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET: env.CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET,
 };
 
 // Grade-B deployment identity. The deployer sets these as Worker secrets or
