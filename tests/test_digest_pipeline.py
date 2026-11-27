@@ -372,6 +372,13 @@ class TestDigestPipeline:
         assert result.accepted_urls == []
         assert result.rejected_urls == []
 
+    async def test_a_run_with_no_articles_processed_no_source(self, pipeline, sample_sources):
+        result = await pipeline.process(
+            [], sample_sources, period="evening", timezone=TEST_SETTINGS["general.timezone"]
+        )
+
+        assert result.content.sources_processed == 0
+
 
 def _article(article_id: int, lane: Lane, source_name: str) -> Article:
     return Article(
