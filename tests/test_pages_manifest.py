@@ -428,9 +428,9 @@ def _slow_cloudflare(monkeypatch):
             index_reads.append(url)
             if len(index_reads) <= 2:
                 raise httpx.ConnectError("timed out")
-            return httpx.Response(200, content=b"")
+            return httpx.Response(200, content=b"", request=httpx.Request("GET", url))
         alias_reads.append(url)
-        return httpx.Response(200, text="<title>Archive</title>")
+        return httpx.Response(200, text="<title>Archive</title>", request=httpx.Request("GET", url))
 
     monkeypatch.setattr(publish_mod.httpx, "get", get)
     return clock, alias_reads
@@ -491,7 +491,9 @@ def test_the_budget_leaves_a_fast_retry_alone(monkeypatch):
         publish_mod.httpx,
         "get",
         lambda _u, **_k: httpx.Response(
-            200, text='<meta name="cyris-issue" content="2026-08-27-morning">'
+            200,
+            text='<meta name="cyris-issue" content="2026-08-27-morning">',
+            request=httpx.Request("GET", _u),
         ),
     )
     deployed = []
@@ -520,7 +522,9 @@ def test_an_archived_page_is_recovered_from_the_live_site(monkeypatch):
     def get(url, **kwargs):
         seen["url"] = url
         seen["follow"] = kwargs.get("follow_redirects")
-        return httpx.Response(200, content=b"<html>archived</html>")
+        return httpx.Response(
+            200, content=b"<html>archived</html>", request=httpx.Request("GET", url)
+        )
 
     monkeypatch.setattr(publish_mod.httpx, "get", get)
 
@@ -530,7 +534,11 @@ def test_an_archived_page_is_recovered_from_the_live_site(monkeypatch):
 
 
 def test_a_page_the_site_cannot_serve_back_is_not_silently_dropped(monkeypatch):
-    monkeypatch.setattr(publish_mod.httpx, "get", lambda _u, **_k: httpx.Response(404, content=b""))
+    monkeypatch.setattr(
+        publish_mod.httpx,
+        "get",
+        lambda _u, **_k: httpx.Response(404, content=b"", request=httpx.Request("GET", _u)),
+    )
 
     assert publish_mod._fetch_live("proj", "/gone.html") is None
 
@@ -893,7 +901,7 @@ def _counting_get(monkeypatch, *, body=b""):
 
     def get(url, **kwargs):
         calls.append((url, kwargs.get("follow_redirects")))
-        return httpx.Response(200, content=body)
+        return httpx.Response(200, content=body, request=httpx.Request("GET", url))
 
     monkeypatch.setattr(publish_mod.httpx, "get", get)
     return calls
@@ -1085,7 +1093,9 @@ def test_fetch_live_index_returns_anchors_on_the_first_200(monkeypatch):
     def get(url, **kwargs):
         calls.append((url, kwargs.get("follow_redirects")))
         return httpx.Response(
-            200, content=_index_body("/2026-09-04-morning.html", "/2026-09-04-evening.html")
+            200,
+            content=_index_body("/2026-09-04-morning.html", "/2026-09-04-evening.html"),
+            request=httpx.Request("GET", url),
         )
 
     monkeypatch.setattr(publish_mod.httpx, "get", get)
@@ -1105,7 +1115,9 @@ def test_fetch_live_index_retries_connect_errors_then_returns_anchors(monkeypatc
         n["i"] += 1
         if n["i"] < 3:
             raise httpx.ConnectError("boom")
-        return httpx.Response(200, content=_index_body("/2026-09-04-morning.html"))
+        return httpx.Response(
+            200, content=_index_body("/2026-09-04-morning.html"), request=httpx.Request("GET", url)
+        )
 
     monkeypatch.setattr(publish_mod.httpx, "get", get)
 
@@ -1119,7 +1131,7 @@ def test_fetch_live_index_gives_up_after_three_404s(monkeypatch, caplog):
 
     def get(url, **kwargs):
         n["i"] += 1
-        return httpx.Response(404, content=b"")
+        return httpx.Response(404, content=b"", request=httpx.Request("GET", url))
 
     monkeypatch.setattr(publish_mod.httpx, "get", get)
 
@@ -1137,7 +1149,9 @@ def test_fetch_live_index_empty_archive_is_an_empty_set_not_unread(monkeypatch, 
 
     body = HtmlDigestWriter(tmp_path).render_index([]).encode()
     monkeypatch.setattr(
-        publish_mod.httpx, "get", lambda _u, **_k: httpx.Response(200, content=body)
+        publish_mod.httpx,
+        "get",
+        lambda _u, **_k: httpx.Response(200, content=body, request=httpx.Request("GET", _u)),
     )
 
     assert publish_mod._fetch_live_index("proj") == set()
@@ -1149,7 +1163,9 @@ def _publish_env(monkeypatch, *, live_paths, deployed):
     monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: True)
     body = _index_body(*live_paths)
     monkeypatch.setattr(
-        publish_mod.httpx, "get", lambda _u, **_k: httpx.Response(200, content=body)
+        publish_mod.httpx,
+        "get",
+        lambda _u, **_k: httpx.Response(200, content=body, request=httpx.Request("GET", _u)),
     )
     _stub_client(monkeypatch, deployed=deployed)
 
@@ -1481,7 +1497,11 @@ def test_publish_refuses_when_the_live_archive_answers_500(monkeypatch):
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")
     monkeypatch.setattr(publish_mod, "_page_is_live", lambda *_a, **_k: True)
     monkeypatch.setattr(publish_mod.time, "sleep", lambda _s: None)
-    monkeypatch.setattr(publish_mod.httpx, "get", lambda _u, **_k: httpx.Response(500, content=b""))
+    monkeypatch.setattr(
+        publish_mod.httpx,
+        "get",
+        lambda _u, **_k: httpx.Response(500, content=b"", request=httpx.Request("GET", _u)),
+    )
     deployed = []
     _stub_client(monkeypatch, deployed=deployed)
 

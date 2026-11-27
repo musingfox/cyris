@@ -141,6 +141,18 @@ def _archive_headers() -> dict[str, str]:
     return {"CF-Access-Client-Id": client_id, "CF-Access-Client-Secret": secret}
 
 
+def _landed_elsewhere(resp: httpx.Response, url: str) -> str | None:
+    """The host a read ended on when redirects took it off the host it asked, else None.
+
+    Access answers a read it does not admit by redirecting to its sign-in page, which answers 200.
+    Taken as the archive, that page lists no issue, so the deploy guard would pass as for an empty
+    site, and a recovered asset would be the sign-in page. Pages' own redirect, `.html` to the
+    clean URL, stays on the host.
+    """
+    landed = resp.url.host
+    return landed if landed != httpx.URL(url).host else None
+
+
 def _fetch_live_index(pages_project: str) -> set[str] | None:
     url = f"https://{pages_project}.pages.dev/"
     for poll in range(1, LIVE_INDEX_POLLS + 1):
@@ -158,6 +170,9 @@ def _fetch_live_index(pages_project: str) -> set[str] | None:
             continue
         if resp.status_code != 200:
             logger.warning("Live archive: %s answered %d (poll %d)", url, resp.status_code, poll)
+            continue
+        if landed := _landed_elsewhere(resp, url):
+            logger.warning("Live archive: %s redirected to %s (poll %d)", url, landed, poll)
             continue
         return _parse_archive_anchors(resp.text)
     logger.error("The live archive could not be read at %s", url)
@@ -328,6 +343,9 @@ def _fetch_live(pages_project: str, path: str) -> bytes | None:
     if resp.status_code != 200:
         logger.error("Could not recover %s: %s answered %d", path, url, resp.status_code)
         return None
+    if landed := _landed_elsewhere(resp, url):
+        logger.warning("Could not recover %s: %s redirected to %s", path, url, landed)
+        return None
     return resp.content
 
 
@@ -448,6 +466,9 @@ def page_serves(pages_project: str, path: str, expected: bytes) -> bool:
         except httpx.HTTPError as e:
             logger.warning("Pages verify request failed (poll %d): %s", poll, e)
             continue
+        if landed := _landed_elsewhere(resp, url):
+            logger.warning("Pages verify: %s redirected to %s (poll %d)", url, landed, poll)
+            continue
         if resp.status_code == 200 and resp.content == expected:
             return True
         logger.warning(
@@ -504,6 +525,9 @@ def _page_is_live(pages_project: str, slug: str, deadline: _Deadline) -> bool:
             )
         except httpx.HTTPError as e:
             logger.warning("Pages verify request failed (poll %d): %s", poll, e)
+            continue
+        if landed := _landed_elsewhere(resp, url):
+            logger.warning("Pages verify: %s redirected to %s (poll %d)", url, landed, poll)
             continue
         if _names_issue(resp.text, slug):
             return True

@@ -88,10 +88,10 @@ def _fake_get(monkeypatch, *pages):
     """Serve each page body in turn; the last one repeats."""
     calls = []
 
-    def get(*_args, **_kwargs):
+    def get(url, **_kwargs):
         calls.append(1)
         body = pages[min(len(calls), len(pages)) - 1]
-        return httpx.Response(200, text=body)
+        return httpx.Response(200, text=body, request=httpx.Request("GET", url))
 
     monkeypatch.setattr(publish_mod.httpx, "get", get)
     return calls
@@ -397,7 +397,7 @@ def _record_headers(monkeypatch) -> list[httpx.Headers]:
 
     def get(url, **kwargs):
         sent.append(httpx.Headers(kwargs.get("headers")))
-        return httpx.Response(200, content=LIVE_PAGE.encode())
+        return httpx.Response(200, content=LIVE_PAGE.encode(), request=httpx.Request("GET", url))
 
     monkeypatch.setattr(publish_mod.httpx, "get", get)
     return sent
@@ -438,3 +438,47 @@ def test_a_read_sends_no_access_header_without_the_whole_token(monkeypatch, read
     assert sent
     for headers in sent:
         assert not [name for name in headers if name.lower().startswith("cf-access-")]
+
+
+def _redirected(monkeypatch, landing: str, status: int = 308) -> None:
+    """httpx following a redirect: the response carries the request it ended on, and its history."""
+
+    def get(url, **_kwargs):
+        first = httpx.Response(
+            status, headers={"Location": landing}, request=httpx.Request("GET", url)
+        )
+        return httpx.Response(
+            200,
+            content=LIVE_PAGE.encode(),
+            request=httpx.Request("GET", landing),
+            history=[first],
+        )
+
+    monkeypatch.setattr(publish_mod.httpx, "get", get)
+
+
+# Access answers a read it does not admit by redirecting to its sign-in page, which answers 200.
+_SIGN_IN = "https://team.cloudflareaccess.com/cdn-cgi/access/login/proj.pages.dev"
+
+
+@pytest.mark.parametrize("read", sorted(_ARCHIVE_READS))
+def test_a_read_redirected_off_the_pages_host_fails(monkeypatch, read, caplog):
+    """Taken as the archive, the sign-in page would pass the deploy guard as an empty site."""
+    _redirected(monkeypatch, _SIGN_IN, status=302)
+
+    with caplog.at_level("WARNING"):
+        assert not _ARCHIVE_READS[read]()
+    assert "team.cloudflareaccess.com" in caplog.text
+
+
+def test_a_live_index_redirected_off_the_pages_host_is_unread_not_empty(monkeypatch):
+    _redirected(monkeypatch, _SIGN_IN, status=302)
+
+    assert publish_mod._fetch_live_index("proj") is None
+
+
+@pytest.mark.parametrize("read", sorted(_ARCHIVE_READS))
+def test_pages_own_redirect_to_the_clean_url_still_reads(monkeypatch, read):
+    _redirected(monkeypatch, "https://proj.pages.dev/2026-08-20-morning")
+
+    assert _ARCHIVE_READS[read]()
