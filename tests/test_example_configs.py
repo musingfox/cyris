@@ -87,9 +87,13 @@ def test_a_copy_of_the_example_is_a_first_boot_to_doctor(copied: Path) -> None:
 
 
 def test_doctor_and_config_show_leave_a_copy_of_the_example_alone(copied: Path) -> None:
-    runner.invoke(app, ["doctor", "--config", str(copied)])
-    runner.invoke(app, ["config", "show", "--config", str(copied)])
+    doctor = runner.invoke(app, ["doctor", "--config", str(copied)])
+    show = runner.invoke(app, ["config", "show", "--config", str(copied)])
 
+    # Each got as far as finding the store missing, and neither made it.
+    assert "article store (sqlite) — not created yet" in doctor.output, doctor.output
+    assert show.exit_code == 0, show.output
+    assert "The SQLite store is not created yet" in show.stdout
     assert list(copied.parent.iterdir()) == [copied]
 
 
