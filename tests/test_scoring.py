@@ -204,6 +204,30 @@ class TestScoreArticlesBatch:
         assert tags == {}
         assert usage.api_calls == 0
 
+    async def test_a_reply_in_a_json_fence_with_a_remark_after_it_is_read(self, sample_articles):
+        from cyris.service_layer.scoring import score_articles_batch
+
+        scores = {"scores": [{"id": 0, "score": 85, "language": "en"}]}
+        reply = f"```json\n{json.dumps(scores)}\n```\nThat is {{all}}."
+
+        result, _, _ = await score_articles_batch(
+            sample_articles, FakeLLM(reply), snippet_length=1000
+        )
+
+        assert result == {"http://a.com": (85.0, "en")}
+
+    async def test_a_reply_with_text_around_its_object_is_read(self, sample_articles):
+        from cyris.service_layer.scoring import score_articles_batch
+
+        scores = {"scores": [{"id": 1, "score": 72, "language": "zh"}]}
+        reply = f"Here are the scores: {json.dumps(scores)} Done."
+
+        result, _, _ = await score_articles_batch(
+            sample_articles, FakeLLM(reply), snippet_length=1000
+        )
+
+        assert result == {"http://b.com": (72.0, "zh")}
+
     async def test_fallback_language(self, sample_articles):
         from cyris.service_layer.scoring import score_articles_batch
 
