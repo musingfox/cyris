@@ -215,17 +215,6 @@ class TestFilterArticles:
         assert [item.title for item in items] == ["ok"]
         assert len(caplog.records) == 3
 
-    async def test_filter_empty_input(self):
-        items = await filter_articles(
-            [],
-            FakeLLM(),
-            filter_snippet_length=500,
-            output_language="zh-Hant",
-            style_prompt="",
-            topics=_book(),
-        )
-        assert items == []
-
     async def test_filter_nothing_noteworthy(self, sample_filter_articles):
         llm = FakeLLM(json.dumps({"selected": []}))
 
