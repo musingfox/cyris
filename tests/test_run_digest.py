@@ -3,7 +3,6 @@
 import asyncio
 import json
 import re
-import time
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from functools import partial
@@ -938,16 +937,12 @@ async def test_with_publishing_off_a_stored_issue_is_not_reported_unpublished(
 
 
 class _MonotonicClock:
-    """time.monotonic for every reader, the event loop too: a second in, 1 ns per read.
-
-    1 ns a read keeps a run's own reads far below the 0.01 s the summary keeps.
-    """
+    """run_digest's monotonic clock: a second in, moved only when a test moves it."""
 
     def __init__(self) -> None:
         self.now = 1.0
 
     def __call__(self) -> float:
-        self.now += 1e-9
         return self.now
 
 
@@ -955,7 +950,8 @@ async def test_wall_seconds_is_the_runs_elapsed_time_to_the_hundredth(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     clock, recorded = _MonotonicClock(), []
-    monkeypatch.setattr(time, "monotonic", clock)
+    # Patched where it is used: run_digest reads the time only as `time.monotonic`.
+    monkeypatch.setattr(run_digest_module, "time", SimpleNamespace(monotonic=clock))
     deps = replace(_fresh_and_earlier_deps(tmp_path), record_run=recorded.append)
     answer = deps.llm.complete
 
