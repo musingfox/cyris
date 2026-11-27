@@ -176,6 +176,17 @@ const VALIDATORS = ["If-None-Match", "If-Modified-Since"];
 // Access sends the JWT as a header and keeps it in the CF_Authorization cookie; a static archive needs no cookie.
 const ACCESS_CREDENTIALS = ["Cf-Access-Jwt-Assertion", "Cookie"];
 
+// The Pages origin may sit behind Access too, admitting only this service token (ADR-0051).
+// Both or neither: half a token would only buy a redirect to the login page.
+const archiveToken = (env) =>
+  env.CYRIS_ARCHIVE_ACCESS_CLIENT_ID && env.CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET
+    ? {
+        "CF-Access-Client-Id": env.CYRIS_ARCHIVE_ACCESS_CLIENT_ID,
+        "CF-Access-Client-Secret": env.CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET,
+      }
+    : null;
+const SERVICE_TOKEN_PREFIX = "cf-access-client-";
+
 // hosted_pages.js sizes a hosted tenant's pages with this too (ADR-0013 carries over).
 export function sized(response, scale, deps) {
   if (scale === 1 || !isHtml(response)) return response;
@@ -277,6 +288,12 @@ export async function handleRequest(request, env, deps) {
     // The archive origin is configurable, so it never sees the reader's Access credentials.
     const headers = new Headers(request.headers);
     for (const name of ACCESS_CREDENTIALS) headers.delete(name);
+    const token = archiveToken(env);
+    if (token) {
+      // Headers yields lower-cased names; a reader's own token must not stand in for the Worker's.
+      for (const name of [...headers.keys()]) if (name.startsWith(SERVICE_TOKEN_PREFIX)) headers.delete(name);
+      for (const [name, value] of Object.entries(token)) headers.set(name, value);
+    }
     if (scale !== 1) for (const name of VALIDATORS) headers.delete(name);
     const proxied = new Request(origin + url.pathname + url.search, new Request(request, { headers }));
     return sized(await deps.fetchImpl(proxied), scale, deps);

@@ -65,3 +65,7 @@ In hosted mode, [ADR-0029](0029-a-hosted-tenants-pages-live-in-its-durable-objec
 decision's reason, that a page view must not wake a container, and replaces its means: the hosted Worker
 serves a tenant's stored pages from the tenant's Durable Object, behind sign-in, and proxies no Pages
 project. A self-hosted deployment is unchanged.
+
+[ADR-0051](0051-the-pages-origin-may-sit-behind-access-with-a-service-token.md) amends this decision
+for a self-hosted deployment: the Pages origin may sit behind Access, and the Worker's proxied
+request then carries a service token of the Worker's own, never the reader's credentials.

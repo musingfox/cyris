@@ -938,6 +938,74 @@ describe("PrivateArchiveServesSignedInReaders", () => {
   });
 });
 
+describe("ArchiveOriginServiceToken", () => {
+  const TOKEN = {
+    CYRIS_ARCHIVE_ACCESS_CLIENT_ID: "archive-id",
+    CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET: "archive-secret",
+  };
+  const READER = { "CF-Access-Client-Id": "reader-id", "CF-Access-Client-Secret": "reader-secret" };
+
+  it("sends the Worker's service token to the archive origin when both halves are set", async () => {
+    const deps = makeDeps();
+    await handleRequest(request("GET", "/2026-08-30-evening.html"), env(TOKEN), deps);
+
+    const sent = upstreamRequest(deps).headers;
+    expect(sent.get("CF-Access-Client-Id")).toBe("archive-id");
+    expect(sent.get("CF-Access-Client-Secret")).toBe("archive-secret");
+  });
+
+  it("sends it behind a private archive too, still without the reader's own credentials", async () => {
+    const deps = makeDeps();
+    await handleRequest(
+      request("GET", "/", { jwt: await accessJwt(), headers: { Cookie: "CF_Authorization=tok" } }),
+      env({ ...TOKEN, CYRIS_PRIVATE_ARCHIVE: "true" }),
+      deps,
+    );
+
+    const sent = upstreamRequest(deps).headers;
+    expect(sent.get("CF-Access-Client-Id")).toBe("archive-id");
+    expect(sent.get("CF-Access-Client-Secret")).toBe("archive-secret");
+    expect(sent.get("Cf-Access-Jwt-Assertion")).toBeNull();
+    expect(sent.get("Cookie")).toBeNull();
+  });
+
+  it.each([
+    ["neither half", {}],
+    ["only the id", { CYRIS_ARCHIVE_ACCESS_CLIENT_ID: "archive-id" }],
+    ["only the secret", { CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET: "archive-secret" }],
+    ["empty halves", { CYRIS_ARCHIVE_ACCESS_CLIENT_ID: "", CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET: "" }],
+  ])("sends no service token with %s set", async (_label, extra) => {
+    const deps = makeDeps();
+    await handleRequest(request("GET", "/"), env(extra), deps);
+
+    const sent = upstreamRequest(deps).headers;
+    expect(sent.get("CF-Access-Client-Id")).toBeNull();
+    expect(sent.get("CF-Access-Client-Secret")).toBeNull();
+  });
+
+  it("replaces a reader's CF-Access-Client headers with the Worker's", async () => {
+    const deps = makeDeps();
+    await handleRequest(
+      request("GET", "/", { headers: { ...READER, "cf-access-client-extra": "x" } }),
+      env(TOKEN),
+      deps,
+    );
+
+    const sent = upstreamRequest(deps).headers;
+    expect(sent.get("CF-Access-Client-Id")).toBe("archive-id");
+    expect(sent.get("CF-Access-Client-Secret")).toBe("archive-secret");
+    expect(sent.get("cf-access-client-extra")).toBeNull();
+  });
+
+  it("never sends the token to the container", async () => {
+    const deps = makeDeps();
+    await handleRequest(request("GET", "/settings", { jwt: await accessJwt() }), env(TOKEN), deps);
+
+    expect(deps.fetchImpl.calls).toHaveLength(0);
+    expect(deps.container.calls[0].headers.get("CF-Access-Client-Id")).toBeNull();
+  });
+});
+
 describe("MalformedTeamDomainFailsClosed", () => {
   const NO_NETWORK = () => {
     throw new Error("the team domain's keys must not be fetched");

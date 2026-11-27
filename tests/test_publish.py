@@ -88,10 +88,10 @@ def _fake_get(monkeypatch, *pages):
     """Serve each page body in turn; the last one repeats."""
     calls = []
 
-    def get(*_args, **_kwargs):
+    def get(url, **_kwargs):
         calls.append(1)
         body = pages[min(len(calls), len(pages)) - 1]
-        return httpx.Response(200, text=body)
+        return httpx.Response(200, text=body, request=httpx.Request("GET", url))
 
     monkeypatch.setattr(publish_mod.httpx, "get", get)
     return calls
@@ -381,3 +381,104 @@ def test_a_page_of_another_day_from_before_the_receipt_is_refused(monkeypatch):
     _fake_get(monkeypatch, "<html><head><title>CYRIS // 2026-08-19 · 晚報</title></head></html>")
 
     assert _publish() is False
+
+
+# The four reads of the live Pages origin, each given a page that satisfies it.
+_ARCHIVE_READS = {
+    "_fetch_live_index": lambda: publish_mod._fetch_live_index("proj") is not None,
+    "_fetch_live": lambda: publish_mod._fetch_live("proj", "/2026-08-20-morning.html"),
+    "page_serves": lambda: publish_mod.page_serves("proj", "/index.html", LIVE_PAGE.encode()),
+    "_page_is_live": lambda: publish_mod._page_is_live("proj", SLUG, publish_mod._Deadline(60)),
+}
+
+
+def _record_headers(monkeypatch) -> list[httpx.Headers]:
+    sent: list[httpx.Headers] = []
+
+    def get(url, **kwargs):
+        sent.append(httpx.Headers(kwargs.get("headers")))
+        return httpx.Response(200, content=LIVE_PAGE.encode(), request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(publish_mod.httpx, "get", get)
+    return sent
+
+
+@pytest.mark.parametrize("read", sorted(_ARCHIVE_READS))
+def test_every_read_of_the_pages_origin_sends_the_archive_token(monkeypatch, read):
+    """Behind Access, the origin admits only this token; a read without it gets the login page."""
+    monkeypatch.setenv("CYRIS_ARCHIVE_ACCESS_CLIENT_ID", "archive-id")
+    monkeypatch.setenv("CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET", "archive-secret")
+    sent = _record_headers(monkeypatch)
+
+    assert _ARCHIVE_READS[read]()
+    assert sent
+    for headers in sent:
+        assert headers["CF-Access-Client-Id"] == "archive-id"
+        assert headers["CF-Access-Client-Secret"] == "archive-secret"
+
+
+@pytest.mark.parametrize("read", sorted(_ARCHIVE_READS))
+@pytest.mark.parametrize(
+    "token",
+    [
+        {},
+        {"CYRIS_ARCHIVE_ACCESS_CLIENT_ID": "archive-id"},
+        {"CYRIS_ARCHIVE_ACCESS_CLIENT_SECRET": "archive-secret"},
+    ],
+    ids=["unset", "id-only", "secret-only"],
+)
+def test_a_read_sends_no_access_header_without_the_whole_token(monkeypatch, read, token):
+    for name in publish_mod.ARCHIVE_ACCESS_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+    for name, value in token.items():
+        monkeypatch.setenv(name, value)
+    sent = _record_headers(monkeypatch)
+
+    assert _ARCHIVE_READS[read]()
+    assert sent
+    for headers in sent:
+        assert not [name for name in headers if name.lower().startswith("cf-access-")]
+
+
+def _redirected(monkeypatch, landing: str, status: int = 308) -> None:
+    """httpx following a redirect: the response carries the request it ended on, and its history."""
+
+    def get(url, **_kwargs):
+        first = httpx.Response(
+            status, headers={"Location": landing}, request=httpx.Request("GET", url)
+        )
+        return httpx.Response(
+            200,
+            content=LIVE_PAGE.encode(),
+            request=httpx.Request("GET", landing),
+            history=[first],
+        )
+
+    monkeypatch.setattr(publish_mod.httpx, "get", get)
+
+
+# Access answers a read it does not admit by redirecting to its sign-in page, which answers 200.
+_SIGN_IN = "https://team.cloudflareaccess.com/cdn-cgi/access/login/proj.pages.dev"
+
+
+@pytest.mark.parametrize("read", sorted(_ARCHIVE_READS))
+def test_a_read_redirected_off_the_pages_host_fails(monkeypatch, read, caplog):
+    """Taken as the archive, the sign-in page would pass the deploy guard as an empty site."""
+    _redirected(monkeypatch, _SIGN_IN, status=302)
+
+    with caplog.at_level("WARNING"):
+        assert not _ARCHIVE_READS[read]()
+    assert "team.cloudflareaccess.com" in caplog.text
+
+
+def test_a_live_index_redirected_off_the_pages_host_is_unread_not_empty(monkeypatch):
+    _redirected(monkeypatch, _SIGN_IN, status=302)
+
+    assert publish_mod._fetch_live_index("proj") is None
+
+
+@pytest.mark.parametrize("read", sorted(_ARCHIVE_READS))
+def test_pages_own_redirect_to_the_clean_url_still_reads(monkeypatch, read):
+    _redirected(monkeypatch, "https://proj.pages.dev/2026-08-20-morning")
+
+    assert _ARCHIVE_READS[read]()
