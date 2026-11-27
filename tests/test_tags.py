@@ -23,3 +23,7 @@ def test_normalize_tags_deduplicates_in_order():
 
 def test_normalize_tags_ignores_non_strings():
     assert normalize_tags(["Rust", 42, None]) == ["rust"]
+
+
+def test_normalize_tags_keeps_the_strings_after_a_non_string():
+    assert normalize_tags([7, "Rust", None, "Go"]) == ["rust", "go"]

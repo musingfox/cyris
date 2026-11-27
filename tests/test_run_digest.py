@@ -24,6 +24,7 @@ from cyris.adapters.output.html_digest import FAVICON, HtmlDigestWriter
 from cyris.adapters.output.usage_log import usage_record
 from cyris.adapters.run_alert import alert_message
 from cyris.adapters.store.d1_store import D1ArticleStore
+from cyris.adapters.store.digests import D1DigestStore
 from cyris.adapters.store.topics import D1TopicStore
 from cyris.bootstrap import Deps
 from cyris.config import (
@@ -867,6 +868,104 @@ async def test_raw_page_skips_rows_an_earlier_run_judged(tmp_path: Path) -> None
     raw = next(report.html_path.parent.glob("*-raw.html")).read_text()
     assert "Fresh This Run" in raw
     assert "Judged Last Run" not in raw
+
+
+async def test_raw_page_skips_rows_an_earlier_run_rejected(tmp_path: Path) -> None:
+    deps = _fresh_and_earlier_deps(tmp_path)
+    deps.store.update_states(
+        {"https://example.com/earlier": (ArticleState.REJECTED, None)}, digest_date="2026-01-01"
+    )
+
+    report = await run_digest(deps, RunOptions())
+
+    raw = next(report.html_path.parent.glob("*-raw.html")).read_text()
+    assert "Fresh This Run" in raw
+    assert "Judged Last Run" not in raw
+
+
+async def test_a_publishing_run_writes_no_page_to_disk(tmp_path: Path) -> None:
+    deps = replace(_fresh_and_earlier_deps(tmp_path), publish_site=lambda _pages, _slug: True)
+
+    await run_digest(deps, RunOptions())
+
+    assert list(tmp_path.rglob("*.html")) == []
+
+
+async def test_a_publishing_run_whose_pages_fail_to_render_reports_publish_failed(
+    tmp_path: Path,
+) -> None:
+    recorded: list[dict] = []
+    deps = _fresh_and_earlier_deps(tmp_path)
+
+    def broken(*_args, **_kwargs):
+        raise RuntimeError("template broke")
+
+    deps.html_writer.render = broken
+    deps = replace(deps, publish_site=lambda _pages, _slug: True, record_run=recorded.append)
+
+    await run_digest(deps, RunOptions())
+
+    assert recorded[-1]["status"] == "publish_failed"
+
+
+async def test_with_publishing_off_a_stored_issue_is_not_reported_unpublished(
+    tmp_path: Path,
+) -> None:
+    recorded: list[dict] = []
+    digests = D1DigestStore(SqliteD1())
+    digests.save(
+        DigestContent(
+            date="2026-10-14",
+            period="evening",
+            sources_processed=1,
+            articles_received=1,
+            articles_included=1,
+            usage=UsageStats(),
+        ),
+        raw_page=False,
+    )
+    deps = replace(
+        _fresh_and_earlier_deps(tmp_path), digest_store=digests, record_run=recorded.append
+    )
+    assert deps.publish_site is None
+
+    await run_digest(deps, RunOptions())
+
+    assert recorded[-1]["status"] == "ok"
+    assert "republish_failed" not in recorded[-1]
+    assert "republished" not in recorded[-1]
+
+
+class _MonotonicClock:
+    """run_digest's monotonic clock: a second in, moved only when a test moves it."""
+
+    def __init__(self) -> None:
+        self.now = 1.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+async def test_wall_seconds_is_the_runs_elapsed_time_to_the_hundredth(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    clock, recorded = _MonotonicClock(), []
+    # Patched where it is used: run_digest reads the time only as `time.monotonic`.
+    monkeypatch.setattr(run_digest_module, "time", SimpleNamespace(monotonic=clock))
+    deps = replace(_fresh_and_earlier_deps(tmp_path), record_run=recorded.append)
+    answer = deps.llm.complete
+
+    async def slow(*args, **kwargs):
+        # The run's first model call takes 150.257 s; nothing else moves the clock.
+        if not deps.llm.calls:
+            clock.now += 150.257
+        return await answer(*args, **kwargs)
+
+    deps.llm.complete = slow
+
+    await run_digest(deps, RunOptions())
+
+    assert recorded[-1]["wall_seconds"] == 150.26
 
 
 async def test_the_local_archive_links_this_runs_raw_page(tmp_path: Path) -> None:

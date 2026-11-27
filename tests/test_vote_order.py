@@ -223,6 +223,31 @@ async def test_an_answer_without_a_token_count_leaves_the_total_unknown() -> Non
     assert order.receipt.clef_spend["input_tokens"] is None
 
 
+async def test_an_answer_naming_an_empty_model_is_left_out_of_the_receipts_model() -> None:
+    clef = _Clef(
+        {
+            "A": NoulAnswer(noul=0.1, model="", input_tokens=1),
+            "B": NoulAnswer(noul=0.2, model="clef-flash", input_tokens=1),
+        }
+    )
+    order = _order(_report({"a": 0.0, "b": 0.0}), clef)
+
+    await _ask(order, [_article("a", "A"), _article("b", "B")])
+
+    assert order.receipt.model == "clef-flash"
+    assert order.receipt.as_summary()["preference_model"] == "clef-flash"
+
+
+async def test_a_clef_source_read_back_as_an_equal_string_still_asks_clef() -> None:
+    # `source` is compared by value: a setting read from JSON or a form is an equal string.
+    source = "".join(["cl", "ef"])
+    clef = _Clef({"A": _answer(0.3)})
+    order = _order(_report({"a": 0.0}), clef, source=source)
+
+    assert await _ask(order, [_article("a", "A")]) == {"a": 0.3}
+    assert order.receipt.source == "clef"
+
+
 # ---- ClefFallsBackToTopics -------------------------------------------------------------
 
 

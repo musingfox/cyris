@@ -13,6 +13,7 @@ from test_run_digest import FakeSource, make_deps
 
 import cyris.service_layer.run_digest as run_digest_module
 import cyris.utils.timezone as timezone_module
+from cyris.adapters.promotions import SyncResult
 from cyris.adapters.store.d1 import D1Error
 from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.adapters.store.suppressions import D1Suppressions
@@ -274,6 +275,48 @@ async def test_a_held_candidate_judged_again_counts_as_judged_not_as_honoured(
     [summary] = recorded[-1:]
     assert summary["suppressed"] == 1
     assert summary["suppression_honoured"] == 0
+
+
+async def test_a_held_candidate_flagged_again_stays_out_of_the_issue(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _fixed_clock(monkeypatch, T0)
+    deps, _, db = _world(tmp_path, T0, _vectors(0.995, SPREAD))
+    await run_digest(deps, RunOptions(period="morning"))
+
+    later = T0 + timedelta(days=1)
+    _fixed_clock(monkeypatch, later)
+    deps, _, _ = _world(tmp_path / "2", later, _vectors(0.995, SPREAD), db=db)
+    await run_digest(deps, RunOptions(period="morning"))
+
+    assert A in {a.url for a in deps.store.list_articles(state=ArticleState.PENDING, limit=100)}
+
+
+async def test_a_hold_records_its_up_cosine_when_there_is_an_upvote(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _fixed_clock(monkeypatch, T0)
+    deps, _, db = _world(tmp_path, T0, _vectors(0.995, SPREAD))
+
+    await run_digest(deps, RunOptions(period="morning"))
+
+    rows = db.query("SELECT up_cosine FROM suppressions WHERE candidate_url = ?", [A]).rows
+    assert len(rows) == 1
+    assert rows[0]["up_cosine"] == pytest.approx(0.0)
+
+
+async def test_the_summary_names_no_topic_vote_or_dedup_failure_when_there_is_none(
+    tmp_path: Path, monkeypatch
+) -> None:
+    _fixed_clock(monkeypatch, T0)
+    deps, recorded, _ = _world(tmp_path, T0, _vectors(0.995, SPREAD))
+    deps = replace(deps, sync_promotions=lambda: SyncResult(0))
+
+    await run_digest(deps, RunOptions(period="morning"))
+
+    assert recorded[-1]["status"] == "ok"
+    assert "topic_votes_failed" not in recorded[-1]
+    assert "vote_similarity_topic_dedup_skipped" not in recorded[-1]
 
 
 async def test_a_hold_ends_once_a_human_has_acted_on_the_article(

@@ -36,6 +36,11 @@ class TestDetectLanguage:
     def test_threshold_exact(self):
         assert detect_language("一二三四五", "") == "zh"  # exactly 5
 
+    def test_only_the_first_200_content_characters_count(self):
+        title = "中文標題"  # 4 CJK, one short of the threshold
+        assert detect_language(title, "x" * 199 + "字") == "zh"
+        assert detect_language(title, "x" * 200 + "字") == "en"
+
 
 # --- Scoring system tests ---
 
@@ -198,6 +203,30 @@ class TestScoreArticlesBatch:
         assert result == {}
         assert tags == {}
         assert usage.api_calls == 0
+
+    async def test_a_reply_in_a_json_fence_with_a_remark_after_it_is_read(self, sample_articles):
+        from cyris.service_layer.scoring import score_articles_batch
+
+        scores = {"scores": [{"id": 0, "score": 85, "language": "en"}]}
+        reply = f"```json\n{json.dumps(scores)}\n```\nThat is {{all}}."
+
+        result, _, _ = await score_articles_batch(
+            sample_articles, FakeLLM(reply), snippet_length=1000
+        )
+
+        assert result == {"http://a.com": (85.0, "en")}
+
+    async def test_a_reply_with_text_around_its_object_is_read(self, sample_articles):
+        from cyris.service_layer.scoring import score_articles_batch
+
+        scores = {"scores": [{"id": 1, "score": 72, "language": "zh"}]}
+        reply = f"Here are the scores: {json.dumps(scores)} Done."
+
+        result, _, _ = await score_articles_batch(
+            sample_articles, FakeLLM(reply), snippet_length=1000
+        )
+
+        assert result == {"http://b.com": (72.0, "zh")}
 
     async def test_fallback_language(self, sample_articles):
         from cyris.service_layer.scoring import score_articles_batch
@@ -691,6 +720,22 @@ class TestBatchGuard:
         assert set(tagged) == first
         assert usage.fell_back_to_excerpts
 
+    async def test_a_pass_whose_replies_hold_no_tags_writes_no_tags(self):
+        from cyris.service_layer.scoring import score_in_batches
+
+        writes: list[dict[str, list[str]]] = []
+        llm = FakeLLM(json.dumps({"scores": [{"id": 0, "score": 6, "language": "en"}]}))
+
+        await score_in_batches(
+            [_article("http://a.com")],
+            llm,
+            snippet_length=1000,
+            persist=lambda _scores: None,
+            persist_tags=writes.append,
+        )
+
+        assert writes == []
+
 
 # --- Scorable selection tests ---
 
@@ -741,6 +786,20 @@ class TestSelectScorable:
         scored = _article("http://a.com", score=7.0)
         assert select_scorable([scored]) == []
         assert select_scorable([scored], force=True) == [scored]
+
+    def test_a_follow_article_is_skipped_and_the_articles_after_it_are_still_kept(self):
+        from cyris.service_layer.scoring import select_scorable
+
+        follow = _article("http://f.com", lane=Lane.FOLLOW)
+        read = _article("http://r.com", lane=Lane.READ)
+        assert select_scorable([follow, read]) == [read]
+
+    def test_a_scored_article_is_skipped_and_the_articles_after_it_are_still_kept(self):
+        from cyris.service_layer.scoring import select_scorable
+
+        scored = _article("http://s.com", score=5.0)
+        fresh = _article("http://n.com")
+        assert select_scorable([scored, fresh]) == [fresh]
 
 
 def test_scoring_filter_has_one_implementation() -> None:

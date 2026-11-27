@@ -99,6 +99,12 @@ async def test_a_second_ingest_of_the_same_feed_saves_nothing(tmp_path: Path) ->
     assert (again.saved, again.skipped) == (0, 1)
 
 
+async def test_an_ingest_that_fetches_nothing_saves_and_skips_nothing(tmp_path: Path) -> None:
+    report = await ingest(config(tmp_path), D1ArticleStore(SqliteD1()), [FakeSource([])])
+
+    assert (report.status, report.fetched, report.saved, report.skipped) == ("ok", 0, 0, 0)
+
+
 async def test_a_failed_fetch_is_an_ingest_status_of_its_own(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:

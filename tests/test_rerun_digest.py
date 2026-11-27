@@ -156,6 +156,21 @@ async def test_a_partly_missing_record_runs_and_counts_what_is_gone(tmp_path: Pa
     assert summaries[-1]["inputs_missing"] == 1
 
 
+async def test_every_recorded_url_whose_row_is_gone_is_counted(tmp_path: Path) -> None:
+    a, b = _article(1), _article(2)
+    gone = [f"https://example.com/gone{i}" for i in range(3)]
+    deps, summaries = _deps(
+        tmp_path,
+        replies=[_scores([a, b]), _sections(a, b)],
+        record=[a.url, *gone, b.url],
+        rows=[a, b],
+    )
+
+    await run_digest(deps, RunOptions(dry_run=True, rerun_of=RERUN))
+
+    assert summaries[-1]["inputs_missing"] == 3
+
+
 async def test_a_record_whose_rows_are_all_gone_stops_before_the_llm(tmp_path: Path) -> None:
     a = _article(1)
     deps, _ = _deps(tmp_path, replies=[_scores([a])], record=["https://example.com/gone"], rows=[])
@@ -197,6 +212,30 @@ async def test_a_dry_rerun_writes_only_its_run_record_and_keeps_scores(tmp_path:
     assert db.written_tables() == {"digest_runs"}
     assert summaries[-1]["rerun_of"] == RERUN
     assert store.get_by_urls([a.url])[0].score == 42.0
+
+
+async def test_a_dry_rerun_rescores_and_lays_its_issue_out_by_the_fresh_scores(
+    tmp_path: Path,
+) -> None:
+    one, two = _article(1, title="Kept one"), _article(2, title="Kept two")
+    rescored = {
+        "scores": [
+            {"id": 0, "score": 10, "language": "en"},
+            {"id": 1, "score": 90, "language": "en"},
+        ]
+    }
+    deps, _ = _deps(
+        tmp_path,
+        replies=[json.dumps(rescored), _sections(one, two)],
+        record=[one.url, two.url],
+        rows=[one, two],
+    )
+    deps.store.update_scores({one.url: (90.0, "en"), two.url: (10.0, "en")})
+
+    report = await run_digest(deps, RunOptions(dry_run=True, rerun_of=RERUN))
+
+    # Stored at 90 and 10, rescored 10 and 90: the fresh scores put Kept two first.
+    assert report.rendered.index("Kept two") < report.rendered.index("Kept one")
 
 
 async def test_a_rerun_reads_the_record_in_as_many_statements_as_it_needs(tmp_path: Path) -> None:

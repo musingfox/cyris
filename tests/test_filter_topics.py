@@ -684,6 +684,27 @@ async def test_an_article_named_twice_is_one_headline_in_its_first_topic(caplog)
     assert any("twice" in r.getMessage() for r in caplog.records)
 
 
+async def test_an_entry_after_one_naming_an_article_twice_is_still_read() -> None:
+    reply = {
+        "selected": [
+            _skim_entry(id=0, title="First", topic_name="A"),
+            _skim_entry(id=0, title="Again", topic_name="A"),
+            _skim_entry(id=1, title="Third", topic_name="C"),
+        ]
+    }
+
+    items = await filter_articles(
+        [_article(1), _article(2)],
+        FakeLLM(json.dumps(reply)),
+        topics=TopicBook([], date="2026-10-30", period="morning"),
+        filter_snippet_length=500,
+        output_language="zh-Hant",
+        style_prompt="",
+    )
+
+    assert [i.title for i in items] == ["First", "Third"]
+
+
 async def test_a_topics_tags_reach_its_row_and_its_record_and_not_the_tag_store() -> None:
     tags = [{"tag": "Anthropic", "kind": "entity"}, {"tag": "AI", "kind": "domain"}]
     result = await _process(ReplayModel({"One": STRIKE}, tags=tags), [_article(1, "One")])
@@ -751,6 +772,18 @@ async def _sand(entries: list, articles: list[Article], scores: dict | None = No
 
 def _same_topic(*positions: int) -> list[dict]:
     return [_skim_entry(id=i, topic_name=STRIKE) for i in positions]
+
+
+async def test_sand_follows_the_order_of_each_topics_first_kept_article() -> None:
+    entries = [_skim_entry(id=i, topic_name=name) for i, name in enumerate("ABBA")]
+
+    sand, headlines = await _sand(entries, [_article(n) for n in range(1, 5)])
+
+    assert headlines == []
+    assert [(s.heading, s.items[0].urls) for s in sand] == [
+        ("A", [_url(1), _url(4)]),
+        ("B", [_url(2), _url(3)]),
+    ]
 
 
 async def test_each_member_is_its_own_article_with_the_stand_in_excerpt() -> None:

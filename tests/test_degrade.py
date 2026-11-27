@@ -1,12 +1,15 @@
 """Tests for degraded-mode fallbacks when the LLM is unavailable."""
 
+import re
 from datetime import datetime
+from pathlib import Path
 
 import pytest
 
 from cyris.domain.models import Article, Lane
 from cyris.domain.topics import TopicBook
 from cyris.service_layer.degrade import (
+    DATELINE_MAX_CHARS,
     excerpt,
     excerpt_sections_from_articles,
     headlines_from_articles,
@@ -36,6 +39,18 @@ def test_excerpt_truncates_long_and_keeps_short():
     assert len(excerpt("a" * 500, length=200)) <= 201
     assert excerpt("short text") == "short text"
     assert excerpt("") == ""
+
+
+def test_excerpt_by_default_cuts_at_200_characters_and_adds_the_mark():
+    assert excerpt("x" * 500) == "x" * 200 + "…"
+
+
+def test_excerpt_keeps_a_leading_dateline_unless_asked_to_drop_it():
+    # Only the sand stand-in drops it (§5); every other excerpt is the text as written.
+    text = "（中央社記者王小明台北29日電）氣象署今天表示。"
+
+    assert excerpt(text) == text
+    assert excerpt(text, drop_dateline=True) == "氣象署今天表示。"
 
 
 def test_excerpt_strips_html_and_decodes_entities():
@@ -75,6 +90,26 @@ def test_strip_dateline_drops_only_a_leading_wire_dateline(text, kept):
     assert strip_dateline(text) == kept
 
 
+ARCHITECTURE = Path(__file__).parent.parent / "docs/architecture.md"
+
+
+def test_the_dateline_bound_has_a_grade_a_row_with_its_value():
+    rows = [
+        [cell.strip() for cell in line.strip().strip("|").split("|")]
+        for line in ARCHITECTURE.read_text(encoding="utf-8").splitlines()
+        if line.startswith("|") and "`DATELINE_MAX_CHARS` = " in line
+    ]
+    stated = [
+        int(match.group(1))
+        for cells in rows
+        if cells[1] == "A"
+        for match in [re.search(r"`DATELINE_MAX_CHARS` = (\d+)", " ".join(cells[2:]))]
+        if match
+    ]
+
+    assert stated == [DATELINE_MAX_CHARS], "DATELINE_MAX_CHARS has no grade-A row in §5"
+
+
 def test_headlines_keep_every_article_with_excerpt():
     items = headlines_from_articles([_article(1), _article(2)])
     assert len(items) == 2  # nothing dropped without an LLM
@@ -87,6 +122,12 @@ def test_every_fallback_item_says_its_text_is_the_articles_own():
 
     items = [*headlines, *(item for section in sections for item in section.items)]
     assert [item.passed_through for item in items] == [True] * 4
+
+
+def test_an_excerpt_section_is_headed_by_the_articles_first_source_tag():
+    article = _article(1).model_copy(update={"source_tags": ["first", "last"]})
+
+    assert [s.heading for s in excerpt_sections_from_articles([article])] == ["first"]
 
 
 def test_excerpt_sections_group_by_tag():

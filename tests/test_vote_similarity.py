@@ -1,6 +1,6 @@
 """Tests for the vote-similarity use case."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -334,3 +334,98 @@ async def test_a_voted_topic_s_other_members_are_not_candidates():
 
     assert report.downvote_seeds == 1
     assert set(report.candidate_vectors) == {"c1"}
+
+
+R, A = ArticleState.REJECTED, ArticleState.ACCEPTED
+
+
+@pytest.mark.parametrize(
+    ("rows", "candidates"),
+    [
+        ([], [article("c", "Lottery again")]),
+        ([article("d", "Lottery", R, triaged=True)], []),
+    ],
+    ids=["no-votes", "no-candidates"],
+)
+async def test_a_skipped_pass_counts_no_seeds(rows, candidates):
+    report = await judge_by_votes(FakeStore(rows), FakeEmbedder(), candidates, max_seeds=5)
+
+    assert not report.ran
+    assert (report.upvote_seeds, report.downvote_seeds) == (0, 0)
+
+
+async def test_the_seeds_are_the_newest_votes():
+    at = datetime(2026, 8, 9, tzinfo=UTC)
+    old = article("old", "Lottery old", R, triaged=True)
+    new = article("new", "Tariff new", R, triaged=True).model_copy(
+        update={"triaged_at": at + timedelta(hours=1)}
+    )
+
+    report = await judge_by_votes(
+        FakeStore([old, new]), FakeEmbedder(), [article("c", "Lottery again")], max_seeds=1
+    )
+
+    assert list(report.down_seed_vectors) == ["new"]
+
+
+async def test_seeds_past_the_first_page_of_one_topics_votes_are_found():
+    sand = [article(f"s{i}", f"Lottery {i}", R, triaged=True) for i in range(90)]
+    singles = [article(f"x{i}", f"Tariff {i}", R, triaged=True) for i in range(10)]
+
+    report = await judge_by_votes(
+        FakeStore(sand + singles),
+        FakeEmbedder(),
+        [article("c", "Lottery again")],
+        max_seeds=5,
+        topics=FakeTopics({a.url: "sand" for a in sand}),
+    )
+
+    assert report.downvote_seeds == 5
+
+
+async def test_hundreds_of_seeds_and_candidates_are_judged_with_the_cap_held():
+    # Past 256, len() hands back a fresh int each call: counts compare by value, not identity.
+    downs = [article(f"d{i}", f"Lottery {i}", R, triaged=True) for i in range(300)]
+    candidates = [article(f"c{i}", f"Tariff {i}") for i in range(300)]
+
+    report = await judge_by_votes(
+        FakeStore(downs), FakeEmbedder(), candidates, max_seeds=257, topics=FakeTopics({})
+    )
+
+    assert report.ran, report.skipped_reason
+    assert (report.downvote_seeds, len(report.candidate_vectors)) == (257, 300)
+
+
+class OffByOneEmbedder(FakeEmbedder):
+    """Answers one vector too few or too many on the given call."""
+
+    def __init__(self, call: int, delta: int) -> None:
+        super().__init__()
+        self.call, self.delta = call, delta
+
+    async def embed(self, texts):
+        vectors = await super().embed(texts)
+        if self.calls != self.call:
+            return vectors
+        return vectors[:-1] if self.delta < 0 else [*vectors, normalize([1.0, 0.0, 0.0])]
+
+
+@pytest.mark.parametrize(
+    ("call", "delta"),
+    [(1, -1), (1, 1), (2, -1), (2, 1)],
+    ids=["seeds-short", "seeds-long", "candidates-short", "candidates-long"],
+)
+async def test_an_embedder_answering_a_different_count_degrades(call, delta):
+    store = FakeStore(
+        [article("d", "Lottery draw", R, triaged=True), article("u", "Tariff up", A, triaged=True)]
+    )
+
+    report = await judge_by_votes(
+        store,
+        OffByOneEmbedder(call, delta),
+        [article("c1", "Lottery a"), article("c2", "Tariff b")],
+        max_seeds=5,
+    )
+
+    assert not report.ran
+    assert report.skipped_reason.startswith("embedding failed")

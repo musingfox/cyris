@@ -163,6 +163,44 @@ async def test_a_redelivered_sibling_is_not_kept_twice():
     assert sorted(a.id for a in result) == ["a", "b"]
 
 
+async def test_one_issue_whose_id_is_built_at_runtime_fetched_twice_is_one_article():
+    # Newsletter ids are hashes built at runtime: equal strings, never the same object.
+    first, again = "".join(["nl-", "abc123"]), "".join(["nl-", "abc", "123"])
+    assert first == again and first is not again
+
+    result = await _fetch([_issue(first, "Issue")], [_issue(again, "Issue")])
+
+    assert len(result) == 1
+
+
+async def test_siblings_whose_source_type_is_built_at_runtime_both_survive():
+    # A type read back from a row or a parsed mail equals the constant without being it.
+    def read_back(issue: Article) -> Article:
+        return issue.model_copy(update={"source_type": "".join(["news", "letter"])})
+
+    assert read_back(_issue("a", "x")).source_type is not NEWSLETTER_SOURCE_TYPE
+
+    result = await _fetch([read_back(_issue("a", "Issue 1"))], [read_back(_issue("b", "Issue 2"))])
+
+    assert sorted(a.id for a in result) == ["a", "b"]
+
+
+@pytest.mark.parametrize(
+    ("held_type", "later_type"),
+    [("mail", NEWSLETTER_SOURCE_TYPE), ("mail", "mail")],
+    ids=["other-then-newsletter", "two-others"],
+)
+async def test_only_two_newsletters_sharing_a_link_are_siblings(held_type, later_type):
+    # Article.source_type is a plain str: any other pair sharing a link collapses to the
+    # later article, as two RSS items do.
+    held = _issue("one", "Held").model_copy(update={"source_type": held_type})
+    later = _issue("two", "Later").model_copy(update={"source_type": later_type})
+
+    result = await _fetch([held], [later])
+
+    assert [a.id for a in result] == ["two"]
+
+
 @pytest.mark.asyncio
 async def test_passes_parameters_to_sources(rss_articles):
     """The window and source configs reach every source; the run cap does not.

@@ -6,6 +6,7 @@ import json
 import pytest
 from fakes import FakeLLM
 
+from cyris.domain import models
 from cyris.domain.models import DigestItem, DigestSection, UsageStats
 from cyris.service_layer.prompts import (
     OUTPUT_LANGUAGE_RULES,
@@ -143,6 +144,16 @@ async def test_only_topics_of_two_are_asked_and_the_ids_number_them_alone() -> N
     assert (lone.summary, canopy.summary) == (None, CANOPY_LINE)
 
 
+async def test_a_topic_of_three_is_asked_and_gets_its_line() -> None:
+    llm = FakeLLM(json.dumps({"lines": {"0": CANOPY_LINE}}))
+    canopy = _sand(CANOPY, [*CANOPY_REPORTS, STRIKE_REPORTS[0]])
+
+    await _write([canopy], llm)
+
+    assert len(llm.calls) == 1
+    assert canopy.summary == CANOPY_LINE
+
+
 # ---- what falls back --------------------------------------------------------------
 
 
@@ -225,3 +236,23 @@ async def test_the_call_is_added_to_the_runs_usage_and_its_receipt_names_its_spe
         "estimated_cost_usd": round(spend.estimated_cost, 6),
     }
     assert (usage.api_calls, usage.input_tokens, usage.output_tokens) == (4, 6200, 980)
+
+
+async def test_the_receipts_cost_is_the_models_price_kept_to_the_micro_dollar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A rate card of the test's own, not a real price: one with digits below the cent, so
+    # this spend has digits past the micro-dollar whatever the real table says.
+    monkeypatch.setitem(models._PRICES_PER_MTOK, "claude-haiku-5-5", (0.11, 0.53))
+    llm = FakeLLM(
+        json.dumps({"lines": {"0": CANOPY_LINE}}),
+        model="claude-haiku-5-5",
+        input_tokens=1234,
+        output_tokens=567,
+    )
+    cost = UsageStats(model=llm.model, input_tokens=1234, output_tokens=567).estimated_cost
+    assert round(cost, 5) != round(cost, 6) != round(cost, 7)
+
+    receipt = await _write([_sand(CANOPY, CANOPY_REPORTS)], llm)
+
+    assert receipt["estimated_cost_usd"] == round(cost, 6)
