@@ -71,6 +71,17 @@ def test_the_stamp_pictures_single_article_items_and_never_a_merged_one() -> Non
     ]
 
 
+def test_the_stamp_leaves_an_item_with_no_link_without_a_picture() -> None:
+    # A degraded item arrives with no URL at all; the stamp skips it and pictures the rest.
+    article = _article(1, "news", "https://news.example/1.jpg")
+    bare = DigestItem(title="Bare", summary="", sources=["news"], urls=[])
+    single = DigestItem(title="One", summary="", sources=["news"], urls=[article.url])
+
+    stamp_story_images([DigestSection(heading="S", items=[bare, single])], [article])
+
+    assert [bare.image_url, single.image_url] == [None, "https://news.example/1.jpg"]
+
+
 def _member(article: Article) -> DigestItem:
     return DigestItem(
         title=article.title, summary="", sources=[article.source_name], urls=[article.url]
