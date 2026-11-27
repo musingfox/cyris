@@ -10,10 +10,15 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.mark.asyncio
-async def test_get_success():
+async def test_get_follows_a_redirect_to_the_page():
     async with respx.mock:
-        route = respx.get("https://example.com").mock(return_value=httpx.Response(200, text="OK"))
+        moved = respx.get("https://example.com/old").mock(
+            return_value=httpx.Response(301, headers={"Location": "https://example.com/new"})
+        )
+        page = respx.get("https://example.com/new").mock(
+            return_value=httpx.Response(200, text="OK")
+        )
         async with HttpClient() as client:
-            resp = await client.get("https://example.com")
-        assert route.call_count == 1
-        assert resp.status_code == 200
+            resp = await client.get("https://example.com/old")
+        assert (moved.call_count, page.call_count) == (1, 1)
+        assert (resp.status_code, resp.text) == (200, "OK")
