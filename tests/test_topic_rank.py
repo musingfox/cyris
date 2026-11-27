@@ -117,6 +117,25 @@ def test_a_topics_own_vote_is_not_counted_again_through_its_tags() -> None:
     assert _scores([vote], at)["local-election"] == pytest.approx(vote_weight(vote, at, H))
 
 
+def test_a_topic_named_by_an_equal_id_built_at_runtime_still_skips_its_own_vote() -> None:
+    # A store hands ids back as fresh strings: equal to the voted id, not the same object.
+    asked = "-".join(["topic", "a"])
+    other = "-".join(["topic", "b"])
+    entities = {"topic-a": frozenset({"x"}), "topic-b": frozenset({"x"})}
+    population = [frozenset({"x"}), frozenset({"x"})]
+
+    scores = score_topics([asked, other], entities, population, {"topic-a": 1.0})
+
+    assert scores == {"topic-a": 1.0, "topic-b": 0.5}
+
+
+def test_a_tag_no_population_topic_holds_carries_its_vote_undiscounted() -> None:
+    # `population` is separate from `entities`: a tag none of it holds is divided by 1.
+    entities = {"asked": frozenset({"x"}), "voted": frozenset({"x"})}
+
+    assert score_topics(["asked"], entities, [], {"voted": 1.0}) == {"asked": 1.0}
+
+
 def test_a_vote_clicked_after_the_issue_does_not_count_for_it() -> None:
     assert _scores([_vote("local-election", 1, ISSUES[2])], ISSUES[1])["local-election"] == 0.0
 
