@@ -221,6 +221,20 @@ def test_a_legacy_cluster_with_reference_links_labels_its_members_by_host() -> N
     ]
 
 
+def test_a_legacy_cluster_with_fewer_sources_than_urls_labels_the_rest_by_url() -> None:
+    urls = [f"https://example.test/{i}" for i in range(3)]
+    merged = DigestItem(title="H", summary="s", sources=["Only"], urls=urls)
+    content = _content(news_clusters=[DigestSection(heading="H", items=[merged])])
+
+    (sand,) = layer_by_lane(content).sand
+
+    assert [(m.title, m.urls) for m in sand.members] == [
+        ("Only", [urls[0]]),
+        (urls[1], [urls[1]]),
+        (urls[2], [urls[2]]),
+    ]
+
+
 def test_a_legacy_cluster_counts_its_articles_not_its_reference_links() -> None:
     merged = DigestItem(
         title="One letter",
