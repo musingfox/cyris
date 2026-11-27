@@ -36,6 +36,11 @@ class TestDetectLanguage:
     def test_threshold_exact(self):
         assert detect_language("一二三四五", "") == "zh"  # exactly 5
 
+    def test_only_the_first_200_content_characters_count(self):
+        title = "中文標題"  # 4 CJK, one short of the threshold
+        assert detect_language(title, "x" * 199 + "字") == "zh"
+        assert detect_language(title, "x" * 200 + "字") == "en"
+
 
 # --- Scoring system tests ---
 
