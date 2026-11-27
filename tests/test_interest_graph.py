@@ -91,3 +91,32 @@ def test_empty_input_gives_an_empty_graph() -> None:
 
     assert graph.nodes == []
     assert graph.edges == []
+
+
+def test_nodes_rank_by_their_up_and_down_votes_together() -> None:
+    voted = [
+        VotedTag("1", "a", ArticleState.REJECTED),
+        VotedTag("2", "a", ArticleState.REJECTED),
+        VotedTag("1", "b", ArticleState.ACCEPTED),
+        VotedTag("2", "b", ArticleState.ACCEPTED),
+        VotedTag("3", "b", ArticleState.ACCEPTED),
+        VotedTag("4", "z", ArticleState.ACCEPTED),
+    ]
+
+    assert [n.tag for n in _graph(voted).nodes] == ["b", "a", "z"]
+
+
+def test_a_clock_longer_than_the_span_is_full_brightness_and_no_more() -> None:
+    voted = [VotedTag("X", "c", ArticleState.REJECTED)]
+    graph = _graph(voted, [TagClock("c", NOW + timedelta(days=2 * DAYS))])
+
+    assert _node(graph, "c").brightness == 1.0
+
+
+def test_a_tie_of_hundreds_of_votes_each_way_is_mixed() -> None:
+    voted = [VotedTag(f"u{i}", "t", ArticleState.ACCEPTED) for i in range(300)]
+    voted += [VotedTag(f"d{i}", "t", ArticleState.REJECTED) for i in range(300)]
+
+    node = _node(_graph(voted), "t")
+
+    assert (node.up, node.down, node.polarity) == (300, 300, "mixed")
