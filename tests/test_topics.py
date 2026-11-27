@@ -101,6 +101,15 @@ def test_a_topic_keeps_the_designs_five_tags_at_most() -> None:
     assert [t.tag for t in topic.tags] == list("abcde")
 
 
+def test_a_topic_placed_with_seven_tags_carries_five_into_the_issue() -> None:
+    # ensure() hands sand and headlines the topic as placed, not the records' copy.
+    book = _book()
+
+    book.place("u1", position=None, name="Story", tags=_domain(*"abcdefg"))
+
+    assert [t.tag for t in book.ensure("u1", "Story").tags] == list("abcde")
+
+
 def _stored(tid: str, name: str, *tags: TopicTag, minutes: int = 0) -> TopicSummary:
     return TopicSummary(
         id=tid,
@@ -219,6 +228,11 @@ def test_a_topic_id_is_fresh_each_issue_and_stable_within_one() -> None:
     assert topic_id(DATE, PERIOD, "Story") != topic_id(DATE, PERIOD, "Another")
 
 
+def test_a_topic_id_keeps_the_form_stored_issues_hold() -> None:
+    # Stored issues and votes key topics by this id, so its shape cannot change in a release.
+    assert topic_id("2026-10-29", "morning", "First") == "2026-10-29-morning-e0996a37"
+
+
 def test_at_most_the_cap_of_recent_topics_is_offered_the_most_recently_seen_first() -> None:
     start = datetime(2026, 10, 1, tzinfo=UTC)
     oldest_first = [
@@ -290,6 +304,12 @@ def test_a_long_name_is_cut_to_the_cap_and_marked_cut() -> None:
     assert len(name) <= MAX_TOPIC_NAME_LENGTH
     assert name.endswith("word…")
     assert topic_name("x" * MAX_TOPIC_NAME_LENGTH) == "x" * MAX_TOPIC_NAME_LENGTH
+
+
+def test_a_long_name_is_cut_to_exactly_the_cap_its_last_character_the_mark() -> None:
+    name = topic_name("x" * (MAX_TOPIC_NAME_LENGTH * 4))
+
+    assert name == "x" * (MAX_TOPIC_NAME_LENGTH - 1) + "…"
 
 
 def test_every_way_in_stores_and_offers_the_clean_name() -> None:
