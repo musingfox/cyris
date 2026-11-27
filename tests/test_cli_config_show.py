@@ -239,7 +239,15 @@ def test_the_listed_minimum_window_is_read_from_the_code(tmp_path: Path, monkeyp
 def test_no_threshold_row_appears_even_with_one_in_the_file(tmp_path: Path) -> None:
     toml = settings_toml().replace("[vote_similarity]\n", "[vote_similarity]\nthreshold = 0.9\n", 1)
 
-    assert "vote_similarity.threshold" not in _rows(_show(tmp_path, toml).stdout)
+    result = _show(tmp_path, toml)
+
+    assert result.exit_code == 0, result.output
+    assert {key for key in _rows(result.stdout) if key.startswith("vote_similarity.")} == {
+        *(key for key in GRADE_D_KEYS if key.startswith("vote_similarity.")),
+        "vote_similarity.outlier_margin",
+        "vote_similarity.min_outlier_window",
+        "vote_similarity.suppression_clock_days",
+    }
 
 
 def test_the_output_has_no_terminal_escapes_and_aligned_columns(
