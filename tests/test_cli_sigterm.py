@@ -60,8 +60,10 @@ def test_run_enters_the_pipeline_with_sigterm_handled() -> None:
 def test_run_puts_the_previous_sigterm_handler_back() -> None:
     before = signal.getsignal(signal.SIGTERM)
 
-    _invoke_run_recording_sigterm_handler()
+    result, [during] = _invoke_run_recording_sigterm_handler()
 
+    assert result.exit_code == 0, result.output
+    assert during != before
     assert signal.getsignal(signal.SIGTERM) == before
 
 
