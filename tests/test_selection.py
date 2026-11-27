@@ -176,6 +176,40 @@ class TestLayerByScore:
 
         assert [_titles(s) for s in result.featured_articles] == [["a"], ["b"]]
 
+    def test_a_degraded_section_before_a_group_does_not_stop_the_group_leading(self):
+        result = _layer(
+            _topic("Degraded", _article("x", 99), summary=None),
+            _topic("Topic", _article("a", 80), _article("b", 75)),
+        )
+
+        assert _titles(result.featured_articles[0]) == ["a", "b"]
+        assert [_titles(s) for s in result.featured_articles[1:]] == [["x"]]
+
+    def test_a_group_of_three_qualifying_articles_leads_whole(self):
+        result = _layer(_topic("Topic", _article("a", 90), _article("b", 80), _article("c", 70)))
+
+        lead, *features = result.featured_articles
+        assert (lead.summary, _titles(lead)) == ("Group summary", ["a", "b", "c"])
+        assert features == []
+
+    def test_a_zero_score_ranks_below_a_positive_and_above_a_negative_one(self):
+        result = _layer(
+            _topic(
+                "Topic",
+                _article("none", None),
+                _article("neg", -0.5),
+                _article("zero", 0.0),
+                _article("half", 0.5),
+            ),
+        )
+
+        assert [_titles(s) for s in result.featured_articles] == [
+            ["half"],
+            ["zero"],
+            ["neg"],
+            ["none"],
+        ]
+
     @pytest.mark.parametrize("threshold", [70, 95], ids=["in-the-group", "as-a-feature"])
     def test_an_article_two_sections_name_is_drawn_once(self, threshold):
         result = _layer(
@@ -399,6 +433,23 @@ def test_count_dead_links_counts_each_sand_member_the_fold_shows():
     )
     content = _base_content(
         news_clusters=[DigestSection(heading="topic", items=[merged], members=[dead, live])],
+    )
+    assert count_dead_links(content) == 1
+
+
+def test_count_dead_links_counts_a_dead_member_of_a_three_member_fold():
+    first = DigestItem(title="one", summary="", sources=["a"], urls=["https://a.com/1"])
+    second = DigestItem(title="two", summary="", sources=["a"], urls=["https://a.com/2"])
+    dead = _dead_item()
+    members = [first, second, dead]
+    merged = DigestItem(
+        title="topic",
+        summary="",
+        sources=["a", "a", "n"],
+        urls=[u for m in members for u in m.urls],
+    )
+    content = _base_content(
+        news_clusters=[DigestSection(heading="topic", items=[merged], members=members)],
     )
     assert count_dead_links(content) == 1
 
