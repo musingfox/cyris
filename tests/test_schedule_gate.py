@@ -13,6 +13,7 @@ from cyris.service_layer.schedule import (
     SELF_HOSTED_TIMES,
     catch_up,
     due_period,
+    missed_slot,
     schedule_counts,
     validate_schedule,
 )
@@ -100,6 +101,23 @@ def test_a_self_hosted_schedule_is_still_exactly_two_hours():
         validate_schedule(["08:00"])
 
 
+def test_a_hosted_schedule_of_three_times_is_refused_in_the_hosted_words():
+    with pytest.raises(ValueError, match="hosted digest schedule is one time, or two"):
+        validate_schedule(["08:00", "12:00", "20:00"], HOSTED_TIMES)
+
+
+def test_a_self_hosted_count_built_by_the_caller_keeps_the_self_hosted_words():
+    # `counts` is compared by value: an equal set built at runtime is the same edition.
+    with pytest.raises(ValueError, match="exactly two times"):
+        validate_schedule(["08:00"], frozenset({2}))
+
+
+@pytest.mark.parametrize("bad", ["-1:00", "24:00", "08:-5"])
+def test_a_time_outside_the_days_whole_hours_is_refused(bad):
+    with pytest.raises(ValueError, match="must be a whole hour"):
+        validate_schedule([bad, "20:00"])
+
+
 def _digest_runs(case: dict):
     """What `D1RunLog.since` answers for a case's `digest_runs` table: the period's rows since."""
     if case["runs"] is None:
@@ -119,3 +137,19 @@ def test_catch_up_agrees_with_the_app_workers_plan_tick(case):
 
     expected = case["catch_up"]
     assert (None if slot is None else {"period": slot.period, "date": slot.date}) == expected
+
+
+def test_a_slot_whose_only_run_failed_to_publish_is_caught_up():
+    # run_digest records "publish_failed" in digest_runs; only an ok run marks a slot done.
+    now = datetime(2026, 8, 27, 9, 30, tzinfo=TAIPEI)
+    runs = [{"status": "publish_failed", "dry_run": 0}]
+
+    slot = catch_up(now, ["08:00", "20:00"], SELF_HOSTED_TIMES, lambda period, since: runs)
+
+    assert slot is not None
+    assert (slot.period, slot.date) == ("morning", "2026-08-27")
+
+
+def test_a_digest_hour_is_not_its_own_missed_slot():
+    # missed_slot looks only at hours begun before now's own hour.
+    assert missed_slot(datetime(2026, 8, 27, 8, 30, tzinfo=TAIPEI), ["08:00", "20:00"]) is None
