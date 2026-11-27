@@ -130,7 +130,7 @@ def test_a_failed_write_leaves_every_vote_queued_for_the_next_run(tenant):
 
     articles.record_verdicts = fails
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RuntimeError, match="gateway down"):
         sync_hosted_votes(db, articles, topics)
 
     assert db.query("SELECT count(*) AS n FROM hosted_votes").rows[0]["n"] == 1

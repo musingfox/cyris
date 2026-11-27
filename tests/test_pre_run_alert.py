@@ -68,6 +68,13 @@ def _failing_build_deps(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("cyris.bootstrap.build_deps", build_deps)
 
 
+def _assert_stopped_at_the_settings(result, caplog, key: str) -> None:
+    """The run's own exit 1 at the settings gate; an exception escaping it also exits 1."""
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit), result.exception
+    assert key in caplog.text
+
+
 def test_incomplete_settings_on_a_digest_hour_alert_every_channel(
     tmp_path: Path, d1: SqliteD1, alerts, monkeypatch
 ) -> None:
@@ -95,7 +102,7 @@ def test_incomplete_settings_on_a_digest_hour_alert_every_channel(
 
 
 def test_incomplete_settings_off_the_hour_alert_nobody(
-    tmp_path: Path, d1: SqliteD1, alerts, monkeypatch
+    tmp_path: Path, d1: SqliteD1, alerts, monkeypatch, caplog
 ) -> None:
     seed_d1_settings(
         d1, omit=["digest.max_articles_per_digest"], **{"notify.discord_webhook_url": WEBHOOK}
@@ -105,12 +112,12 @@ def test_incomplete_settings_off_the_hour_alert_nobody(
 
     result = runner.invoke(app, ["run", "--if-due", *_paths(tmp_path)])
 
-    assert result.exit_code == 1
+    _assert_stopped_at_the_settings(result, caplog, "digest.max_articles_per_digest")
     assert alerts == {"discord": [], "mail": []}
 
 
 def test_settings_without_a_schedule_alert_nobody(
-    tmp_path: Path, d1: SqliteD1, alerts, monkeypatch
+    tmp_path: Path, d1: SqliteD1, alerts, monkeypatch, caplog
 ) -> None:
     # Whether this hour is a digest hour cannot be known, and guessing means 24 alerts a day.
     seed_d1_settings(
@@ -121,7 +128,7 @@ def test_settings_without_a_schedule_alert_nobody(
 
     result = runner.invoke(app, ["run", "--if-due", *_paths(tmp_path)])
 
-    assert result.exit_code == 1
+    _assert_stopped_at_the_settings(result, caplog, "general.digest_schedule")
     assert alerts == {"discord": [], "mail": []}
 
 
@@ -173,13 +180,17 @@ def test_a_run_started_by_hand_alerts_nobody(
     result = runner.invoke(app, ["run", *_paths(tmp_path)])
 
     assert isinstance(result.exception, RuntimeError)
+    assert str(result.exception) == "D1 token rejected"
     assert alerts == {"discord": [], "mail": []}
 
 
 def test_a_failed_alert_leaves_the_exit_code(
-    tmp_path: Path, d1: SqliteD1, alerts, monkeypatch
+    tmp_path: Path, d1: SqliteD1, alerts, monkeypatch, caplog
 ) -> None:
-    async def broken(*_args) -> None:
+    tried: list[str] = []
+
+    async def broken(webhook_url: str, _alert) -> None:
+        tried.append(webhook_url)
         raise OSError("Discord unreachable")
 
     monkeypatch.setattr("cyris.adapters.notify.send_discord_alert", broken)
@@ -191,4 +202,5 @@ def test_a_failed_alert_leaves_the_exit_code(
 
     result = runner.invoke(app, ["run", "--if-due", *_paths(tmp_path)])
 
-    assert result.exit_code == 1
+    assert tried == [WEBHOOK]
+    _assert_stopped_at_the_settings(result, caplog, "digest.max_articles_per_digest")

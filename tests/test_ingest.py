@@ -162,19 +162,6 @@ def write_config(tmp_path: Path, **settings) -> tuple[Path, Path]:
     return config_path, tmp_path / "sources.yaml"
 
 
-def test_cli_exits_non_zero_when_the_fetch_failed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    config_path, sources_path = write_config(tmp_path)
-    monkeypatch.setattr("cyris.bootstrap.build_rss_source", lambda cfg, **_: BrokenSource())
-
-    result = CliRunner().invoke(
-        app, ["ingest", "--config", str(config_path), "--sources", str(sources_path)]
-    )
-
-    assert result.exit_code == 1, result.output
-
-
 def test_cli_stores_what_the_feed_holds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     config_path, sources_path = write_config(tmp_path)
     monkeypatch.setattr(

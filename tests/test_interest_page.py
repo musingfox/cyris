@@ -1,6 +1,7 @@
 """The container draws the interest map from D1 on request; no run publishes it to Pages."""
 
 import json
+import re
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -80,8 +81,13 @@ async def test_the_container_draws_the_map_from_d1_as_it_is_now(serve) -> None:
 async def test_the_map_carries_tags_and_counts_only(serve) -> None:
     client = await serve(D1InterestReader(_seeded_db()).read)
 
-    page = await (await client.get("/interest")).text()
+    resp = await client.get("/interest")
 
+    assert resp.status == 200
+    page = await resp.text()
+    # Tag, up, down: y has the accepted and the rejected article, x the accepted one.
+    rows = re.findall(r"<tr><td[^>]*>(\w+)</td><td>(\d+)</td><td>(\d+)</td>", page)
+    assert rows == [("y", "1", "1"), ("x", "1", "0")]
     assert "https://example.test" not in page
     assert "Secret title" not in page
 

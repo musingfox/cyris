@@ -135,6 +135,7 @@ def test_an_empty_preview_fails_and_leaves_the_file_as_it_was(
     result = _run(tmp_path, "--dry-run", "--output", str(out))
 
     assert result.exit_code == 1
+    assert "Nothing to preview: no_articles" in result.stderr
     assert out.read_text(encoding="utf-8") == "old"
 
 
@@ -154,6 +155,8 @@ def test_the_backend_line_is_not_printed_without_output(tmp_path: Path, wire) ->
 
     result = _run(tmp_path, "--dry-run")
 
+    assert result.exit_code == 0, result.output
+    assert "<html" in result.stdout
     assert "Store backend" not in result.stdout
 
 
@@ -189,4 +192,5 @@ def test_a_preview_at_an_unscheduled_hour_writes_no_file(tmp_path: Path, wire, m
     result = _run(tmp_path, "--dry-run", "--if-due", "--output", str(out))
 
     assert result.exit_code == 1
+    assert "Not a digest hour" in result.stderr
     assert not out.exists()

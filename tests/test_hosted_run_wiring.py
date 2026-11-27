@@ -1040,7 +1040,7 @@ def test_a_hosted_run_whose_wiring_fails_tells_the_operator(
 
 
 def test_a_hosted_dry_run_that_cannot_start_tells_nobody(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     told = _operator_told(monkeypatch)
     _hosted_env(monkeypatch)
@@ -1056,6 +1056,8 @@ def test_a_hosted_dry_run_that_cannot_start_tells_nobody(
     )
 
     assert result.exit_code == 1
+    # It stopped where a run that is not a preview tells the operator: at the missing setting.
+    assert "max_articles_per_digest" in caplog.text
     assert told == []
 
 
