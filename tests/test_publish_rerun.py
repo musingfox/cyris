@@ -187,6 +187,34 @@ async def test_an_older_issue_is_not_latest_and_writes_nothing_but_its_run_recor
     assert site.deploys == []
 
 
+async def test_a_refused_rerun_names_the_latest_issue_by_date_then_period(tmp_path: Path) -> None:
+    a = _article(1, "Kept one")
+    deps, *_ = _setup(tmp_path, [a], replies=[_scores([a])])
+    for date, period in [
+        ("2026-10-14", "evening"),
+        ("2026-10-15", "morning"),
+        ("2026-10-15", "evening"),
+    ]:
+        deps.digest_store.save(_content(date, period), raw_page=False)
+
+    report = await run_digest(deps, RunOptions(dry_run=False, rerun_of=RERUN, period="evening"))
+
+    assert (report.status, report.later) == ("not_latest", ("2026-10-15", "evening"))
+
+
+async def test_a_publishing_rerun_stores_the_scores_it_computed(
+    tmp_path: Path, today_is_the_16th
+) -> None:
+    one = _article(1, "Kept one")
+    deps, *_ = _setup(tmp_path, [one], replies=[_scores([one]), _sections([one])])
+    deps.digest_store.save(_content(RERUN, "evening"), raw_page=False)
+
+    report = await run_digest(deps, RunOptions(dry_run=False, rerun_of=RERUN, period="evening"))
+
+    assert report.status == "ok"
+    assert [a.score for a in deps.store.get_by_urls([one.url])] == [80.0]
+
+
 async def test_a_human_verdict_survives_and_a_pending_article_is_accepted(tmp_path: Path) -> None:
     u1, u2, u3 = _article(1, "Kept one"), _article(2, "Cut earlier"), _article(3, "Human reject")
     deps, _, _, _, _, _, _, _ = _setup(
@@ -233,6 +261,22 @@ async def test_a_failed_page_check_reports_publish_failed_and_keeps_the_new_cont
     assert report.status == "publish_failed"
     assert summaries[-1]["status"] == "publish_failed"
     assert deps.digest_store.load(RERUN, "evening").content.articles_included == 1
+
+
+async def test_a_rerun_with_no_page_check_deploys_nothing_and_reports_publish_failed(
+    tmp_path: Path, today_is_the_16th
+) -> None:
+    # Deps.page_serves defaults to None; a rerun publishes only what it can verify.
+    a = _article(1, "Kept one")
+    deps, _, site, _, _, _, _, _ = _setup(tmp_path, [a], replies=[_scores([a]), _sections([a])])
+    deps = replace(deps, page_serves=None)
+    deps.digest_store.save(_content(RERUN, "evening"), raw_page=False)
+
+    report = await run_digest(deps, RunOptions(dry_run=False, rerun_of=RERUN, period="evening"))
+
+    assert report.status == "publish_failed"
+    assert site.deploys == []
+    assert f"/{SLUG}.html" not in site.live
 
 
 async def test_usage_is_logged_once_with_the_rerun_content(tmp_path: Path) -> None:
