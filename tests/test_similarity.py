@@ -101,6 +101,40 @@ def test_an_outlier_with_an_upvote_at_least_as_close_is_kept():
     assert not next(v for v in verdicts if v.url == "u9").suppressed
 
 
+def test_an_outlier_closer_to_an_upvote_than_to_the_downvote_is_not_suppressed():
+    window = _window([*_DOWN_BASE, 0.58])
+
+    verdicts = judge(window, upvoted=[window["u9"]], downvoted=[[1.0, 0.0]])
+
+    [outlier] = [v for v in verdicts if v.url == "u9"]
+    assert outlier.outlier_score > OUTLIER_MARGIN
+    assert outlier.up_similarity > outlier.down_similarity
+    assert not outlier.suppressed
+
+
+def test_an_outlier_as_close_to_an_upvote_as_to_the_downvote_is_not_suppressed():
+    verdicts = judge(_window([*_DOWN_BASE, 0.58]), upvoted=[[1.0, 0.0]], downvoted=[[1.0, 0.0]])
+
+    [outlier] = [v for v in verdicts if v.url == "u9"]
+    assert outlier.outlier_score > OUTLIER_MARGIN
+    assert outlier.up_similarity == outlier.down_similarity
+    assert not outlier.suppressed
+
+
+def test_a_score_of_exactly_the_margin_does_not_suppress():
+    # cosine with [1, 0] is the first component: nine ordinary values at 0 and ±s give a
+    # median of 0 and a spread of s, so an outlier at 3.5 / 8 scores 0.6745 * 3.5 / 0.6745.
+    s = 0.6745 / 8
+    window = {f"u{i}": [x, 0.0] for i, x in enumerate([0.0] * 3 + [s] * 3 + [-s] * 3)}
+    window["out"] = [OUTLIER_MARGIN / 8, 0.0]
+
+    verdicts = judge(window, [], [[1.0, 0.0]])
+
+    [outlier] = [v for v in verdicts if v.url == "out"]
+    assert outlier.outlier_score == OUTLIER_MARGIN
+    assert not outlier.suppressed
+
+
 def test_a_window_below_the_minimum_suppresses_nothing():
     verdicts = judge(_window([*_DOWN_BASE[:8], 0.70]), [], [[1.0, 0.0]])
 
@@ -157,6 +191,12 @@ def test_nearest_names_the_closest_seed_and_its_cosine():
 
     assert url == "near"
     assert similarity == max_similarity(candidate, list(seeds.values()))
+
+
+def test_nearest_names_the_closest_seed_even_when_a_farther_one_sorts_after_it():
+    seeds = {"a-close": unit(1.0, 0.0), "b-far": unit(0.0, 1.0)}
+
+    assert nearest(unit(1.0, 0.0), seeds) == ("a-close", 1.0)
 
 
 def test_nearest_without_seeds_names_nothing():
