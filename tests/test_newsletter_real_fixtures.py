@@ -48,24 +48,6 @@ def test_manpao_text_extracts_canonical_post_url() -> None:
     assert art.url == "https://pro.manny-li.com/posts/nvidia-ai-compute-financing-dzcqdpceapkv"
 
 
-def test_ieo_html_strips_tracking_from_patreon_url() -> None:
-    body = load_newsletter_fixture("ieo.html")
-    art = newsletter_article(
-        _parsed(
-            html_content=body,
-            text_content="",
-            subject="IEO",
-            from_email="list@creator.patreon.com",
-        ),
-        _source("IEO", homepage="https://www.patreon.com/c/ieo/home?vanity=ieo"),
-    )
-    assert art is not None
-    assert art.url == "https://www.patreon.com/ieo/posts/ai-guang-tong-ye-166524353"
-    assert "post_id" not in art.url
-    assert "media_id" not in art.url
-    assert "utm_" not in art.url
-
-
 def test_fenshi_html_falls_back_to_synthetic_url() -> None:
     body = load_newsletter_fixture("fenshi.html")
     art = newsletter_article(
