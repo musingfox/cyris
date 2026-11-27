@@ -58,6 +58,15 @@ def test_the_recent_list_reads_the_ceilings_window_and_keeps_what_the_votes_hold
     assert expires["voted-up"] > AT + timedelta(days=4)
 
 
+def test_a_one_day_lifetime_still_reads_an_upvoted_topic_seen_a_day_and_a_half_ago() -> None:
+    # The window is MAX_TOPIC_LIFETIMES lifetimes long, so a one-day lifetime reads past a day.
+    store = FakeTopics([_summary("held", 1.5)], [_vote("held", 1, 0)])
+
+    recent, _ = recent_topic_list(store, AT, half_life_days=H, lifetime_days=1)
+
+    assert [t.id for t in recent] == ["held"]
+
+
 def test_the_recent_list_reads_three_lifetimes_back_to_revive_a_topic_past_two() -> None:
     store = FakeTopics(
         [_summary("revived", 17.5), _summary("unvoted", 17.5)],
