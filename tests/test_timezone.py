@@ -1,5 +1,8 @@
 """Tests for timezone utilities."""
 
+from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
+
 import pytest
 
 from cyris.utils.timezone import convert_to_utc, now_in_timezone
@@ -31,9 +34,11 @@ class TestConvertToUtc:
 
 
 class TestNowInTimezone:
-    def test_returns_aware_datetime(self):
+    def test_returns_now_in_the_named_zone(self):
         dt = now_in_timezone("Asia/Taipei")
-        assert dt.tzinfo is not None
+        assert dt.tzinfo == ZoneInfo("Asia/Taipei")
+        assert dt.utcoffset() == timedelta(hours=8)
+        assert abs(dt - datetime.now(UTC)) < timedelta(minutes=1)
 
     def test_invalid_timezone(self):
         with pytest.raises(ValueError, match="Invalid timezone"):
