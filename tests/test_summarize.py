@@ -607,3 +607,113 @@ class TestFollowTitles:
         assert (item.title, item.summary) == (title, summary)
         assert item.urls == [FOLLOWED_URL]
         assert section.heading == "A newsletter"
+
+
+def _numbered(n: int, *, tag: str = "t", source: str = "S", lane: Lane = Lane.READ, **fields):
+    values = {
+        "id": n,
+        "title": f"T{n}",
+        "url": f"https://x.test/{n}",
+        "content": "c",
+        "published_at": datetime(2026, 10, 29, tzinfo=UTC),
+        "source_name": source,
+        "source_lane": lane,
+        "source_tags": [tag],
+    }
+    return Article(**(values | fields))
+
+
+class _FirstCallFails(FakeLLM):
+    async def complete(self, prompt, **kwargs):
+        if not self.calls:
+            self.calls.append({"prompt": prompt, **kwargs})
+            raise RuntimeError("down")
+        return await super().complete(prompt, **kwargs)
+
+
+def _urls(sections) -> list[list[str]]:
+    return [item.urls for section in sections for item in section.items]
+
+
+class TestOneBadPartCostsOnlyItself:
+    """A failed call, an unreadable id or a malformed section loses only its own part."""
+
+    async def test_a_failed_tag_group_falls_back_alone_and_the_next_is_summarized(self):
+        reply = {"sections": [{"heading": "H", "summary": "S", "article_ids": [0]}]}
+
+        sections = await summarize_articles(
+            [_numbered(1, tag="first"), _numbered(2, tag="second")],
+            _FirstCallFails(json.dumps(reply)),
+            snippet_length=100,
+            output_language="en",
+            style_prompt="",
+        )
+
+        assert _urls(sections) == [["https://x.test/1"], ["https://x.test/2"]]
+        assert [s.summary for s in sections] == [None, "S"]
+
+    async def test_an_unreadable_id_is_skipped_and_the_section_keeps_its_other_articles(self):
+        reply = {"sections": [{"heading": "H", "summary": "S", "article_ids": ["nope", 0]}]}
+
+        sections = await summarize_articles(
+            [_numbered(1), _numbered(2)],
+            FakeLLM(json.dumps(reply)),
+            snippet_length=100,
+            output_language="en",
+            style_prompt="",
+        )
+
+        assert _urls(sections) == [["https://x.test/1"]]
+
+    async def _explained(self, llm: FakeLLM, group: list[Article]) -> dict[str, str]:
+        found = await explain_follow_articles(
+            group, llm, snippet_length=100, output_language="en", style_prompt=""
+        )
+        return {url: e.summary for url, e in found.items()}
+
+    async def test_a_section_without_summaries_does_not_end_the_reply(self):
+        reply = {"sections": [{"heading": "x"}, {"summaries": {"0": "Explained."}}]}
+
+        found = await self._explained(FakeLLM(json.dumps(reply)), [_numbered(1, lane=Lane.FOLLOW)])
+
+        assert found == {"https://x.test/1": "Explained."}
+
+    async def test_ids_outside_the_group_are_ignored_and_the_rest_explained(self):
+        group = [_numbered(1, lane=Lane.FOLLOW), _numbered(2, lane=Lane.FOLLOW)]
+        reply = {"sections": [{"summaries": {"-1": "Wrong.", "0": "First.", "5": "Out."}}]}
+
+        found = await self._explained(FakeLLM(json.dumps(reply)), group)
+
+        assert found == {"https://x.test/1": "First."}
+
+    async def test_without_a_usage_record_a_failed_source_is_left_out_and_the_next_explained(
+        self,
+    ):
+        # usage defaults to None; a failed source is then absent, not an error.
+        group = [
+            _numbered(1, source="A", lane=Lane.FOLLOW),
+            _numbered(2, source="B", lane=Lane.FOLLOW),
+        ]
+        llm = _FirstCallFails(json.dumps({"sections": [{"summaries": {"0": "Second."}}]}))
+
+        assert await self._explained(llm, group) == {"https://x.test/2": "Second."}
+
+
+async def test_explain_asks_the_model_at_temperature_one():
+    llm = FakeLLM(json.dumps({"sections": [{"summaries": {"0": "E."}}]}))
+
+    await explain_follow_articles(
+        [_numbered(1, lane=Lane.FOLLOW)],
+        llm,
+        snippet_length=100,
+        output_language="en",
+        style_prompt="",
+    )
+
+    assert [call["temperature"] for call in llm.calls] == [1.0]
+
+
+def test_an_unexplained_follow_item_shows_an_80_character_excerpt():
+    (section,) = build_follow_sections([_numbered(1, lane=Lane.FOLLOW, content="x" * 300)])
+
+    assert section.items[0].summary == "x" * 80 + "…"
