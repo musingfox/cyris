@@ -13,7 +13,7 @@ import pytest
 pytestmark = [pytest.mark.unit, pytest.mark.guard]
 
 _LEVELS = ("unit", "integration", "e2e")
-_TAGS = frozenset({"guard", "js", "real_fixture"})
+_TAGS = frozenset({"guard", "js"})
 _SELECTABLE = frozenset(_LEVELS) | _TAGS
 
 
@@ -283,10 +283,7 @@ def test_a_call_form_mark_in_pytestmark_is_ignored() -> None:
 
 
 def test_registered_tags_are_accepted() -> None:
-    source = (
-        "import pytest\n"
-        "pytestmark = [pytest.mark.unit, pytest.mark.guard, pytest.mark.real_fixture]\n"
-    )
+    source = "import pytest\npytestmark = [pytest.mark.unit, pytest.mark.guard, pytest.mark.js]\n"
 
     assert unregistered_mark_violations(source) == []
 

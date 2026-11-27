@@ -229,8 +229,7 @@ class TestNewsletterBodyIsTheArticle:
 
 
 # Shaped like the real text/plain bodies — join link first, web-version link
-# second, both on the sender's host — but invented. The real samples live outside
-# the repo and are exercised by tests/test_newsletter_real_fixtures.py.
+# second, both on the sender's host — but invented.
 JOIN_THEN_WEB_VERSION_BODY = (
     "？點擊這裡訂閱 (https://letter.example.com/join) 。\n"
     "\n"

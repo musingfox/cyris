@@ -1,6 +1,5 @@
 """Shared test fixtures for Cyris."""
 
-import os
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -17,7 +16,6 @@ from cyris.domain.models import (
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
-_DEFAULT_NEWSLETTER_FIXTURES = Path.home() / "cyris-newsletter-fixtures"
 
 
 @pytest.fixture(autouse=True)
@@ -57,22 +55,6 @@ def d1(monkeypatch: pytest.MonkeyPatch) -> SqliteD1:
     monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "tok")
     return db
-
-
-def newsletter_fixtures_dir() -> Path:
-    """Directory of real newsletter samples; override with CYRIS_NEWSLETTER_FIXTURES."""
-    override = os.environ.get("CYRIS_NEWSLETTER_FIXTURES")
-    if override:
-        return Path(override)
-    return _DEFAULT_NEWSLETTER_FIXTURES
-
-
-def load_newsletter_fixture(filename: str) -> str:
-    """Read a real newsletter sample from disk. Skip (do not fail) if the file is missing."""
-    path = newsletter_fixtures_dir() / filename
-    if not path.is_file():
-        pytest.skip(f"missing newsletter fixture {filename} under {path.parent}")
-    return path.read_text(encoding="utf-8")
 
 
 @pytest.fixture
