@@ -56,7 +56,6 @@ markers = [
     "e2e: a feature-oriented test against a complete environment",
     "guard: asserts that two repo sources agree",
     "js: a Worker JavaScript suite",
-    "real_fixture: newsletter samples kept outside the repo",
 ]
 
 [dependency-groups]

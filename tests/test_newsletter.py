@@ -229,8 +229,7 @@ class TestNewsletterBodyIsTheArticle:
 
 
 # Shaped like the real text/plain bodies — join link first, web-version link
-# second, both on the sender's host — but invented. The real samples live outside
-# the repo and are exercised by tests/test_newsletter_real_fixtures.py.
+# second, both on the sender's host — but invented.
 JOIN_THEN_WEB_VERSION_BODY = (
     "？點擊這裡訂閱 (https://letter.example.com/join) 。\n"
     "\n"
@@ -609,6 +608,47 @@ class TestNewsletterViewUrlResolutionOrder:
         )
         assert art is not None
         assert art.url == "https://site.com/x?ref=keep"
+
+
+# Shaped like a Patreon post notification — the post linked from www. and from the
+# open. app host, each copy carrying utm_ and the per-recipient post_id and media_id,
+# beside the creator home, email settings and legal pages on the same host — but
+# invented: the creator, the post and the ids are made up.
+PATREON_ISSUE_HTML = (
+    "<html><body>"
+    '<a href="https://www.patreon.com/fictional-studio/posts/invented-title-100000001'
+    "?utm_medium=email&amp;utm_source=post_link&amp;utm_campaign=patron_engagement"
+    '&amp;post_id=100000001&amp;media_id=200000002">Invented title</a>'
+    "<p>A placeholder paragraph standing in for the post.</p>"
+    '<a href="https://open.patreon.com/fictional-studio/posts/invented-title-100000001'
+    '?utm_source=app&amp;post_id=100000001">Open in the app</a>'
+    '<a href="https://www.patreon.com/c/fictional-studio/home?utm_medium=email">Creator</a>'
+    '<a href="https://www.patreon.com/settings/email/fictional-studio">Email settings</a>'
+    '<a href="https://www.patreon.com/policy/legal">Legal</a>'
+    "</body></html>"
+)
+
+
+class TestAPlatformIssue:
+    def test_the_post_link_comes_without_its_tracking_params(self):
+        # The From domain is Patreon's mail host, not the post's, so only the configured
+        # homepage names the sender; its creator-home path is itself no post.
+        source = SourceConfig(
+            name="Fictional Studio",
+            lane=Lane.READ,
+            tags=[],
+            homepage="https://www.patreon.com/c/fictional-studio/home?vanity=fictional-studio",
+        )
+        art = newsletter_article(
+            _make_parsed(
+                text_content="",
+                html_content=PATREON_ISSUE_HTML,
+                from_email="list@creator.patreon.com",
+            ),
+            source,
+        )
+        assert art is not None
+        assert art.url == "https://www.patreon.com/fictional-studio/posts/invented-title-100000001"
 
 
 class TestSenderDomain:
