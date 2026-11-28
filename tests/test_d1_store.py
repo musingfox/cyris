@@ -3,10 +3,12 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx
 import pytest
 from fakes import CompoundSelectLimitedD1, SqliteD1, insert_stored, make_config
 
 from cyris.adapters.output.usage_log import append_usage_d1
+from cyris.adapters.store import d1
 from cyris.adapters.store.d1 import D1Client, D1Error, chunk_rows
 from cyris.adapters.store.d1_store import D1ArticleStore
 from cyris.bootstrap import build_store
@@ -246,6 +248,45 @@ def test_a_client_error_is_not_retried(monkeypatch) -> None:
     with pytest.raises(D1Error):
         client.query("SELECT 1")
     assert len(calls) == 1
+
+
+def _answering(monkeypatch, client: D1Client, statuses: list[int]) -> list[int]:
+    """`client` answers each status in turn, then 200 with one row; returns the statuses sent."""
+    sent: list[int] = []
+
+    def post(*_a, **_k):
+        status = statuses[len(sent)] if len(sent) < len(statuses) else 200
+        sent.append(status)
+        if status == 200:
+            body = {"success": True, "result": [{"results": [{"one": 1}]}]}
+        else:
+            body = {"errors": [{"message": "internal error"}]}
+        return httpx.Response(status, json=body, request=httpx.Request("POST", "https://d1.test"))
+
+    monkeypatch.setattr(client._http, "post", post)
+    return sent
+
+
+def test_a_rate_limited_query_is_retried_with_the_backoff(monkeypatch) -> None:
+    """A burst on the account draws a short-lived 429; one used to fail a whole run."""
+    client = D1Client(account_id="a", database_id="b", api_token="c")
+    sent = _answering(monkeypatch, client, [429, 429])
+    sleeps: list[float] = []
+    monkeypatch.setattr(d1.time, "sleep", sleeps.append)
+
+    assert client.query("SELECT 1 AS one").rows == [{"one": 1}]
+    assert sent == [429, 429, 200]
+    assert sleeps == [d1.RETRY_BACKOFF_SECONDS * 1, d1.RETRY_BACKOFF_SECONDS * 2]
+
+
+def test_a_rate_limit_that_lasts_is_raised_after_every_attempt(monkeypatch) -> None:
+    client = D1Client(account_id="a", database_id="b", api_token="c")
+    sent = _answering(monkeypatch, client, [429] * d1.MAX_ATTEMPTS)
+    monkeypatch.setattr(d1.time, "sleep", lambda _s: None)
+
+    with pytest.raises(D1Error, match=f"after {d1.MAX_ATTEMPTS} attempts.*HTTP 429"):
+        client.query("SELECT 1")
+    assert sent == [429] * d1.MAX_ATTEMPTS
 
 
 def test_scores_survive_a_batch_past_d1s_compound_select_ceiling() -> None:

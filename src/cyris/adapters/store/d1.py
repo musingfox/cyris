@@ -33,6 +33,12 @@ MAX_BOUND_PARAMS = 100
 MAX_ATTEMPTS = 4
 RETRY_BACKOFF_SECONDS = 2
 
+# The REST API answers a burst with a short-lived 429: on 2026-11-28 one failed a scheduled
+# run while three other containers on the account, started seconds later, all got through.
+# Only D1Client retries it: the tenant gateway answers an overloaded Durable Object 429
+# precisely so that it is not retried, since a retry adds to the load that refused it.
+D1_RETRIED_CLIENT_ERRORS = frozenset({429})
+
 
 class D1Error(RuntimeError):
     """A D1 query was rejected, or the API call itself failed."""
@@ -62,7 +68,12 @@ class D1Client:
         )
 
     def query(self, sql: str, params: list[Any] | None = None) -> QueryResult:
-        body = post_with_retries(self._http, self._url, {"sql": sql, "params": params or []})
+        body = post_with_retries(
+            self._http,
+            self._url,
+            {"sql": sql, "params": params or []},
+            retried_client_errors=D1_RETRIED_CLIENT_ERRORS,
+        )
 
         if not body.get("success"):
             errors = body.get("errors") or [{"message": "unknown error"}]
@@ -86,12 +97,15 @@ def post_with_retries(
     *,
     what: str = "D1",
     error: type[D1Error] = D1Error,
+    retried_client_errors: frozenset[int] = frozenset(),
 ) -> dict[str, Any]:
     """Retry transport failures, because a bulk write is thousands of requests.
 
     At any realistic per-request failure rate, "give up on the first timeout"
     means a large write never finishes. A 4xx is not retried: the request itself is
-    wrong, and repeating it only delays saying so. Every client that answers
+    wrong, and repeating it only delays saying so. The exceptions are the statuses in
+    `retried_client_errors`, which a caller names when its API uses one for a passing
+    condition. Every client that answers
     `D1Queryable` over HTTP keeps these rules; `what` names its store in the log
     and the error, which is `error`.
     """
@@ -107,7 +121,7 @@ def post_with_retries(
             # only useful part of a 400 away.
             if resp.status_code < 400:
                 return resp.json()
-            if resp.status_code < 500:
+            if resp.status_code < 500 and resp.status_code not in retried_client_errors:
                 raise error(_message(resp))
             last = httpx.HTTPStatusError(_message(resp), request=resp.request, response=resp)
 
